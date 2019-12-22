@@ -1,0 +1,598 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring5 源码深度解析----- Spring事务 是怎么通过AOP实现的？（100%理解Spring事务）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring5 源码深度解析----- Spring事务 是怎么通过AOP实现的？（100%理解Spring事务）</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11635380.html</div><br>
+    <p>此篇文章需要有SpringAOP基础，知道AOP底层原理可以更好的理解Spring的事务处理。</p>
+<h2>自定义标签</h2>
+<p>对于Spring中事务功能的代码分析，我们首先从配置文件开始人手，在配置文件中有这样一个配置：&lt;tx:annotation-driven/&gt;。可以说此处配置是事务的开关，如果没有此处配置，那么Spring中将不存在事务的功能。那么我们就从这个配置开始分析。</p>
+<p>根据之前的分析，我们因此可以判断，在自定义标签中的解析过程中一定是做了一些辅助操作，于是我们先从自定义标签入手进行分析。使用Idea搜索全局代码，关键字annotation-driven，最终锁定类TxNamespaceHandler，在TxNamespaceHandler中的 init 方法中：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> init() {
+    registerBeanDefinitionParser(</span>"advice", <span style="color: #0000ff;">new</span><span style="color: #000000;"> TxAdviceBeanDefinitionParser());
+    registerBeanDefinitionParser(</span>"<strong>annotation-driven</strong>", <strong><span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> AnnotationDrivenBeanDefinitionParser()</strong>);
+    registerBeanDefinitionParser(</span>"jta-transaction-manager", <span style="color: #0000ff;">new</span><span style="color: #000000;"> JtaTransactionManagerBeanDefinitionParser());
+}</span></code></pre>
+
+<p>在遇到诸如tx:annotation-driven为开头的配置后，Spring都会使用AnnotationDrivenBeanDefinitionParser类的parse方法进行解析。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+@Nullable
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> BeanDefinition parse(Element element, ParserContext parserContext) {
+    registerTransactionalEventListenerFactory(parserContext);
+    String mode </span>= element.getAttribute("mode"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> ("aspectj"<span style="color: #000000;">.equals(mode)) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> mode="aspectj"</span>
+<span style="color: #000000;">        registerTransactionAspect(element, parserContext);
+        </span><span style="color: #0000ff;">if</span> (ClassUtils.isPresent("javax.transaction.Transactional"<span style="color: #000000;">, getClass().getClassLoader())) {
+            registerJtaTransactionAspect(element, parserContext);
+        }
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> mode="proxy"</span>
+<span style="color: #000000;">        AopAutoProxyConfigurer.configureAutoProxyCreator(element, parserContext);
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>在解析中存在对于mode属性的判断，根据代码，如果我们需要使用AspectJ的方式进行事务切入（Spring中的事务是以AOP为基础的），那么可以使用这样的配置：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;tx:annotation-driven transaction-manager="transactionManager" mode="aspectj"/&gt;</code></pre>
+
+<h2>注册 InfrastructureAdvisorAutoProxyCreator</h2>
+<p>我们以默认配置为例进行分析，进人AopAutoProxyConfigurer类的configureAutoProxyCreator：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> configureAutoProxyCreator(Element element, ParserContext parserContext) {
+    </span><span style="color: #008000;">//</span><strong><span style="color: #008000;">向IOC注册InfrastructureAdvisorAutoProxyCreator这个类型的Bean</span></strong>
+<span style="color: #000000;">    AopNamespaceUtils.<strong>registerAutoProxyCreatorIfNecessary</strong>(parserContext, element);
+
+    String txAdvisorBeanName </span>=<span style="color: #000000;"> TransactionManagementConfigUtils.TRANSACTION_ADVISOR_BEAN_NAME;
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">parserContext.getRegistry().containsBeanDefinition(txAdvisorBeanName)) {
+        Object eleSource </span>=<span style="color: #000000;"> parserContext.extractSource(element);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create the TransactionAttributeSource definition.
+        </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 创建AnnotationTransactionAttributeSource类型的Bean</span></strong>
+        RootBeanDefinition sourceDef = <span style="color: #0000ff;">new</span> RootBeanDefinition("org.springframework.transaction.annotation.<strong>AnnotationTransactionAttributeSource</strong>"<span style="color: #000000;">);
+        sourceDef.setSource(eleSource);
+        sourceDef.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+        String sourceName </span>=<span style="color: #000000;"> parserContext.getReaderContext().registerWithGeneratedName(sourceDef);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create the TransactionInterceptor definition.
+        </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 创建TransactionInterceptor类型的Bean</span></strong>
+        RootBeanDefinition interceptorDef = <span style="color: #0000ff;">new</span> RootBeanDefinition(<strong>TransactionInterceptor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;">);
+        interceptorDef.setSource(eleSource);
+        interceptorDef.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+        registerTransactionManager(element, interceptorDef);
+        interceptorDef.getPropertyValues().add(</span>"transactionAttributeSource", <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuntimeBeanReference(sourceName));
+        String interceptorName </span>=<span style="color: #000000;"> parserContext.getReaderContext().registerWithGeneratedName(interceptorDef);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create the TransactionAttributeSourceAdvisor definition.
+        </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 创建BeanFactoryTransactionAttributeSourceAdvisor类型的Bean</span></strong>
+        RootBeanDefinition advisorDef = <span style="color: #0000ff;">new</span> RootBeanDefinition(<strong>BeanFactoryTransactionAttributeSourceAdvisor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;">);
+        advisorDef.setSource(eleSource);
+        advisorDef.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+        </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 将上面AnnotationTransactionAttributeSource类型Bean注入进上面的Advisor</span></strong>
+       <strong> advisorDef.getPropertyValues().add("transactionAttributeSource", <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuntimeBeanReference(sourceName));
+        </span></strong><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 将上面TransactionInterceptor类型Bean注入进上面的Advisor</span></strong>
+       <strong> advisorDef.getPropertyValues().add("adviceBeanName"<span style="color: #000000;">, interceptorName);
+        </span></strong><span style="color: #0000ff;">if</span> (element.hasAttribute("order"<span style="color: #000000;">)) {
+            advisorDef.getPropertyValues().add(</span>"order", element.getAttribute("order"<span style="color: #000000;">));
+        }
+        parserContext.getRegistry().registerBeanDefinition(txAdvisorBeanName, advisorDef);
+        </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 将上面三个Bean注册进IOC中</span></strong>
+        CompositeComponentDefinition compositeDef = <span style="color: #0000ff;">new</span><span style="color: #000000;"> CompositeComponentDefinition(element.getTagName(), eleSource);
+        compositeDef.addNestedComponent(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> BeanComponentDefinition(sourceDef, sourceName));
+        compositeDef.addNestedComponent(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> BeanComponentDefinition(interceptorDef, interceptorName));
+        compositeDef.addNestedComponent(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> BeanComponentDefinition(advisorDef, txAdvisorBeanName));
+        parserContext.registerComponent(compositeDef);
+    }
+}</span></code></pre>
+
+<p>这里分别是注册了三个Bean，和一个<code>InfrastructureAdvisorAutoProxyCreator</code>，其中三个Bean支撑了整个事务的功能。</p>
+<p>我们首先需要回顾一下AOP的原理，AOP中有一个 Advisor 存放在代理类中，而Advisor中有advise与pointcut信息，每次执行被代理类的方法时都会执行代理类的invoke（如果是JDK代理）方法，而invoke方法会根据advisor中的pointcut动态匹配这个方法需要执行的advise链，遍历执行advise链，从而达到AOP切面编程的目的。</p>
+<ul>
+<li><code>BeanFactoryTransactionAttributeSourceAdvisor</code>：首先看这个类的继承结构，可以看到这个类其实是一个Advisor，其实由名字也能看出来，类中有几个关键地方注意一下，在之前的注册过程中，将两个属性注入进这个Bean中：</li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 将上面AnnotationTransactionAttributeSource类型Bean注入进上面的Advisor</span>
+advisorDef.getPropertyValues().add("transactionAttributeSource", <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuntimeBeanReference(sourceName));
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 将上面TransactionInterceptor类型Bean注入进上面的Advisor</span>
+advisorDef.getPropertyValues().add("adviceBeanName", interceptorName);</code></pre>
+
+<p>那么它们被注入成什么了呢？进入<code>BeanFactoryTransactionAttributeSourceAdvisor</code>一看便知。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Nullable
+</span><span style="color: #0000ff;">private</span> TransactionAttributeSource transactionAttributeSource;</code></pre>
+
+<p>在其父类中有属性：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Nullable
+</span><span style="color: #0000ff;">private</span> String adviceBeanName;</code></pre>
+
+<p>也就是说，这里先将上面的TransactionInterceptor的BeanName传入到Advisor中，然后将AnnotationTransactionAttributeSource这个Bean注入到Advisor中，那么这个Source Bean有什么用呢？可以继续看看BeanFactoryTransactionAttributeSourceAdvisor的源码。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> TransactionAttributeSourcePointcut pointcut = <span style="color: #0000ff;">new</span><span style="color: #000000;">     TransactionAttributeSourcePointcut() {
+    @Override
+    @Nullable
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> TransactionAttributeSource getTransactionAttributeSource() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> transactionAttributeSource;
+    }
+};</span></code></pre>
+
+<p>看到这里应该明白了，这里的Source是提供了pointcut信息，作为存放事务属性的一个类注入进Advisor中，到这里应该知道注册这三个Bean的作用了吧？首先注册pointcut、advice、advisor，然后将pointcut和advice注入进advisor中，在之后动态代理的时候会使用这个Advisor去寻找每个Bean是否需要动态代理（取决于是否有开启事务），因为Advisor有pointcut信息。</p>
+<p><img src="./images/spring5 源码深度解析----- Spring事务 是怎么通过AOP实现的？（100%理解Spring事务）0.png" alt="" /></p>
+<ul>
+<li>InfrastructureAdvisorAutoProxyCreator：在方法开头，首先就调用了AopNamespeceUtils去注册了这个Bean，那么这个Bean是干什么用的呢？还是先看看这个类的结构。这个类继承了AbstractAutoProxyCreator，看到这个名字，熟悉AOP的话应该已经知道它是怎么做的了吧？其次这个类还实现了BeanPostProcessor接口，凡事实现了这个BeanPost接口的类，我们首先关注的就是它的postProcessAfterInitialization方法，这里在其父类也就是刚刚提到的AbstractAutoProxyCreator这里去实现。（这里需要知道Spring容器初始化Bean的过程，关于BeanPostProcessor的使用我会另开一篇讲解。如果不知道只需了解如果一个Bean实现了BeanPostProcessor接口，当所有Bean实例化且依赖注入之后初始化方法之后会执行这个实现Bean的postProcessAfterInitialization方法）</li>
+</ul>
+<p>进入这个函数：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerAutoProxyCreatorIfNecessary(
+        ParserContext parserContext, Element sourceElement) {
+
+    BeanDefinition beanDefinition </span>=<span style="color: #000000;"> AopConfigUtils.registerAutoProxyCreatorIfNecessary(
+            parserContext.getRegistry(), parserContext.extractSource(sourceElement));
+    useClassProxyingIfNecessary(parserContext.getRegistry(), sourceElement);
+    <strong>registerComponentIfNecessary(beanDefinition, parserContext);</strong>
+}
+
+@Nullable
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> BeanDefinition registerAutoProxyCreatorIfNecessary(BeanDefinitionRegistry registry,
+        @Nullable Object source) {
+
+    </span><span style="color: #0000ff;">return</span> registerOrEscalateApcAsRequired(<strong>InfrastructureAdvisorAutoProxyCreator.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;">, registry, source);
+}</span></code></pre>
+
+<p>对于解析来的代码流程AOP中已经有所分析，上面的两个函数主要目的是注册了InfrastructureAdvisorAutoProxyCreator类型的bean，那么注册这个类的目的是什么呢？查看这个类的层次，如下图所示：</p>
+<p><img src="./images/spring5 源码深度解析----- Spring事务 是怎么通过AOP实现的？（100%理解Spring事务）1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>从上面的层次结构中可以看到，InfrastructureAdvisorAutoProxyCreator间接实现了SmartInstantiationAwareBeanPostProcessor，而SmartInstantiationAwareBeanPostProcessor又继承自InstantiationAwareBeanPostProcessor，也就是说在Spring中，所有bean实例化时Spring都会保证调用其postProcessAfterInstantiation方法，其实现是在父类AbstractAutoProxyCreator类中实现。</p>
+<p>以之前的示例为例，当实例化AccountServiceImpl的bean时便会调用此方法，方法如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object postProcessAfterInitialization(@Nullable Object bean, String beanName) {
+    </span><span style="color: #0000ff;">if</span> (bean != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据给定的bean的class和name构建出key，格式：beanClassName_beanName</span>
+        Object cacheKey =<span style="color: #000000;"> getCacheKey(bean.getClass(), beanName);
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.earlyProxyReferences.contains(cacheKey)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果它适合被代理，则需要封装指定bean</span>
+            <span style="color: #0000ff;">return</span><span style="color: #000000;"> wrapIfNecessary(bean, beanName, cacheKey);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+}</span></code></pre>
+
+<p>&nbsp;这里实现的主要目的是对指定bean进行封装，当然首先要确定是否需要封装，检测与封装的工作都委托给了wrapIfNecessary函数进行。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果处理过这个bean的话直接返回</span>
+    <span style="color: #0000ff;">if</span> (StringUtils.hasLength(beanName) &amp;&amp; <span style="color: #0000ff;">this</span><span style="color: #000000;">.targetSourcedBeans.contains(beanName)) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 之后如果Bean匹配不成功，会将Bean的cacheKey放入advisedBeans中
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> value为false，所以这里可以用cacheKey判断此bean是否之前已经代理不成功了</span>
+    <span style="color: #0000ff;">if</span> (Boolean.FALSE.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.get(cacheKey))) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里会将Advise、Pointcut、Advisor类型的类过滤，直接不进行代理，return</span>
+    <span style="color: #0000ff;">if</span> (isInfrastructureClass(bean.getClass()) ||<span style="color: #000000;"> shouldSkip(bean.getClass(), beanName)) {
+           </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里即为不成功的情况，将false放入Map中</span>
+        <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create proxy if we have advice.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里是主要验证的地方，传入Bean的class与beanName去判断此Bean有哪些Advisor</span>
+    Object[] specificInterceptors = <strong>getAdvicesAndAdvisorsForBean</strong>(bean.getClass(), beanName, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果有相应的advisor被找到，则用advisor与此bean做一个动态代理，将这两个的信息
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 放入代理类中进行代理</span>
+    <span style="color: #0000ff;">if</span> (specificInterceptors !=<span style="color: #000000;"> DO_NOT_PROXY) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.TRUE);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建代理的地方</span>
+        Object proxy =<span style="color: #000000;"><strong> createProxy</strong>(
+                bean.getClass(), beanName, specificInterceptors, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SingletonTargetSource(bean));
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.proxyTypes.put(cacheKey, proxy.getClass());
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 返回代理对象</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> proxy;</strong>
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果此Bean没有一个Advisor匹配，将返回null也就是DO_NOT_PROXY
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 也就是会走到这一步，将其cacheKey，false存入Map中</span>
+    <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 不代理直接返回原bean</span>
+    <span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+}</span></code></pre>
+
+<p>wrapIfNecessary函数功能实现起来很复杂，但是逻辑上理解起来还是相对简单的，在wrapIfNecessary函数中主要的工作如下：</p>
+<p>（1）找出指定bean对应的增强器。</p>
+<p>（2）根据找出的增强器创建代理。</p>
+<p>听起来似乎简单的逻辑，Spring中又做了哪些复杂的工作呢？对于创建代理的部分，通过之前的分析相信大家已经很熟悉了，但是对于增强器的获取，Spring又是怎么做的呢？</p>
+<h2>获取对应class/method的增强器</h2>
+<p>获取指定bean对应的增强器，其中包含两个关键字：增强器与对应。也就是说在 getAdvicesAndAdvisorsForBean函数中，不但要找出增强器，而且还需要判断增强器是否满足要求。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+@Nullable
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object[] getAdvicesAndAdvisorsForBean(
+        Class</span>&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName, @Nullable TargetSource targetSource) {
+
+    List</span>&lt;Advisor&gt; advisors =<span style="color: #000000;"><strong> findEligibleAdvisors</strong>(beanClass, beanName);
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (advisors.isEmpty()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> DO_NOT_PROXY;
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors.toArray();
+}
+
+</span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt; findEligibleAdvisors(Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName) {
+    List</span>&lt;Advisor&gt; candidateAdvisors =<span style="color: #000000;"><strong> findCandidateAdvisors</strong>();
+    List</span>&lt;Advisor&gt; eligibleAdvisors =<span style="color: #000000;"><strong> findAdvisorsThatCanApply</strong>(candidateAdvisors, beanClass, beanName);
+    extendAdvisors(eligibleAdvisors);
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">eligibleAdvisors.isEmpty()) {
+        eligibleAdvisors </span>=<span style="color: #000000;"> sortAdvisors(eligibleAdvisors);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+}</span></code></pre>
+
+<h3>寻找候选增强器</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findCandidateAdvisors() {
+    Assert.state(</span><span style="color: #0000ff;">this</span>.advisorRetrievalHelper != <span style="color: #0000ff;">null</span>, "No BeanFactoryAdvisorRetrievalHelper available"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorRetrievalHelper.<strong>findAdvisorBeans</strong>();
+}
+
+</span><span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> findAdvisorBeans() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Determine list of advisor bean names, if not cached already.</span>
+    String[] advisorNames = <span style="color: #0000ff;">this</span><span style="color: #000000;">.cachedAdvisorBeanNames;
+    </span><span style="color: #0000ff;">if</span> (advisorNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取BeanFactory中所有对应Advisor.class的类名
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里和AspectJ的方式有点不同，AspectJ是获取所有的Object.class，然后通过反射过滤有注解AspectJ的类</span>
+        advisorNames =<strong><span style="color: #000000;"> BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+                </span><span style="color: #0000ff;">this</span>.beanFactory, Advisor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        </span></strong><span style="color: #0000ff;">this</span>.cachedAdvisorBeanNames =<span style="color: #000000;"> advisorNames;
+    }
+    </span><span style="color: #0000ff;">if</span> (advisorNames.length == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    }
+
+    List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String name : advisorNames) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isEligibleBean(name)) {
+            </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isCurrentlyInCreation(name)) {
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                    logger.debug(</span>"Skipping currently created advisor '" + name + "'"<span style="color: #000000;">);
+                }
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">直接获取advisorNames的实例，封装进advisors数组</span>
+                    advisors.add(<span style="color: #0000ff;">this</span>.beanFactory.getBean(name, Advisor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>));</strong>
+                }
+                </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (BeanCreationException ex) {
+                    Throwable rootCause </span>=<span style="color: #000000;"> ex.getMostSpecificCause();
+                    </span><span style="color: #0000ff;">if</span> (rootCause <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> BeanCurrentlyInCreationException) {
+                        BeanCreationException bce </span>=<span style="color: #000000;"> (BeanCreationException) rootCause;
+                        String bceBeanName </span>=<span style="color: #000000;"> bce.getBeanName();
+                        </span><span style="color: #0000ff;">if</span> (bceBeanName != <span style="color: #0000ff;">null</span> &amp;&amp; <span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isCurrentlyInCreation(bceBeanName)) {
+                            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                                logger.debug(</span>"Skipping advisor '" + name +
+                                        "' with dependency on currently created bean: " +<span style="color: #000000;"> ex.getMessage());
+                            }
+                            </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                        }
+                    }
+                    </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex;
+                }
+            }
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+}</span></code></pre>
+
+<p>首先是通过BeanFactoryUtils类提供的工具方法获取所有对应Advisor.class的类，获取办法无非是使用ListableBeanFactory中提供的方法：</p>
+<src class="cnblogs_code">
+<pre><code>String[] getBeanNamesForType(@Nullable Class&lt;?&gt; type, <span style="color: #0000ff;">boolean</span> includeNonSingletons, <span style="color: #0000ff;">boolean</span> allowEagerInit);</code></pre>
+
+<p>在我们讲解自定义标签时曾经注册了一个类型为 BeanFactoryTransactionAttributeSourceAdvisor 的 bean，而在此 bean 中我们又注入了另外两个Bean，那么此时这个 Bean 就会被开始使用了。因为 BeanFactoryTransactionAttributeSourceAdvisor同样也实现了 Advisor接口，那么在获取所有增强器时自然也会将此bean提取出来， 并随着其他增强器一起在后续的步骤中被织入代理。</p>
+<h3>候选增强器中寻找到匹配项</h3>
+<p>当找出对应的增强器后，接下来的任务就是看这些增强器是否与对应的class匹配了，当然不只是class，class内部的方法如果匹配也可以通过验证。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;Advisor&gt; findAdvisorsThatCanApply(List&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (candidateAdvisors.isEmpty()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> candidateAdvisors;
+    }
+    List</span>&lt;Advisor&gt; eligibleAdvisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先处理引介增强</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+        </span><span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span> IntroductionAdvisor &amp;&amp;<span style="color: #000000;"> canApply(candidate, clazz)) {
+            eligibleAdvisors.add(candidate);
+        }
+    }
+    </span><span style="color: #0000ff;">boolean</span> hasIntroductions = !<span style="color: #000000;">eligibleAdvisors.isEmpty();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 引介增强已经处理</span>
+        <span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> already processed</span>
+            <span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 对于普通bean的处理</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (<strong>canApply</strong>(candidate, clazz, hasIntroductions)) {
+            eligibleAdvisors.add(candidate);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Advisor advisor, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+    </span><span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ((IntroductionAdvisor) advisor).getClassFilter().matches(targetClass);
+    }
+    </span><strong><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PointcutAdvisor) {
+        PointcutAdvisor pca </span>=<span style="color: #000000;"> (PointcutAdvisor) advisor;
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> canApply(pca.getPointcut(), targetClass, hasIntroductions);
+    }
+    </span></strong><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> It doesn't have a pointcut so we assume it applies.</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>BeanFactoryTransactionAttributeSourceAdvisor 间接实现了PointcutAdvisor。 因此，在canApply函数中的第二个if判断时就会通过判断，会将BeanFactoryTransactionAttributeSourceAdvisor中的getPointcut()方法返回值作为参数继续调用canApply方法，而 getPoint()方法返回的是TransactionAttributeSourcePointcut类型的实例。对于 transactionAttributeSource这个属性大家还有印象吗？这是在解析自定义标签时注入进去的。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> TransactionAttributeSourcePointcut pointcut = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TransactionAttributeSourcePointcut() {
+    @Override
+    @Nullable
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> TransactionAttributeSource getTransactionAttributeSource() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"><strong> transactionAttributeSource;</strong>
+    }
+};</span></code></pre>
+
+<p>那么，使用TransactionAttributeSourcePointcut类型的实例作为函数参数继续跟踪canApply。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Pointcut pc, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+    Assert.notNull(pc, </span>"Pointcut must not be null"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">pc.getClassFilter().matches(targetClass)) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 此时的pc表示TransactionAttributeSourcePointcut
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> pc.getMethodMatcher()返回的正是自身(this)</span>
+    MethodMatcher methodMatcher =<span style="color: #000000;"> pc.getMethodMatcher();
+    </span><span style="color: #0000ff;">if</span> (methodMatcher ==<span style="color: #000000;"> MethodMatcher.TRUE) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> No need to iterate the methods if we're matching any method anyway...</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    IntroductionAwareMethodMatcher introductionAwareMethodMatcher </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">if</span> (methodMatcher <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAwareMethodMatcher) {
+        introductionAwareMethodMatcher </span>=<span style="color: #000000;"> (IntroductionAwareMethodMatcher) methodMatcher;
+    }
+
+    Set</span>&lt;Class&lt;?&gt;&gt; classes = <span style="color: #0000ff;">new</span> LinkedHashSet&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">Proxy.isProxyClass(targetClass)) {
+        classes.add(ClassUtils.getUserClass(targetClass));
+    }
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">获取对应类的所有接口</span>
+<span style="color: #000000;">    classes.addAll(ClassUtils.getAllInterfacesForClassAsSet(targetClass));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">对类进行遍历</span></strong>
+    <span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> clazz : classes) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">反射获取类中所有的方法</span>
+        Method[] methods =<span style="color: #000000;"> ReflectionUtils.getAllDeclaredMethods(clazz);
+        </span></strong><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method : methods) {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">对类和方法进行增强器匹配</span></strong>
+            <span style="color: #0000ff;">if</span> (introductionAwareMethodMatcher != <span style="color: #0000ff;">null</span> ?<span style="color: #000000;">
+                    introductionAwareMethodMatcher.matches(method, targetClass, hasIntroductions) :
+                  <strong>  methodMatcher.matches(method, targetClass)) {
+                </strong></span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            }
+        }
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>通过上面函数大致可以理清大体脉络，首先获取对应类的所有接口并连同类本身一起遍历，遍历过程中又对类中的方法再次遍历，一旦匹配成功便认为这个类适用于当前增强器。</p>
+<p>到这里我们不禁会有疑问，对于事物的配置不仅仅局限于在函数上配置，我们都知道，在类或接口上的配置可以延续到类中的每个函数，那么，如果针对每个函数迸行检测，在类本身上配罝的事务属性岂不是检测不到了吗？带着这个疑问，我们继续探求matcher方法。</p>
+<p>做匹配的时候 methodMatcher.matches(method, targetClass)会使用 TransactionAttributeSourcePointcut 类的 matches 方法。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> matches(Method method, Class&lt;?&gt;<span style="color: #000000;"> targetClass) {
+    </span><span style="color: #0000ff;">if</span> (TransactionalProxy.<span style="color: #0000ff;">class</span><span style="color: #000000;">.isAssignableFrom(targetClass)) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 自定义标签解析时注入</span>
+    TransactionAttributeSource tas =<span style="color: #000000;"> getTransactionAttributeSource();
+    </span><span style="color: #0000ff;">return</span> (tas == <span style="color: #0000ff;">null</span> || <strong>tas.getTransactionAttribute(method, targetClass) != <span style="color: #0000ff;">null</span></strong><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>此时的 tas 表示 AnnotationTransactionAttributeSource 类型，这里会判断<strong>tas.getTransactionAttribute(method, targetClass) != null，</strong>而 AnnotationTransactionAttributeSource 类型的 getTransactionAttribute 方法如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+@Nullable
+</span><span style="color: #0000ff;">public</span> TransactionAttribute getTransactionAttribute(Method method, @Nullable Class&lt;?&gt;<span style="color: #000000;"> targetClass) {
+    </span><span style="color: #0000ff;">if</span> (method.getDeclaringClass() == Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    Object cacheKey </span>=<span style="color: #000000;"> getCacheKey(method, targetClass);
+    Object cached </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.attributeCache.get(cacheKey);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">先从缓存中获取TransactionAttribute</span>
+    <span style="color: #0000ff;">if</span> (cached != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (cached ==<span style="color: #000000;"> NULL_TRANSACTION_ATTRIBUTE) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> (TransactionAttribute) cached;
+        }
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 如果缓存中没有，工作又委托给了computeTransactionAttribute函数</span>
+        TransactionAttribute txAttr =<span style="color: #000000;"> computeTransactionAttribute(method, targetClass);
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> Put it in the cache.</span>
+        <span style="color: #0000ff;">if</span> (txAttr == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置为空</span>
+            <span style="color: #0000ff;">this</span><span style="color: #000000;">.attributeCache.put(cacheKey, NULL_TRANSACTION_ATTRIBUTE);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            String methodIdentification </span>=<span style="color: #000000;"> ClassUtils.getQualifiedMethodName(method, targetClass);
+            </span><span style="color: #0000ff;">if</span> (txAttr <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> DefaultTransactionAttribute) {
+                ((DefaultTransactionAttribute) txAttr).setDescriptor(methodIdentification);
+            }
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                logger.debug(</span>"Adding transactional method '" + methodIdentification + "' with attribute: " +<span style="color: #000000;"> txAttr);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">加入缓存中</span>
+            <span style="color: #0000ff;">this</span><span style="color: #000000;">.attributeCache.put(cacheKey, txAttr);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txAttr;
+    }
+}</span></code></pre>
+
+<p>尝试从缓存加载，如果对应信息没有被缓存的话，工作又委托给了computeTransactionAttribute函数，在computeTransactionAttribute函数中我们终于看到了事务标签的提取过程。</p>
+<h3>提取事务标签</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Nullable
+</span><span style="color: #0000ff;">protected</span> TransactionAttribute computeTransactionAttribute(Method method, @Nullable Class&lt;?&gt;<span style="color: #000000;"> targetClass) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Don't allow no-public methods as required.</span>
+    <span style="color: #0000ff;">if</span> (allowPublicMethodsOnly() &amp;&amp; !<span style="color: #000000;">Modifier.isPublic(method.getModifiers())) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> The method may be on an interface, but we need attributes from the target class.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> If the target class is null, the method will be unchanged.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> method代表接口中的方法，specificMethod代表实现类中的方法</span>
+    Method specificMethod =<span style="color: #000000;"> AopUtils.getMostSpecificMethod(method, targetClass);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> First try is the method in the target class.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 查看方法中是否存在事务声明</span>
+    TransactionAttribute txAttr =<span style="color: #000000;"><strong> findTransactionAttribute</strong>(specificMethod);
+    </span><span style="color: #0000ff;">if</span> (txAttr != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txAttr;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Second try is the transaction attribute on the target class.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 查看方法所在类中是否存在事务声明</span>
+    txAttr =<span style="color: #000000;"><strong> findTransactionAttribute</strong>(specificMethod.getDeclaringClass());
+    </span><span style="color: #0000ff;">if</span> (txAttr != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> ClassUtils.isUserLevelMethod(method)) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txAttr;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果存在接口，则到接口中去寻找</span>
+    <span style="color: #0000ff;">if</span> (specificMethod !=<span style="color: #000000;"> method) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Fallback is to look at the original method.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 查找接口方法</span>
+        txAttr =<span style="color: #000000;"><strong> findTransactionAttribute</strong>(method);
+        </span><span style="color: #0000ff;">if</span> (txAttr != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txAttr;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Last fallback is the class of the original method.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 到接口中的类中去寻找</span>
+        txAttr =<span style="color: #000000;"> findTransactionAttribute(method.getDeclaringClass());
+        </span><span style="color: #0000ff;">if</span> (txAttr != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> ClassUtils.isUserLevelMethod(method)) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txAttr;
+        }
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>对于事务属性的获取规则相信大家都已经很清楚，如果方法中存在事务属性，则使用方法上的属性，否则使用方法所在的类上的属性，如果方法所在类的属性上还是没有搜寻到对应的事务属性，那么在搜寻接口中的方法，再没有的话，最后尝试搜寻接口的类上面的声明。对于函数computeTransactionAttribute中的逻辑与我们所认识的规则并无差別，但是上面函数中并没有真正的去做搜寻事务属性的逻辑，而是搭建了个执行框架，将搜寻事务属性的任务委托给了 findTransactionAttribute 方法去执行。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+@Nullable
+</span><span style="color: #0000ff;">protected</span> TransactionAttribute findTransactionAttribute(Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> determineTransactionAttribute(clazz);
+}
+
+@Nullable
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> TransactionAttribute determineTransactionAttribute(AnnotatedElement ae) {
+    </span><span style="color: #0000ff;">for</span> (TransactionAnnotationParser annotationParser : <span style="color: #0000ff;">this</span><span style="color: #000000;">.annotationParsers) {
+        TransactionAttribute attr </span>=<strong><span style="color: #000000;"> annotationParser.parseTransactionAnnotation(ae);
+        </span></strong><span style="color: #0000ff;">if</span> (attr != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> attr;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>this.annotationParsers 是在当前类 AnnotationTransactionAttributeSource 初始化的时候初始化的，其中的值被加入了 SpringTransactionAnnotationParser，也就是当进行属性获取的时候其实是使用 SpringTransactionAnnotationParser 类的 parseTransactionAnnotation 方法进行解析的。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+@Nullable
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> TransactionAttribute parseTransactionAnnotation(AnnotatedElement ae) {
+    AnnotationAttributes attributes </span>=<span style="color: #000000;"> AnnotatedElementUtils.findMergedAnnotationAttributes(
+            ae, <strong>Transactional.</strong></span><strong><span style="color: #0000ff;">class</span>,</strong> <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> (attributes != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> parseTransactionAnnotation(attributes);
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>至此，我们终于看到了想看到的获取注解标记的代码。首先会判断当前的类是否含有 Transactional注解，这是事务属性的基础，当然如果有的话会继续调用parseTransactionAnnotation 方法解析详细的属性。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> TransactionAttribute parseTransactionAnnotation(AnnotationAttributes attributes) {
+    RuleBasedTransactionAttribute rbta </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuleBasedTransactionAttribute();
+    Propagation propagation </span>= attributes.getEnum("propagation"<span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析propagation</span>
+<span style="color: #000000;">    rbta.setPropagationBehavior(propagation.value());
+    Isolation isolation </span>= attributes.getEnum("isolation"<span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析isolation</span>
+<span style="color: #000000;">    rbta.setIsolationLevel(isolation.value());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析timeout</span>
+    rbta.setTimeout(attributes.getNumber("timeout"<span style="color: #000000;">).intValue());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析readOnly</span>
+    rbta.setReadOnly(attributes.getBoolean("readOnly"<span style="color: #000000;">));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析value</span>
+    rbta.setQualifier(attributes.getString("value"<span style="color: #000000;">));
+    ArrayList</span>&lt;RollbackRuleAttribute&gt; rollBackRules = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析rollbackFor</span>
+    Class&lt;?&gt;[] rbf = attributes.getClassArray("rollbackFor"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> rbRule : rbf) {
+        RollbackRuleAttribute rule </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析rollbackForClassName</span>
+    String[] rbfc = attributes.getStringArray("rollbackForClassName"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String rbRule : rbfc) {
+        RollbackRuleAttribute rule </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析noRollbackFor</span>
+    Class&lt;?&gt;[] nrbf = attributes.getClassArray("noRollbackFor"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> rbRule : nrbf) {
+        NoRollbackRuleAttribute rule </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> NoRollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析noRollbackForClassName</span>
+    String[] nrbfc = attributes.getStringArray("noRollbackForClassName"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String rbRule : nrbfc) {
+        NoRollbackRuleAttribute rule </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> NoRollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    rbta.getRollbackRules().addAll(rollBackRules);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> rbta;
+}</span></code></pre>
+
+<p>至此，我们终于完成了事务标签的解析。回顾一下，我们现在的任务是找出某个增强器是否适合于对应的类，而是否匹配的关键则在于是否从指定的类或类中的方法中找到对应的事务属性，现在，我们以AccountServiceImpl为例，已经在它的接口AccountServiceImp中找到了事务属性，所以，它是与事务增强器匹配的，也就是它会被事务功能修饰。</p>
+<p>至此，事务功能的初始化工作便结束了，当判断某个bean适用于事务增强时，也就是适用于增强器BeanFactoryTransactionAttributeSourceAdvisor</p>
+<p>BeanFactoryTransactionAttributeSourceAdvisor 作为 Advisor 的实现类，自然要遵从 Advisor 的处理方式，当代理被调用时会调用这个类的增强方法，也就是此bean的Advice，又因为在解析事务定义标签时我们把Transactionlnterceptor类的bean注人到了 BeanFactoryTransactionAttributeSourceAdvisor中，所以，在调用事务增强器增强的代理类时会首先执行Transactionlnterceptor进行增强，同时，也就是在Transactionlnterceptor类中的invoke方法中完成了整个事务的逻辑。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

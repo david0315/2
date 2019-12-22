@@ -1,0 +1,207 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Springboot2.1.x配置Activiti7单独数据源问题' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Springboot2.1.x配置Activiti7单独数据源问题</center></div><div class='banquan'>原文出处:本文由博客园博主Purgeyao提供。<br/>
+原文连接:https://www.cnblogs.com/Purgeyao/p/11611505.html</div><br>
+    <h1 id="springboot2.1.x配置activiti7单独数据源问题">Springboot2.1.x配置Activiti7单独数据源问题</h1>
+<h2 id="简介">简介</h2>
+<p>最近基于最新的<code>Activiti7</code>配置了<code>SpringBoot2</code>。<br />
+简单上手使用了一番。发现市面上解决<code>Activiti7</code>的教程很少，采坑也比较多，在<code>Activiti6</code>配置数据源和<code>Activiti7</code>有所区别，基于<code>Activiti6</code>在<code>Activiti7</code>里是无法正常使用的。接下来让我们看下区别。</p>
+<h2 id="问题">问题</h2>
+<h3 id="activiti6多数据源配置"><code>Activiti6</code>多数据源配置</h3>
+<p>6的配置比较简单点。</p>
+<ol>
+<li>先加入配置：</li>
+</ol>
+<pre><code><code># activiti 数据源
+spring.datasource.activiti.driver=com.mysql.jdbc.Driver
+spring.datasource.activiti.url=jdbc:mysql://10.1.1.97:3311/test-activiti7-db?useUnicode=true&amp;characterEncoding=utf8&amp;useSSL=false&amp;allowMultiQueries=true
+spring.datasource.activiti.username=root
+spring.datasource.activiti.password=Rtqw123OpnmER
+spring.datasource.activiti.driverClassName=com.mysql.jdbc.Driver</code></code></pre>
+<ol>
+<li><p>用<code>@ConfigurationProperties</code>加载以<code>spring.datasource.activiti</code>开头的<code>DataSource</code>。</p></li>
+<li><p>创建<code>ActivitiConfig</code>继承<code>AbstractProcessEngineAutoConfiguration</code>方法注入<code>SpringProcessEngineConfiguration</code>bean,调用<code>AbstractProcessEngineAutoConfiguration#baseSpringProcessEngineConfiguration</code>方法把创建的数据源注入。</p></li>
+</ol>
+<pre><code><code>@Configuration
+public class ActivitiConfig extends AbstractProcessEngineAutoConfiguration {
+
+  @Bean
+  @ConfigurationProperties(prefix = &quot;spring.datasource.activiti&quot;)
+  public DataSource activitiDataSource() {
+    return DataSourceBuilder.create().build();
+  }
+
+  @Bean
+  public SpringProcessEngineConfiguration springProcessEngineConfiguration(
+      PlatformTransactionManager transactionManager,
+      SpringAsyncExecutor springAsyncExecutor) throws IOException {
+
+    return baseSpringProcessEngineConfiguration(
+        activitiDataSource(),
+        transactionManager,
+        springAsyncExecutor);
+  }
+}</code></code></pre>
+<p><code>Activiti6</code>的数据源已经配置完成，如果是7的话会发现<code>AbstractProcessEngineAutoConfiguration#baseSpringProcessEngineConfiguration</code>方法已经不存在了，我们需要产考源码构建方式改造一番。</p>
+<h2 id="修复">修复</h2>
+<h3 id="activiti7多数据源配置"><code>Activiti7</code>多数据源配置</h3>
+<p>配置还是要上面的。</p>
+<ol>
+<li><p>创建<code>ActivitiConfig</code>继承<code>AbstractProcessEngineAutoConfiguration</code>方法注入<code>SpringProcessEngineConfiguration</code>bean。</p></li>
+<li><p>用<code>@ConfigurationProperties</code>加载以<code>spring.datasource.activiti</code>开头的<code>DataSource</code></p></li>
+</ol>
+<pre><code><code>@Configuration
+public class ActivitiConfig extends AbstractProcessEngineAutoConfiguration {
+  
+  @Bean
+  @ConfigurationProperties(prefix = &quot;spring.datasource.activiti&quot;)
+  public DataSource activitiDataSource() {
+    return DataSourceBuilder.create().build();
+  }
+  
+  ...略
+}</code></code></pre>
+<ol>
+<li><code>SpringProcessEngineConfiguration</code>注入方式改为下面：</li>
+</ol>
+<pre><code><code>  @Bean
+  @Primary
+  public SpringProcessEngineConfiguration springProcessEngineConfiguration(
+      PlatformTransactionManager transactionManager,
+      SpringAsyncExecutor springAsyncExecutor,
+      ActivitiProperties activitiProperties,
+      ProcessDefinitionResourceFinder processDefinitionResourceFinder,
+      @Autowired(required = false) DefaultActivityBehaviorFactoryMappingConfigurer processEngineConfigurationConfigurer,
+      @Autowired(required = false) List&lt;ProcessEngineConfigurator&gt; processEngineConfigurators,
+      UserGroupManager userGroupManager,
+      DataSource dataSource) throws IOException {
+
+    SpringProcessEngineConfiguration conf = new SpringProcessEngineConfiguration();
+    conf.setConfigurators(processEngineConfigurators);
+    configureProcessDefinitionResources(processDefinitionResourceFinder,
+        conf);
+    conf.setDataSource(dataSource);
+    conf.setTransactionManager(transactionManager);
+
+    if (springAsyncExecutor != null) {
+      conf.setAsyncExecutor(springAsyncExecutor);
+    }
+    conf.setDeploymentName(activitiProperties.getDeploymentName());
+    conf.setDatabaseSchema(activitiProperties.getDatabaseSchema());
+    conf.setDatabaseSchemaUpdate(activitiProperties.getDatabaseSchemaUpdate());
+    conf.setDbHistoryUsed(activitiProperties.isDbHistoryUsed());
+    conf.setAsyncExecutorActivate(activitiProperties.isAsyncExecutorActivate());
+    if (!activitiProperties.isAsyncExecutorActivate()) {
+      ValidatorSet springBootStarterValidatorSet = new ValidatorSet(&quot;activiti-spring-boot-starter&quot;);
+      springBootStarterValidatorSet.addValidator(new AsyncPropertyValidator());
+      if (conf.getProcessValidator() == null) {
+        ProcessValidatorImpl processValidator = new ProcessValidatorImpl();
+        processValidator.addValidatorSet(springBootStarterValidatorSet);
+        conf.setProcessValidator(processValidator);
+      } else {
+        conf.getProcessValidator().getValidatorSets().add(springBootStarterValidatorSet);
+      }
+    }
+    conf.setMailServerHost(activitiProperties.getMailServerHost());
+    conf.setMailServerPort(activitiProperties.getMailServerPort());
+    conf.setMailServerUsername(activitiProperties.getMailServerUserName());
+    conf.setMailServerPassword(activitiProperties.getMailServerPassword());
+    conf.setMailServerDefaultFrom(activitiProperties.getMailServerDefaultFrom());
+    conf.setMailServerUseSSL(activitiProperties.isMailServerUseSsl());
+    conf.setMailServerUseTLS(activitiProperties.isMailServerUseTls());
+
+    if (userGroupManager != null) {
+      conf.setUserGroupManager(userGroupManager);
+    }
+
+    conf.setHistoryLevel(activitiProperties.getHistoryLevel());
+    conf.setCopyVariablesToLocalForTasks(activitiProperties.isCopyVariablesToLocalForTasks());
+    conf.setSerializePOJOsInVariablesToJson(activitiProperties.isSerializePOJOsInVariablesToJson());
+    conf.setJavaClassFieldForJackson(activitiProperties.getJavaClassFieldForJackson());
+
+    if (activitiProperties.getCustomMybatisMappers() != null) {
+      conf.setCustomMybatisMappers(
+          getCustomMybatisMapperClasses(activitiProperties.getCustomMybatisMappers()));
+    }
+
+    if (activitiProperties.getCustomMybatisXMLMappers() != null) {
+      conf.setCustomMybatisXMLMappers(
+          new HashSet&lt;&gt;(activitiProperties.getCustomMybatisXMLMappers()));
+    }
+
+    if (activitiProperties.getCustomMybatisXMLMappers() != null) {
+      conf.setCustomMybatisXMLMappers(
+          new HashSet&lt;&gt;(activitiProperties.getCustomMybatisXMLMappers()));
+    }
+
+    if (activitiProperties.isUseStrongUuids()) {
+      conf.setIdGenerator(new StrongUuidGenerator());
+    }
+
+    if (activitiProperties.getDeploymentMode() != null) {
+      conf.setDeploymentMode(activitiProperties.getDeploymentMode());
+    }
+
+    conf.setActivityBehaviorFactory(new DefaultActivityBehaviorFactory());
+
+    if (processEngineConfigurationConfigurer != null) {
+      processEngineConfigurationConfigurer.configure(conf);
+    }
+
+    return conf;
+  }
+
+  private void configureProcessDefinitionResources(
+      ProcessDefinitionResourceFinder processDefinitionResourceFinder,
+      SpringProcessEngineConfiguration conf) throws IOException {
+    List&lt;Resource&gt; procDefResources = processDefinitionResourceFinder
+        .discoverProcessDefinitionResources();
+    if (!procDefResources.isEmpty()) {
+      conf.setDeploymentResources(procDefResources.toArray(new Resource[0]));
+    }
+  }</code></code></pre>
+<h2 id="常见错误">常见错误</h2>
+<p>在以上配置中可能会有<code>jdbcUrl is required with driverClassName</code>错误</p>
+<p>解决办法如下:</p>
+<pre><code><code># activiti 数据源
+spring.datasource.activiti.driver=com.mysql.jdbc.Driver
+spring.datasource.activiti.url=jdbc:mysql://10.1.1.97:3311/test-activiti7-db?useUnicode=true&amp;characterEncoding=utf8&amp;useSSL=false&amp;allowMultiQueries=true
+# url换为jdbc-url 解决jdbcUrl is required with driverClassName错误
+# 官方文档的解释是：
+# 因为连接池的实际类型没有被公开，所以在您的自定义数据源的元数据中没有生成密钥，而且在IDE中没有完成(因为DataSource接口没有暴露属性)。
+# 另外，如果您碰巧在类路径上有Hikari，那么这个基本设置就不起作用了，因为Hikari没有url属性(但是确实有一个jdbcUrl属性)。在这种情况下，您必须重写您的配置如下:
+spring.datasource.activiti.jdbc-url=${spring.datasource.activiti.url}
+spring.datasource.activiti.username=root
+spring.datasource.activiti.password=Rtqw123OpnmER
+spring.datasource.activiti.driverClassName=com.mysql.jdbc.Driver</code></code></pre>
+<h2 id="总结">总结</h2>
+<p><code>Activiti7</code>国内的教程不是很多，需要自己在社区里或者官方文档，源码去看了解，细心学习。</p>
+<blockquote>
+<p>示例代码地址:<a href="https://github.com/purgeteam/activiti-starter">activiti-starter</a></p>
+</blockquote>
+<blockquote>
+<p>作者GitHub:<br />
+<a href="https://github.com/purgeyao">Purgeyao</a> 欢迎关注</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

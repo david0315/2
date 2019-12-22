@@ -1,0 +1,203 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修玩转 SpringBoot 2 之整合 JWT 下篇' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>玩转 SpringBoot 2 之整合 JWT 下篇</center></div><div class='banquan'>原文出处:本文由博客园博主桌前明月提供。<br/>
+原文连接:https://www.cnblogs.com/jerry126/p/11621338.html</div><br>
+    <h2 id="前言">前言</h2>
+<p>在<a href="https://blog.csdn.net/ljk126wy/article/details/82751787">《玩转 SpringBoot 2 之整合 JWT 上篇》</a> 中介绍了关于 JWT 相关概念和JWT 基本使用的操作方式。本文为 SpringBoot 整合 JWT 的下篇，通过解决 App 用户登录 Session 问题的实战操作，带你更深入理解 JWT。通过本文你还可以了解到如下内容：</p>
+<ol>
+<li>SpringBoot 使用拦截器的实际应用</li>
+<li>SpringBoot 统一异常处理</li>
+<li>SpringBoot 快速搭建 RESTful Api</li>
+</ol>
+<blockquote>
+<p>关于生成JWT 操作请参考 <a href="https://blog.csdn.net/ljk126wy/article/details/82751787">《玩转 SpringBoot 2 之整合 JWT 上篇》</a></p>
+</blockquote>
+<h2 id="实战操作">实战操作</h2>
+<h3 id="登录操作">登录操作</h3>
+<p><strong>登录操作流程图：</strong></p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇0.png" alt="在这里插入图片描述" /></p>
+<p><strong>登录操作流程介绍：</strong></p>
+<ol>
+<li>App 根据用户名和密码访问登录接口。</li>
+<li>如果用户名和密码错误则提示 App 用户密码输入错误。</li>
+<li>如果用户名和密码正确则获取用户信息（表示登录成功）并根据用户信息生成 Token 并将其存入ServletContext 中。</li>
+<li>将生成的 Token 返回给 App。</li>
+</ol>
+<p><strong>登录操作具体代码：</strong></p>
+<pre><code><code>@RestController
+public class LoginController {
+    Logger log = LoggerFactory.getLogger(LoginController.class);
+    @Autowired
+    private JWTService jwtService;
+    
+    @RequestMapping(&quot;/login&quot;)
+    public ReturnMessage&lt;Object&gt; login(String loginName,String password,HttpServletRequest request) {
+        if(valid(loginName,password)) {
+            ReturnMessageUtil.error(CodeEnum.LOGINNAMEANDPWDERROR);
+        }
+        
+        Map&lt;String,String&gt; userInfo = createUserInfoMap(loginName,password);
+        String token = jwtService.createToken(userInfo, 1);
+        
+        ServletContext context = request.getServletContext();
+        context.setAttribute(token, token);
+        log.info(&quot;token:&quot;+token);
+        return ReturnMessageUtil.sucess(token);
+    }
+} 
+
+    private Map&lt;String,String&gt; createUserInfoMap(String loginName, String password) {
+        Map&lt;String,String&gt; userInfo = new HashMap&lt;String,String&gt;();
+        userInfo.put(&quot;loginName&quot;, loginName);
+        userInfo.put(&quot;password&quot;, password);
+        return userInfo;
+    }
+
+    private boolean valid(String loginName, String password) {
+        if(Objects.equal(&quot;ljk&quot;, loginName) &amp;&amp; Objects.equal(&quot;123456&quot;, password) ) {
+            return true;
+        }
+        return false;
+    }</code></code></pre>
+<h3 id="拦截操作">拦截操作</h3>
+<p><strong>拦截操作流程图：</strong></p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇1.png" alt="在这里插入图片描述" /></p>
+<p><strong>拦截操作流程介绍：</strong></p>
+<ol>
+<li>服务器获取 （App访问具体的Api 时携带的 Token）Token，如果 Token 为空则提示 App Token不能为空。</li>
+<li><p>如果 Token 不为空则从 ServletContext 中获取 Token，如果不存在则提示 App 该Token为非法 Token ！</p></li>
+<li><p>如果 Token 不为空并且 ServletContext 中存在该Token，需要判断 Token 是否过期。如果未过期则放开拦截。</p></li>
+<li><p>如果Token 已经过期则提示 App Token已经过期，需要重新登录。</p></li>
+</ol>
+<p><strong>拦截操作具体代码：</strong></p>
+<pre><code><code>public class LoginInterceptor implements HandlerInterceptor{
+    
+    Logger log = LoggerFactory.getLogger(LoginInterceptor.class);
+    
+    private JWTService jwtService;
+    
+    public LoginInterceptor(JWTService jwtService) {
+        this.jwtService = jwtService;
+    }
+    
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object o) throws Exception {
+        
+        log.info(&quot;Token Checkout processing&quot;);
+        String token = request.getParameter(&quot;token&quot;);
+        
+        if (StringUtils.isEmpty(token)) {
+            throw new JKException(CodeEnum.TOKENISEMPTY);
+        }
+        
+        String tokenInServletContext = (String)request.getServletContext().getAttribute(token);
+        if(StringUtils.isEmpty(tokenInServletContext)) {
+            throw new JKException(CodeEnum.ILLEGALTOKEN);
+        }
+        
+        try {
+             jwtService.verifyToken(token);
+        } catch (AlgorithmMismatchException  e) {
+            log.error(&quot;Token Checkout processing AlgorithmMismatchException 异常！&quot;+e.getLocalizedMessage());
+            throw new JKException(CodeEnum.ILLEGALTOKEN);
+        }catch (TokenExpiredException  e) {
+            log.info(&quot;token已经过期&quot;);
+            throw new JKException(CodeEnum.EXPIRETOKEN);
+        }catch (SignatureVerificationException  e) {
+            log.error(&quot;Token Checkout processing SignatureVerificationException 异常！&quot;+e.getLocalizedMessage());
+            throw new JKException(CodeEnum.ILLEGALTOKEN);
+         }catch (Exception e) {
+            log.error(&quot;Token Checkout processing 未知异常！&quot;+e.getLocalizedMessage());
+            throw e;
+        }
+        
+        return true;
+    }
+}</code></code></pre>
+<h3 id="退出操作">退出操作</h3>
+<p><strong>退出操作流程介绍：</strong></p>
+<p>访问退出接口并传递登录生成的 Token，然后将 ServletContext中的 Token 删除。</p>
+<p><strong>退出操作具体代码：</strong></p>
+<pre><code><code>    @GetMapping(&quot;/logout&quot;)
+    public ReturnMessage&lt;?&gt; logout(String token,String issuer,HttpServletRequest request) {
+        ServletContext context = request.getServletContext();
+        context.removeAttribute(token);
+        return ReturnMessageUtil.sucess();
+    }</code></code></pre>
+<h3 id="公共代码">公共代码</h3>
+<p>IndexController App 访问测试Api，具体代码如下：</p>
+<pre><code><code>@RestController
+public class IndexController {
+    
+    @GetMapping(&quot;index&quot;)
+    public ReturnMessage index() {
+        return ReturnMessageUtil.sucess();
+    }
+}</code></code></pre>
+<p>统一异常次处理的 Handle</p>
+<pre><code><code>@RestControllerAdvice
+public class ExceptionHandle {
+    private final static Logger logger = LoggerFactory.getLogger(ExceptionHandle.class);
+    @ExceptionHandler(value = Exception.class)
+    //@ResponseBody
+    public ReturnMessage&lt;Object&gt; handle(HttpServletResponse response, Exception exception) {
+         response.setCharacterEncoding(&quot;utf-8&quot;);
+        if(exception instanceof JKException) {
+            JKException sbexception = (JKException)exception;
+            return ReturnMessageUtil.error(sbexception.getCode(), sbexception.getMessage());
+        }else {
+            logger.error(&quot;系统异常 {}&quot;,exception);
+            return ReturnMessageUtil.error(-1, &quot;未知异常&quot;+exception.getMessage());
+        }
+    }
+}</code></code></pre>
+<blockquote>
+<p>JWTService 工具类 代码可以在我的GitHub上进行查看，具体地址请查看下面代码示例章节。</p>
+</blockquote>
+<h2 id="测试">测试</h2>
+<p>这里使用PostMan 进行测试，当然你也可以选用你顺手的工具进行测试哈！</p>
+<p>访问 http://localhost:8080/sbe/login?loginName=ljk&amp;password=123456 进行登录获取Token，如下图所示date字段的值就是登录成功后生成的 Token。</p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇2.png" alt="在这里插入图片描述" /></p>
+<p>访问 http://localhost:8080/sbe/index?token=具体token值，如下图所示访问成功！<br />
+<img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇3.png" alt="在这里插入图片描述" /></p>
+<p>如果不携带 Token 会提示Token不能为空，如下图所示：</p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇4.png" alt="在这里插入图片描述" /></p>
+<p>如果输入不存在的 Token 则提示 非法Token！，如下图所示：</p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇5.png" alt="在这里插入图片描述" /></p>
+<p>http://localhost:8080/sbe/logout?token=具体token值 进行退出，如下图所示：</p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇6.png" alt="在这里插入图片描述" /></p>
+<p>退出后再次使用已经退出的Token 访问，会提示非法Token 如下图所示：</p>
+<p><img src="./images/玩转 SpringBoot 2 之整合 JWT 下篇7.png" alt="在这里插入图片描述" /></p>
+<h2 id="小结">小结</h2>
+<p>登录操作通过 JWT 生成Token 返回给App，拦截操作（也可以理解成校验操作）通过拦截器（HandlerInterceptor）来进行实现。最后退出操作是通过将Token 保存ServletContent 中，退出其实就是将 Token 从 ServletContent 中删除。</p>
+<p>本文主旨是通过简单实现，带你了解 App 认证过程处理方式，对于拦截部分你也可以通过 Filter 或 Aop 来进行实现。Token 存储也可以考虑使用Redis来实现，还有一个问题就是：JWT 续期问题本文并没有实现（JWT 过期时间延期问题）。这个部分就当成一个作业，欢迎大家在评论区说说你的解决方案？</p>
+<h2 id="代码示例">代码示例</h2>
+<p>本文并没有对 JWTService 工具类、统一异常处理、拦截器使用搭建进行详细介绍，如果你想直接查看本文全部源码，请在我的GitHub 仓库 SpringbootExamples 中的 spring-boot-2.x-jwt 模块进行查看。</p>
+<p>GitHub：<a href="https://github.com/zhuoqianmingyue/springbootexamples" class="uri">https://github.com/zhuoqianmingyue/springbootexamples</a></p>
+<p>同时你也可以通过查看我关于拦截器、统一异常处理、搭建 RESTful Api 详细教程总结自己完成相关的实现：</p>
+<ul>
+<li><a href="https://blog.csdn.net/ljk126wy/article/details/101278107">玩转 SpringBoot 2 快速整合拦截器</a></li>
+<li><a href="https://blog.csdn.net/ljk126wy/article/details/89196740">玩转 SpringBoot 2 快速整合 | RESTful Api 篇</a></li>
+<li><a href="https://blog.csdn.net/ljk126wy/article/details/99956553">SpringBoot 2 快速整合 | 统一异常处理</a></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,148 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot可执行Jar包运行原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot可执行Jar包运行原理</center></div><div class='banquan'>原文出处:本文由博客园博主写代码的木公提供。<br/>
+原文连接:https://www.cnblogs.com/54chensongxia/p/11419796.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        <ul>
+        <li><a href="#打可执行jar包">1. 打可执行Jar包</a></li>
+        <li><a href="#可执行jar包内部结构">2. 可执行Jar包内部结构</a></li>
+        <li><a href="#jarlauncher">3. JarLauncher</a></li>
+        <li><a href="#简单总结">4. 简单总结</a></li>
+        <li><a href="#远程调试">5. 远程调试</a></li>
+        </ul>
+    
+
+<hr />
+<p>Spring Boot有一个很方便的功能就是可以将应用打成可执行的Jar。那么大家有没想过这个Jar是怎么运行起来的呢？本篇博客就来介绍下Spring Boot可执行Jar包的运行原理。</p>
+<hr />
+<h2 id="打可执行jar包">1. 打可执行Jar包</h2>
+<p>将Spring Boot应用打成可执行Jar包很容易，只需要在pom中加上一个Spring Boot提供的插件，然后在执行<code>mvn package</code>即可。</p>
+<pre><code><code>&lt;build&gt;
+    &lt;plugins&gt;
+        &lt;plugin&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+        &lt;/plugin&gt;
+    &lt;/plugins&gt;
+&lt;/build&gt;</code></code></pre>
+<blockquote>
+<p><strong>注意：</strong></p>
+<p>如果你的项目没有继承<code>spring-boot-starter-parent</code>这个POM，你需要做如下配置，将目标绑定到repackage。</p>
+<pre><code><code>&lt;plugin&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+    &lt;executions&gt;
+        &lt;execution&gt;
+            &lt;goals&gt;
+                &lt;goal&gt;repackage&lt;/goal&gt;
+            &lt;/goals&gt;
+        &lt;/execution&gt;
+    &lt;/executions&gt;
+&lt;/plugin&gt;</code></code></pre>
+<p>关于这个插件的详细使用，可以参考<a href="https://docs.spring.io/spring-boot/docs/2.1.7.RELEASE/maven-plugin/usage.html">官网</a></p>
+</blockquote>
+<p>运行完<code>mvn package</code>后，我们会在target目录下看到两个jar文件。myproject-0.0.1-SNAPSHOT.jar和myproject-0.0.1-SNAPSHOT.jar.original。第一jar文件就是我们应用的可执行jar包，第二个Jar文件是应用原始的jar包。</p>
+<h2 id="可执行jar包内部结构">2. 可执行Jar包内部结构</h2>
+<p>将打出来的可执行Jar解压开我们能看到下面的结构：</p>
+<pre><code><code>可执行jar 目录结构
+├─BOOT-INF
+│  ├─classes
+│  └─lib
+├─META-INF
+│  ├─maven
+│  ├─app.properties
+│  ├─MANIFEST.MF      
+└─org
+    └─springframework
+        └─boot
+            └─loader
+                ├─archive
+                ├─data
+                ├─jar
+                └─util</code></code></pre>
+<p>我们先来重点关注两个地方：META-INF下面的Jar包描述文件和BOOT-INF这个目录。</p>
+<pre class="properties"><code>Manifest-Version: 1.0
+Archiver-Version: Plexus Archiver
+Built-By: xxxx
+Start-Class: com.xxxx.AppServer
+Spring-Boot-Classes: BOOT-INF/classes/
+Spring-Boot-Lib: BOOT-INF/lib/
+Spring-Boot-Version: 2.1.6.RELEASE
+Created-By: Apache Maven 3.3.9
+Build-Jdk: 1.8.0_73
+Main-Class: org.springframework.boot.loader.JarLauncher</code></code></pre>
+<p>在上面我们看到一个熟悉的配置<code>Main-Class: org.springframework.boot.loader.JarLauncher</code>。我们大概能猜到这个类是整个系统的入口。</p>
+<p>再看下BOOT-INF这个目录下面，我们会发现里面是我们项目打出来的class文件和项目依赖的Jar包。看到这里，你可能已经猜到Spring Boot是怎么启动项目的了。</p>
+<h2 id="jarlauncher">3. JarLauncher</h2>
+<pre class="java"><code>public class JarLauncher extends ExecutableArchiveLauncher {
+
+    static final String BOOT_INF_CLASSES = &quot;BOOT-INF/classes/&quot;;
+
+    static final String BOOT_INF_LIB = &quot;BOOT-INF/lib/&quot;;
+
+    public JarLauncher() {
+    }
+
+    protected JarLauncher(Archive archive) {
+        super(archive);
+    }
+
+    @Override
+    protected boolean isNestedArchive(Archive.Entry entry) {
+        if (entry.isDirectory()) {
+            return entry.getName().equals(BOOT_INF_CLASSES);
+        }
+        return entry.getName().startsWith(BOOT_INF_LIB);
+    }
+
+    public static void main(String[] args) throws Exception {
+        //项目入口，重点在launch这个方法中
+        new JarLauncher().launch(args);
+    }
+
+}</code></code></pre>
+<pre class="java"><code>//launch方法
+protected void launch(String[] args) throws Exception {
+    JarFile.registerUrlProtocolHandler();
+    //创建LaunchedURLClassLoader。如果根类加载器和扩展类加载器没有加载到某个类的话，就会通过LaunchedURLClassLoader这个加载器来加载类。这个加载器会从Boot-INF下面的class目录和lib目录下加载类。
+    ClassLoader classLoader = createClassLoader(getClassPathArchives());
+    //这个方法会读取jar描述文件中的Start-Class属性，然后通过反射调用到这个类的main方法。
+    launch(args, getMainClass(), classLoader);
+}</code></code></pre>
+<h2 id="简单总结">4. 简单总结</h2>
+<ul>
+<li>Spring Boot可执行Jar包的入口点是JarLauncher的main方法；</li>
+<li>这个方法的执行逻辑是先创建一个LaunchedURLClassLoader，这个加载器加载类的逻辑是：先判断根类加载器和扩展类加载器能否加载到某个类，如果都加载不到就从Boot-INF下面的class和lib目录下去加载；</li>
+<li>读取<code>Start-Class</code>属相，通过反射机制调用启动类的main方法，这样就顺利调用到我们开发的Spring Boot主启动类的main方法了。</li>
+</ul>
+<h2 id="远程调试">5. 远程调试</h2>
+<p>这边介绍个调试JarLauncher启动的小技巧--IDEA 远程调试</p>
+<p>step1：我们以下面的方式启动我们的Spring Boot应用</p>
+<pre class="bash"><code> java -Xdebug -Xrunjdwp:transport=dt_socket,address=5005,server=y,suspend=y -jar App.jar</code></code></pre>
+<p>step2：在idea中进行如下配置</p>
+<p><img src="./images/Spring Boot可执行Jar包运行原理0.png" /></p>
+<p>然后点击下面的执行按钮执行即可：<br />
+<img src="./images/Spring Boot可执行Jar包运行原理1.png" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

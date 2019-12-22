@@ -1,0 +1,164 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Ribbon架构剖析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Ribbon架构剖析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11769320.html</div><br>
+    <p><img src="./images/Ribbon架构剖析0.png" alt="file" /></p>
+<p>在学习Ribbon之前，先看一下这张图，这张图完美的把Ribbon的基础架构给描述出来了</p>
+<p>这张图的核心是负载均衡管理器，围绕着它的是外面的这5大功能点，咱们就从核心开始看然后再带出来其他的功能</p>
+<p>首先看一下负载均衡器的核心接口<code>ILoadBalancer</code></p>
+<pre><code><code>public interface ILoadBalancer {
+    public void addServers(List&lt;Server&gt; newServers);
+    public Server chooseServer(Object key);
+    public void markServerDown(Server server);
+    public List&lt;Server&gt; getReachableServers();
+    public List&lt;Server&gt; getAllServers();
+}</code></code></pre>
+<p>这个接口中保护了一个基本的负载均衡器所必须的所有功能：</p>
+<ol>
+<li><code>addServers(List)</code>向负载均衡器中添加服务实例</li>
+<li><code>chooseServer(Object)</code>根据负载均衡策略，从负载均衡器中挑选出一个服务实例</li>
+<li><code>markServerDown(Server)</code>下线负载均衡器中的某个具体实例</li>
+<li><code>getReachableServers()</code>返回当前可正常服务的实例列表</li>
+<li><code>getAllServers()</code>返回所有的服务实例列表</li>
+</ol>
+<p>接着来看一下这个接口的UML图<br />
+<img src="./images/Ribbon架构剖析1.png" alt="file" /></p>
+<p>首先看<code>AbstractLoadBalancer</code>这个类，这个类是<code>ILoadBalancer</code>接口的抽象类实现。<br />
+在这个抽象类中定义了一个表示服务实例状态的枚举的同时还新增了两个抽象方法：</p>
+<pre><code><code>   public enum ServerGroup{
+        ALL,
+        STATUS_UP,
+        STATUS_NOT_UP
+    }
+    public abstract List&lt;Server&gt; getServerList(ServerGroup serverGroup);
+    public abstract LoadBalancerStats getLoadBalancerStats();</code></code></pre>
+<ol>
+<li><code>getServerList(ServerGroup)</code>:根据分组类型来返回不同的服务实例列表。</li>
+<li><code>getLoadBalancerStats()</code>:返回<code>LoadBalancerStatus</code>对象，这个<code>LoadBalancerStats</code>对象是用来存储负载均衡器中各个服务实例当前的属性和统计信息的</li>
+</ol>
+<p><code>AbstractLoadBalancer</code>共有两个实现类，右侧的<code>NoOpLoadBalancer</code>是一个空的实现类，这里可以忽略不计。这里接着继续看<code>BaseLoadBalancer</code></p>
+<p><code>BaseLoadBalancer</code>是负载均衡器的基础实现类，这个类对于接口<code>ILoadBalancer</code>的所有方法都给予了基础的实现，除此之外还保护了很多重要的对象</p>
+<p>两个存储当前服务实例对象的列表，一个是包含所有服务、一个是包含正常服务</p>
+<pre><code><code>@Monitor(name = PREFIX + &quot;AllServerList&quot;, type = DataSourceType.INFORMATIONAL)
+    protected volatile List&lt;Server&gt; allServerList = Collections
+            .synchronizedList(new ArrayList&lt;Server&gt;());
+    @Monitor(name = PREFIX + &quot;UpServerList&quot;, type = DataSourceType.INFORMATIONAL)
+    protected volatile List&lt;Server&gt; upServerList = Collections
+            .synchronizedList(new ArrayList&lt;Server&gt;());</code></code></pre>
+<p>存储负载系统器各服务实例属性和统计信息的对象</p>
+<pre><code><code>    protected LoadBalancerStats lbStats;
+</code></code></pre>
+<h6 id="心跳检测对象">心跳检测对象</h6>
+<pre><code><code>    protected IPing ping = null;
+</code></code></pre>
+<p><code>IPing</code>是用来向服务发起心跳检测的，通过心跳检测来判断该服务是否可用。<code>IPing</code>的实现类有以下几种：</p>
+<ol>
+<li><code>PingUrl</code>：使用HttpClient去get请求某个url，判断其是否alive</li>
+<li><code>PingConstant</code>：固定返回某服务是否可用，默认返回true</li>
+<li><code>NoOpPing</code>：没有任何操作，直接返回true</li>
+<li><code>DummyPing</code>：同样是直接返回true</li>
+<li><code>NIWSDiscoveryPing</code>：根据服务的实例对象<code>InstanceInfo</code>的<code>InstanceStatus</code>去判断，如果为InstanceStatus.UP，则为可用</li>
+</ol>
+<p>心跳检测策略对象<code>IPingStrategy</code></p>
+<pre><code><code>    private final static SerialPingStrategy DEFAULT_PING_STRATEGY = new SerialPingStrategy();
+    protected IPingStrategy pingStrategy = DEFAULT_PING_STRATEGY;
+</code></code></pre>
+<p>默认实现是线型轮询</p>
+<h6 id="负载均衡策略对象">负载均衡策略对象</h6>
+<pre><code><code>    private final static IRule DEFAULT_RULE = new RoundRobinRule();
+    protected IRule rule = DEFAULT_RULE;</code></code></pre>
+<p><code>IRule</code>是在选择实例的时候的负载均衡策略对象，默认使用的是<code>RoundRobinRule</code>线性轮询</p>
+<p>除此之外的实现为：</p>
+<ol>
+<li><code>BestAvailableRule</code>：选择最小请求数</li>
+<li><code>RandomRule</code>：随机选择</li>
+<li><code>RetryRule</code>：轮询重试</li>
+<li><code>WeightedResponseTimeRule</code>：根据响应时间分配权重</li>
+<li><code>ZoneAvoidanceRule</code>：根据服务的分区可用性轮询</li>
+</ol>
+<p>现在继续看<code>BaseLoadBalancer</code>的子类<code>DynamicServerListLoadBalancer</code></p>
+<p>这个类对基础负载均衡器做了扩展。扩展的功能如下：</p>
+<ol>
+<li>服务实例运行期间的动态更新</li>
+<li>服务实例的过滤</li>
+</ol>
+<h6 id="服务列表">服务列表</h6>
+<pre><code><code>public interface ServerList&lt;T extends Server&gt; {
+    /**
+     * 获取初始化的服务列表
+     */
+    public List&lt;T&gt; getInitialListOfServers();
+    
+    /**
+     * 获取更新后的服务列表
+     */
+    public List&lt;T&gt; getUpdatedListOfServers();   
+
+}</code></code></pre>
+<p>在<code>DynamicServerListLoadBalancer</code>中默认使用的服务列表实现类是<code>DomainExtractingServerList</code>，只不过该服务列表内部还定义了一个服务列表，这个服务列表的实现类则是<code>DiscoveryEnabledNIWSServerList</code></p>
+<p>这个最终的服务列表的数据来源则主要依靠EurekaClient从注册中心获取</p>
+<h6 id="服务列表更新">服务列表更新</h6>
+<p>这个接口定义了一系列的对服务列表的更新操作</p>
+<pre><code><code>public interface ServerListUpdater {
+    //内部接口
+    public interface UpdateAction {
+    //实现对服务列表的更新操作
+        void doUpdate();
+    }
+    //启动服务更新器
+    void start(UpdateAction updateAction);
+    //停止服务更新器
+    void stop();
+    //返回最近的更新时间戳
+    String getLastUpdate();
+    //返回上一次更新到现在的时间间隔（ms）
+    long getDurationSinceLastUpdateMs();
+    //返回错过的更新周期数
+    int getNumberMissedCycles();
+    //返回核心线程数
+    int getCoreThreads();
+}</code></code></pre>
+<p>它的实现类有两个：</p>
+<ol>
+<li><code>PollingServerListUpdater</code>：通过定时任务进行更新</li>
+<li><code>EurekaNotificationServerListUpdater</code>：利用Eureka的事件监听器来更新</li>
+</ol>
+<h6 id="服务列表过滤器">服务列表过滤器</h6>
+<pre><code><code>public interface ServerListFilter&lt;T extends Server&gt; {
+
+    public List&lt;T&gt; getFilteredListOfServers(List&lt;T&gt; servers);
+
+}</code></code></pre>
+<p>该接口主要用于根据一些规则过滤传入的服务实例列表，该接口的实现类如下：</p>
+<ol>
+<li><code>ZoneAffinityServerListFilter</code>：基于Eureka的分区规则对服务实例的过滤</li>
+<li><code>DefaultNIWSServerListFilter</code>：<code>ZoneAffinityServerListFilter</code>的子类且没有做特殊的更新</li>
+<li><code>ServerListSubsetFilter</code>：通过比较服务实例的通信失败数和并发连接数来剔除那些相对不够健康的实例</li>
+<li><code>ZonePreferenceServerListFilter</code>：使用SpringCloud整合eureka和ribbon时默认使用的该过滤器。它实现了通过配置或eureka实例无数据的所属区域(Zone)来过滤出同区域的服务实例</li>
+</ol>
+<p><code>ZoneAwareLoadBalancer</code>则是对<code>DynamicServerListLoadBalancer</code>的扩展，它主要增加了区域过滤的功能</p>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

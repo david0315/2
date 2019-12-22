@@ -1,0 +1,202 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修二、Spring注解之@Conditional' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>二、Spring注解之@Conditional</center></div><div class='banquan'>原文出处:本文由博客园博主ねぇ提供。<br/>
+原文连接:https://www.cnblogs.com/lee0527/p/11735080.html</div><br>
+    <h2 id="spring注解之conditional">Spring注解之@Conditional</h2>
+<h4 id="conditional介绍">【1】@Conditional介绍</h4>
+<p>​ @Conditional是Spring4新提供的注解，它的作用是按照一定的条件进行判断，满足条件给容器注册bean。</p>
+<p>​ @Conditional源码：</p>
+<pre><code><code>//此注解可以标注在类和方法上
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME) 
+@Documented
+public @interface Conditional {
+    Class&lt;? extends Condition&gt;[] value();
+}</code></code></pre>
+<p>​ 从代码中可以看到，需要传入一个Class数组，并且需要继承Condition接口：</p>
+<pre><code><code>public interface Condition {
+    boolean matches(ConditionContext var1, AnnotatedTypeMetadata var2);
+}</code></code></pre>
+<p>​ Condition是个接口，需要实现matches方法，返回true则注入bean，false则不注入。</p>
+<h4 id="conditional示例">【2】@Conditional示例</h4>
+<p>​ 首先，创建Person类：</p>
+<pre><code><code>public class Person {
+ 
+    private String name;
+    private Integer age;
+ 
+    public String getName() {
+        return name;
+    }
+ 
+    public void setName(String name) {
+        this.name = name;
+    }
+ 
+    public Integer getAge() {
+        return age;
+    }
+ 
+    public void setAge(Integer age) {
+        this.age = age;
+    }
+ 
+    public Person(String name, Integer age) {
+        this.name = name;
+        this.age = age;
+    }
+ 
+    @Override
+    public String toString() {
+        return &quot;Person{&quot; + &quot;name=&#39;&quot; + name + &#39;\&#39;&#39; + &quot;, age=&quot; + age + &#39;}&#39;;
+    }
+}</code></code></pre>
+<p>​ 创建MyConfig类，用于配置两个Person实例并注入，一个是Bill Gates，一个是linus。</p>
+<pre><code><code>@Configuration
+public class MyConfig {
+ 
+    @Bean(name = &quot;bill&quot;)
+    public Person person1(){
+        return new Person(&quot;Bill Gates&quot;,62);
+    }
+ 
+    @Bean(&quot;linus&quot;)
+    public Person person2(){
+        return new Person(&quot;Linus&quot;,48);
+    }
+}</code></code></pre>
+<p>​ 写一个测试类，测试是否注入成功</p>
+<pre><code><code>public class ConditionalTest {
+    AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(BeanConfig.class);
+ 
+    @Test
+    public void test1(){
+        Map&lt;String, Person&gt; map = applicationContext.getBeansOfType(Person.class);
+        System.out.println(map);
+    }
+}
+/**测试结果
+{bill=Person{name=&#39;Bill Gates&#39;,age=62},linus=Person{name=&#39;Linus&#39;,age=&#39;48&#39;}}
+*/</code></code></pre>
+<p>​ 这是一个简单的例子，现在问题来了，如果我想根据当前操作系统来注入Person实例，windows下注入bill，linux下注入linus，怎么实现呢？</p>
+<p>​ 这就需要我们用到@Conditional注解了，前言中提到，需要实现Condition接口，并重写方法来自定义match规则。</p>
+<p>​ 首先，创建一个WindowsCondition类：</p>
+<pre><code><code>public class WindowsCondition implements Condition {
+ 
+    /**
+     * @param conditionContext:判断条件能使用的上下文环境
+     * @param annotatedTypeMetadata:注解所在位置的注释信息
+     * */
+    @Override
+    public boolean matches(ConditionContext conditionContext, AnnotatedTypeMetadata annotatedTypeMetadata) {
+        //获取ioc使用的beanFactory
+        ConfigurableListableBeanFactory beanFactory = conditionContext.getBeanFactory();
+        //获取类加载器
+        ClassLoader classLoader = conditionContext.getClassLoader();
+        //获取当前环境信息
+        Environment environment = conditionContext.getEnvironment();
+        //获取bean定义的注册类
+        BeanDefinitionRegistry registry = conditionContext.getRegistry();
+ 
+        //获得当前系统名
+        String property = environment.getProperty(&quot;os.name&quot;);
+        //包含Windows则说明是windows系统，返回true
+        if (property.contains(&quot;Windows&quot;)){
+            return true;
+        }
+        return false;
+    }
+}</code></code></pre>
+<p>​ 接着，创建LinuxCondition类：</p>
+<pre><code><code>public class LinuxCondition implements Condition {
+ 
+    @Override
+    public boolean matches(ConditionContext conditionContext, AnnotatedTypeMetadata annotatedTypeMetadata) {
+ 
+        Environment environment = conditionContext.getEnvironment();
+ 
+        String property = environment.getProperty(&quot;os.name&quot;);
+        if (property.contains(&quot;Linux&quot;)){
+            return true;
+        }
+        return false;
+    }
+}</code></code></pre>
+<p>​ 修改MyConfig：</p>
+<pre><code><code>@Configuration
+public class MyConfig {
+ 
+    //只有一个类时，大括号可以省略
+    //如果WindowsCondition的实现方法返回true，则注入这个bean    
+    @Conditional({WindowsCondition.class})
+    @Bean(name = &quot;bill&quot;)
+    public Person person1(){
+        return new Person(&quot;Bill Gates&quot;,62);
+    }
+ 
+    //如果LinuxCondition的实现方法返回true，则注入这个bean
+    @Conditional({LinuxCondition.class})
+    @Bean(&quot;linus&quot;)
+    public Person person2(){
+        return new Person(&quot;Linus&quot;,48);
+    }
+}</code></code></pre>
+<p><strong>标注在方法上：</strong></p>
+<p>​ 修改测试程序，开始测试：</p>
+<pre><code><code>public class ConditionalTest {
+    AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(BeanConfig.class);
+ 
+    @Test
+    public void test1(){
+        String osName = applicationContext.getEnvironment().getProperty(&quot;os.name&quot;);
+        System.out.println(&quot;当前系统为：&quot; + osName)；
+        Map&lt;String, Person&gt; map = applicationContext.getBeansOfType(Person.class);
+        System.out.println(map);
+    }
+}
+/**测试结果
+当前系统为：Windows 10
+{bill=Person{name=&#39;Bill Gates&#39;,age=62}}
+*/</code></code></pre>
+<p>一个方法只能注入一个bean实例，所以@Conditional标注在方法上只能控制一个bean实例是否注入</p>
+<p><strong>标注在类上:</strong></p>
+<pre><code><code>@Configuration
+@Conditional({WindowsCondition.class})
+public class MyConfig {
+ 
+    //只有一个类时，大括号可以省略
+    //如果WindowsCondition的实现方法返回true，则注入这个bean    
+    @Bean(name = &quot;bill&quot;)
+    public Person person1(){
+        return new Person(&quot;Bill Gates&quot;,62);
+    }
+ 
+    //如果LinuxCondition的实现方法返回true，则注入这个bean
+    @Bean(&quot;linus&quot;)
+    public Person person2(){
+        return new Person(&quot;Linus&quot;,48);
+    }
+}</code></code></pre>
+<p>一个类中可以注入很多实例，@Conditional标注在类上就决定了一批bean是否注入。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

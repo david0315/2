@@ -1,0 +1,185 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修RabbitMQ实战应用技巧' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>RabbitMQ实战应用技巧</center></div><div class='banquan'>原文出处:本文由博客园博主老梁讲Java提供。<br/>
+原文连接:https://www.cnblogs.com/sky-chen/p/11757933.html</div><br>
+    <h1 id="rabbitmq实战应用技巧">1. RabbitMQ实战应用技巧</h1>
+<h2 id="前言">1.1. 前言</h2>
+<p>由于项目原因，之后会和RabbitMQ比较多的打交道，所以让我们来好好整理下RabbitMQ的应用实战技巧，尽量避免日后的采坑</p>
+<h2 id="概述">1.2. 概述</h2>
+<p>RabbitMQ有几个重要的概念：虚拟主机，交换机，队列和绑定</p>
+<ul>
+<li>虚拟主机：一个虚拟主机持有一组交换机、队列和绑定，我们可以从虚拟主机层面的颗粒度进行权限控制</li>
+<li>交换机：Exchange用于转发消息，它并不存储消息，<strong>如果没有Queue队列绑定到Exchange</strong>，它会直接丢弃掉生产者发来的数据。<br />
+交换机还有个关联的重要概念：<strong>路由键</strong>，消息转发到哪个队列根据路由键决定</li>
+<li>绑定：就是绑定交换机和队列，它是<strong>多对多的关系</strong>，也就是说多个交换机可以绑同一个队列，也可以一个交换机绑多个队列</li>
+</ul>
+<h2 id="交换机">1.3. 交换机</h2>
+<p>交换机有四种类型的模式<code>Direct, topic, Headers and Fanout</code></p>
+<h3 id="direct-exchage">1.3.1. Direct Exchage</h3>
+<p>Direct模式使用的是RabbitMQ的默认交换机，也是最简单的模式，适合比较简单的场景</p>
+<p>如下图所示，使用Direct模式，我们需要创建不同的队列，而默认交换机则通过<code>Routing key</code>路由键的值来决定转发到哪个队列，可以看到，<strong>路由键绑定队列是可以指定多个的</strong></p>
+<p><img src="./images/RabbitMQ实战应用技巧0.png" /></p>
+<h3 id="topic-exchange">1.3.2. Topic Exchange</h3>
+<p>Topic模式主要是根据通配符匹配，也就类似于模糊匹配，当这种匹配模式和路由键匹配后交换机就能转发消息到指定队列</p>
+<ul>
+<li>路由键为一串字符串，由句号（<code>.</code>）隔开，比如<code>a.b.c</code></li>
+<li>（<code>*</code>）代表指定位置一个单词，（<code>#</code>）代表零个或者多个单词，比如<code>a.*.b.#</code>，表示a和b中间随意填个单词，b后面可以跟n个单词，比如<code>a.x.b.c.d.e</code></li>
+</ul>
+<p>Topic模式和Direct模式的区别在于交换机需要自己指定，路由键支持模糊匹配，例如：</p>
+<pre><code><code>rabbitTemplate.convertAndSend(&quot;topicExchange&quot;,&quot;a.x.b.d&quot;, &quot; hello world!&quot;);</code></code></pre>
+<h3 id="headers-exchage">1.3.3. Headers Exchage</h3>
+<p>Headers也是根据规则匹配，但它不是根据路由键了，headers有个自定义匹配规则，它将匹配键值设在了消息的headers属性上，当这些键值对有一对或者全部匹配时，消息才会被投递到对应队列，这种模式效率相对较低，一般不推荐使用</p>
+<h3 id="fanout-exchange">1.3.4. Fanout Exchange</h3>
+<p>Fanout即为大名鼎鼎的广播模式了，它<strong>不需要管路由键</strong>，会把消息发给绑定它的全部队列，就算配置了<strong>路由键也会被忽略</strong></p>
+<h2 id="复杂情况">1.4. 复杂情况</h2>
+<ol>
+<li>首先我们Direct模式，一个生产者一个消费者的情况，也就对应了一个发送者和一个队列A接收，这是没有疑问的，发送什么接收什么</li>
+<li>当Direct模式，一个生产者发消息，开启多个消费者也就是多个相同queue，此时消息由多个消费者均匀分摊，<strong>不会重复消费</strong>（前提ack正常）</li>
+<li>当Topic模式，一个交换机绑定两个队列，路由键有重叠关系，如下代码，此时指定路由键<code>topic.message</code>发送消息，队列<code>queueMessage</code>和<code>queueMessages</code>都能接收到相同消息，也就是说，<strong>topic模式可以实现类似于广播模式的形式</strong>，甚至更加灵活，它能否转发到消息由路由键决定。</li>
+<li>相比于Fanout模式，我们如果要对消费者队列分组发送，我们需要指定不同的<strong>路由键</strong>；而Fanout模式则需要指定不同的交换机和队列绑定，实际使用结合实际情况</li>
+</ol>
+<pre><code><code>@Configuration
+public class TopicRabbitConfig {
+
+    final static String message = &quot;topic.message&quot;;
+    final static String messages = &quot;topic.messages&quot;;
+
+    @Bean
+    public Queue queueMessage() {
+        return new Queue(TopicRabbitConfig.message);
+    }
+
+    @Bean
+    public Queue queueMessages() {
+        return new Queue(TopicRabbitConfig.messages);
+    }
+
+    @Bean
+    TopicExchange exchange() {
+        return new TopicExchange(&quot;exchange&quot;);
+    }
+
+    @Bean
+    Binding bindingExchangeMessage(Queue queueMessage, TopicExchange exchange) {
+        return BindingBuilder.bind(queueMessage).to(exchange).with(&quot;topic.message&quot;);
+    }
+
+    @Bean
+    Binding bindingExchangeMessages(Queue queueMessages, TopicExchange exchange) {
+        return BindingBuilder.bind(queueMessages).to(exchange).with(&quot;topic.#&quot;);
+    }
+}</code></code></pre>
+<h2 id="springboot配置">1.5. springboot配置</h2>
+<p>我们的常用配置如下</p>
+<pre><code><code>spring.rabbitmq.addresses=localhost:5672
+spring.rabbitmq.username=user
+spring.rabbitmq.password=123456
+spring.rabbitmq.virtual-host=/
+spring.rabbitmq.connection-timeout=1000
+##设置监听限制：最大10，默认5
+spring.rabbitmq.listener.simple.concurrency=5
+spring.rabbitmq.listener.simple.max-concurrency=10
+spring.rabbitmq.publisher-confirms=true
+spring.rabbitmq.publisher-returns=true
+spring.rabbitmq.template.mandatory=true
+spring.rabbitmq.listener.simple.acknowledge-mode=manual</code></code></pre>
+<p>其中最后四条配置需要着重解释：</p>
+<ul>
+<li><code>spring.rabbitmq.publisher-confirms</code>为true，表示生产者消息发出后，MQ的broker接收到了消息，发送回执表示确认接收，不设置则可能导致消息丢失</li>
+<li><code>spring.rabbitmq.publisher-returns</code>为true，表示当消息不能到达MQ的Broker端，，则使用监听器对不可达的消息做后续处理，这种一般是路由键没配好，或MQ宕机才可能发生</li>
+<li><code>spring.rabbitmq.template.mandatory</code>当上面两个为true时，这个一定要配true，否则上面两个不起作用</li>
+<li><code>spring.rabbitmq.listener.simple.acknowledge-mode</code>这个为<code>manual</code>表示手工确认，实际生产应该设为手工，才能保证你的业务是处理完成的，注意业务的幂等性，可重复调用，手工确认代码如下例子</li>
+</ul>
+<pre><code><code>@Component
+public class RabbitReceiver {
+
+    
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(value = &quot;queue-1&quot;, 
+            durable=&quot;true&quot;),
+            exchange = @Exchange(value = &quot;exchange-1&quot;, 
+            durable=&quot;true&quot;, 
+            type= &quot;topic&quot;, 
+            ignoreDeclarationExceptions = &quot;true&quot;),
+            key = &quot;springboot.*&quot;
+            )
+    )
+    @RabbitHandler
+    public void onMessage(Message message, Channel channel) throws Exception {
+        System.err.println(&quot;--------------------------------------&quot;);
+        System.err.println(&quot;消费端Payload: &quot; + message.getPayload());
+        Long deliveryTag = (Long)message.getHeaders().get(AmqpHeaders.DELIVERY_TAG);
+        //手工ACK,获取deliveryTag
+        channel.basicAck(deliveryTag, false);
+    }
+}</code></code></pre>
+<h2 id="队列属性">1.6. 队列属性</h2>
+<ol>
+<li><strong>queue</strong> ： 队列的名字</li>
+<li><strong>durable</strong> ： 为true表示队列中数据持久化到磁盘，可以防止mq宕机重启数据丢失</li>
+<li><strong>exclusive</strong> ： 为true表示排他性，只允许一个当前连接访问该队列，当前已连接就不允许新的连接进入否则报错，<strong>当连接断开当前队列会销毁</strong></li>
+<li><strong>autoDelete</strong> ： 为true表示自动删除，当没有Connection连接到队列的时候，会自动删除</li>
+<li><strong>arguments</strong> ： 这个参数用来添加一些额外参数的，如下图片
+<ul>
+<li>比如添加<code>x-message-ttl</code>为5000，则表示消息超过5秒没被处理就会超时过期；</li>
+<li><code>x-expires</code>设置120000表示队列在2分钟内没被消费则被删除；</li>
+<li><code>x-max-length</code>,<code>x-max-length-bytes</code>表示传送数据的最大长度和字节数</li>
+<li><code>x-dead-letter-exchange</code>，<code>x-dead-letter-routing-key</code>表示死信交换机和死信路由，放在需要过期或处理失败的队列属性中，这些数据会转发到死信队列存储起来，创建普通的交换机和队列绑定，把交换机名填到<code>x-dead-letter-exchange</code>的值，填写路由键要符合死信队列的路由键</li>
+<li><code>x-max-priority</code>，表示设置优先级，范围为0~255，只有<strong>当消息堆积的时候，这个优先级才有意义</strong>，数字越大优先级越高</li>
+<li><code>x-queue-mode</code>当为<code>lazy</code>，表示惰性队列，3.6.0之后才被引入的概念，相比默认的模式，惰性队列模式会将生产者产生的消息直接存到磁盘中，这当然会增加IO开销，但适合应对大量消息堆积的情况；因为当大量消息堆积时，内存也不够存放，会将消息转存到磁盘，这个过程也是比较耗时且过程中不能接收新的消息。如果需要将普通队列转换成惰性队列需要将原来的队列删除，重新创建个惰性队列绑定。</li>
+</ul>
+<img src="./images/RabbitMQ实战应用技巧1.png" /></li>
+</ol>
+<h2 id="交换机属性">1.7. 交换机属性</h2>
+<ol>
+<li>exchange ： 交换机名称</li>
+<li>type ： 交换机类型</li>
+<li>durable ： 持久化，同队列</li>
+<li>autoDelete ： 是否自动删除，同队列</li>
+<li>internal ： 若为true，表示这个exchange不可以被client用来推送消息，仅用来进行exchange和exchange之间的绑定。</li>
+<li>arguments ： 额外参数，目前只有个<code>alternate-exchange</code>，表示当生产者发送消息到这个交换机，路由不到该交换机的队列，则会尝试这个参数指定的交换机进行路由，若路由键匹配，则路由到<code>alternate-exchange</code>指定的队列，相当于转发了，刚好和上一个参数<code>internal</code>配合，若不想本交换机起到路由队列的作用，可以设置<code>internal</code>为true，把消息都转发到<code>alternate-exchange</code>指定的交换机，由该交换机来路由指定队列，
+<ul>
+<li>如下图：<code>exchange0</code>设置了<code>alternate-exchange</code>交换机为<code>exchange1</code>，生产者发送数据到<code>exchange0</code>路由键为<code>test1</code>，在<code>exchange0</code>路由不到，则转发到<code>exchange1</code>判断路由符合，发送到队列<code>queue1</code></li>
+</ul>
+<img src="./images/RabbitMQ实战应用技巧2.png" /></li>
+</ol>
+<h2 id="磁盘和内存">1.8. 磁盘和内存</h2>
+<p>在RabbitMQ的管理界面，当我们集群部署时可以看到Nodes节点中Info字段可能为<strong><code>disc</code>也可能<code>ram</code></strong>，表示了磁盘存储或内存储存。事实上，在集群部署的时候，我们至少要一个磁盘储存，它代表了将交换机，队列，绑定，用户等元数据持久化保存到磁盘，一遍重启RabbitMQ也能恢复到原先的状态，当只有一个节点时，必定是磁盘存储；而内存储存也有它的优势，就是效率更高速度更快</p>
+<h2 id="报错案例">1.9. 报错案例</h2>
+<ul>
+<li>当报下列错误，表示你一定存在排他性队列，也就是设置了<code>exclusive</code>属性的队列，由于同一个连接创建的不同通道可以访问同一个队列，此时由于这个排他属性会得到资源被锁定错误，也就是下列的错误。</li>
+<li>由此我们可以知道，若你把队列设置成了<code>exclusive</code>属性的，那么就别创建新的连接去访问同一个队列</li>
+</ul>
+<pre><code><code>ESOURCE_LOCKED - cannot obtain exclusive access to locked queue xxxxxx</code></code></pre>
+<blockquote>
+<p>今日教学视频：RabbitMQ消息队列从入门到精通，长按图片到百度云</p>
+</blockquote>
+<p><img src="./images/RabbitMQ实战应用技巧3.png" alt="RabbitMQ消息队列从入门到精通" /></p>
+<p><img src="./images/RabbitMQ实战应用技巧4.png" alt="老梁讲Java" /></p>
+<blockquote>
+<p>欢迎关注公众号，一起学习进步</p>
+</blockquote>
+
+
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

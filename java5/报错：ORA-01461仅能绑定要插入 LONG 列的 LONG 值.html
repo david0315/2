@@ -1,0 +1,66 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修报错：ORA-01461仅能绑定要插入 LONG 列的 LONG 值' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>报错：ORA-01461仅能绑定要插入 LONG 列的 LONG 值</center></div><div class='banquan'>原文出处:本文由博客园博主磊磊哦提供。<br/>
+原文连接:https://www.cnblogs.com/crius-dlz/p/11425310.html</div><br>
+    <p><span style="color: #0000ff;"><strong>需求：</strong></span></p>
+<p>　　使用JDBC运用 ArcGIS的ST_LineString 存取函数插入ArcGIS数据（空间数据）到Oracle数据库。</p>
+<p><span style="color: #0000ff;"><strong>前期工作：</strong></span></p>
+<p>　　建表：<span class="k">CREATE <span class="k">TABLE <span class="n">lines_test <span class="p">( <span class="n">id <span class="nb">smallint<span class="p">, <span class="n">geometry <span class="n">sde<span class="p">.<span class="n">st_geometry <span class="p">); //示例</span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p><span class="k"><span class="k"><span class="n"><span class="p"><span class="n"><span class="nb"><span class="p"><span class="n"><span class="n"><span class="p"><span class="n"><span class="p">　　拼装数据：</span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p><span class="k"><span class="k"><span class="n"><span class="p"><span class="n"><span class="nb"><span class="p"><span class="n"><span class="n"><span class="p"><span class="n"><span class="p">　　通过ArcGIS的官方api 拼装：</span></span></span></span></span></span></span></span></span></span></span></span>sde.st_linestring (wkt clob, srid integer) 格式的数据。作为一个sql语句体的一部分存入到&nbsp;geometry 字段中，也就是空间数据了。</p>
+<p><span style="color: #0000ff;"><strong>问题：</strong></span></p>
+<p>　　sde.st_linestring（ string ，srid integer）当参数为string 时，</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #000000;">    INSERT INTO LINES_TEST (id, geometry) VALUES (
+</span><span style="color: #008080;">2</span>     1901<span style="color: #000000;">,
+</span><span style="color: #008080;">3</span>     sde.st_linestring ('linestring (750 150, 750 750)', 4326<span style="color: #000000;">)
+</span><span style="color: #008080;">4</span>     );</code></pre>
+
+<p>经过测试 <span style="color: #ff0000;"><strong>'linestring (750 150, 750 750)' --string类型，即为通过生成的点坐标集合拼接所需格式。</strong><span style="color: #000000;">根据官方文档，string 的 length() 是有限制的，但是官方并未说明大小限制。经测试，</span></span>大约拼接的 string 数据长度超过3500左右，会报错&nbsp;ORA-01461:仅能绑定要插入 LONG 列的 LONG 值。所以当你插入的 string 的长度在3500以内时是可以正常插入的。</p>
+<p><span style="color: #0000ff;"><strong>解决思路（百度大佬们的）</strong></span>：</p>
+<p>基本为以下几种：</p>
+<p>　　<strong>1、插入到字符串长度大于4000字节。</strong><br /><strong>　　2、插入到表中的记录的某个字段数据的实际长度大于2000个字节（如果是UTF-8，则是1333个字节）；或者是插入的记录中有两个或两个以上长度大于2000字节的字符串。</strong><br /><strong>　　3、数据库与客户端的JDBC驱动不匹配。</strong></p>
+<p>解决：</p>
+<p>　　因为我的驱动为ojdbc6.jar,所以驱动肯定没问题。基本上就在长度过长的问题上了。</p>
+<p>　　采用预编译sql操作：PrepareStatement，通过占位符插入参数插入空间数据：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #008000;">//</span><span style="color: #008000;">set sde.st_linestring ( ? ,4326)语句中的参数。</span>
+<span style="color: #008080;">2</span> <span style="color: #0000ff;">if</span> (point.length() &gt; 3500<span style="color: #000000;">) {
+</span><span style="color: #008080;">3</span> <span style="color: #008000;">//</span><span style="color: #008000;">长度超过ArcGis函数sde.st_linestring限制，通过setCharacterStream方法，通过流的形式，写入到数据库。避免转成oracle的CLOB的问题。</span>
+<span style="color: #008080;">4</span>      Reader clobReader = <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringReader(point); 
+</span><span style="color: #008080;">5</span>      sm.setCharacterStream(11<span style="color: #000000;">, clobReader);
+</span><span style="color: #008080;">6</span> }<span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">7</span> <span style="color: #008000;">//</span><span style="color: #008000;">未超过限制，可以使用String类型插入，提高效率</span>
+<span style="color: #008080;">8</span>      sm.setString(11<span style="color: #000000;">, point.toString());
+</span><span style="color: #008080;">9</span> }</code></pre>
+
+<p><span style="color: #ff0000;"><strong>注意：</strong></span></p>
+<p>&nbsp;setCharacterStream是把给定的参数设置给Reader对象，当将一个非常大的Unicode值输入Longvarchar参数时，通过java.io.Reader对象发送它可能更有效，这一过程将根据需要从流中读取数据，一直读取到文件末尾。JDBC驱动程序将执行从Unicode到数据库char格式的任何必要转换。</p>
+<p><span style="color: #ff0000;"><strong><span data-ttu-id="bc50c-116">如果流长度与 length 参数指定的长度不同，则 JDBC 驱动程序将在更新或插入行时引发异常 。如下：</span></strong></span></p>
+<p><span style="color: #000000;"><span data-ttu-id="bc50c-116">　　测试1：</span></span>刚开始我指定了流的长度 sm.setCharacterStream(11, clobReader，point.length()); 也会报错&nbsp;ORA-01461:仅能绑定要插入 LONG 列的 LONG 值。</p>
+<p>　　测试2：不考虑参数长度，改成&nbsp;sm.setCharacterStream(11, clobReader，-1); 报错：java.lang.NegativeArraySizeException&nbsp;</p>
+<p>　　测试3：通过sm.setCharacterStream另一个重载的方法，无长度参数，测试，成功。</p>
+<p>&nbsp;</p>
+<p><em>如有问题，欢迎指正。新人驾到，请多关照。滑稽.jpg</em>　</p>
+<p><span class="k"><span class="k"><span class="n"><span class="p"><span class="n"><span class="nb"><span class="p"><span class="n"><span class="n"><span class="p"><span class="n"><span class="p">&nbsp;</span></span></span></span></span></span></span></span></span></span></span></span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

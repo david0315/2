@@ -1,0 +1,360 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java生鲜电商平台-SpringCloud分布式请求跟踪系统设计与实践' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java生鲜电商平台-SpringCloud分布式请求跟踪系统设计与实践</center></div><div class='banquan'>原文出处:本文由博客园博主巨人大哥提供。<br/>
+原文连接:https://www.cnblogs.com/jurendage/p/11751529.html</div><br>
+    <p><strong>Java生鲜电商平台-SpringCloud分布式请求跟踪系统设计与实践</strong></p>
+<p>&nbsp;</p>
+<src>
+<h2><strong>Java生鲜电商平台</strong>微服务现状</h2>
+<ul>
+<li>某个服务挂了，导致上游大量报警，如何快速定位哪个服务出问题？</li>
+<li>某个核心挂了，导致大量报错，如何快速定位哪里出了问题？</li>
+<li>应用程序的性能瓶颈？</li>
+<li>线上发布了服务，怎么知道一切正常？</li>
+<li>App响应延迟，怎么确定有哪些服务导致？</li>
+</ul>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="418" data-height="517"><img src="//upload-images.jianshu.io/upload_images/4017523-31b39e53ef4d6964?imageMogr2/auto-orient/strip|imageView2/2/w/418/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-31b39e53ef4d6964" data-original-width="418" data-original-height="517" data-original-format="image/png" data-original-filesize="76098" data-image-index="0" />
+
+<src class="image-caption">&nbsp;
+
+<h2>如何解决</h2>
+<ol>
+<li>业务端去解决，通过日志，grep，awk，sed等等定位。</li>
+<li>分布式请求跟踪系统。(帮助开发人员快速理解系统行为，快速定位问题的工具，分布式请求跟踪系统应运而生)</li>
+</ol>
+<h2>产品</h2>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="414" data-height="521"><img src="//upload-images.jianshu.io/upload_images/4017523-5640928fdd97fe1c?imageMogr2/auto-orient/strip|imageView2/2/w/414/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-5640928fdd97fe1c" data-original-width="414" data-original-height="521" data-original-format="image/png" data-original-filesize="50476" data-image-index="1" />
+
+<src class="image-caption">&nbsp;
+
+<h2>设计需求</h2>
+<ul>
+<li>
+<p>基于日志的分布式请求跟踪系统</p>
+<ul>
+<li>业务侵入小</li>
+<li>将每个系统分散的日志聚合起来，并进行海量数据日志分析。</li>
+</ul>
+</li>
+<li>
+<p>核心---调用链</p>
+<ul>
+<li>每次请求生成一个全局唯一id，通过它将不同系统生成的日志串在一起，重组成调用链，使其价值达 1+1》2的效果。</li>
+<li>开发人员通过分布式请求跟踪链排查问题</li>
+<li>对多个请求进行统计和分析。</li>
+</ul>
+</li>
+</ul>
+<p>设计目标</p>
+<ul>
+<li>低侵入性
+<ul>
+<li>作为非业务组件，尽量减少侵入或者无侵入其他业务系统，对于使用方透明，减少业务开发人员的负担。</li>
+</ul>
+</li>
+<li>灵活的应用策略
+<ul>
+<li>使使用方可以根据需求，自定义收集数据的使用范围和粒度。</li>
+</ul>
+</li>
+<li>时效性
+<ul>
+<li>从数据的产生和收集，到数据的分析与处理，再到最终的页面展现，尽可能快。</li>
+</ul>
+</li>
+<li>可视化
+<ul>
+<li>使用场景友好的用户视角，可读性高。</li>
+</ul>
+</li>
+</ul>
+<h2>分布式请求跟踪系统使用的场景</h2>
+<h3>场景一 调用链跟踪</h3>
+<p>一次请求调用过程的展示，以图形化方式梳理各个为服务端集群之间的调用关系，并记录整个调用过程的耗时，协助开发人员分析整个系统的瓶颈点与热点，从而优化系统。<br />
+</p>
+<p>&nbsp;</p>
+
+
+一次调用的耗时
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="1154" data-height="397"><img src="//upload-images.jianshu.io/upload_images/4017523-860a7fab4daa2e79?imageMogr2/auto-orient/strip|imageView2/2/w/1154/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-860a7fab4daa2e79" data-original-width="1154" data-original-height="397" data-original-format="image/png" data-original-filesize="421185" data-image-index="2" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+
+多次调用
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="1157" data-height="454"><img src="//upload-images.jianshu.io/upload_images/4017523-0a0f4195092e5ffc?imageMogr2/auto-orient/strip|imageView2/2/w/1157/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-0a0f4195092e5ffc" data-original-width="1157" data-original-height="454" data-original-format="image/png" data-original-filesize="625149" data-image-index="3" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+访问量与耗时情况
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="1154" data-height="446"><img src="//upload-images.jianshu.io/upload_images/4017523-0a668baaaf1e1fa9?imageMogr2/auto-orient/strip|imageView2/2/w/1154/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-0a668baaaf1e1fa9" data-original-width="1154" data-original-height="446" data-original-format="image/png" data-original-filesize="371816" data-image-index="4" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+<h3>场景二 调用链的路径分析</h3>
+<p>对多条调用链进行分析，整理出集群之间的调用关系，计算出整个调用链路的关键节点、直接依赖、间接依赖 强度等等</p>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="667" data-height="469"><img src="//upload-images.jianshu.io/upload_images/4017523-283fcdd275961126?imageMogr2/auto-orient/strip|imageView2/2/w/667/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-283fcdd275961126" data-original-width="667" data-original-height="469" data-original-format="image/png" data-original-filesize="130211" data-image-index="5" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+<h3>场景三 调用来源分析</h3>
+<p>针对某一特定集群，整理出其他集群对其调用情况，防止错误调用情况的发生。</p>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="633" data-height="508"><img src="//upload-images.jianshu.io/upload_images/4017523-d53b5f08be355c11?imageMogr2/auto-orient/strip|imageView2/2/w/633/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-d53b5f08be355c11" data-original-width="633" data-original-height="508" data-original-format="image/png" data-original-filesize="189591" data-image-index="6" />
+
+
+
+<src class="image-caption">image
+
+
+
+<h3>场景四 调用量统计</h3>
+<p>实时统计各个计算的调用次数、QPS、平均耗时、最大耗时等信息，开发人员可以根据相关信息进行容量规划。</p>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="1073" data-height="436"><img src="//upload-images.jianshu.io/upload_images/4017523-ec59d0e180645db5?imageMogr2/auto-orient/strip|imageView2/2/w/1073/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-ec59d0e180645db5" data-original-width="1073" data-original-height="436" data-original-format="image/png" data-original-filesize="285238" data-image-index="7" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+<h3>场景五 监控请求调用量</h3>
+<p>开发人员通过自定义正则表达式，对匹配该规则的URL进行实时监控，包括调用次数等等。。。。。。</p>
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="1115" data-height="254"><img src="//upload-images.jianshu.io/upload_images/4017523-96aa488e1077ea85?imageMogr2/auto-orient/strip|imageView2/2/w/1115/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-96aa488e1077ea85" data-original-width="1115" data-original-height="254" data-original-format="image/png" data-original-filesize="156889" data-image-index="8" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+<h2>整体架构设计</h2>
+<ul>
+<li>
+<p>埋点和生成日志</p>
+<ul>
+<li>
+<p>java探针-javaagent技术，通过本地socket将收集到的数据实时发送给本机上的日志收集节点agent，将本机上的多个java探针的日志数据发送到日志收集服务器集群。</p>
+
+
+<br />
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="742" data-height="213"><img src="//upload-images.jianshu.io/upload_images/4017523-0d4da8c9ce0c542a.png?imageMogr2/auto-orient/strip|imageView2/2/w/742/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-0d4da8c9ce0c542a.png" data-original-width="742" data-original-height="213" data-original-format="image/png" data-original-filesize="140655" data-image-index="9" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+
+
+</li>
+
+
+</ul>
+
+
+</li>
+<li>
+<p>收集和存储日志</p>
+<ul>
+<li>
+<p>日志收集服务器集群对数据进行格式化处理之后，分成三个工作流进行后续处理</p>
+
+
+<br />
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="736" data-height="103"><img src="//upload-images.jianshu.io/upload_images/4017523-936a4216d1bfba52.png?imageMogr2/auto-orient/strip|imageView2/2/w/736/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-936a4216d1bfba52.png" data-original-width="736" data-original-height="103" data-original-format="image/png" data-original-filesize="53276" data-image-index="10" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+
+
+</li>
+
+
+</ul>
+
+
+</li>
+<li>
+<p>汇总和重组调用链</p>
+
+</li>
+<li>
+<p>分析和统计调用链</p>
+<ul>
+<li>原始数据直接存入到ES集群中，用于页面实时调用链的展示</li>
+<li>原始数据存入到本地的日志中，通过Flume上传到HDFS急群众，利用Hadoop集群定时的进行离线分析，分析后的结果存入到ES集群中，用于页面数据分析的展示。</li>
+<li>
+<p>原始数据发送到Spark/Flink在线分析集群，进行QPS、平均耗时等实时数据统计，分别将计算结果保存到Redis集群和ES集群中，用于页面实时数据统计的展示。</p>
+
+
+<br />
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="751" data-height="325"><img src="//upload-images.jianshu.io/upload_images/4017523-5dd84352c7abf57c.png?imageMogr2/auto-orient/strip|imageView2/2/w/751/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-5dd84352c7abf57c.png" data-original-width="751" data-original-height="325" data-original-format="image/png" data-original-filesize="144468" data-image-index="11" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+
+
+</li>
+
+
+</ul>
+
+
+</li>
+
+
+</ul>
+<p>整体架构</p>
+
+
+<br />
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="620" data-height="668"><img src="//upload-images.jianshu.io/upload_images/4017523-0f47c477aa5d5a67?imageMogr2/auto-orient/strip|imageView2/2/w/620/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-0f47c477aa5d5a67" data-original-width="620" data-original-height="668" data-original-format="image/png" data-original-filesize="327884" data-image-index="12" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+<h3>埋点和生成日志</h3>
+<ul>
+<li>请求唯一标识(TraceID)</li>
+<li>时序标识(SequenceID)</li>
+<li>深度标识(DepthID)</li>
+
+
+</ul>
+<p>重点是ID的生成，怎么生成呢？</p>
+<p>ID体系设计</p>
+<ul>
+<li>
+<p>请求唯一标识(TraceID)网关生成<br />
+分布式id</p>
+
+</li>
+<li>
+<p>时序标识(SequenceID)<br />
+每层从1开始递增，放在threadlocal里面。下一层继承上一层的深度，加一个点。</p>
+
+</li>
+<li>
+<p>深度标识(DepthID)<br />
+</p>
+<p>&nbsp;</p>
+
+
+点的个数递增
+<src class="image-package">
+<src class="image-container">
+<src class="image-container-fill">&nbsp;
+<src class="image-view" data-width="655" data-height="544"><img src="//upload-images.jianshu.io/upload_images/4017523-e66938dc7d6cee60.png?imageMogr2/auto-orient/strip|imageView2/2/w/655/format/webp" alt="" data-original-src="//upload-images.jianshu.io/upload_images/4017523-e66938dc7d6cee60.png" data-original-width="655" data-original-height="544" data-original-format="image/png" data-original-filesize="233657" data-image-index="13" />
+
+
+
+<src class="image-caption">&nbsp;
+
+
+
+
+
+</li>
+
+
+</ul>
+<h2>开源产品选择</h2>
+<ul>
+<li>Pinpoint</li>
+<li>
+<p>&nbsp;Apache SkyWalking&nbsp;</p>
+</li>
+<li><img src="./images/Java生鲜电商平台-SpringCloud分布式请求跟踪系统设计与实践14.png" alt="" />
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

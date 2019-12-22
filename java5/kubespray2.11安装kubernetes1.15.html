@@ -1,0 +1,342 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修kubespray2.11安装kubernetes1.15' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>kubespray2.11安装kubernetes1.15</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11877662.html</div><br>
+    <h3 id="关于kubespray">关于kubespray</h3>
+<p>Kubespray是开源的kubernetes部署工具，整合了ansible，可以方便的部署高可用集群环境，官网地址：https://github.com/kubernetes-sigs/kubespray，本文是用kubespray2.11版本部署kubernetes1.15版本的实战；</p>
+<h3 id="重要前提">重要前提</h3>
+<p>本次实战采用官方推荐的在线安装，因此会去谷歌镜像仓库下载镜像，<font color="red">需要您的网络可以访问谷歌服务</font>；</p>
+<h3 id="机器信息">机器信息</h3>
+<p>本次实战共计四台机器，它们的主机名、IP地址和作用描述如下：<br />
+| 主机名 | IP地址 | 作用 |<br />
+|--|--|--|<br />
+| ansible | 192.168.133.134 | ansible主机 |<br />
+| a001 | 192.168.133.139 | k8s集群的一号工作节点 |<br />
+| a002 | 192.168.133.140 | k8s集群的二号工作节点 |<br />
+| a003 | 192.168.133.141 | k8s集群的三号工作节点 |</p>
+<h3 id="标准化设置">标准化设置</h3>
+<p>本次实战的所有机器都要做以下设置：</p>
+<ol>
+<li>操作系统：CentOS Linux release 7.7.1908</li>
+<li>所以操作都是root账号执行的</li>
+<li>关闭防火墙：</li>
+</ol>
+<pre><code><code>systemctl stop firewalld &amp;&amp; systemctl disable firewalld</code></code></pre>
+<ol>
+<li>关闭selinux：</li>
+</ol>
+<pre><code><code>setenforce 0
+sed -i --follow-symlinks &#39;s/SELINUX=enforcing/SELINUX=disabled/g&#39; /etc/sysconfig/selinux</code></code></pre>
+<ol>
+<li>ipv4网络设置：</li>
+</ol>
+<pre><code><code>modprobe br_netfilter
+echo &#39;1&#39; &gt; /proc/sys/net/bridge/bridge-nf-call-iptables
+sysctl -w net.ipv4.ip_forward=1</code></code></pre>
+<h3 id="ansible主机免密码ssh登录a001a002a003">ansible主机免密码ssh登录a001、a002、a003</h3>
+<ol>
+<li>ssh登录ansible主机；</li>
+<li>生成ssh公私钥，输入命令<font color="blue">ssh-keygen</font>，然后连续四次回车：</li>
+</ol>
+<pre><code><code>[root@ansible ~]# ssh-keygen
+Generating public/private rsa key pair.
+Enter file in which to save the key (/root/.ssh/id_rsa): 
+Created directory &#39;/root/.ssh&#39;.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /root/.ssh/id_rsa.
+Your public key has been saved in /root/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:Empen3/RfLndRkS8mKfkq6a2IXtSdqwK7TqKNoHkNEU root@ansible
+The key&#39;s randomart image is:
++---[RSA 2048]----+
+|  .E           . |
+|   .            o|
+|  .   .       o..|
+| +   . .     + o.|
+|= . o o S . ooo..|
+|.o o ..o + o.oo.o|
+|  . .. o=.o  ..o+|
+| o.  .o.o=.... .+|
+|......o+=o=o.  . |
++----[SHA256]-----+</code></code></pre>
+<ol>
+<li>输入命令<font color="blue">ssh-copy-id root@192.168.133.139</font>，将ansible的ssh分发给a001主机，会要求输入<font color="blue">yes</font>和a001主机的root账号的密码，完成输入后，以后ansible就可以免密码ssh登录a001主机了：</li>
+</ol>
+<pre><code><code>[root@ansible ~]# ssh-copy-id root@192.168.133.139
+/usr/bin/ssh-copy-id: INFO: Source of key(s) to be installed: &quot;/root/.ssh/id_rsa.pub&quot;
+The authenticity of host &#39;192.168.133.139 (192.168.133.139)&#39; can&#39;t be established.
+ECDSA key fingerprint is SHA256:DPE2nldWHiOhC4DB9doy7jPWNZVup6XFZ+sR2i1gqz8.
+ECDSA key fingerprint is MD5:fc:21:f7:7f:e8:cd:1a:76:d7:fb:cc:d4:28:91:f3:5a.
+Are you sure you want to continue connecting (yes/no)? yes
+/usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
+root@192.168.133.139&#39;s password: 
+
+Number of key(s) added: 1
+
+Now try logging into the machine, with:   &quot;ssh &#39;root@192.168.133.139&#39;&quot;
+and check to make sure that only the key(s) you wanted were added.</code></code></pre>
+<ol>
+<li>继续输入命令<font color="blue">ssh-copy-id root@192.168.133.140</font>和<font color="blue">ssh-copy-id root@192.168.133.141</font>，使得ansible主机可以免密码登录a002和a003；</li>
+<li><p>至此，ansible主机可以用命令<font color="blue">ssh root@192.168.133.139</font>、<font color="blue">ssh root@192.168.133.140</font>、<font color="blue">ssh root@192.168.133.141</font>免密码登录a001、a002、a003了；</p>
+<h3 id="ansible主机操作">ansible主机操作</h3></li>
+<li>ssh登录ansible主机；</li>
+<li>安装ansible应用：</li>
+</ol>
+<pre><code><code>yum install -y epel-release ansible</code></code></pre>
+<ol>
+<li>安装pip：</li>
+</ol>
+<pre><code><code>easy_install pip</code></code></pre>
+<ol>
+<li>通过pip安装jinja2：</li>
+</ol>
+<pre><code><code>pip2 install jinja2 --upgrade</code></code></pre>
+<ol>
+<li>安装python36：</li>
+</ol>
+<pre><code><code>yum install python36 -y</code></code></pre>
+<ol>
+<li>创建工作目录，进入工作目录：</li>
+</ol>
+<pre><code><code>mkdir /usr/local/kubespray &amp;&amp; cd /usr/local/kubespray/</code></code></pre>
+<ol>
+<li>下载kubespray，我这里下载的是<font color="blue">v2.11.0</font>版本：</li>
+</ol>
+<pre><code><code>wget https://github.com/kubernetes-sigs/kubespray/archive/v2.11.0.tar.gz</code></code></pre>
+<ol>
+<li>解压：</li>
+</ol>
+<pre><code><code>tar -zxvf v2.11.0.tar.gz</code></code></pre>
+<ol>
+<li>进入解压后的目录：</li>
+</ol>
+<pre><code><code>cd kubespray-2.11.0/</code></code></pre>
+<ol>
+<li>安装kubespray所需的应用(注意是<font color="red">pip3</font>)：</li>
+</ol>
+<pre><code><code>pip3 install -r requirements.txt</code></code></pre>
+<ol>
+<li>复制一份demo配置信息到目录<font color="blue">inventory/mycluster</font>：</li>
+</ol>
+<pre><code><code>cp -rfp inventory/sample inventory/mycluster</code></code></pre>
+<ol>
+<li>进去看一下，可见mycluster目录下复制了很多文件：</li>
+</ol>
+<pre><code><code>[root@ansible kubespray-2.11.0]# tree inventory/
+inventory/
+├── local
+│   ├── group_vars -&gt; ../sample/group_vars
+│   └── hosts.ini
+├── mycluster
+│   ├── group_vars
+│   │   ├── all
+│   │   │   ├── all.yml
+│   │   │   ├── azure.yml
+│   │   │   ├── coreos.yml
+│   │   │   ├── docker.yml
+│   │   │   ├── oci.yml
+│   │   │   └── openstack.yml
+│   │   ├── etcd.yml
+│   │   └── k8s-cluster
+│   │       ├── addons.yml
+│   │       ├── k8s-cluster.yml
+│   │       ├── k8s-net-calico.yml
+│   │       ├── k8s-net-canal.yml
+│   │       ├── k8s-net-cilium.yml
+│   │       ├── k8s-net-contiv.yml
+│   │       ├── k8s-net-flannel.yml
+│   │       ├── k8s-net-kube-router.yml
+│   │       ├── k8s-net-macvlan.yml
+│   │       └── k8s-net-weave.yml
+│   └── inventory.ini</code></code></pre>
+<ol>
+<li>设置集群信息(当前目录仍旧是kubespray-2.11.0)：</li>
+</ol>
+<pre><code><code>declare -a IPS=(192.168.133.139 192.168.133.140 192.168.133.141)</code></code></pre>
+<ol>
+<li>配置ansible：</li>
+</ol>
+<pre><code><code>CONFIG_FILE=inventory/mycluster/hosts.yml python3 contrib/inventory_builder/inventory.py ${IPS[@]}</code></code></pre>
+<p>此时kubespray的脚本根据输入的IP信息做好了集群规划，具体信息可见<font color="blue">inventory/mycluster/hosts.yml</font>，如下所示，您也可以自行修改此文件：</p>
+<pre class="yml"><code>all:
+  hosts:
+    node1:
+      ansible_host: 192.168.133.139
+      ip: 192.168.133.139
+      access_ip: 192.168.133.139
+    node2:
+      ansible_host: 192.168.133.140
+      ip: 192.168.133.140
+      access_ip: 192.168.133.140
+    node3:
+      ansible_host: 192.168.133.141
+      ip: 192.168.133.141
+      access_ip: 192.168.133.141
+  children:
+    kube-master:
+      hosts:
+        node1:
+        node2:
+    kube-node:
+      hosts:
+        node1:
+        node2:
+        node3:
+    etcd:
+      hosts:
+        node1:
+        node2:
+        node3:
+    k8s-cluster:
+      children:
+        kube-master:
+        kube-node:
+    calico-rr:
+      hosts: {}</code></code></pre>
+<ol>
+<li>执行以下命令即可开始安装，在线安装比较耗时请耐心等待：</li>
+</ol>
+<pre><code><code>ansible-playbook -i inventory/mycluster/hosts.yml --become --become-user=root cluster.yml</code></code></pre>
+<p>安装完成时控制台输出类似如下的信息：</p>
+<pre><code><code>PLAY RECAP ********************************************************************************************************************************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=0   
+node1                      : ok=658  changed=95   unreachable=0    failed=0   
+node2                      : ok=566  changed=77   unreachable=0    failed=0   
+node3                      : ok=475  changed=66   unreachable=0    failed=0   
+
+Sunday 17 November 2019  17:31:19 +0800 (0:00:00.064)       0:09:56.193 ******* 
+=============================================================================== 
+kubernetes/master : kubeadm | Init other uninitialized masters -------------------------------------------------------------------------------------------------------------------- 94.91s
+kubernetes/master : kubeadm | Initialize first master ----------------------------------------------------------------------------------------------------------------------------- 42.95s
+etcd : Install | Copy etcdctl binary from docker container ------------------------------------------------------------------------------------------------------------------------ 14.26s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------ 12.87s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------ 12.28s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------ 10.79s
+etcd : reload etcd ---------------------------------------------------------------------------------------------------------------------------------------------------------------- 10.71s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 9.71s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 9.48s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 8.02s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 7.88s
+etcd : wait for etcd up ------------------------------------------------------------------------------------------------------------------------------------------------------------ 7.16s
+etcd : Gen_certs | Write etcd master certs ----------------------------------------------------------------------------------------------------------------------------------------- 6.39s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 5.75s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 5.53s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 5.42s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 5.41s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 5.06s
+download : download_container | Download image if required ------------------------------------------------------------------------------------------------------------------------- 4.87s
+kubernetes-apps/ansible : Kubernetes Apps | Start Resources ------------------------------------------------------------------------------------------------------------------------ 4.78s</code></code></pre>
+<p>至此，kubernetes集群环境部署完成，接下来简单验证一下环境是否可用；</p>
+<h3 id="检查环境">检查环境</h3>
+<ol>
+<li>ssh登录a001机器；</li>
+<li>查看节点、service、pod：</li>
+</ol>
+<pre><code><code>[root@node1 ~]# kubectl get nodes
+NAME    STATUS   ROLES    AGE   VERSION
+node1   Ready    master   25m   v1.15.3
+node2   Ready    master   23m   v1.15.3
+node3   Ready    &lt;none&gt;   23m   v1.15.3
+[root@node1 ~]# kubectl get services --all-namespaces
+NAMESPACE     NAME                   TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)                  AGE
+default       kubernetes             ClusterIP   10.233.0.1    &lt;none&gt;        443/TCP                  25m
+kube-system   coredns                ClusterIP   10.233.0.3    &lt;none&gt;        53/UDP,53/TCP,9153/TCP   22m
+kube-system   kubernetes-dashboard   ClusterIP   10.233.35.1   &lt;none&gt;        443/TCP                  22m
+[root@node1 ~]# kubectl get pods --all-namespaces
+NAMESPACE     NAME                                      READY   STATUS    RESTARTS   AGE
+kube-system   calico-kube-controllers-c6fb79b8b-v24nq   1/1     Running   0          22m
+kube-system   calico-node-46s8t                         1/1     Running   0          23m
+kube-system   calico-node-mcjfs                         1/1     Running   0          23m
+kube-system   calico-node-q989m                         1/1     Running   1          23m
+kube-system   coredns-74c9d4d795-4xz6s                  1/1     Running   0          22m
+kube-system   coredns-74c9d4d795-kh6vl                  1/1     Running   0          22m
+kube-system   dns-autoscaler-7d95989447-gmcrl           1/1     Running   0          22m
+kube-system   kube-apiserver-node1                      1/1     Running   0          24m
+kube-system   kube-apiserver-node2                      1/1     Running   0          23m
+kube-system   kube-controller-manager-node1             1/1     Running   0          24m
+kube-system   kube-controller-manager-node2             1/1     Running   0          23m
+kube-system   kube-proxy-2zhwn                          1/1     Running   0          23m
+kube-system   kube-proxy-59qx8                          1/1     Running   0          23m
+kube-system   kube-proxy-fgpx6                          1/1     Running   0          23m
+kube-system   kube-scheduler-node1                      1/1     Running   0          24m
+kube-system   kube-scheduler-node2                      1/1     Running   0          23m
+kube-system   kubernetes-dashboard-7c547b4c64-x7nfq     1/1     Running   0          22m
+kube-system   nginx-proxy-node3                         1/1     Running   0          23m
+kube-system   nodelocaldns-8khfq                        1/1     Running   0          22m
+kube-system   nodelocaldns-pzx2p                        1/1     Running   0          22m
+kube-system   nodelocaldns-s5kcd                        1/1     Running   0          22m</code></code></pre>
+<h3 id="访问dashboard">访问dashboard</h3>
+<p>dashboard可以查看kubernetes系统的整体情况，为了访问dashboard页面，需要增加RBAC：</p>
+<ol>
+<li>ssh登录a001机器；</li>
+<li>执行以下命令，创建文件<font color="blue">admin-user.yaml</font>：</li>
+</ol>
+<pre><code><code>tee admin-user.yaml &lt;&lt;-&#39;EOF&#39;
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+EOF</code></code></pre>
+<ol>
+<li>执行以下命令，创建文件<font color="blue">admin-user-role.yaml</font>：</li>
+</ol>
+<pre><code><code>tee admin-user-role.yaml &lt;&lt;-&#39;EOF&#39;
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+EOF</code></code></pre>
+<ol>
+<li>创建ServiceAccount和ClusterRoleBinding：</li>
+</ol>
+<pre><code><code>kubectl create -f admin-user.yaml &amp;&amp; kubectl create -f admin-user-role.yaml</code></code></pre>
+<ol>
+<li>获取token看，用于登录dashboard页面：</li>
+</ol>
+<pre><code><code>kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk &#39;{print $1}&#39;)</code></code></pre>
+<p>下图红框中就是token的内容：<br />
+<img src="./images/kubespray2.11安装kubernetes1.150.png" alt="在这里插入图片描述" /></p>
+<ol>
+<li>现在通过浏览器访问dashboard页面了，地址是：https://192.168.133.139:6443/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/ ，其中<font color="blue">192.168.133.139</font>是a001机器的IP地址，也可以换成a002IP地址；</li>
+<li>由于不是https协议，因此浏览器可能弹出安全提示，如下图，选择<font color="blue">继续前往</font>：<br />
+<img src="./images/kubespray2.11安装kubernetes1.151.png" alt="在这里插入图片描述" /></li>
+<li>此时页面会让您选择登录方式，选择<font color="blue">令牌</font>并输入前面得到的token，即可登录：<br />
+<img src="./images/kubespray2.11安装kubernetes1.152.png" alt="在这里插入图片描述" /></li>
+<li><p>登录成功后可以见到系统信息，如下图：<br />
+<img src="./images/kubespray2.11安装kubernetes1.153.png" alt="在这里插入图片描述" /><br />
+至此，kubespray2.11安装kubernetes1.15完成，希望本文能给您一些参考。</p>
+<h3 id="欢迎关注公众号程序员欣宸">欢迎关注公众号：程序员欣宸</h3></li>
+</ol>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,142 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Java必修课】String.intern()原来还能这么用（原理与应用）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Java必修课】String.intern()原来还能这么用（原理与应用）</center></div><div class='banquan'>原文出处:本文由博客园博主南瓜慢说提供。<br/>
+原文连接:https://www.cnblogs.com/larrydpk/p/11830208.html</div><br>
+    <h1 id="简介">1 简介</h1>
+<p><code>String.intern()</code>是JDK一早就提供的<strong>native</strong>方法，不由Java实现，而是底层JVM实现，这让我们对它的窥探提高了难度。特别是在<strong>Oracle</strong>收购了<strong>Sun</strong>公司后，源代码不开源了，更无法深入研究了。但我们还是有必要尽量地去探索。</p>
+<p>本文将主要讲解一下<code>String.intern()</code>方法的原理、特点，并介绍一个新奇的应用。</p>
+<h1 id="string的池化">2 String的池化</h1>
+<p>方法<code>intern()</code>的作用就是将String池化，这个池是String的常量池。不同版本的JDK有不同的实现。</p>
+<h2 id="不同实现与不同内存空间">2.1 不同实现与不同内存空间</h2>
+<ul>
+<li>JDK 6：<code>intern()</code>方法会把首先遇到的字符串复制一份到永久代中，然后返回永久中的实例引用；如果不是首次，说明常量池中已经有该字符串，直接返回池中的引用。常量池在永久代(PermGen)中。</li>
+<li>JDK 7：<code>intern()</code>方法首次遇到字符串时，不会复制实例，而是直接把该字符串的引用记录在常量池中，并返回该引用；如果不是首次，则直接返回池中引用。JDK 7常量池在堆中。</li>
+<li>JDK 8：功能与JDK 7类似。常量池在元空间Metaspace中，元空间不在虚拟机内存中，而是使用本地内存。</li>
+</ul>
+<h2 id="常量池大小差异">2.2 常量池大小差异</h2>
+<p>这个所谓的String常量池，其实就是一张哈希表，跟<code>HashMap</code>类似，所以也是有大小限制和哈希冲突可能。常量池越大，哈希冲突可能性越小。</p>
+<ul>
+<li><p>JDK 6早期版本，池大小为常量1009，后期变得可配置，通过参数<code>-XX:StringTableSize=N</code>指定。大小也会受限于永久代的大小，建议避免使用<code>intern()</code>方法，防止造成PermGen内存溢出。</p></li>
+<li><p>JDK 7将常量池移到堆后，可以存放更多常量，也一样通过参数可配置大小。在Java 7u40后，常量池默认大小增加到了60013。</p></li>
+<li><p>JDK 8默认大小一开始就是60013，依旧支持参数配置。</p></li>
+</ul>
+<p>总的来说，-XX:StringTableSize的默认值在Java 7u40以前为1009，Java 7u40以后改为60013。</p>
+<h1 id="例子分析">3 例子分析</h1>
+<p>通过例子，来理解一下就更清晰了。JDK 7和8应该表现一致，本文使用JDK 8。</p>
+<h2 id="jdk-8">3.1 JDK 8</h2>
+<p>先演示JDK 8的情况：</p>
+<h3 id="例子1">例子1</h3>
+<pre><code><code>String str1 = new String(&quot;pkslow&quot;);
+System.out.println(str1.intern() == str1);</code></code></pre>
+<p>结果：false</p>
+<p>分析：因为使用了字面量，在编译期就会把字符串放到常量池，当使用<code>new String()</code>时，会创建新的对象。所以常量池中的引用与创建的对象引用不同。</p>
+<h3 id="例子2">例子2</h3>
+<pre><code><code>String str1 =&quot;pkslow&quot;;
+System.out.println(str1.intern() == str1);</code></code></pre>
+<p>结果：true</p>
+<p>分析：与上个例子对比，将常量池的地址赋值给了str1变量，所以相等。</p>
+<h3 id="例子3">例子3</h3>
+<pre><code><code>String str1 = new StringBuilder(&quot;pk&quot;).append(&quot;slow&quot;).toString();
+System.out.println(str1.intern() == str1);
+
+String str2 = new StringBuilder(&quot;pk&quot;).append(&quot;slow&quot;).toString();
+System.out.println(str2.intern() == str2);</code></code></pre>
+<p>结果：true false</p>
+<p>分析：</p>
+<p>（1）第一句创建了一个新的字符串对象，str1为其引用，调用<code>str1.intern()</code>时会把它的引用放到常量池中并返回，所以是同一个引用。</p>
+<p>（2）在（1）中已经放在常量池了，所以<code>str2.intern()</code>返回的是str1，与str2不相等。</p>
+<h3 id="例子4">例子4</h3>
+<pre><code><code>String str = new StringBuilder(&quot;ja&quot;).append(&quot;va&quot;).toString();
+System.out.println(str.intern() == str);</code></code></pre>
+<p>结果：false</p>
+<p>分析：按理说与上个例子的（1）一样，应该为true才对。问题在于<strong>java</strong>它是一个比较特殊的字符串，已经在常量池中存在了，所以不相等。至于为何会存在，我的猜想是有两种可能：其它JDK的Java代码有该常量；JVM代码直接把某些特殊字符串放到了常量池。这个没有深究了。</p>
+<h2 id="jdk-6的不同">3.2 JDK 6的不同</h2>
+<p>当我们知道了原理后，不同表现就可以很容易判断出来了。如下例子：</p>
+<pre><code><code>String str1 = new StringBuilder(&quot;pk&quot;).append(&quot;slow&quot;).toString();
+System.out.println(str1.intern() == str1);</code></code></pre>
+<p>JDK 6结果：false</p>
+<p>JDK 8结果：true</p>
+<p>因为JDK 6对于首次遇到的字符串，会复制一份到常量池并返回其引用，与str1的引用不是同一个，所以为false。而JDK 8只是将str1的引用在常量池记录然后返回，还是同一个，所以为true。</p>
+<p>知道了基本原理，更多情况就可以具体分析了，不再一一赘述。</p>
+<h1 id="一种少见的应用">4 一种少见的应用</h1>
+<p>之前已经说过，<code>String.intern()</code>方法本质就是维持了一个String的常量池，而且池里的String应该都是唯一的。这样，我们便可以利用这种唯一性，来做一些文章了。我们可以利用池里String的对象来做锁，实现对资源的控制。比如一个城市的某种资源同一时间只能一个线程访问，那就可以把城市名的String对象作为锁，放到常量池中去，同一时间只能一个线程获得。</p>
+<p>具体代码如下：</p>
+<pre><code><code>import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class StringInternMultiThread {
+    private String city;
+
+    public StringInternMultiThread(String city) {
+        this.city = city;
+    }
+
+    public void handle() {
+        synchronized (this.city.intern()) {
+            System.out.println(city + &quot;:Fetched the lock&quot;);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(city + &quot;:Release the lock&quot;);
+        }
+    }
+
+    public static void main(String[] args) {
+        ExecutorService executorService = Executors.newFixedThreadPool(6);
+        StringInternMultiThread guangzhou = new StringInternMultiThread(&quot;Guangzhou&quot;);
+        StringInternMultiThread shenzhen = new StringInternMultiThread(&quot;Shenzhen&quot;);
+        StringInternMultiThread beijing = new StringInternMultiThread(&quot;Beijing&quot;);
+        executorService.execute(guangzhou::handle);
+        executorService.execute(guangzhou::handle);
+        executorService.execute(guangzhou::handle);
+        executorService.execute(shenzhen::handle);
+        executorService.execute(shenzhen::handle);
+        executorService.execute(beijing::handle);
+
+        executorService.shutdown();
+    }
+}</code></code></pre>
+<p>运行结果如下：</p>
+<pre><code><code>Guangzhou:Fetched the lock
+Shenzhen:Fetched the lock
+Beijing:Fetched the lock
+Beijing:Release the lock
+Shenzhen:Release the lock
+Guangzhou:Release the lock
+Shenzhen:Fetched the lock
+Guangzhou:Fetched the lock
+Shenzhen:Release the lock
+Guangzhou:Release the lock
+Guangzhou:Fetched the lock
+Guangzhou:Release the lock</code></code></pre>
+<p>可以看出，同一时间同一个城市不会同时获得资源，而不同城市可以同时获得资源来处理。这种案例其实有其它更优雅的方案，这不是本文的重点，就不赘述了。</p>
+<h1 id="总结">5 总结</h1>
+<p>本文介绍了<code>String.intern()</code>方法的原理和不同JDK版本的表现，并通过多个例子与一个应用加深理解。希望对大家理解String和JVM有帮助。</p>
+<hr />
+<p>欢迎关注公众号&lt;<strong>南瓜慢说</strong>&gt;，将持续为你更新...</p>
+<p><img src="./images/【Java必修课】String.intern()原来还能这么用（原理与应用）0.png" alt="file" /></p>
+<p><strong>多读书，多分享；多写作，多整理。</strong></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

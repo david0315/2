@@ -1,0 +1,740 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybatis使用入门，这一篇就够了' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybatis使用入门，这一篇就够了</center></div><div class='banquan'>原文出处:本文由博客园博主Stars-one提供。<br/>
+原文连接:https://www.cnblogs.com/kexing/p/11537439.html</div><br>
+    <p>mybatis中，封装了一个sqlsession 对象（里面封装有connection对象)，由此对象来对数据库进行CRUD操作。</p>
+<h2 id="运行流程">运行流程</h2>
+<p>mybatis有一个配置的xml，用于配置数据源、映射Mapping，xml的文件名可以任取，为了方便，我们还是起mybatis-config.xml</p>
+<p>我们读取此配置的xml，获得一个sqlsession，之后由此对象类进行数据库的CRUD操作</p>
+<pre><code><code>Reader reader = Resources.getResourceAsReader(&quot;mybatis-config.xml&quot;);
+SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(reader);
+SqlSession sqlSession = factory.openSession();</code></code></pre>
+<h2 id="入门使用">入门使用</h2>
+<h3 id="创建实体类和dao类">1. 创建实体类和Dao类</h3>
+<h3 id="配置mybatis-config.xml文件配置数据源">2. 配置mybatis-config.xml文件，配置数据源</h3>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE configuration
+        PUBLIC &quot;-//mybatis.org//DTD Config 3.0//EN&quot;
+        &quot;http://mybatis.org/dtd/mybatis-3-config.dtd&quot;&gt;
+&lt;configuration&gt;
+    &lt;!-- 引入外部资源文件--&gt;
+    &lt;properties resource=&quot;jdbc.properties&quot;/&gt;
+
+    &lt;!-- 配置数据源环境 --&gt;
+    &lt;environments default=&quot;development&quot;&gt;
+        &lt;environment id=&quot;development&quot;&gt;
+            &lt;!-- 数据库事务管理类型 --&gt;
+            &lt;transactionManager type=&quot;JDBC&quot;/&gt;
+            &lt;!-- 数据源，type=pooled 说明是使用连接池方式，可以节省资源 --&gt;
+            &lt;dataSource type=&quot;POOLED&quot;&gt;
+                &lt;!-- 调用资源文件里的用户信息--&gt;
+                &lt;property name=&quot;driver&quot; value=&quot;${jdbc.driver}&quot;/&gt;
+                &lt;property name=&quot;url&quot; value=&quot;${jdbc.url}&quot;/&gt;
+                &lt;property name=&quot;username&quot; value=&quot;${jdbc.username}&quot;/&gt;
+                &lt;property name=&quot;password&quot; value=&quot;${jdbc.password}&quot;/&gt;
+            &lt;/dataSource&gt;
+        &lt;/environment&gt;
+    &lt;/environments&gt;
+&lt;/configuration&gt;</code></code></pre>
+<h3 id="定义连接数据库工具可以获得sqlsession对象">3. 定义连接数据库工具，可以获得sqlsession对象</h3>
+<p>Dao类中每次进行CRUD操作，都要执行一次<code>openSession方法</code>来获得<code>SqlSession对象</code>，造成资源的浪费和代码的重复</p>
+<p>所以，和之前的<code>JdbcUtil</code>工具类一样，我们也定义定义一个工具类<code>MyBatisUtil</code>，用来返回<code>SQLSession对象</code></p>
+<pre><code><code>static SqlSessionFactory sqlSessionFactory = null;
+
+static {
+    try {
+        // 加载mybatis配置文件，并创建SqlSessionFactory实例
+        String resource = &quot;mybatis-config.xml&quot;;
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        //这个build方法可以接受几种不同的参数，如Reader/InputSteam等
+        sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
+    } catch (IOException e) {
+
+    }
+}
+
+public static SqlSession getSqlSession() {
+    return sqlSessionFactory.openSession();
+}
+
+public static void closeSqlSession(SqlSession sqlSession){
+    if (sqlSession != null) {
+        sqlSession.close();
+    }
+}</code></code></pre>
+<h3 id="sql语句写在mapper中">4. sql语句写在mapper中</h3>
+<p>mapper文件放在了resources下面</p>
+<p><img src="./images/Mybatis使用入门，这一篇就够了0.png" /></p>
+<p>Mybatis中，sql语句则是写在了xml文件中，这些xml文件也称为mapper映射文件</p>
+<p><strong>mapper标签如果带有xmln属性，IDEA会报解析xml错误，得把xmln属性删除</strong></p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE mapper PUBLIC &quot;-//mybatis.org//DTD Mapper 3.0//EN&quot;
+        &quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot;&gt;
+&lt;!--
+namespace: 命名空间，用于标识每一个Mapper XML文件中的语句，预防在不同的Mapper XML文件中存在相同的语句ID
+--&gt;
+&lt;mapper namespace=&quot;employeeMapper&quot;&gt;
+    &lt;!--
+        resultType: 也称为自动映射，只有在表的列名与POJO类的属性完全一致时使用，会比较方便，全类名
+    --&gt;
+    &lt;select id=&quot;selectAll&quot; resultType=&quot;com.wan.bean.Employee&quot;&gt;
+        select * from employee
+    &lt;/select&gt;
+&lt;/mapper&gt;</code></code></pre>
+<h3 id="在mybatis-config.xml文件中注册mapper">5. 在mybatis-config.xml文件中注册mapper</h3>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE configuration
+        PUBLIC &quot;-//mybatis.org//DTD Config 3.0//EN&quot;
+        &quot;http://mybatis.org/dtd/mybatis-3-config.dtd&quot;&gt;
+&lt;configuration&gt;
+    &lt;!-- 省略数据源配置--&gt;
+    &lt;mappers&gt;
+        &lt;mapper resource=&quot;com/wan/mapping/employeeMapper.xml&quot;/&gt;
+        &lt;!--如果还有mapper，则继续添加 --&gt;
+    &lt;/mappers&gt;
+&lt;/configuration&gt;</code></code></pre>
+<h3 id="dao类通过sqlsession进行查询">6. dao类通过sqlsession进行查询</h3>
+<pre><code><code>SqlSession sqlSession = MybatisUtil.getSqlSession();
+// 调用语句，如果有参数，传入参数 
+//参数为命名空间namespace+id，执行xml中的sql语句
+List&lt;Employee&gt; list = sqlSession.selectList(&quot;employeeMapper.selectAll&quot;);</code></code></pre>
+<p>PS：如果是插入、更新和删除操作，还需要提交操作,默认是不会自动提交的</p>
+<pre><code><code>sqlSession.commit();</code></code></pre>
+<h2 id="补充">补充</h2>
+<h3 id="typealiases标签">1.typeAliases标签</h3>
+<pre><code><code>&lt;select id=&quot;selectAll&quot; resultType=&quot;com.wan.bean.Employee&quot;&gt;
+    select * from employee
+&lt;/select&gt;</code></code></pre>
+<p><code>resultType</code>属性需要全类名，我们可以使用<code>typeAliases</code>标签来简化输入</p>
+<p><code>typeAliases</code>标签需要在<code>mybatis-config.xml</code>文件中进行设置</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE configuration
+    PUBLIC &quot;-//mybatis.org//DTD Config 3.0//EN&quot;
+    &quot;http://mybatis.org/dtd/mybatis-3-config.dtd&quot;&gt;
+&lt;configuration&gt;
+    &lt;properties resource=&quot;jdbc.properties&quot;/&gt;
+    &lt;!--指定一个bean包 --&gt;
+    &lt;typeAliases&gt;
+        &lt;package name=&quot;com.wan.bean&quot;/&gt;
+    &lt;/typeAliases&gt;
+    &lt;!--省略配置数据源等--&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p>之后我们的mapper文件中就可以这样写</p>
+<pre><code><code>&lt;!--resultType就可以不用写全包名 --&gt;
+&lt;select id=&quot;selectAll&quot; resultType=&quot;Employee&quot;&gt;
+    select * from employee
+&lt;/select&gt;</code></code></pre>
+<p>我这里只介绍用法，详解请看下面的参考链接</p>
+<p><a href="https://blog.csdn.net/fageweiketang/article/details/80776883">参考 MyBatis 配置 typeAliases 详解</a></p>
+<h3 id="引入mapper的四种方法">2.引入mapper的四种方法</h3>
+<p><strong>1. 文件路径注册</strong></p>
+<pre><code><code>&lt;mappers&gt;
+    &lt;mapper resource=&quot;com/wan/mapper/EmployeeMapper.xml&quot; /&gt;
+&lt;/mappers&gt;</code></code></pre>
+<p><strong>2. 包名扫描注册</strong></p>
+<pre><code><code>&lt;mappers&gt;
+    &lt;package name=&quot;com.wan.mapper&quot; /&gt;
+&lt;/mappers&gt;</code></code></pre>
+<p><strong>使用这种，必须保证xxxMapper.java和xxxMapper.xml两者名字一模一样！而且是要在同一包里</strong></p>
+<p><strong>3. 类名注册</strong></p>
+<pre><code><code>&lt;mappers&gt;
+    &lt;mapper class=&quot;com.shizongger.chapter2.mapper.UserMapper&quot; /&gt;
+&lt;/mappers&gt;</code></code></pre>
+<p><strong>4. url注册</strong></p>
+<pre><code><code>&lt;mappers&gt;
+    &lt;mapper url=&quot;file:/home/shizongger/workspace/Chapter3/src/com/shizongger/chapter2/mapper/RoleMapper.xml&quot; /&gt;
+&lt;/mappers&gt;</code></code></pre>
+<p><a href="https://www.php.cn/java-article-368828.html">参考：配置MyBatis时报错信息的解决方案</a></p>
+<h2 id="sqlsession方法说明">SQLSession方法说明</h2>
+<table>
+<thead>
+<tr class="header">
+<th>方法名</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>insert</td>
+<td>插入</td>
+</tr>
+<tr class="even">
+<td>delete</td>
+<td>删除</td>
+</tr>
+<tr class="odd">
+<td>update</td>
+<td>更新</td>
+</tr>
+<tr class="even">
+<td>selectOne</td>
+<td>查找单行结果,返回一个Object</td>
+</tr>
+<tr class="odd">
+<td>selectList</td>
+<td>查找多行结果，返回一个List</td>
+</tr>
+</tbody>
+</table>
+<p>使用和之前一样，第一个参数传入一个namespce+id，就可以找到指定的mapper文件里面的sql语句，并执行</p>
+<h2 id="crud">CRUD</h2>
+<h3 id="查询">查询</h3>
+<p><strong>Employee中，属性名和表的列名对应</strong></p>
+<pre><code><code>&lt;select id=&quot;selectAll&quot; resultType=&quot;Employee&quot;&gt;
+    select * from employee
+&lt;/select&gt;</code></code></pre>
+<p><strong>如果属性和表的列名不一致，可以使用列名映射resultMap标签，（也就是自动转为别名）</strong></p>
+<pre><code><code>&lt;!--type也是需要全包名，由于之前定义的别名，所以就可以不写--&gt;
+&lt;resultMap id=&quot;baseResultMap&quot; type=&quot;Employee&quot;&gt;
+    &lt;!--使用映射，把对应的列名映射为对应的属性 --&gt;
+    &lt;id property=&quot;empno&quot; column=&quot;EMPNO&quot; /&gt;
+    &lt;result property=&quot;ename&quot; column=&quot;ENAME&quot;/&gt;
+    &lt;result property=&quot;job&quot; column=&quot;JOB&quot;/&gt;
+    &lt;result property=&quot;mgr&quot; column=&quot;MGR&quot;/&gt;
+    &lt;result property=&quot;hiredate&quot; column=&quot;HIREDATE&quot;/&gt;
+    &lt;result property=&quot;sal&quot; column=&quot;SAL&quot;/&gt;
+    &lt;result property=&quot;comm&quot; column=&quot;COMM&quot;/&gt;
+    &lt;result property=&quot;deptno&quot; column=&quot;DEPTNO&quot;/&gt;
+&lt;/resultMap&gt;
+&lt;!--引用上面定义的resultMap--&gt;
+&lt;select id=&quot;selectAll&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from employee
+&lt;/select&gt;</code></code></pre>
+<p><strong>带条件查询</strong></p>
+<pre><code><code>&lt;select id=&quot;selectById&quot; parameterType=&quot;int&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    &lt;!-- 如果参数类型是简单的基本或者包装类型，#{} 里面的可以任取，都是可以获得参数 --&gt;
+    select * from EMPLOYEE where EMPNO=#{id}
+&lt;/select&gt;
+
+//使用
+Employee e = sqlsession.selectOne(&quot;employeeMapper.selectById&quot;,7369);</code></code></pre>
+<p>上面的select语句相当于一个预编译语句</p>
+<pre><code><code>String s = &quot;SELECT * FROM employee WHERE empno=?&quot;;
+PreparedStatement ps = conn.prepareStatement(s);
+ps.setInt(1,empno);</code></code></pre>
+<p><strong>多条件查询</strong></p>
+<p>可以使用where标签，当然，之前的单条件也可以使用where标签，where标签好处是会自动删除多余的and</p>
+<pre><code><code>&lt;select id=&quot;selectSelective&quot; parameterType=&quot;Employee&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from EMPLOYEE
+    &lt;where&gt;
+        &lt;!--自动删除多余的and --&gt;
+        &lt;!--#相当于从传入的bean对象（Employee）中通过getDeptno方法获得属性值 --&gt;
+        and deptno=#{deptno}
+        and sal&gt;=2000
+    &lt;/where&gt;
+&lt;/select&gt;</code></code></pre>
+<p><strong>大小比较条件</strong></p>
+<p>条件中有大小比较，<code>&lt;</code>号得通过CDATA存放条件</p>
+<pre><code><code>&lt;select id=&quot;selectSelective&quot; parameterType=&quot;Employee&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from EMPLOYEE
+    &lt;where&gt;
+        &lt;!--loSal为Employee的一个属性，#{loSal}相当于是通过Employee对象的get方法来获得loSal的属性值 --&gt;
+        and SAL&gt;=#{loSal}
+        &lt;!--CDATA中的数据不会被解析器解析 --&gt;
+        &lt;![CDATA[ and SAL&lt;=#{hiSal} ]]&gt;
+    &lt;/where&gt;
+&lt;/select&gt;</code></code></pre>
+<p><strong>#与$区别：</strong></p>
+<p><code>${}</code>用在我们能够确定值的地方，也就是我们程序员自己赋值的地方。<br />
+而<code>#{}</code>一般用在用户输入值的地方！！</p>
+<p>参考：<a href="https://blog.csdn.net/Alex_81D/article/details/80897621"><br />
+MyBatis中#{}和${}的不同和${}的妙用</a></p>
+<p><strong>模糊查询：</strong></p>
+<p>模糊查询中需要使用<code>%</code>等通配符，我们可以在xml中定义好，自动拼接通配符</p>
+<pre><code><code>&lt;select id=&quot;selectSelective&quot; parameterType=&quot;Employee&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from EMPLOYEE
+    &lt;where&gt;
+        &lt;if test=&quot;ename != null&quot;&gt;
+            &lt;!--使用bind标签，设置格式，自动拼接通配符 --&gt;
+            &lt;bind name=&quot;pattern&quot; value=&quot;&#39;%&#39; + ename + &#39;%&#39;&quot;/&gt;
+            and ENAME like #{pattern}
+        &lt;/if&gt;
+    &lt;/where&gt;
+&lt;/select&gt;</code></code></pre>
+<p><strong>动态查询</strong></p>
+<p>Mybatis中提供了<code>if</code>标签用来实现动态查询，和JSTL标签库使用类似</p>
+<pre><code><code>&lt;select id=&quot;selectSelective&quot; parameterType=&quot;Employee&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from EMPLOYEE
+    &lt;where&gt;
+        &lt;!--#{ename}其实是通过Employee类中的get方法来获得对象的ename属性值 --&gt;
+        &lt;if test=&quot;ename != null&quot;&gt;
+            and ename=#{ename}
+        &lt;/if&gt;
+        &lt;if test=&quot;job != null and job.trim().length&gt;0&quot;&gt;
+            and JOB=#{job}
+        &lt;/if&gt;
+        &lt;if test=&quot;deptno != null&quot;&gt;
+            and DEPTNO=#{deptno}
+        &lt;/if&gt;
+    &lt;/where&gt;
+&lt;/select&gt;</code></code></pre>
+<h3 id="插入">插入</h3>
+<p><strong>主键为序列</strong></p>
+<p>某个主键是由oracle中的序列生成的</p>
+<pre><code><code>&lt;insert id=&quot;insert_1&quot; parameterType=&quot;Employee&quot;&gt;
+    &lt;!--
+        keyProperty: 表示将从序列获得的值赋予实体的哪个属性
+        order: 表示主键值生成的方式,可取值：BEFORE ｜ AFTER
+             由于不同的数据库对插入的数据时主键生成方式是不同，例如：
+             mysql and ms server: 主键生成方式为后生成方式。
+             oracle: 主键生成方式预生成.
+    --&gt;
+    &lt;!--调用数据库中的序列，并赋值给传入的Employee对象的empno属性 --&gt;
+    &lt;selectKey keyProperty=&quot;empno&quot; resultType=&quot;integer&quot; order=&quot;BEFORE&quot;&gt;
+        select EMP_SEQ.nextval from dual
+    &lt;/selectKey&gt;
+    &lt;!--
+        如果使用这种整表插入的方式，那当数据库表的某些列可以为空值时，我将要告诉底层的JDBC驱动如何处理空值的情况，这不是mybatis所需要的，
+        而是底层有些JDBC驱动所需的特性，实际上就是让JDBC驱动去调用PrepareStatement.setNull()来设置空值
+     --&gt;
+    &lt;!--如果是常用的数据类型int,date等，jdbcType可以省略不写 --&gt;
+    insert into EMPLOYEE
+    values (#{empno},#{ename},#{job},#{mgr,jdbcType=INTEGER},#{hiredate,jdbcType=DATE},#{sal,jdbcType=DOUBLE},#{comm,jdbcType=DOUBLE},#{deptno,jdbcType=INTEGER})
+
+&lt;/insert&gt;</code></code></pre>
+<p><strong>复用sql语句</strong></p>
+<p>把insert要插入的列名和数值写在sql标签里，之后方便重用，之后重用的时候需要使用<code>include</code>子标签拼接sql语句</p>
+<pre><code><code>&lt;!--insert into employee(ENAME,JOB..) values(xx,xx) --&gt;
+&lt;!--(ENAME,JOB..) --&gt;
+&lt;sql id=&quot;insert_set_column&quot;&gt;
+    &lt;!-- suffixOverrides属性，会自动把多余的“,”删除 --&gt;
+    &lt;trim prefix=&quot;(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        empno,
+        &lt;if test=&quot;ename != null&quot;&gt;ENAME,&lt;/if&gt;
+        &lt;if test=&quot;job != null&quot;&gt;JOB,&lt;/if&gt;
+        &lt;if test=&quot;mgr != null&quot;&gt;MGR,&lt;/if&gt;
+        &lt;if test=&quot;hiredate != null&quot;&gt;HIREDATE,&lt;/if&gt;
+        &lt;if test=&quot;sal != null&quot;&gt;SAL,&lt;/if&gt;
+        &lt;if test=&quot;comm != null&quot;&gt;COMM,&lt;/if&gt;
+        &lt;if test=&quot;deptno != null&quot;&gt;DEPTNO,&lt;/if&gt;
+    &lt;/trim&gt;
+&lt;/sql&gt;
+&lt;!--(xx,xx,xx) --&gt;
+&lt;sql id=&quot;insert_values&quot;&gt;
+    &lt;trim prefix=&quot;values(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        #{empno},
+        &lt;if test=&quot;ename != null&quot;&gt;#{ename},&lt;/if&gt;
+        &lt;if test=&quot;job != null&quot;&gt;#{job},&lt;/if&gt;
+        &lt;if test=&quot;mgr != null&quot;&gt;#{mgr},&lt;/if&gt;
+        &lt;if test=&quot;hiredate != null&quot;&gt;#{hiredate},&lt;/if&gt;
+        &lt;if test=&quot;sal != null&quot;&gt;#{sal},&lt;/if&gt;
+        &lt;if test=&quot;comm != null&quot;&gt;#{comm},&lt;/if&gt;
+        &lt;if test=&quot;deptno != null&quot;&gt;#{deptno},&lt;/if&gt;
+    &lt;/trim&gt;
+&lt;/sql&gt;
+
+&lt;insert id=&quot;insert_2&quot; parameterType=&quot;Employee&quot;&gt;
+    &lt;selectKey keyProperty=&quot;empno&quot; resultType=&quot;integer&quot; order=&quot;BEFORE&quot;&gt;
+        select EMP_SEQ.nextval from dual
+    &lt;/selectKey&gt;
+    insert into EMPLOYEE 
+    &lt;!--拼接sql --&gt;
+    &lt;include refid=&quot;insert_set_column&quot;/&gt; 
+    &lt;include refid=&quot;insert_values&quot;/&gt;
+&lt;/insert&gt;</code></code></pre>
+<h3 id="更新">更新</h3>
+<pre><code><code>&lt;update id=&quot;update_1&quot; parameterType=&quot;Employee&quot;&gt;
+    update EMPLOYEE
+    &lt;set&gt;
+        &lt;if test=&quot;ename != null and ename.trim().length&gt;0&quot;&gt;ENAME=#{ename},&lt;/if&gt;
+        &lt;if test=&quot;job != null and job.trim().length&gt;0&quot;&gt;JOB=#{job},&lt;/if&gt;
+        &lt;if test=&quot;mgr != null&quot;&gt;MGR=#{mgr},&lt;/if&gt;
+        &lt;if test=&quot;hiredate != null&quot;&gt;HIREDATE=#{hiredate},&lt;/if&gt;
+        &lt;if test=&quot;sal != null&quot;&gt;SAL=#{sal},&lt;/if&gt;
+        &lt;if test=&quot;comm != null&quot;&gt;COMM=#{comm},&lt;/if&gt;
+        &lt;if test=&quot;deptno != null&quot;&gt;DEPTNO=#{deptno},&lt;/if&gt;
+    &lt;/set&gt;
+   &lt;!-- &lt;where&gt;如果带多条件的更依然可以使&lt;where&gt;元素动态生成where子句&lt;/where&gt; --&gt;
+   where EMPNO=#{empno}
+&lt;/update&gt;</code></code></pre>
+<pre><code><code>&lt;update id=&quot;update_2&quot; parameterType=&quot;Employee&quot;&gt;
+    update EMPLOYEE
+    &lt;trim prefix=&quot;set&quot; suffixOverrides=&quot;,&quot;&gt;
+        &lt;if test=&quot;ename != null and ename.trim().length&gt;0&quot;&gt;ENAME=#{ename},&lt;/if&gt;
+        &lt;if test=&quot;job != null and job.trim().length&gt;0&quot;&gt;JOB=#{job},&lt;/if&gt;
+        &lt;if test=&quot;mgr != null&quot;&gt;MGR=#{mgr},&lt;/if&gt;
+        &lt;if test=&quot;hiredate != null&quot;&gt;HIREDATE=#{hiredate},&lt;/if&gt;
+        &lt;if test=&quot;sal != null&quot;&gt;SAL=#{sal},&lt;/if&gt;
+        &lt;if test=&quot;comm != null&quot;&gt;COMM=#{comm},&lt;/if&gt;
+        &lt;if test=&quot;deptno != null&quot;&gt;DEPTNO=#{deptno},&lt;/if&gt;
+    &lt;/trim&gt;
+   &lt;!-- &lt;where&gt;如果带多条件的更依然可以使&lt;where&gt;元素动态生成where子句&lt;/where&gt; --&gt;
+   where EMPNO=#{empno}
+&lt;/update&gt;</code></code></pre>
+<h3 id="删除">删除</h3>
+<pre><code><code>&lt;delete id=&quot;delete&quot; parameterType=&quot;Employee&quot;&gt;
+    delete EMPLOYEE EMPNO=#{empno}
+    &lt;!--条件多的话也可以使用&lt;where&gt;...&lt;/where&gt; --&gt;
+&lt;/delete&gt;</code></code></pre>
+<p><a href="https://www.w3cschool.cn/mybatis/f4uw1ilx.html">w3c select标签、delete标签等详解</a></p>
+<h2 id="高级使用">高级使用</h2>
+<h3 id="动态代理">1.动态代理</h3>
+<p>我们之前，上面都是在Dao类中写上一段sqlsession.selectOne/selectList，还是比较麻烦</p>
+<p>所以mybatis提供了一种简单的方法，使用动态代理（接口类）可以简化步骤</p>
+<p>Mybatis中有这样的约定：</p>
+<ol>
+<li>接口方法名与mapper中的id相同</li>
+<li>接口方法参数与parameterType类型相同</li>
+<li>接口方法的返回值类型与resultType类型相同</li>
+</ol>
+<p>满足上面的条件，Mybatis就会将接口类中的方法和mapper中的sql语句一一对应起来，而不需要再次新建一个Dao，在Dao类里面编写方法</p>
+<p><strong>具体步骤：</strong></p>
+<p><strong>1. 实体类编写</strong></p>
+<p><strong>2. 新建接口类</strong></p>
+<p>如果方法的返回值为void，则mapper中就不需要定义resultType属性</p>
+<p>如果方法返回值是List，mapper中的resultType为泛型T</p>
+<pre><code><code>package com.wan.mapping;
+
+import com.wan.bean.Employee;
+
+import java.util.List;
+
+/**
+ * @author StarsOne
+ * @date Create in  2019/9/16 0016 20:38
+ * @description
+ */
+public interface EmployeeMapper {
+    List&lt;Employee&gt; selectAll();
+}</code></code></pre>
+<p><strong>2. 编写mapper.xml</strong></p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE mapper PUBLIC &quot;-//mybatis.org//DTD Mapper 3.0//EN&quot;
+    &quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot;&gt;
+&lt;mapper namespace=&quot;com.wan.mapping.EmployeeMapper&quot;&gt;
+    &lt;!--特例：返回值为list，resultType=bean类--&gt;
+    &lt;select id=&quot;selectAll&quot; resultType=&quot;Employee&quot; &gt;
+        select * from employee
+    &lt;/select&gt;
+&lt;/mapper&gt;
+</code></code></pre>
+<p><strong>3. 注册mapper</strong></p>
+<p>这里我们由于使用了package注册mapper，<strong>一定保证xxmapper.java和xxmapper.xml两个名字相同，大小写都要一样</strong></p>
+<p>保证Mapper.xml和接口的那个Mapper在相同的包路径，在mybatis配置xml文件指定</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE configuration
+        PUBLIC &quot;-//mybatis.org//DTD Config 3.0//EN&quot;
+        &quot;http://mybatis.org/dtd/mybatis-3-config.dtd&quot;&gt;
+&lt;configuration&gt;
+    &lt;!--省略数据源配置 --&gt;...
+    &lt;!-- 注册SQL映射文件,在这些文件中写SQL语句 --&gt;
+    &lt;mappers&gt;
+        &lt;!--指定整个包中的全部Mapper --&gt;
+        &lt;package name=&quot;com.wan.mapper&quot;/&gt;
+    &lt;/mappers&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p><strong>4. 使用</strong></p>
+<p>使用还是和之前一样，获得SqlSession对象，此对象有个getMapper方法，把接口类传入，就可以回调接口的方法了</p>
+<pre><code><code>Reader reader = Resources.getResourceAsReader(&quot;mybatis-config.xml&quot;);
+SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(reader);
+SqlSession sqlSession = factory.openSession();
+
+EmployeeMapper mapper = sqlSession.getMapper(EmployeeMapper.class);
+List&lt;Employee&gt; employees = mapper.selectAll();</code></code></pre>
+<p>接口类中的方法名与EmployeeMapper.xml中的对应</p>
+<p><strong>使用：</strong></p>
+<pre><code><code>EmployeeMapper mapper = sqlsession.getMapper(EmployeeMapper.class);
+mapper.selectById(7369);</code></code></pre>
+<h3 id="遍历列表">2.遍历列表</h3>
+<p>Mybatis中提供了foreach标签，用于遍历</p>
+<p>如果方法参数传入了一个List，可以使用此标签遍历，例子如下：</p>
+<pre><code><code>&lt;!--相当于select * from employee where job in (...)) --&gt;
+&lt;select id=&quot;selectByJobs&quot; parameterType=&quot;list&quot; resultMap=&quot;baseResultMap&quot;&gt;
+    select * from EMPLOYEE
+    &lt;where&gt;
+        &lt;foreach item=&quot;job&quot; collection=&quot;list&quot; open=&quot;JOB IN(&quot; close=&quot;)&quot; separator=&quot;,&quot;&gt;
+            #{job}
+        &lt;/foreach&gt;
+    &lt;/where&gt;
+&lt;/select&gt;</code></code></pre>
+<p>foreach标签的属性主要有 item，index，collection，open，separator，close，使用和JSTL标签里面的foreach标签差不多</p>
+<table>
+<thead>
+<tr class="header">
+<th>属性名</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>item</td>
+<td>表示集合中每一个元素进行迭代时的别名</td>
+</tr>
+<tr class="even">
+<td>index</td>
+<td>指定一个名字，用于表示在迭代过程中，每次迭代到的位置，</td>
+</tr>
+<tr class="odd">
+<td>open</td>
+<td>表示该语句以什么开始，</td>
+</tr>
+<tr class="even">
+<td>separator</td>
+<td>表示在每次进行迭代之间以什么符号作为分隔 符，</td>
+</tr>
+<tr class="odd">
+<td>close</td>
+<td>表示以什么结束。</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键属性：collection</strong></p>
+<ol>
+<li>如果传入的是单参数且参数类型是一个List的时候，collection属性值为list</li>
+<li>如果传入的是单参数且参数类型是一个array数组的时候，collection的属性值为array</li>
+<li>如果传入的参数是多个的时候，我们就需要把它们封装成一个Map了，当然单参数也可以封装成map，map的key就是参数名，所以这个时候collection属性值就是传入的List或array对象在自己封装的map里面的key</li>
+</ol>
+<p><a href="https://www.cnblogs.com/fangyu19900812/p/6046209.html">参考：mybatis 中 foreach collection的三种用法</a></p>
+<h3 id="考虑线程安全">3.考虑线程安全</h3>
+<p>使用ThreadLocal对象,保证每个线程取出的SqlSession是同一个对象</p>
+<table>
+<thead>
+<tr class="header">
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>void set(Object value)</td>
+<td>设置当前线程的线程局部变量的值。</td>
+</tr>
+<tr class="even">
+<td>public Object get()</td>
+<td>该方法返回当前线程所对应的线程局部变量。</td>
+</tr>
+<tr class="odd">
+<td>public void remove()</td>
+<td>将当前线程局部变量的值删除，目的是为了减少内存的占用，该方法是JDK 5.0新增的方法。</td>
+</tr>
+<tr class="even">
+<td>protected Object initialValue()</td>
+<td>返回该线程局部变量的初始值，该方法是一个protected的方法，显然是为了让子类覆盖而设计的。</td>
+</tr>
+</tbody>
+</table>
+<pre><code><code>static ThreadLocal&lt;SqlSession&gt; threadLocal = new ThreadLocal&lt;SqlSession&gt;();
+//设置
+threadLocal.set(sqlsession);
+//取出
+SqlSession s = threadLocal.get();</code></code></pre>
+<h3 id="嵌套查询">4.嵌套查询</h3>
+<pre><code><code>&lt;!-- 结果集映射: 列《》属性名 --&gt;
+&lt;resultMap id=&quot;baseResultMap&quot; type=&quot;Employee&quot;&gt;
+    &lt;!-- 专门映射主键列 --&gt;
+    &lt;id property=&quot;empno&quot; column=&quot;EMPNO&quot; /&gt;
+    &lt;result property=&quot;ename&quot; column=&quot;ENAME&quot;/&gt;
+    &lt;result property=&quot;job&quot; column=&quot;JOB&quot;/&gt;
+    &lt;result property=&quot;mgr&quot; column=&quot;MGR&quot;/&gt;
+    &lt;result property=&quot;hiredate&quot; column=&quot;HIREDATE&quot;/&gt;
+    &lt;result property=&quot;sal&quot; column=&quot;SAL&quot;/&gt;
+    &lt;result property=&quot;comm&quot; column=&quot;COMM&quot;/&gt;
+    &lt;result property=&quot;deptno&quot; column=&quot;DEPTNO&quot;/&gt;
+&lt;/resultMap&gt;
+
+&lt;!-- 扩展另一个结果映射 --&gt;
+&lt;resultMap id=&quot;extendBaseResultMap&quot; type=&quot;Employee&quot; extends=&quot;baseResultMap&quot;&gt;
+    &lt;association property=&quot;department&quot; javaType=&quot;Department&quot;&gt;
+        &lt;!-- 关联的嵌套结果 --&gt;
+        &lt;id property=&quot;deptno&quot; column=&quot;DEPTNO&quot;/&gt;
+        &lt;result property=&quot;dname&quot; column=&quot;DNAME&quot;/&gt;
+        &lt;result property=&quot;location&quot; column=&quot;LOC&quot;/&gt;
+    &lt;/association&gt;
+&lt;/resultMap&gt;
+
+
+&lt;!--
+    1.嵌套结果（推荐使用）
+    优点：性能好，一条语句把所有实体的数据完全查询出来。
+    缺点：对SQL编写的要求高了,因为涉及多表连接查询
+--&gt;
+&lt;select id=&quot;selectById&quot; resultMap=&quot;extendBaseResultMap&quot; parameterType=&quot;int&quot;&gt;
+    select e.EMPNO,
+          e.ENAME,
+          e.JOB,
+          e.MGR,
+          e.HIREDATE,
+          e.SAL,
+          e.COMM,
+          d.DEPTNO,
+          d.DNAME,
+          d.LOC
+    from EMPLOYEE E
+      inner join DEPARTMENT D
+          on E.DEPTNO = D.DEPTNO
+     where E.EMPNO=#{id}
+&lt;/select&gt;
+
+&lt;!--
+    2. 嵌套查询
+    优点：编写SQL简单，无需做多表的连接查询；关联的实体通过单独的SQL语句查询并单独封装。
+    缺点：执行了N+1条件语句。性能差
+--&gt;
+&lt;resultMap id=&quot;extendBaseResultMap_2&quot; type=&quot;Employee&quot; extends=&quot;baseResultMap&quot;&gt;
+    &lt;association property=&quot;department&quot; column=&quot;DEPTNO&quot; select=&quot;selectDepartmentById&quot; /&gt;
+&lt;/resultMap&gt;
+
+&lt;select id=&quot;selectDepartmentById&quot; parameterType=&quot;int&quot; resultType=&quot;Department&quot;&gt;
+    select deptno,
+           dname,
+           loc as location
+    from DEPARTMENT where DEPTNO=#{id}
+&lt;/select&gt;
+
+&lt;select id=&quot;selectById_2&quot; resultMap=&quot;extendBaseResultMap_2&quot; parameterType=&quot;int&quot;&gt;
+    select e.EMPNO,
+          e.ENAME,
+          e.JOB,
+          e.MGR,
+          e.HIREDATE,
+          e.SAL,
+          e.COMM,
+          e.DEPTNO
+    from EMPLOYEE E
+     where E.EMPNO=#{id}
+      &lt;!-- or e.empno=7902 or e.empno=7844 --&gt;
+&lt;/select&gt;</code></code></pre>
+<h3 id="分页查询">5.分页查询</h3>
+<p>分页的话，像以前那样使用三层嵌套查询也可以实现。</p>
+<p>不过，有开发者为Mybatis开了个一个插件<a href="https://github.com/pagehelper/Mybatis-PageHelper/blob/master/wikis/zh/HowToUse.md">PageHelper</a>，可以用来更为简单地使用分页查询</p>
+<p><strong>1.添加jar包</strong></p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.github.pagehelper&lt;/groupId&gt;
+    &lt;artifactId&gt;pagehelper&lt;/artifactId&gt;
+    &lt;!--自动下载最新版本 --&gt;
+    &lt;version&gt;REALSE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p><strong>2.配置拦截器插件</strong></p>
+<pre><code><code>&lt;!-- 
+    plugins在配置文件中的位置必须符合要求，否则会报错，顺序如下:
+    properties?, settings?, 
+    typeAliases?, typeHandlers?, 
+    objectFactory?,objectWrapperFactory?, 
+    plugins?, 
+    environments?, databaseIdProvider?, mappers?
+--&gt;
+&lt;plugins&gt;
+    &lt;!-- com.github.pagehelper为PageHelper类所在包名 --&gt;
+    &lt;plugin interceptor=&quot;com.github.pagehelper.PageInterceptor&quot;&gt;
+        &lt;!-- 使用下面的方式配置参数，后面会有所有的参数介绍 --&gt;
+        &lt;property name=&quot;param1&quot; value=&quot;value1&quot;/&gt;
+    &lt;/plugin&gt;
+&lt;/plugins&gt;</code></code></pre>
+<p><strong>3.代码使用</strong></p>
+<p>只有在查询之前调用过<code>startPage</code>或者是<code>offsetPage</code>方法，后面的查询出来的List结果就会进行分页查询</p>
+<p>下面的两个都是查询第一页，每一页有10条数据</p>
+<pre><code><code>//第二种，Mapper接口方式的调用，推荐这种使用方式。
+
+PageHelper.startPage(1, 10);
+List&lt;Employee&gt; employees = employeeMapper.selectAll();
+
+//第三种，Mapper接口方式的调用，推荐这种使用方式。
+PageHelper.offsetPage(1, 10);
+List&lt;Employee&gt; employees = employeeMapper.selectAll();</code></code></pre>
+<p>这里提一下，这个插件还带有一个<code>PageInfo</code>类，里面有可以记录各种信息</p>
+<p>刚开始，我以为是和我之前自己封装的Page一样，详情请看<a href="https://www.cnblogs.com/kexing/p/11439545.html">Jsp学习笔记（4）——分页查询</a></p>
+<p>但是，其实不一样的，这个PageInfo就是一个封装而已，只是用来存放数据而已，里面有各种信息</p>
+<table>
+<thead>
+<tr class="header">
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>pageNum</td>
+<td>当前页号（第几页）</td>
+</tr>
+<tr class="even">
+<td>pageSize</td>
+<td>每页的显示的数据个数</td>
+</tr>
+<tr class="odd">
+<td>size</td>
+<td>当前页的显示的数据个数</td>
+</tr>
+<tr class="even">
+<td>startRow</td>
+<td>当前页面第一个元素在数据库中的行号</td>
+</tr>
+<tr class="odd">
+<td>endRow</td>
+<td>当前页面最后一个元素在数据库中的行号</td>
+</tr>
+<tr class="even">
+<td>pages</td>
+<td>总页数</td>
+</tr>
+<tr class="odd">
+<td>prePage</td>
+<td>上一页的页号</td>
+</tr>
+<tr class="even">
+<td>nextPage</td>
+<td>下一页页号</td>
+</tr>
+<tr class="odd">
+<td>isFirstPage</td>
+<td>是否为第一页</td>
+</tr>
+<tr class="even">
+<td>isLastPage</td>
+<td>是否为最后一页</td>
+</tr>
+<tr class="odd">
+<td>hasPreviousPage</td>
+<td>是否有前一页</td>
+</tr>
+<tr class="even">
+<td>hasNextPage</td>
+<td>是否有下一页</td>
+</tr>
+<tr class="odd">
+<td>navigatePages</td>
+<td>导航页码数</td>
+</tr>
+<tr class="even">
+<td>navigatepageNums</td>
+<td>所有导航页号</td>
+</tr>
+<tr class="odd">
+<td>navigatePages</td>
+<td>导航条上的第一页</td>
+</tr>
+<tr class="even">
+<td>navigateFirstPage</td>
+<td>导航条上的第一页</td>
+</tr>
+<tr class="odd">
+<td>navigateLastPage</td>
+<td>导航条上的最后一页</td>
+</tr>
+</tbody>
+</table>
+<p>有个<code>getTotal</code>方法，可以获得查询结果的总记录数</p>
+<pre><code><code>PageHelper.startPage(1, 10);
+List&lt;Employee&gt; employees = mapper.selectAll();
+PageInfo&lt;Employee&gt; pageInfo = new PageInfo&lt;&gt;(employees);</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

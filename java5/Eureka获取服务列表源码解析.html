@@ -1,0 +1,783 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka获取服务列表源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka获取服务列表源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11730561.html</div><br>
+    <p>在之前的文章：<a href="https://mp.weixin.qq.com/s/-G_eXhlOqFagSdSxcrrQPQ">EurekaClient自动装配及启动流程解析</a>中，我们提到了在类<code>DiscoveryClient</code>的构造方法中存在一个刷新线程和从服务端拉取注册信息的操作</p>
+<p>这两个就是eureka获取服务列表的两种情况：</p>
+<ol>
+<li>全量获取：Eureka启动时拉取全部服务</li>
+<li>增量获取：一个定时任务定时获取</li>
+</ol>
+<h5 id="全量获取">全量获取</h5>
+<pre><code><code>if (clientConfig.shouldFetchRegistry() &amp;&amp; !fetchRegistry(false)) {
+         fetchRegistryFromBackup();
+     }</code></code></pre>
+<p>全量获取使用的<code>fetchRegistry</code>方法，如果使用此方法没有成功获取到的话则会执行<code>fetchRegistryFromBackup</code>方法使用备份方式拉取，备份拉取使用的是<code>BackupRegistry</code>接口的实现类，只不过eureka默认没有实现。</p>
+<p>继续看拉取流程</p>
+<pre><code><code>private boolean fetchRegistry(boolean forceFullRegistryFetch) {
+        Stopwatch tracer = FETCH_REGISTRY_TIMER.start();
+
+        try {
+            Applications applications = getApplications();
+
+            if (clientConfig.shouldDisableDelta()//禁用部分获取
+                    || (!Strings.isNullOrEmpty(clientConfig.getRegistryRefreshSingleVipAddress()))
+                    || forceFullRegistryFetch//全部获取
+                    || (applications == null)//本地没有任何实例
+                    || (applications.getRegisteredApplications().size() == 0)
+                    || (applications.getVersion() == -1)) //Client application does not have latest library supporting delta
+            {
+                logger.info(&quot;Disable delta property : {}&quot;, clientConfig.shouldDisableDelta());
+                logger.info(&quot;Single vip registry refresh property : {}&quot;, clientConfig.getRegistryRefreshSingleVipAddress());
+                logger.info(&quot;Force full registry fetch : {}&quot;, forceFullRegistryFetch);
+                logger.info(&quot;Application is null : {}&quot;, (applications == null));
+                logger.info(&quot;Registered Applications size is zero : {}&quot;,
+                        (applications.getRegisteredApplications().size() == 0));
+                logger.info(&quot;Application version is -1: {}&quot;, (applications.getVersion() == -1));
+                getAndStoreFullRegistry();
+            } else {
+                getAndUpdateDelta(applications);
+            }
+            applications.setAppsHashCode(applications.getReconcileHashCode());
+            logTotalInstances();
+        } catch (Throwable e) {
+            logger.error(PREFIX + &quot;{} - was unable to refresh its cache! status = {}&quot;, appPathIdentifier, e.getMessage(), e);
+            return false;
+        } finally {
+            if (tracer != null) {
+                tracer.stop();
+            }
+        }</code></code></pre>
+<ol>
+<li>首先入参<code>forceFullRegistryFetch</code>代表的就是全量获取或者增量获取</li>
+<li>获取本地缓存的这些实例</li>
+</ol>
+<pre><code><code>    private final AtomicReference&lt;Applications&gt; localRegionApps = new AtomicReference&lt;Applications&gt;();
+
+    public Applications getApplications() {
+        return localRegionApps.get();
+    }</code></code></pre>
+<p>可以看到所有实例应该缓存在<code>localRegionApps</code>对象中</p>
+<ol>
+<li>然后根据一些条件判断是否应该执行全量获取，也就是就算入参指定增量获取，但是不满足这些条件还是会进行全量获取</li>
+<li>接着是打印当前的实例数量</li>
+<li>最后是更新拉取到的实例的状态</li>
+</ol>
+<h6 id="全量拉取处理">全量拉取处理</h6>
+<pre><code><code>    private void getAndStoreFullRegistry() throws Throwable {
+        long currentUpdateGeneration = fetchRegistryGeneration.get();
+
+        logger.info(&quot;Getting all instance registry info from the eureka server&quot;);
+
+        Applications apps = null;
+        //发起获取
+        EurekaHttpResponse&lt;Applications&gt; httpResponse = clientConfig.getRegistryRefreshSingleVipAddress() == null
+                ? eurekaTransport.queryClient.getApplications(remoteRegionsRef.get())
+                : eurekaTransport.queryClient.getVip(clientConfig.getRegistryRefreshSingleVipAddress(), remoteRegionsRef.get());
+        if (httpResponse.getStatusCode() == Status.OK.getStatusCode()) {
+            apps = httpResponse.getEntity();
+        }
+        logger.info(&quot;The response status is {}&quot;, httpResponse.getStatusCode());
+
+        if (apps == null) {
+            logger.error(&quot;The application is null for some reason. Not storing this information&quot;);
+        } else if (fetchRegistryGeneration.compareAndSet(currentUpdateGeneration, currentUpdateGeneration + 1)) {
+        //缓存结果
+            localRegionApps.set(this.filterAndShuffle(apps));
+            logger.debug(&quot;Got full registry with apps hashcode {}&quot;, apps.getAppsHashCode());
+        } else {
+            logger.warn(&quot;Not updating applications as another thread is updating it already&quot;);
+        }
+    }</code></code></pre>
+<p>其中调用的逻辑比较简单：</p>
+<pre><code><code>public EurekaHttpResponse&lt;Applications&gt; getApplications(String... regions) {
+   return getApplicationsInternal(&quot;apps/&quot;, regions);
+}
+
+private EurekaHttpResponse&lt;Applications&gt; getApplicationsInternal(String urlPath, String[] regions) {
+   ClientResponse response = null;
+   String regionsParamValue = null;
+   try {
+       WebResource webResource = jerseyClient.resource(serviceUrl).path(urlPath);
+       if (regions != null &amp;&amp; regions.length &gt; 0) {
+           regionsParamValue = StringUtil.join(regions);
+           webResource = webResource.queryParam(&quot;regions&quot;, regionsParamValue);
+       }
+       Builder requestBuilder = webResource.getRequestBuilder();
+       addExtraHeaders(requestBuilder);
+       response = requestBuilder.accept(MediaType.APPLICATION_JSON_TYPE).get(ClientResponse.class); // JSON
+
+       Applications applications = null;
+       if (response.getStatus() == Status.OK.getStatusCode() &amp;&amp; response.hasEntity()) {
+           applications = response.getEntity(Applications.class);
+       }
+       return anEurekaHttpResponse(response.getStatus(), Applications.class)
+               .headers(headersOf(response))
+               .entity(applications)
+               .build();
+   } finally {
+       if (logger.isDebugEnabled()) {
+           logger.debug(&quot;Jersey HTTP GET {}/{}?{}; statusCode={}&quot;,
+                   serviceUrl, urlPath,
+                   regionsParamValue == null ? &quot;&quot; : &quot;regions=&quot; + regionsParamValue,
+                   response == null ? &quot;N/A&quot; : response.getStatus()
+           );
+       }
+       if (response != null) {
+           response.close();
+       }
+   }
+}</code></code></pre>
+<h5 id="全量拉取服务端处理">全量拉取服务端处理</h5>
+<p>全量获取的服务端Controller在类<code>ApplicationsResource</code>中</p>
+<pre><code><code>@GET
+    public Response getContainers(@PathParam(&quot;version&quot;) String version,
+                                  @HeaderParam(HEADER_ACCEPT) String acceptHeader,@HeaderParam(HEADER_ACCEPT_ENCODING) String acceptEncoding,@HeaderParam(EurekaAccept.HTTP_X_EUREKA_ACCEPT) String eurekaAccept,@Context UriInfo uriInfo,@Nullable @QueryParam(&quot;regions&quot;) String regionsStr) {
+
+        boolean isRemoteRegionRequested = null != regionsStr &amp;&amp; !regionsStr.isEmpty();
+        String[] regions = null;
+        if (!isRemoteRegionRequested) {
+            EurekaMonitors.GET_ALL.increment();
+        } else {
+            regions = regionsStr.toLowerCase().split(&quot;,&quot;);
+            Arrays.sort(regions); // So we don&#39;t have different caches for same regions queried in different order.
+            EurekaMonitors.GET_ALL_WITH_REMOTE_REGIONS.increment();
+        }
+
+        // Check if the server allows the access to the registry. The server can
+        // restrict access if it is not
+        // ready to serve traffic depending on various reasons.
+        if (!registry.shouldAllowAccess(isRemoteRegionRequested)) {
+            return Response.status(Status.FORBIDDEN).build();
+        }
+        CurrentRequestVersion.set(Version.toEnum(version));
+        KeyType keyType = Key.KeyType.JSON;
+        String returnMediaType = MediaType.APPLICATION_JSON;
+        if (acceptHeader == null || !acceptHeader.contains(HEADER_JSON_VALUE)) {
+            keyType = Key.KeyType.XML;
+            returnMediaType = MediaType.APPLICATION_XML;
+        }
+
+        Key cacheKey = new Key(Key.EntityType.Application,
+                ResponseCacheImpl.ALL_APPS,
+                keyType, CurrentRequestVersion.get(), EurekaAccept.fromString(eurekaAccept), regions
+        );
+
+        Response response;
+        if (acceptEncoding != null &amp;&amp; acceptEncoding.contains(HEADER_GZIP_VALUE)) {
+            response = Response.ok(responseCache.getGZIP(cacheKey))
+                    .header(HEADER_CONTENT_ENCODING, HEADER_GZIP_VALUE)
+                    .header(HEADER_CONTENT_TYPE, returnMediaType)
+                    .build();
+        } else {
+            response = Response.ok(responseCache.get(cacheKey))
+                    .build();
+        }
+        return response;
+    }</code></code></pre>
+<p>虽然这个Controller很长，但是与返回结果相关的也就这么几行</p>
+<pre><code><code>        Key cacheKey = new Key(Key.EntityType.Application,
+                ResponseCacheImpl.ALL_APPS,
+                keyType, CurrentRequestVersion.get(), EurekaAccept.fromString(eurekaAccept), regions
+        );
+                Response response;
+        if (acceptEncoding != null &amp;&amp; acceptEncoding.contains(HEADER_GZIP_VALUE)) {
+            response = Response.ok(responseCache.getGZIP(cacheKey))
+                    .header(HEADER_CONTENT_ENCODING, HEADER_GZIP_VALUE)
+                    .header(HEADER_CONTENT_TYPE, returnMediaType)
+                    .build();
+        } else {
+            response = Response.ok(responseCache.get(cacheKey))
+                    .build();
+        }</code></code></pre>
+<p>这里有两个点，<code>Key</code>和<code>ResponseCacheImpl</code></p>
+<h6 id="key"><code>Key</code></h6>
+<p>这个对象中包含了缓存键</p>
+<pre><code><code>    public Key(EntityType entityType, String entityName, KeyType type, Version v, EurekaAccept eurekaAccept, @Nullable String[] regions) {
+        this.regions = regions;
+        this.entityType = entityType;
+        this.entityName = entityName;
+        this.requestType = type;
+        this.requestVersion = v;
+        this.eurekaAccept = eurekaAccept;
+        hashKey = this.entityType + this.entityName + (null != this.regions ? Arrays.toString(this.regions) : &quot;&quot;)
+                + requestType.name() + requestVersion.name() + this.eurekaAccept.name();
+    }</code></code></pre>
+<p>这个hashKey最后的结果就是类似于这样的：ApplicationALL_APPSJSONV2full</p>
+<h6 id="responsecacheimpl"><code>ResponseCacheImpl</code></h6>
+<p>这个对象是响应缓存的实现<br />
+当hashKey创造好之后，<code>responseCache.getGZIP(cacheKey)</code>就是读取缓存并压缩的方法</p>
+<pre><code><code>    public byte[] getGZIP(Key key) {
+        Value payload = getValue(key, shouldUseReadOnlyResponseCache);
+        if (payload == null) {
+            return null;
+        }
+        return payload.getGzipped();
+    }</code></code></pre>
+<p><code>payload.getGzipped()</code>是压缩的方法就不看了，看<code>getValue</code></p>
+<pre><code><code>Value getValue(final Key key, boolean useReadOnlyCache) {
+        Value payload = null;
+        try {
+            if (useReadOnlyCache) {
+                final Value currentPayload = readOnlyCacheMap.get(key);
+                if (currentPayload != null) {
+                    payload = currentPayload;
+                } else {
+                    payload = readWriteCacheMap.get(key);
+                    readOnlyCacheMap.put(key, payload);
+                }
+            } else {
+                payload = readWriteCacheMap.get(key);
+            }
+        } catch (Throwable t) {
+            logger.error(&quot;Cannot get value for key : {}&quot;, key, t);
+        }
+        return payload;
+    }</code></code></pre>
+<p>大致就是先从<code>readOnlyCacheMap</code>只读缓存中获取，如果不存在的话则从<code>readWriteCacheMap</code>读写缓存中获取</p>
+<h5 id="缓存生成">缓存生成</h5>
+<p>上面服务端处理请求时是直接从缓存中读取的，那么这个缓存又是在什么时候生成的呢？</p>
+<h6 id="读写缓存">读写缓存</h6>
+<p>缓存的生成在<code>ResponseCacheImpl</code>的构造方法中</p>
+<pre><code><code>this.readWriteCacheMap =
+                CacheBuilder.newBuilder().initialCapacity(1000)
+                        .expireAfterWrite(serverConfig.getResponseCacheAutoExpirationInSeconds(), TimeUnit.SECONDS)
+                        .removalListener(new RemovalListener&lt;Key, Value&gt;() {
+                            @Override
+                            public void onRemoval(RemovalNotification&lt;Key, Value&gt; notification) {
+                                Key removedKey = notification.getKey();
+                                if (removedKey.hasRegions()) {
+                                    Key cloneWithNoRegions = removedKey.cloneWithoutRegions();
+                                    regionSpecificKeys.remove(cloneWithNoRegions, removedKey);
+                                }
+                            }
+                        })
+                        .build(new CacheLoader&lt;Key, Value&gt;() {
+                            @Override
+                            public Value load(Key key) throws Exception {
+                                if (key.hasRegions()) {
+                                    Key cloneWithNoRegions = key.cloneWithoutRegions();
+                                    regionSpecificKeys.put(cloneWithNoRegions, key);
+                                }
+                                Value value = generatePayload(key);
+                                return value;
+                            }
+                        });
+</code></code></pre>
+<p>可以看到读写缓存的容量是1000，而缓存的生成方法在<code>generatePayload</code>方法中</p>
+<pre><code><code>    private Value generatePayload(Key key) {
+        Stopwatch tracer = null;
+        try {
+            String payload;
+            switch (key.getEntityType()) {
+                case Application:
+                    boolean isRemoteRegionRequested = key.hasRegions();
+
+                    if (ALL_APPS.equals(key.getName())) {
+                        if (isRemoteRegionRequested) {
+                            tracer = serializeAllAppsWithRemoteRegionTimer.start();
+                            payload = getPayLoad(key, registry.getApplicationsFromMultipleRegions(key.getRegions()));
+                        } else {
+                            tracer = serializeAllAppsTimer.start();
+                            payload = getPayLoad(key, registry.getApplications());
+                        }
+                    } else if (ALL_APPS_DELTA.equals(key.getName())) {
+                        if (isRemoteRegionRequested) {
+                            tracer = serializeDeltaAppsWithRemoteRegionTimer.start();
+                            versionDeltaWithRegions.incrementAndGet();
+                            versionDeltaWithRegionsLegacy.incrementAndGet();
+                            payload = getPayLoad(key,
+                                    registry.getApplicationDeltasFromMultipleRegions(key.getRegions()));
+                        } else {
+                            tracer = serializeDeltaAppsTimer.start();
+                            versionDelta.incrementAndGet();
+                            versionDeltaLegacy.incrementAndGet();
+                            payload = getPayLoad(key, registry.getApplicationDeltas());
+                        }
+                    } else {
+                        tracer = serializeOneApptimer.start();
+                        payload = getPayLoad(key, registry.getApplication(key.getName()));
+                    }
+                    break;
+                case VIP:
+                case SVIP:
+                    tracer = serializeViptimer.start();
+                    payload = getPayLoad(key, getApplicationsForVip(key, registry));
+                    break;
+                default:
+                    logger.error(&quot;Unidentified entity type: {} found in the cache key.&quot;, key.getEntityType());
+                    payload = &quot;&quot;;
+                    break;
+            }
+            return new Value(payload);
+        } finally {
+            if (tracer != null) {
+                tracer.stop();
+            }
+        }
+    }</code></code></pre>
+<p>这个方法的重点在这一句上<code>payload = getPayLoad(key, registry.getApplications());</code></p>
+<p><strong><code>getApplications</code></strong></p>
+<pre><code><code>public Applications getApplications() {
+        boolean disableTransparentFallback = serverConfig.disableTransparentFallbackToOtherRegion();
+        if (disableTransparentFallback) {
+            return getApplicationsFromLocalRegionOnly();
+        } else {
+            return getApplicationsFromAllRemoteRegions();  // Behavior of falling back to remote region can be disabled.
+        }
+    }
+    </code></code></pre>
+<p>这里会进入<code>getApplicationsFromLocalRegionOnly</code>方法</p>
+<pre><code><code>    public Applications getApplicationsFromLocalRegionOnly() {
+        return getApplicationsFromMultipleRegions(EMPTY_STR_ARRAY);
+    }
+    public Applications getApplicationsFromMultipleRegions(String[] remoteRegions) {
+
+        boolean includeRemoteRegion = null != remoteRegions &amp;&amp; remoteRegions.length != 0;
+
+        logger.debug(&quot;Fetching applications registry with remote regions: {}, Regions argument {}&quot;,
+                includeRemoteRegion, remoteRegions);
+
+        if (includeRemoteRegion) {
+            GET_ALL_WITH_REMOTE_REGIONS_CACHE_MISS.increment();
+        } else {
+            GET_ALL_CACHE_MISS.increment();
+        }
+        Applications apps = new Applications();
+        apps.setVersion(1L);
+        for (Entry&lt;String, Map&lt;String, Lease&lt;InstanceInfo&gt;&gt;&gt; entry : registry.entrySet()) {
+            Application app = null;
+
+            if (entry.getValue() != null) {
+                for (Entry&lt;String, Lease&lt;InstanceInfo&gt;&gt; stringLeaseEntry : entry.getValue().entrySet()) {
+                    Lease&lt;InstanceInfo&gt; lease = stringLeaseEntry.getValue();
+                    if (app == null) {
+                        app = new Application(lease.getHolder().getAppName());
+                    }
+                    app.addInstance(decorateInstanceInfo(lease));
+                }
+            }
+            if (app != null) {
+                apps.addApplication(app);
+            }
+        }
+        if (includeRemoteRegion) {
+            for (String remoteRegion : remoteRegions) {
+                RemoteRegionRegistry remoteRegistry = regionNameVSRemoteRegistry.get(remoteRegion);
+                if (null != remoteRegistry) {
+                    Applications remoteApps = remoteRegistry.getApplications();
+                    for (Application application : remoteApps.getRegisteredApplications()) {
+                        if (shouldFetchFromRemoteRegistry(application.getName(), remoteRegion)) {
+                            logger.info(&quot;Application {}  fetched from the remote region {}&quot;,
+                                    application.getName(), remoteRegion);
+
+                            Application appInstanceTillNow = apps.getRegisteredApplications(application.getName());
+                            if (appInstanceTillNow == null) {
+                                appInstanceTillNow = new Application(application.getName());
+                                apps.addApplication(appInstanceTillNow);
+                            }
+                            for (InstanceInfo instanceInfo : application.getInstances()) {
+                                appInstanceTillNow.addInstance(instanceInfo);
+                            }
+                        } else {
+                            logger.debug(&quot;Application {} not fetched from the remote region {} as there exists a &quot;
+                                            + &quot;whitelist and this app is not in the whitelist.&quot;,
+                                    application.getName(), remoteRegion);
+                        }
+                    }
+                } else {
+                    logger.warn(&quot;No remote registry available for the remote region {}&quot;, remoteRegion);
+                }
+            }
+        }
+        apps.setAppsHashCode(apps.getReconcileHashCode());
+        return apps;
+    }</code></code></pre>
+<p>这里获取的时候分为3个部分：</p>
+<ol>
+<li>第一个for循环中，根据当前服务端的租约信息获取所有的实例信息，每个实例信息使用<code>Application</code>对象封装，多个<code>Application</code>使用<code>Applications</code>对象封装</li>
+<li>第二个for循环则是处理如果请求中要获取某个分区的情况</li>
+<li>设置所有实例的hashCode，这个hashCode是用来在增量获取的时候区分返回结果的</li>
+</ol>
+<p><strong><code>getPayLoad</code></strong><br />
+这里则仅仅只是一个编码</p>
+<pre><code><code>private String getPayLoad(Key key, Applications apps) {
+   // 获得编码器
+   EncoderWrapper encoderWrapper = serverCodecs.getEncoder(key.getType(), key.getEurekaAccept());
+   String result;
+   try {
+       // 编码
+       result = encoderWrapper.encode(apps);
+   } catch (Exception e) {
+       logger.error(&quot;Failed to encode the payload for all apps&quot;, e);
+       return &quot;&quot;;
+   }
+   if(logger.isDebugEnabled()) {
+       logger.debug(&quot;New application cache entry {} with apps hashcode {}&quot;, key.toStringCompact(), apps.getAppsHashCode());
+   }
+   return result;
+}</code></code></pre>
+<h6 id="只读缓存">只读缓存</h6>
+<p>只读缓存是定时刷新的，同样也在<code>ResponseCacheImpl</code>的构造方法中</p>
+<pre><code><code>        if (shouldUseReadOnlyResponseCache) {
+            timer.schedule(getCacheUpdateTask(),
+                    new Date(((System.currentTimeMillis() / responseCacheUpdateIntervalMs) * responseCacheUpdateIntervalMs)
+                            + responseCacheUpdateIntervalMs),
+                    responseCacheUpdateIntervalMs);
+        }</code></code></pre>
+<p>这个刷新任务是这样的</p>
+<pre><code><code>    private TimerTask getCacheUpdateTask() {
+        return new TimerTask() {
+            @Override
+            public void run() {
+                logger.debug(&quot;Updating the client cache from response cache&quot;);
+                for (Key key : readOnlyCacheMap.keySet()) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug(&quot;Updating the client cache from response cache for key : {} {} {} {}&quot;,
+                                key.getEntityType(), key.getName(), key.getVersion(), key.getType());
+                    }
+                    try {
+                        CurrentRequestVersion.set(key.getVersion());
+                        Value cacheValue = readWriteCacheMap.get(key);
+                        Value currentCacheValue = readOnlyCacheMap.get(key);
+                        if (cacheValue != currentCacheValue) {
+                            readOnlyCacheMap.put(key, cacheValue);
+                        }
+                    } catch (Throwable th) {
+                        logger.error(&quot;Error while updating the client cache from response cache for key {}&quot;, key.toStringCompact(), th);
+                    }
+                }
+            }
+        };
+    }</code></code></pre>
+<p>观察for循环里面的内容，发现只读缓存的内容都是基于读写缓存来的</p>
+<h5 id="增量拉取">增量拉取</h5>
+<p>增量拉取的线程调度和发送心跳的线程调度是在一个方法<code>initScheduledTasks</code>中执行的，代码如下：</p>
+<pre><code><code>      int registryFetchIntervalSeconds = clientConfig.getRegistryFetchIntervalSeconds();
+            int expBackOffBound = clientConfig.getCacheRefreshExecutorExponentialBackOffBound();
+            scheduler.schedule(
+                    new TimedSupervisorTask(
+                            &quot;cacheRefresh&quot;,
+                            scheduler,
+                            cacheRefreshExecutor,
+                            registryFetchIntervalSeconds,
+                            TimeUnit.SECONDS,
+                            expBackOffBound,
+                            new CacheRefreshThread()
+                    ),
+                    registryFetchIntervalSeconds, TimeUnit.SECONDS);
+</code></code></pre>
+<p>看一下线程<code>CacheRefreshThread</code></p>
+<pre><code><code> class CacheRefreshThread implements Runnable {
+        public void run() {
+            refreshRegistry();
+        }
+    }
+   void refreshRegistry() {
+        try {
+            boolean isFetchingRemoteRegionRegistries = isFetchingRemoteRegionRegistries();
+
+            boolean remoteRegionsModified = false;
+           //省略了一部分无关代码
+            //核心
+            boolean success = fetchRegistry(remoteRegionsModified);
+            if (success) {
+                registrySize = localRegionApps.get().size();
+                lastSuccessfulRegistryFetchTimestamp = System.currentTimeMillis();
+            }
+
+            if (logger.isDebugEnabled()) {
+                StringBuilder allAppsHashCodes = new StringBuilder();
+                allAppsHashCodes.append(&quot;Local region apps hashcode: &quot;);
+                allAppsHashCodes.append(localRegionApps.get().getAppsHashCode());
+                allAppsHashCodes.append(&quot;, is fetching remote regions? &quot;);
+                allAppsHashCodes.append(isFetchingRemoteRegionRegistries);
+                for (Map.Entry&lt;String, Applications&gt; entry : remoteRegionVsApps.entrySet()) {
+                    allAppsHashCodes.append(&quot;, Remote region: &quot;);
+                    allAppsHashCodes.append(entry.getKey());
+                    allAppsHashCodes.append(&quot; , apps hashcode: &quot;);
+                    allAppsHashCodes.append(entry.getValue().getAppsHashCode());
+                }
+                logger.debug(&quot;Completed cache refresh task for discovery. All Apps hash code is {} &quot;,
+                        allAppsHashCodes);
+            }
+        } catch (Throwable e) {
+            logger.error(&quot;Cannot fetch registry from server&quot;, e);
+        }        
+    }</code></code></pre>
+<p>核心在<code>fetchRegistry</code>方法，这个在上面已经说过了，只不过部分拉取获取调用的接口是<code>getAndUpdateDelta</code>而已</p>
+<pre><code><code>private void getAndUpdateDelta(Applications applications) throws Throwable {
+        long currentUpdateGeneration = fetchRegistryGeneration.get();
+
+        Applications delta = null;
+        EurekaHttpResponse&lt;Applications&gt; httpResponse = eurekaTransport.queryClient.getDelta(remoteRegionsRef.get());
+        if (httpResponse.getStatusCode() == Status.OK.getStatusCode()) {
+            delta = httpResponse.getEntity();
+        }
+
+        if (delta == null) {
+            logger.warn(&quot;The server does not allow the delta revision to be applied because it is not safe. &quot;
+                    + &quot;Hence got the full registry.&quot;);
+            getAndStoreFullRegistry();
+        } else if (fetchRegistryGeneration.compareAndSet(currentUpdateGeneration, currentUpdateGeneration + 1)) {
+            logger.debug(&quot;Got delta update with apps hashcode {}&quot;, delta.getAppsHashCode());
+            String reconcileHashCode = &quot;&quot;;
+            if (fetchRegistryUpdateLock.tryLock()) {
+                try {
+                    updateDelta(delta);
+                    reconcileHashCode = getReconcileHashCode(applications);
+                } finally {
+                    fetchRegistryUpdateLock.unlock();
+                }
+            } else {
+                logger.warn(&quot;Cannot acquire update lock, aborting getAndUpdateDelta&quot;);
+            }
+            // There is a diff in number of instances for some reason
+            if (!reconcileHashCode.equals(delta.getAppsHashCode()) || clientConfig.shouldLogDeltaDiff()) {
+                reconcileAndLogDifference(delta, reconcileHashCode);  // this makes a remoteCall
+            }
+        } else {
+            logger.warn(&quot;Not updating application delta as another thread is updating it already&quot;);
+            logger.debug(&quot;Ignoring delta update with apps hashcode {}, as another thread is updating it already&quot;, delta.getAppsHashCode());
+        }
+    }</code></code></pre>
+<p>先看服务端的处理，然后再看如何处理结果吧</p>
+<h5 id="服务端处理增量拉取">服务端处理增量拉取</h5>
+<pre><code><code>@Path(&quot;delta&quot;)
+    @GET
+    public Response getContainerDifferential(
+            @PathParam(&quot;version&quot;) String version,
+            @HeaderParam(HEADER_ACCEPT) String acceptHeader,
+            @HeaderParam(HEADER_ACCEPT_ENCODING) String acceptEncoding,
+            @HeaderParam(EurekaAccept.HTTP_X_EUREKA_ACCEPT) String eurekaAccept,
+            @Context UriInfo uriInfo, @Nullable @QueryParam(&quot;regions&quot;) String regionsStr) {
+
+        boolean isRemoteRegionRequested = null != regionsStr &amp;&amp; !regionsStr.isEmpty();
+
+        // If the delta flag is disabled in discovery or if the lease expiration
+        // has been disabled, redirect clients to get all instances
+        if ((serverConfig.shouldDisableDelta()) || (!registry.shouldAllowAccess(isRemoteRegionRequested))) {
+            return Response.status(Status.FORBIDDEN).build();
+        }
+
+        String[] regions = null;
+        if (!isRemoteRegionRequested) {
+            EurekaMonitors.GET_ALL_DELTA.increment();
+        } else {
+            regions = regionsStr.toLowerCase().split(&quot;,&quot;);
+            Arrays.sort(regions); // So we don&#39;t have different caches for same regions queried in different order.
+            EurekaMonitors.GET_ALL_DELTA_WITH_REMOTE_REGIONS.increment();
+        }
+
+        CurrentRequestVersion.set(Version.toEnum(version));
+        KeyType keyType = Key.KeyType.JSON;
+        String returnMediaType = MediaType.APPLICATION_JSON;
+        if (acceptHeader == null || !acceptHeader.contains(HEADER_JSON_VALUE)) {
+            keyType = Key.KeyType.XML;
+            returnMediaType = MediaType.APPLICATION_XML;
+        }
+
+        Key cacheKey = new Key(Key.EntityType.Application,
+                ResponseCacheImpl.ALL_APPS_DELTA,
+                keyType, CurrentRequestVersion.get(), EurekaAccept.fromString(eurekaAccept), regions
+        );
+
+        if (acceptEncoding != null
+                &amp;&amp; acceptEncoding.contains(HEADER_GZIP_VALUE)) {
+            return Response.ok(responseCache.getGZIP(cacheKey))
+                    .header(HEADER_CONTENT_ENCODING, HEADER_GZIP_VALUE)
+                    .header(HEADER_CONTENT_TYPE, returnMediaType)
+                    .build();
+        } else {
+            return Response.ok(responseCache.get(cacheKey))
+                    .build();
+        }
+    }</code></code></pre>
+<p>这里的处理逻辑跟全量获取大部分逻辑都是一样的，只有一些几点不同：</p>
+<ol>
+<li>hashKey是ApplicationALL_APPS_DELTAJSONV2full</li>
+<li>获取实例列表的时候走的是下面的分支</li>
+</ol>
+<pre><code><code>if (ALL_APPS.equals(key.getName())) {
+                        if (isRemoteRegionRequested) {
+                            tracer = serializeAllAppsWithRemoteRegionTimer.start();
+                            payload = getPayLoad(key, registry.getApplicationsFromMultipleRegions(key.getRegions()));
+                        } else {
+                            tracer = serializeAllAppsTimer.start();
+                            payload = getPayLoad(key, registry.getApplications());
+                        }
+                    } else if (ALL_APPS_DELTA.equals(key.getName())) {
+                        if (isRemoteRegionRequested) {
+                            tracer = serializeDeltaAppsWithRemoteRegionTimer.start();
+                            versionDeltaWithRegions.incrementAndGet();
+                            versionDeltaWithRegionsLegacy.incrementAndGet();
+                            payload = getPayLoad(key,
+                                    registry.getApplicationDeltasFromMultipleRegions(key.getRegions()));
+                        } else {
+                            tracer = serializeDeltaAppsTimer.start();
+                            versionDelta.incrementAndGet();
+                            versionDeltaLegacy.incrementAndGet();
+                            payload = getPayLoad(key, registry.getApplicationDeltas());
+                        }
+                    }</code></code></pre>
+<p>看看<code>getApplicationDeltas</code>方法吧</p>
+<pre><code><code>public Applications getApplicationDeltas() {
+        GET_ALL_CACHE_MISS_DELTA.increment();
+        Applications apps = new Applications();
+        apps.setVersion(responseCache.getVersionDelta().get());
+        Map&lt;String, Application&gt; applicationInstancesMap = new HashMap&lt;String, Application&gt;();
+        try {
+            write.lock();
+            Iterator&lt;RecentlyChangedItem&gt; iter = this.recentlyChangedQueue.iterator();
+            logger.debug(&quot;The number of elements in the delta queue is : {}&quot;,
+                    this.recentlyChangedQueue.size());
+            while (iter.hasNext()) {
+                Lease&lt;InstanceInfo&gt; lease = iter.next().getLeaseInfo();
+                InstanceInfo instanceInfo = lease.getHolder();
+                logger.debug(
+                        &quot;The instance id {} is found with status {} and actiontype {}&quot;,
+                        instanceInfo.getId(), instanceInfo.getStatus().name(), instanceInfo.getActionType().name());
+                Application app = applicationInstancesMap.get(instanceInfo
+                        .getAppName());
+                if (app == null) {
+                    app = new Application(instanceInfo.getAppName());
+                    applicationInstancesMap.put(instanceInfo.getAppName(), app);
+                    apps.addApplication(app);
+                }
+                app.addInstance(decorateInstanceInfo(lease));
+            }
+
+            boolean disableTransparentFallback = serverConfig.disableTransparentFallbackToOtherRegion();
+
+            if (!disableTransparentFallback) {
+                Applications allAppsInLocalRegion = getApplications(false);
+
+                for (RemoteRegionRegistry remoteRegistry : this.regionNameVSRemoteRegistry.values()) {
+                    Applications applications = remoteRegistry.getApplicationDeltas();
+                    for (Application application : applications.getRegisteredApplications()) {
+                        Application appInLocalRegistry =
+                                allAppsInLocalRegion.getRegisteredApplications(application.getName());
+                        if (appInLocalRegistry == null) {
+                            apps.addApplication(application);
+                        }
+                    }
+                }
+            }
+
+            Applications allApps = getApplications(!disableTransparentFallback);
+            apps.setAppsHashCode(allApps.getReconcileHashCode());
+            return apps;
+        } finally {
+            write.unlock();
+        }
+    }</code></code></pre>
+<p>与全量获取不同的是这个最终的结果是从最近租约变更记录队列<code>recentlyChangedQueue</code>里来的，其他的流程则差不多</p>
+<h5 id="处理增量拉取结果">处理增量拉取结果</h5>
+<p>结果的处理代码</p>
+<pre><code><code>if (delta == null) {
+            logger.warn(&quot;The server does not allow the delta revision to be applied because it is not safe. &quot;
+                    + &quot;Hence got the full registry.&quot;);
+            getAndStoreFullRegistry();
+        } else if (fetchRegistryGeneration.compareAndSet(currentUpdateGeneration, currentUpdateGeneration + 1)) {
+            logger.debug(&quot;Got delta update with apps hashcode {}&quot;, delta.getAppsHashCode());
+            String reconcileHashCode = &quot;&quot;;
+            if (fetchRegistryUpdateLock.tryLock()) {
+                try {
+                    updateDelta(delta);
+                    reconcileHashCode = getReconcileHashCode(applications);
+                } finally {
+                    fetchRegistryUpdateLock.unlock();
+                }
+            } else {
+                logger.warn(&quot;Cannot acquire update lock, aborting getAndUpdateDelta&quot;);
+            }
+            // There is a diff in number of instances for some reason
+            if (!reconcileHashCode.equals(delta.getAppsHashCode()) || clientConfig.shouldLogDeltaDiff()) {
+                reconcileAndLogDifference(delta, reconcileHashCode);  // this makes a remoteCall
+            }
+        }</code></code></pre>
+<h6 id="updatedelta"><code>updateDelta</code></h6>
+<pre><code><code>    private void updateDelta(Applications delta) {
+        int deltaCount = 0;
+        for (Application app : delta.getRegisteredApplications()) {
+            for (InstanceInfo instance : app.getInstances()) {
+                Applications applications = getApplications();
+                String instanceRegion = instanceRegionChecker.getInstanceRegion(instance);
+                if (!instanceRegionChecker.isLocalRegion(instanceRegion)) {
+                    Applications remoteApps = remoteRegionVsApps.get(instanceRegion);
+                    if (null == remoteApps) {
+                        remoteApps = new Applications();
+                        remoteRegionVsApps.put(instanceRegion, remoteApps);
+                    }
+                    applications = remoteApps;
+                }
+
+                ++deltaCount;
+                if (ActionType.ADDED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp == null) {
+                        applications.addApplication(app);
+                    }
+                    logger.debug(&quot;Added instance {} to the existing apps in region {}&quot;, instance.getId(), instanceRegion);
+                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
+                } else if (ActionType.MODIFIED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp == null) {
+                        applications.addApplication(app);
+                    }
+                    logger.debug(&quot;Modified instance {} to the existing apps &quot;, instance.getId());
+
+                    applications.getRegisteredApplications(instance.getAppName()).addInstance(instance);
+
+                } else if (ActionType.DELETED.equals(instance.getActionType())) {
+                    Application existingApp = applications.getRegisteredApplications(instance.getAppName());
+                    if (existingApp == null) {
+                        applications.addApplication(app);
+                    }
+                    logger.debug(&quot;Deleted instance {} to the existing apps &quot;, instance.getId());
+                    applications.getRegisteredApplications(instance.getAppName()).removeInstance(instance);
+                }
+            }
+        }
+        logger.debug(&quot;The total number of instances fetched by the delta processor : {}&quot;, deltaCount);
+
+        getApplications().setVersion(delta.getVersion());
+        getApplications().shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
+
+        for (Applications applications : remoteRegionVsApps.values()) {
+            applications.setVersion(delta.getVersion());
+            applications.shuffleInstances(clientConfig.shouldFilterOnlyUpInstances());
+        }
+    }</code></code></pre>
+<p>大致处理流程为：</p>
+<ol>
+<li>获取本地缓存实例</li>
+<li>如果不存在远程拉取到的实例的分区则在<code>remoteRegionVsApps</code>对象中新建分区的key</li>
+<li>根据远程实例的状态（添加、修改、删除）分别进行本地实例状态的更新</li>
+<li>实例的过滤</li>
+</ol>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,279 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringApplication到底run了什么（下）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringApplication到底run了什么（下）</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11582042.html</div><br>
+    <p>在上篇文章中<a href="https://mp.weixin.qq.com/s/TuQR1kKqHrAQOxnRCfdFOw">SpringApplication到底run了什么（上）</a>中，我们分析了下面这个run方法的前半部分，本篇文章继续开工</p>
+<pre><code><code>    public ConfigurableApplicationContext run(String... args) {
+            //。。。
+            //接上文继续
+            configureIgnoreBeanInfo(environment);
+            Banner printedBanner = printBanner(environment);
+            context = createApplicationContext();
+            exceptionReporters = getSpringFactoriesInstances(
+                    SpringBootExceptionReporter.class,
+                    new Class[] { ConfigurableApplicationContext.class }, context);
+            prepareContext(context, environment, listeners, applicationArguments,
+                    printedBanner);
+            refreshContext(context);
+            afterRefresh(context, applicationArguments);
+            stopWatch.stop();
+            if (this.logStartupInfo) {
+                new StartupInfoLogger(this.mainApplicationClass)
+                        .logStarted(getApplicationLog(), stopWatch);
+            }
+            listeners.started(context);
+            callRunners(context, applicationArguments);
+        }
+        catch (Throwable ex) {
+            handleRunFailure(context, listeners, exceptionReporters, ex);
+            throw new IllegalStateException(ex);
+        }
+        listeners.running(context);
+        return context;
+    }</code></code></pre>
+<ol>
+<li>获取系统属性<code>spring.beaninfo.ignore</code></li>
+</ol>
+<pre><code><code>private void configureIgnoreBeanInfo(ConfigurableEnvironment environment) {
+        if (System.getProperty(
+                CachedIntrospectionResults.&quot;spring.beaninfo.ignore&quot;) == null) {
+            Boolean ignore = environment.getProperty(&quot;spring.beaninfo.ignore&quot;,
+                    Boolean.class, Boolean.TRUE);
+            System.setProperty(CachedIntrospectionResults.&quot;spring.beaninfo.ignore&quot;,
+                    ignore.toString());
+        }
+    }</code></code></pre>
+<p>但是这个属性的作用还真不知道。。</p>
+<ol>
+<li>打印banner</li>
+<li>根据当前环境创建ApplicationContext</li>
+</ol>
+<pre><code><code>protected ConfigurableApplicationContext createApplicationContext() {
+        Class&lt;?&gt; contextClass = this.applicationContextClass;
+        if (contextClass == null) {
+            try {
+                switch (this.webApplicationType) {
+                case SERVLET:
+                    contextClass = Class.forName(DEFAULT_WEB_CONTEXT_CLASS);
+                    break;
+                case REACTIVE:
+                    contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
+                    break;
+                default:
+                    contextClass = Class.forName(DEFAULT_CONTEXT_CLASS);
+                }
+            }
+            catch (ClassNotFoundException ex) {
+                throw new IllegalStateException(
+                        &quot;Unable create a default ApplicationContext, &quot;
+                                + &quot;please specify an ApplicationContextClass&quot;,
+                        ex);
+            }
+        }
+        return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass);
+    }</code></code></pre>
+<p>基于咱们的Servlet环境，所以创建的ApplicationContext为<code>AnnotationConfigServletWebServerApplicationContext</code></p>
+<ol>
+<li>加载<code>SpringBootExceptionReporter</code>，这个类里包含了SpringBoot启动失败后异常处理相关的组件</li>
+</ol>
+<pre><code><code>private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type,
+            Class&lt;?&gt;[] parameterTypes, Object... args) {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(
+                SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+        List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes,
+                classLoader, args, names);
+        AnnotationAwareOrderComparator.sort(instances);
+        return instances;
+    }</code></code></pre>
+<p>10 prepareContext 这一块还是比较长的</p>
+<pre><code><code>private void prepareContext(ConfigurableApplicationContext context,
+        ConfigurableEnvironment environment, SpringApplicationRunListeners listeners,
+        ApplicationArguments applicationArguments, Banner printedBanner) {
+    context.setEnvironment(environment);
+    postProcessApplicationContext(context);
+    applyInitializers(context);
+    listeners.contextPrepared(context);
+    if (this.logStartupInfo) {
+        logStartupInfo(context.getParent() == null);
+        logStartupProfileInfo(context);
+    }
+
+    context.getBeanFactory().registerSingleton(&quot;springApplicationArguments&quot;,
+            applicationArguments);                               
+    if (printedBanner != null) {
+        context.getBeanFactory().registerSingleton(&quot;springBootBanner&quot;, printedBanner);
+    }
+
+    // Load the sources
+    Set&lt;Object&gt; sources = getAllSources();                     
+    Assert.notEmpty(sources, &quot;Sources must not be empty&quot;);       
+    load(context, sources.toArray(new Object[0]));
+    listeners.contextLoaded(context);
+}</code></code></pre>
+<pre><code><code>1. 第一行，将context中相关的environment全部替换</code></code></pre>
+<pre><code><code>
+public void setEnvironment(ConfigurableEnvironment environment) {
+    super.setEnvironment(environment);            // 设置context的environment
+    this.reader.setEnvironment(environment);    // 实例化context的reader属性的conditionEvaluator属性
+    this.scanner.setEnvironment(environment);    // 设置context的scanner属性的environment属性
+}</code></code></pre>
+<pre><code><code>2. 上下文后处理</code></code></pre>
+<pre><code><code>
+protected void postProcessApplicationContext(ConfigurableApplicationContext context) {
+    if (this.beanNameGenerator != null) {
+        context.getBeanFactory().registerSingleton(
+                AnnotationConfigUtils.CONFIGURATION_BEAN_NAME_GENERATOR,
+                this.beanNameGenerator);
+    }
+    if (this.resourceLoader != null) {
+        if (context instanceof GenericApplicationContext) {
+            ((GenericApplicationContext) context)
+                    .setResourceLoader(this.resourceLoader);
+        }
+        if (context instanceof DefaultResourceLoader) {
+            ((DefaultResourceLoader) context)
+                    .setClassLoader(this.resourceLoader.getClassLoader());
+        }
+    }
+}</code></code></pre>
+<p>这一块默认<code>beanNameGenerator</code>和<code>resourceLoader</code>都是空的，只有当我们自定义这两个对象时才会把容器内的bean替换<br />
+3. 执行所有的<code>ApplicationContextInitializer</code>的<code>initialize</code>方法</p>
+<pre><code><code>
+protected void applyInitializers(ConfigurableApplicationContext context) {
+    for (ApplicationContextInitializer initializer : getInitializers()) {
+        Class&lt;?&gt; requiredType = GenericTypeResolver.resolveTypeArgument(
+                initializer.getClass(), ApplicationContextInitializer.class);
+        Assert.isInstanceOf(requiredType, context, &quot;Unable to call initializer.&quot;);
+        initializer.initialize(context);
+    }
+}</code></code></pre>
+<pre><code><code>4. `listeners.contextPrepared(context)`这是个空方法，没有实现，一个Spring的扩展点
+5. 打印profile
+6. 注册bean：`springApplicationArguments`
+7. 发布事件</code></code></pre>
+<pre><code><code>public void contextLoaded(ConfigurableApplicationContext context) {
+        for (ApplicationListener&lt;?&gt; listener : this.application.getListeners()) {
+            if (listener instanceof ApplicationContextAware) {
+                ((ApplicationContextAware) listener).setApplicationContext(context);
+            }
+            context.addApplicationListener(listener);
+        }
+        this.initialMulticaster.multicastEvent(
+                new ApplicationPreparedEvent(this.application, this.args, context));
+    }</code></code></pre>
+<p>这里不仅发布了<code>ApplicationPreparedEvent</code>事件，还往实现了<code>ApplicationContextAware</code>接口的监听器中注入了context容器<br />
+8. load，其实就是创建了一个<code>BeanDefinitionLoader</code>对象</p>
+<pre><code><code>protected void load(ApplicationContext context, Object[] sources) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(
+                    &quot;Loading source &quot; + StringUtils.arrayToCommaDelimitedString(sources));
+        }
+        BeanDefinitionLoader loader = createBeanDefinitionLoader(
+                getBeanDefinitionRegistry(context), sources);
+        if (this.beanNameGenerator != null) {
+            loader.setBeanNameGenerator(this.beanNameGenerator);
+        }
+        if (this.resourceLoader != null) {
+            loader.setResourceLoader(this.resourceLoader);
+        }
+        if (this.environment != null) {
+            loader.setEnvironment(this.environment);
+        }
+        loader.load();
+    }</code></code></pre>
+<ol>
+<li>容器的初始化<code>refreshContext</code><br />
+这个方法最后还是调用的<code>AbstractApplicationContext</code>类的<code>refresh</code>方法，由于篇幅过长这里就不展开了，感兴趣的同学可以参考这篇文章：<a href="https://mp.weixin.qq.com/s/xqDPttr53rxLBi8t8kIQDg">基于注解的SpringIOC源码解析</a></li>
+</ol>
+<pre><code><code>public void refresh() throws BeansException, IllegalStateException {
+   synchronized (this.startupShutdownMonitor) {
+      // 记录容器的启动时间、标记“已启动”状态、检查环境变量
+      prepareRefresh();
+      // 初始化BeanFactory容器、注册BeanDefinition
+      ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+      // 设置 BeanFactory 的类加载器，添加几个 BeanPostProcessor，手动注册几个特殊的 bean
+      prepareBeanFactory(beanFactory);
+      try {
+         // 扩展点
+         postProcessBeanFactory(beanFactory);
+         // 调用 BeanFactoryPostProcessor 各个实现类的 postProcessBeanFactory(factory) 方法
+         invokeBeanFactoryPostProcessors(beanFactory);
+         // 注册 BeanPostProcessor 的实现类
+         registerBeanPostProcessors(beanFactory);
+         // 初始化MessageSource
+         initMessageSource();
+         // 初始化事件广播器
+         initApplicationEventMulticaster();
+         // 扩展点
+         onRefresh();
+         // 注册事件监听器
+         registerListeners();
+         // 初始化所有的 singleton beans
+         finishBeanFactoryInitialization(beanFactory);
+         // 广播事件
+         finishRefresh();
+      }
+      catch (BeansException ex) {
+         if (logger.isWarnEnabled()) {
+            logger.warn(&quot;Exception encountered during context initialization - &quot; +
+                  &quot;cancelling refresh attempt: &quot; + ex);
+         }
+         // 销毁已经初始化的的Bean
+         destroyBeans();
+         // 设置 &#39;active&#39; 状态
+         cancelRefresh(ex);
+         throw ex;
+      }
+      finally {
+         // 清除缓存
+         resetCommonCaches();
+      }
+   }
+}</code></code></pre>
+<ol>
+<li><code>afterRefresh</code><br />
+这里没有任何实现，Spring留给我们的扩展点</li>
+<li>停止之前启动的计时装置，然后发送<code>ApplicationStartedEvent</code>事件</li>
+<li>调用系统中<code>ApplicationRunner</code>以及<code>CommandLineRunner</code>接口的实现类，关于这两个接口的使用可以参考我的这篇文章：<a href="https://mp.weixin.qq.com/s/1d9V19uVJUsdwHi_FGa8nQ">Java项目启动时执行指定方法的几种方式</a></li>
+</ol>
+<pre><code><code>private void callRunners(ApplicationContext context, ApplicationArguments args) {
+        List&lt;Object&gt; runners = new ArrayList&lt;&gt;();
+        runners.addAll(context.getBeansOfType(ApplicationRunner.class).values());
+        runners.addAll(context.getBeansOfType(CommandLineRunner.class).values());
+        AnnotationAwareOrderComparator.sort(runners);
+        for (Object runner : new LinkedHashSet&lt;&gt;(runners)) {
+            if (runner instanceof ApplicationRunner) {
+                callRunner((ApplicationRunner) runner, args);
+            }
+            if (runner instanceof CommandLineRunner) {
+                callRunner((CommandLineRunner) runner, args);
+            }
+        }
+    }</code></code></pre>
+<ol>
+<li>异常处理</li>
+<li>发送<code>ApplicationReadyEvent</code>事件</li>
+</ol>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

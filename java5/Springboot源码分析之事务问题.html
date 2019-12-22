@@ -1,0 +1,328 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Springboot源码分析之事务问题' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Springboot源码分析之事务问题</center></div><div class='banquan'>原文出处:本文由博客园博主TheGir1提供。<br/>
+原文连接:https://www.cnblogs.com/qinzj/p/11456067.html</div><br>
+    <h4 id="摘要">摘要：</h4>
+<p>事务在后端开发中无处不在，是数据一致性的最基本保证。要明白进事务的本质就是进到事务切面的代理方法中，最常见的是同一个类的非事务方法调用一个加了事务注解的方法没进入事务。我们以<code>cglib</code>代理为例，由于Spring的对于<code>cglib AOP</code>代理的实现，进入被代理方法的时候实际上已经离开了“代理这一层壳子”，可以认为代码走到的是一个朴素的bean，调用同一个bean中方法自然与代理没有半毛钱关系了。<br />
+一般对于声明式事务都是以调用另一个类的加了<code>@Transactional</code>注解的<code>public</code>方法作为入口的。</p>
+<h4 id="spring事务关键处理流程">spring事务关键处理流程</h4>
+<ul>
+<li><code>EnableTransactionManagement</code>注解导入<code>TransactionManagementConfigurationSelector</code></li>
+<li><code>TransactionManagementConfigurationSelector</code>加载<code>InfrastructureAdvisorAutoProxyCreator</code>(但不一定是它，一般都是<code>AnnotationAwareAspectJAutoProxyCreator</code>)，<code>BeanFactoryTransactionAttributeSourceAdvisor</code>，<code>TransactionInterceptor</code><br />
+-<code>AnnotationAwareAspectJAutoProxyCreator</code>在<code>ioc</code>流程一个关键步骤是查找<code>Advisor</code>，有两个方面，第一是实现了<code>Advisor</code>接口的类，第二是基于注解<code>Aspectj</code>。关键是<code>BeanFactoryTransactionAttributeSourceAdvisor</code>被加载进了代理缓存</li>
+<li>代理调用方法的时候会执行<code>DefaultAdvisorChainFactory#getInterceptorsAndDynamicInterceptionAdvice</code>，这个时候就会将我们的</li>
+</ul>
+<p><code>BeanFactoryTransactionAttributeSourceAdvisor</code>派上用处，最主要的还是它里面的<code>TransactionAttributeSourcePointcut</code>进行匹配，执行<code>TransactionInterceptor</code>的方法</p>
+<h4 id="transactioninterceptor">TransactionInterceptor</h4>
+<pre><code><code>    @Override
+    @Nullable
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+       // Work out the target class: may be {@code null}.
+       // The TransactionAttributeSource should be passed the target class
+       // as well as the method, which may be from an interface.
+       Class&lt;?&gt; targetClass = (invocation.getThis() != null ? AopUtils.getTargetClass(invocation.getThis()) : null);
+    
+       // Adapt to TransactionAspectSupport&#39;s invokeWithinTransaction...
+       return invokeWithinTransaction(invocation.getMethod(), targetClass, invocation::proceed);
+    }</code></code></pre>
+<h4 id="transactionaspectsupport">TransactionAspectSupport</h4>
+<pre><code><code>    @Nullable
+    protected Object invokeWithinTransaction(Method method, @Nullable Class&lt;?&gt; targetClass,
+          final InvocationCallback invocation) throws Throwable {
+    
+       // If the transaction attribute is null, the method is non-transactional.
+       TransactionAttributeSource tas = getTransactionAttributeSource();
+       final TransactionAttribute txAttr = (tas != null ? tas.getTransactionAttribute(method, targetClass) : null);
+       final PlatformTransactionManager tm = determineTransactionManager(txAttr);
+       final String joinpointIdentification = methodIdentification(method, targetClass, txAttr);
+    
+       if (txAttr == null || !(tm instanceof CallbackPreferringPlatformTransactionManager)) {
+          // Standard transaction demarcation with getTransaction and commit/rollback calls.
+          TransactionInfo txInfo = createTransactionIfNecessary(tm, txAttr, joinpointIdentification);
+    
+          Object retVal;
+          try {
+             // This is an around advice: Invoke the next interceptor in the chain.
+             // This will normally result in a target object being invoked.
+             retVal = invocation.proceedWithInvocation();
+          }
+          catch (Throwable ex) {
+             // target invocation exception
+             completeTransactionAfterThrowing(txInfo, ex);
+             throw ex;
+          }
+          finally {
+             cleanupTransactionInfo(txInfo);
+          }
+          commitTransactionAfterReturning(txInfo);
+          return retVal;
+       }
+    
+       else {
+          final ThrowableHolder throwableHolder = new ThrowableHolder();
+    
+          // It&#39;s a CallbackPreferringPlatformTransactionManager: pass a TransactionCallback in.
+          try {
+             Object result = ((CallbackPreferringPlatformTransactionManager) tm).execute(txAttr, status -&gt; {
+                TransactionInfo txInfo = prepareTransactionInfo(tm, txAttr, joinpointIdentification, status);
+                try {
+                   return invocation.proceedWithInvocation();
+                }
+                catch (Throwable ex) {
+                   if (txAttr.rollbackOn(ex)) {
+                      // A RuntimeException: will lead to a rollback.
+                      if (ex instanceof RuntimeException) {
+                         throw (RuntimeException) ex;
+                      }
+                      else {
+                         throw new ThrowableHolderException(ex);
+                      }
+                   }
+                   else {
+                      // A normal return value: will lead to a commit.
+                      throwableHolder.throwable = ex;
+                      return null;
+                   }
+                }
+                finally {
+                   cleanupTransactionInfo(txInfo);
+                }
+             });
+    
+             // Check result state: It might indicate a Throwable to rethrow.
+             if (throwableHolder.throwable != null) {
+                throw throwableHolder.throwable;
+             }
+             return result;
+          }
+          catch (ThrowableHolderException ex) {
+             throw ex.getCause();
+          }
+          catch (TransactionSystemException ex2) {
+             if (throwableHolder.throwable != null) {
+                logger.error(&quot;Application exception overridden by commit exception&quot;, throwableHolder.throwable);
+                ex2.initApplicationException(throwableHolder.throwable);
+             }
+             throw ex2;
+          }
+          catch (Throwable ex2) {
+             if (throwableHolder.throwable != null) {
+                logger.error(&quot;Application exception overridden by commit exception&quot;, throwableHolder.throwable);
+             }
+             throw ex2;
+          }
+       }
+    }</code></code></pre>
+<p>这次在分析这个方法，但是从事务的异常，不生效等角度来分析问题。注解事务和编程式都一样的核心思想，下面我们来分析注解事务逻辑</p>
+<pre><code><code>    if (txAttr == null || !(tm instanceof CallbackPreferringPlatformTransactionManager)) {
+                // Standard transaction demarcation with getTransaction and commit/rollback calls.
+                TransactionInfo txInfo = createTransactionIfNecessary(tm, txAttr, joinpointIdentification);
+    
+                Object retVal;
+                try {
+                    // This is an around advice: Invoke the next interceptor in the chain.
+                    // This will normally result in a target object being invoked.
+                    retVal = invocation.proceedWithInvocation();
+                }
+                catch (Throwable ex) {
+                    // target invocation exception
+                    completeTransactionAfterThrowing(txInfo, ex);
+                    throw ex;
+                }
+                finally {
+            // 把上一层事务的TxInfo重新绑到ThreadLocal中
+                    cleanupTransactionInfo(txInfo);
+                }
+                commitTransactionAfterReturning(txInfo);
+                return retVal;
+            }</code></code></pre>
+<p>请记住这几个核心的方法逻辑顺序和异常捕获哦！</p>
+<pre><code><code>    protected void completeTransactionAfterThrowing(@Nullable TransactionInfo txInfo, Throwable ex) {
+            if (txInfo != null &amp;&amp; txInfo.getTransactionStatus() != null) {
+                if (logger.isTraceEnabled()) {
+                    logger.trace(&quot;Completing transaction for [&quot; + txInfo.getJoinpointIdentification() +
+                            &quot;] after exception: &quot; + ex);
+                }
+          //事务回滚的异常支持
+                if (txInfo.transactionAttribute != null &amp;&amp; txInfo.transactionAttribute.rollbackOn(ex)) {
+                    try {
+                        txInfo.getTransactionManager().rollback(txInfo.getTransactionStatus());
+                    }
+                    catch (TransactionSystemException ex2) {
+                        logger.error(&quot;Application exception overridden by rollback exception&quot;, ex);
+                        ex2.initApplicationException(ex);
+                        throw ex2;
+                    }
+                    catch (RuntimeException | Error ex2) {
+                        logger.error(&quot;Application exception overridden by rollback exception&quot;, ex);
+                        throw ex2;
+                    }
+                }
+                else {
+                    // We don&#39;t roll back on this exception.
+                    // Will still roll back if TransactionStatus.isRollbackOnly() is true.
+                    try {
+                        txInfo.getTransactionManager().commit(txInfo.getTransactionStatus());
+                    }
+                    catch (TransactionSystemException ex2) {
+                        logger.error(&quot;Application exception overridden by commit exception&quot;, ex);
+                        ex2.initApplicationException(ex);
+                        throw ex2;
+                    }
+                    catch (RuntimeException | Error ex2) {
+                        logger.error(&quot;Application exception overridden by commit exception&quot;, ex);
+                        throw ex2;
+                    }
+                }
+            }
+        }</code></code></pre>
+<h4 id="事务回滚的异常支持">事务回滚的异常支持</h4>
+<pre><code><code>    @Override
+    public boolean rollbackOn(Throwable ex) {
+       return (ex instanceof RuntimeException || ex instanceof Error);
+    }</code></code></pre>
+<p>注意点来了，仅支持运行时异常和错误机制，否则不予回滚。并进行直接条件。</p>
+<h4 id="abstractplatformtransactionmanager">AbstractPlatformTransactionManager</h4>
+<pre><code><code>    private void processRollback(DefaultTransactionStatus status, boolean unexpected) {
+       try {
+         //默认false
+          boolean unexpectedRollback = unexpected;
+          try {
+            //回调TransactionSynchronization对象的beforeCompletion方法。
+             triggerBeforeCompletion(status);
+             if (status.hasSavepoint()) {
+                if (status.isDebug()) {
+                   logger.debug(&quot;Rolling back transaction to savepoint&quot;);
+                }
+                status.rollbackToHeldSavepoint();
+             }
+            // 在最外层事务边界进行回滚
+             else if (status.isNewTransaction()) {
+                if (status.isDebug()) {
+                   logger.debug(&quot;Initiating transaction rollback&quot;);
+                }
+               // 由具体TxMgr子类实现回滚。
+                doRollback(status);
+             }
+             else {
+                // Participating in larger transaction
+                if (status.hasTransaction()) {
+                  /*
+                     * 内层事务被标记为rollBackOnly或者globalRollbackOnParticipationFailure开关开启时,给当前事务标记需要回滚。
+                     * 
+                     * 如果内层事务显式打上了rollBackOnly的标记,最终全事务一定是回滚掉的。
+                     * 
+                     * 但如果没有被打上rollBackOnly标记,则globalRollbackOnParticipationFailure开关就很重要了。
+                     * globalRollbackOnParticipationFailure开关默认是开启的，也就是说内层事务挂了,最终的结果只能是全事务回滚。
+                     * 但如果globalRollbackOnParticipationFailure开关被关闭的话,内层事务挂了,外层事务业务方法中可以根据情况控制是否回滚。
+                     */
+     
+                   if (status.isLocalRollbackOnly() || isGlobalRollbackOnParticipationFailure()) {
+                      if (status.isDebug()) {
+                         logger.debug(&quot;Participating transaction failed - marking existing transaction as rollback-only&quot;);
+                      }
+                     // 由具体TxMgr子类实现回滚。
+                      doSetRollbackOnly(status);
+                   }
+                   else {
+                      if (status.isDebug()) {
+                         logger.debug(&quot;Participating transaction failed - letting transaction originator decide on rollback&quot;);
+                      }
+                   }
+                }
+                else {
+                   logger.debug(&quot;Should roll back transaction but cannot - no transaction available&quot;);
+                }
+                // Unexpected rollback only matters here if we&#39;re asked to fail early
+                if (!isFailEarlyOnGlobalRollbackOnly()) {
+                   unexpectedRollback = false;
+                }
+             }
+          }
+          catch (RuntimeException | Error ex) {
+             triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
+             throw ex;
+          }
+    // 回调TransactionSynchronization对象的afterCompletion方法。
+          triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
+    
+          // Raise UnexpectedRollbackException if we had a global rollback-only marker
+          if (unexpectedRollback) {
+             throw new UnexpectedRollbackException(
+                   &quot;Transaction rolled back because it has been marked as rollback-only&quot;);
+          }
+       }
+       finally {
+          cleanupAfterCompletion(status);
+       }
+    }</code></code></pre>
+<h3 id="案例分析">案例分析</h3>
+<p><img src="./images/Springboot源码分析之事务问题0.png" alt="file" /></p>
+<p><img src="./images/Springboot源码分析之事务问题1.png" alt="file" /></p>
+<p>有经验的同学肯定知道整个事务最终被回滚掉了, <code>TransactionB#test</code>并没有执行<code>System.out.println(&quot;TransactionB#test after&quot;);</code><br />
+其实对于Spring事务来说，这样的结果是正确的，但对于开发者来说，这个结果确实看似有些“不能理解”。</p>
+<h4 id="我们不妨来分析一下原因">我们不妨来分析一下原因：</h4>
+<p>首先<code>TransactionB#test</code>本身是直接抛出<code>RuntimeException</code>的，那么退栈到事务切面后，事务切面会发现需要回滚但因为<code>TransactionB#test</code>还不是事务的最外层边界，所以在<code>AbstractPlatformTransactionManager#processRollback</code>方法仅仅会调用<code>doSetRollbackOnly(status)</code>;，子类<code>DataSourceTransactionManager</code>会拿出<code>DefaultTransactionStatus</code>中的<code>transaction</code>对象打上回滚标记，具体来说就是<code>transaction</code>对象(对于<code>DataSourceTransactionManager</code>来说类型是<code>DataSourceTransactionObject</code>)会取出<code>ConnectionHolder</code>，调用<code>setRollbackOnly</code>。我们知道这样就相当于标记是一个全局的标记了，因为只要是隶属于同一个物理事务的Spring事务都能够读到同一个<code>ConnectionHolder</code>。</p>
+<pre><code><code>    protected void doSetRollbackOnly(DefaultTransactionStatus status) {
+            DataSourceTransactionManager.DataSourceTransactionObject txObject = (DataSourceTransactionManager.DataSourceTransactionObject)status.getTransaction();
+            if (status.isDebug()) {
+                this.logger.debug(&quot;Setting JDBC transaction [&quot; + txObject.getConnectionHolder().getConnection() + &quot;] rollback-only&quot;);
+            }
+      //关键点
+            txObject.setRollbackOnly();
+        }</code></code></pre>
+<p>回到上层事务切面，在<code>AbstractPlatformTransactionManager#commit</code>方法读到<code>if(!shouldCommitOnGlobalRollbackOnly() &amp;&amp; defStatus.isGlobalRollbackOnly())</code>条件成立，接下来调用<code>processRollback</code>，由于在事务最外层边界会物理回滚掉，并且也正是到了事务最外层边界,Spring抛出<code>UnexpectedRollbackException</code>。</p>
+<h4 id="如何解决">如何解决？</h4>
+<p>那么问题怎么解决呢，这个问题有好几种解决办法，但是得根据具体情况决定。</p>
+<ul>
+<li><p>根据实际代码与业务情况处理，如果内嵌事务注解取消，Spring也不会抛出<code>UnexpectedRollbackException</code>。但是方法实际上并没有完整执行，所以这样的解决思路很容易导致出现不完整的脏数据。</p></li>
+<li><p>手动控制是否回滚。如果不能接受内嵌事务挂掉的话，可以在catch块里加上<code>TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();</code>用于显式控制回滚。这样Spring就明白你自己要求回滚事务，而不是unexpected了。Spring也不会抛出<code>UnexpectedRollbackException</code>了。那么如果在上层事务中捕获到异常，真的就是不想回滚，即便上层事务发生了异常，也想要最终提交整个事务呢？如果有这样的需求的话，可以给事务管理器配置一个参数<code>setGlobalRollbackOnParticipationFailure(false);</code></p></li>
+<li><p>如果isGlobalRollbackOnParticipationFailure为false,则会让主事务决定回滚，如果当遇到exception加入事务失败时，调用者能继续在事务内决定是回滚还是继续。然而，要注意是那样做仅仅适用于在数据访问失败的情况下且只要所有操作事务能提交，这个方法也能解决，但显然影响到全局的事务属性，所以极力不推荐使用。</p></li>
+</ul>
+<pre><code><code>    public final void commit(TransactionStatus status) throws TransactionException {
+       if (status.isCompleted()) {
+          throw new IllegalTransactionStateException(
+                &quot;Transaction is already completed - do not call commit or rollback more than once per transaction&quot;);
+       }
+    
+       DefaultTransactionStatus defStatus = (DefaultTransactionStatus) status;
+       if (defStatus.isLocalRollbackOnly()) {
+          if (defStatus.isDebug()) {
+             logger.debug(&quot;Transactional code has requested rollback&quot;);
+          }
+          processRollback(defStatus, false);
+          return;
+       }
+    
+       if (!shouldCommitOnGlobalRollbackOnly() &amp;&amp; defStatus.isGlobalRollbackOnly()) {
+          if (defStatus.isDebug()) {
+             logger.debug(&quot;Global transaction is marked as rollback-only but transactional code requested commit&quot;);
+          }
+          processRollback(defStatus, true);
+          return;
+       }
+    
+       processCommit(defStatus);
+    }</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,459 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Redis设计原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Redis设计原理</center></div><div class='banquan'>原文出处:本文由博客园博主辣鸡小篮子提供。<br/>
+原文连接:https://www.cnblogs.com/funyoung/p/11378837.html</div><br>
+    <h1><span style="font-family: 'Microsoft YaHei';">1.简介</span></h1>
+<p>&nbsp;</p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis中的每个Key-Value在内存中都会被划分成DictEntry、RedisObject以及具体对象，其中DictEntry又分别包含指向Key和Value的指针（以RedisObject的形式）以及指向下一个DictEntry的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;<img src="./images/Redis设计原理0.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Key固定是字符串，因此使用字符串对象来进行表示，Value可以是字符串、列表、哈希、集合、有序集合对象中的任意一种。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis提供了五种对象，每种对象都需要使用RedisObject进行表示。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用redisObject结构来表示对象（存储对象的相关信息）</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> redisObject {
+    unsigned type;
+    unsigned encoding;
+    unsigned lru;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> refcount;
+    </span><span style="color: #0000ff;">void</span> *<span style="color: #000000;">ptr;
+}robj;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">type属性：存储对象的类型（String、List、Hash、Set、ZSet中的一种）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">encoding属性：存储对象使用的编码方式，不同的编码方式使用不同的数据结构进行存储。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">lru属性：存储对象最后一次被访问的时间。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">refcount属性：存储对象被引用的次数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">*ptr指针：指向对象的地址。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">使用type命令可以查看对象的类型。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">使用object encoding命令可以查看对象使用的编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">使用object idletime命令可以查看对象的空转时间（即多久没有被访问，并不会刷新当前RedisObject的lru属性）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">使用object refcount命令可以查看对象被引用的次数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>这些命令都是通过Key找到对应的Value再从Value对应的RedisObject中进行获取。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">2.字符串</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis没有直接使用C语言的字符串，而是自定义了一种字符串类型，以对象的形式存在（C语言的字符串只是单纯的字面量，不能够进行修改）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用sdshdr结构来表示字符串对象（SDS）</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';"><span style="color: #0000ff;">struct</span><span style="color: #000000;"> sdshdr {
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> len;
+    </span><span style="color: #0000ff;">int</span> <span style="color: #0000ff;">free</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">char</span><span style="color: #000000;"> buf[];
+};</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">len属性：字符串的长度。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">free属性：未使用的字节数量。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">buf数组：字符串的底层实现用于存储字符。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理1.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>buf数组中会有\0空字符，该空字符不会记录在len属性中。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';"><strong>SDS相比C语言的字符串</strong></span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">C语言中存储字符串的字节数组其长度总是N+1（最后一个是结束符），因此一旦对字符串进行追加则需要重新分配内存。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">为了避免C字符串的这种缺陷，SDS通过未使用的空间解除了字符串长度和底层数组长度之间的关系，在SDS中buf数组的长度不一定就是字符串长度+1，数组里面还可以包含未使用的字节。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">通过未使用的空间，SDS实现了<strong>空间预分配</strong>和<strong>惰性空间释放</strong>两种策略，从而减少由于字符串的修改导致内存重分配的次数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">空间预分配：用于优化SDS保存的字符串的增长操作，当需要对SDS保存的字符串进行增长操作时，程序除了会为SDS分配所必须的空间以外，还会为SDS分配额外的未使用空间。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">惰性空间释放：用于优化SDS保存的字符串的缩短操作，当需要对SDS保存的字符串进行缩短操作时，程序并不会立即使用内存重分配来回收缩短后多出来的字节，而是使用free属性将这些多出来的字节的数量记录出来，等待将来使用。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">3.字典</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis的字典使用散列表作为底层实现，同时字典也是Redis数据库和HashTable编码方式的底层实现。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理2.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用dictht结构来表示散列表</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> dictht {
+    dictEntry </span>**<span style="color: #000000;">table;
+    unsigned </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> size;
+    unsigned </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> sizemask;
+    unsigned </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> used;
+}dictht;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">table属性：散列表。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">size属性：散列表的大小。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">sizemask属性：用于计算索引值。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">used属性：散列表中节点的数量。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong><span style="color: #ff0000;">*</span></strong>Redis的散列表使用链地址法的方式解决散列冲突，最终就是指针数组的形式，数组中的每个元素都是一个指向DictEntry的指针。</span></p>
+<p><br /><span style="font-family: 'Microsoft YaHei';">Redis使用dictEntry结构来表示散列表中的节点</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> dictEntry {
+    </span><span style="color: #0000ff;">void</span> *<span style="color: #000000;">key;
+    union{
+        </span><span style="color: #0000ff;">void</span> *<span style="color: #000000;">val;
+        uint_tu64;
+        int64_ts64;
+    }v
+    </span><span style="color: #0000ff;">struct</span> dictEntry next*<span style="color: #000000;">;
+}dictEntry;    </span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">key属性：指向Key的指针（即RedisObject）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">value属性：可以是一个指向Value的指针(即RedisObject)、uint64_t整数、int64_t整数</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">next属性：指向下一个DictEntry的指针。</span></p>
+<p><br /><span style="font-family: 'Microsoft YaHei';">Redis使用dict结构来表示字典，每个字典包含两个dictht。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> dict{
+    dictType </span>*<span style="color: #000000;">type;
+    </span><span style="color: #0000ff;">void</span> *<span style="color: #000000;">privatedata;
+    dictht ht[</span><span style="color: #800080;">2</span><span style="color: #000000;">];
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> rehashidx;
+}dict;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">type属性：指向DictType的指针，每个DictType结构保存了一系列函数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">privatadata属性：传给特定函数的可选参数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">ht属性：长度为2的dictht数组，一般情况下只使用ht[0]散列表，而ht[1]散列表只会在对ht[0]散列表进行rehash时使用</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">rehashidx属性：记录了rehash目前的进度，如果目前没有进行rehash那么值为-1</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">DictType的定义</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> dictType{
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">哈希函数</span>
+    unsigned <span style="color: #0000ff;">int</span> (*hashFunction)(<span style="color: #0000ff;">const</span> <span style="color: #0000ff;">void</span> *<span style="color: #000000;">key);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">复制Key的函数</span>
+    <span style="color: #0000ff;">void</span> *(*keyDup)(<span style="color: #0000ff;">void</span> *privatedata, <span style="color: #0000ff;">const</span> <span style="color: #0000ff;">void</span> *<span style="color: #000000;">key);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">复制Value的函数</span>
+    <span style="color: #0000ff;">void</span> *(*valDup)(<span style="color: #0000ff;">void</span> *privatedata, <span style="color: #0000ff;">const</span> <span style="color: #0000ff;">void</span> *<span style="color: #000000;">obj);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">对比Key的函数</span>
+    <span style="color: #0000ff;">int</span> (*keyCompare)(<span style="color: #0000ff;">void</span> *privatdata, <span style="color: #0000ff;">const</span> <span style="color: #0000ff;">void</span> *key1 , <span style="color: #0000ff;">const</span> <span style="color: #0000ff;">void</span> *<span style="color: #000000;">key2);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">销毁Key的函数</span>
+    <span style="color: #0000ff;">void</span> (*keyDestructor)(<span style="color: #0000ff;">void</span> *privatedata, <span style="color: #0000ff;">void</span> *<span style="color: #000000;">key);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">销毁Value的函数</span>
+    <span style="color: #0000ff;">void</span> (*valDestructor)(<span style="color: #0000ff;">void</span> *privatedata, <span style="color: #0000ff;">void</span> *<span style="color: #000000;">obj);
+}dictType;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">3.1 在字典中进行查找、添加、更新、删除操作</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>在字典中进行查找</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">以客户端传递的Key作为关键字K，通过dict中的dictType的H(K)散列函数计算散列值，使用dictht[0]的sizemask属性和散列值计算索引，遍历索引对应的链表，判断是否存在Key相同的DictEntry，若存在则返回该DictEntry，否则返回NULL。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>在字典中进行添加和更新操作</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">以客户端传递的Key作为关键字K，通过dict中的dictType的H(K)散列函数计算散列值，使用dictht[0]的sizemask属性和散列值计算索引，遍历索引对应的链表，判断是否存在Key相同的DictEntry，若不存在Key相同的DictEntry，则创建代表Key的SDS对象和RedisObject以及代表Value的对象和RedisObject，然后创建一个DictEntry并分别指向Key和Value对应的RedisObject，最终将该DictEntry追加到链表的最后一个节点中，若存在Key相同的DictEntry，则判断当前的命令是否满足Value对应的类型，若满足则进行更新，否则报错。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>创建和更新操作是相对的，当不存在则创建否则进行更新。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>在字典中进行删除操作</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">以客户端传递的Key作为关键字K，通过dict中的dictType的H(K)散列函数计算散列值，使用dictht[0]的sizemask属性和散列值计算索引，遍历索引对应的链表，找到Key相同的DictEntry进行删除。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">3.2 散列表的扩容和缩容</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">由于散列表的负载因子需要维持在一个合理的范围内，因此当散列表中的元素过多时会进行扩容，过少时会进行缩容。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">一旦散列表的长度发生改变，那么就要进行rehash，即对原先散列表中的元素在新的散列表中重新进行hash。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis中的rehash是渐进式的，并不是一次性完成，因为要考虑性能问题，如果散列表中包含上百万个节点，那么庞大的计算量可能会导致Redis在一段时间内无法对外提供服务。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">在rehash进行期间，每次对字典执行查找、添加、更新、删除操作时，除了会执行指定的操作以外，还会顺带将ht[0]散列表在rehashidx索引上的所有节点rehash到ht[1]上，然后将rehashidx属性的值加1。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h3><span style="font-family: 'Microsoft YaHei';">渐进式Rehash的步骤</span></h3>
+<p><span style="font-family: 'Microsoft YaHei';">1.为字典的ht[1]散列表分配空间。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>若执行的是扩容操作，那么ht[1]的长度为第一个大于等于ht[0].used*2的2ⁿ。&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>若执行的是缩容操作，那么ht[1]的长度为第一个大于等于ht[0].used的2ⁿ。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">2.rehashidx属性设置为0，表示开始进行rehash。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">3.在rehash进行期间，每次对字典执行查找、添加、更新、删除操作时，除了会执行指定的操作以外，还会顺带将ht[0]散列表在rehashidx索引上的所有节点rehash到ht[1]上，然后将rehashidx属性的值加1。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">4.随着对字典不断的操作，最终在某个时间点上，ht[0]散列表中的所有dictEntry都会被rehash到ht[1]上，当rehash结束之后将rehashidx属性的值设为-1，表示rehash操作已完成。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>在进行渐进式rehash的过程中，字典会同时使用ht[0]和ht[1]两个散列表，因此字典的查找、更新、删除操作会在两个散列表中进行，如果在ht[0]计算得到的索引指向NULL则从ht[1]中进行匹配。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">4.Redis提供的编码方式</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis提供了八种编码方式，每种编码方式都有其特定的数据存储结构。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理3.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.1 INT编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理4.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">INT编码方式会将RedisObject中的*ptr指针直接改写成long prt，prt属性直接存储整数值。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.2 EMBSTR编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理5.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.3 ROW编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理6.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>EMBSTR和ROW编码方式在内存中都会创建一个RedisObject和SDS，区别在于EMBSTR编码方式中RedisObject和SDS共同使用同一块内存单元，Redis内存分配器只需要分配一次内存，而ROW编码方式中需要分别为RedisObject和SDS分配内存单元。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.4 ZIPLIST编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">压缩列表是Redis为了节约内存而开发的，它是一块顺序表（顺序存储结构，内存空间连续），一个压缩列表中可以包含多个entry节点，每个entry节点可以保存一个字节数组或者一个整数值。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理7.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">zlbytes：记录了压缩列表的大小，占4个字节。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">zltail：记录了压缩列表表尾节点距离起始位置的大小，占4个字节。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">zllen：记录了压缩列表中节点的个数，占2个字节。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">entry：压缩列表中的节点，大小由节点中保存的内容决定。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">zlend：压缩列表的结束标志，占1个字节。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果存在一个指针P指向压缩列表的起始位置，就可以根据P+zltail得到最后一个节点的地址。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理8.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.5 LINKEDLIST编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理9.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用listNode结构来表示链表中的节点。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> listNode {
+    </span><span style="color: #0000ff;">struct</span> listNode *<span style="color: #000000;">prev;
+    </span><span style="color: #0000ff;">struct</span> listNode *<span style="color: #000000;">next;
+    </span><span style="color: #0000ff;">void</span> *<span style="color: #000000;">value;
+}listNode;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">每个listNode节点分别包含指向前驱和后继节点的指针以及指向元素的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用list结构来持有listNode</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> list {
+    listNode </span>*<span style="color: #000000;">head;
+    listNode </span>*<span style="color: #000000;">tail;
+    unsigned </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> len;
+    </span><span style="color: #0000ff;">void</span> dup(<span style="color: #0000ff;">void</span> *ptr); <span style="color: #008000;">//</span><span style="color: #008000;">节点复制函数</span>
+    <span style="color: #0000ff;">void</span> <span style="color: #0000ff;">free</span>(<span style="color: #0000ff;">void</span> *ptr); <span style="color: #008000;">//</span><span style="color: #008000;">节点值释放函数</span>
+    <span style="color: #0000ff;">int</span> match(<span style="color: #0000ff;">void</span> *ptr , <span style="color: #0000ff;">void</span> *key); <span style="color: #008000;">//</span><span style="color: #008000;">节点值比对函数</span>
+}list;</span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">head属性：指向表头节点的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">tail属性：指向表尾节点的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">len属性：存储链表中节点的个数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.6 INTSET编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理10.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用intset结构来表示整数集合。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> inset {
+    uint32_t encoding;
+    uint32_t length;
+    int8_t contents[];
+}intset;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">encoding属性：contents数组的类型，支持INTESET_ENC_INT16、INTESET_ENC_INT32、INTESET_ENC_INT64。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">length属性：存储整数集合中元素的个数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">contents数组：整数集合的底层实现，集合中的每个元素在数组中都会按照值从小到大进行排序同时保证元素不会重复。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h3><span style="font-family: 'Microsoft YaHei';">Contents升级</span></h3>
+<p><span style="font-family: 'Microsoft YaHei';">当往数组中添加一个比当前数组类型还要大的元素时，将要进行升级。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">1.根据新元素的类型对数组进行扩容( (length + 1) * 新类型大小）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理11.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">2.将数组中现有的元素都转换成与新元素相同的类型，并将转换后的元素移动到正确的位置上。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理12.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">3.将新元素添加到数组中。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理13.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">4.修改intset中的encoding属性为新的类型。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h3><span style="font-family: 'Microsoft YaHei';">Contents降级</span></h3>
+<p><span style="font-family: 'Microsoft YaHei';">contents数组不支持降级，一旦为contents数组进行了升级那么就要一直保持升级后的状态。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.7 HT编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理14.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">4.8 SKIPLIST编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理15.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">通过在每个节点中维持多个指向其他节点的指针，从而达到快速访问节点的目的。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用zskiplistNode结构来表示跳跃表中的节点.</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> zskiplistNode {
+    </span><span style="color: #0000ff;">struct</span><span style="color: #000000;"> zskiplistLevel {
+        </span><span style="color: #0000ff;">struct</span> zskiplistNode *<span style="color: #000000;">forward;
+        unsigned </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> span;
+        }level[];
+    </span><span style="color: #0000ff;">struct</span> zskiplistNode *<span style="color: #000000;">backward;
+    </span><span style="color: #0000ff;">double</span><span style="color: #000000;"> score;
+    robj </span>*<span style="color: #000000;">obj;
+}zskiplistNode        </span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">level[]数组：用于存储zskiplistLevel，每个zskiplistLevel都包含forward和span属性。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">forward属性为指向表尾方向的其他节点，span属性则记录了forward指针所指向的节点距离当前节点的跨度（forward指针遵循同层连接的原则）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">backward属性：指向上一个节点的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">score属性：存储元素的分数。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">obj属性：指向元素的指针(redisObject-&gt;sds)</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">每次创建一个新的跳跃表节点时，会随机生成一个介于1到32之间的值作为level数组的大小。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis使用zskiplist结构来持有zskiplistNode</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: 'Microsoft YaHei';">typedef <span style="color: #0000ff;">struct</span><span style="color: #000000;"> zskiplist {
+    </span><span style="color: #0000ff;">struct</span> zskiplistNode *header,*<span style="color: #000000;">tail;
+    unsigned </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> length;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> level;
+}zskiplist;</span></span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">header属性：指向表头节点的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">tail属性：指向表尾节点的指针。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">length属性：存储跳跃表中节点的个数，不包括表头节点。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">level属性：跳跃表中节点level的最大值，不包括表头节点。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>跳跃表中存在表头节点，表头节点一共有32个level，即数组的大小为32。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h3><span style="font-family: 'Microsoft YaHei';">遍历zskiplist的流程</span></h3>
+<p><span style="font-family: 'Microsoft YaHei';">1.通过zskiplist访问跳跃表中的头节点。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">2.从下一个节点最高的level开始往下遍历，若下一个节点的最高level超过当前节点的最高level，则从当前节点最高的level开始往下遍历。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">3.当不存在下一个节点时，遍历结束。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">5.Redis对象</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">Redis各个对象支持的编码方式</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理16.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">5.1 字符串对象</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">字符串对象支持INT、EMBSTR、ROW三种编码方式</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>INT编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果字符串的值是整数，并且可以使用long来进行表示，那么Redis将会使用INT编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理17.png" alt="" /><br /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">INT编码方式会将RedisObject中的*ptr指针直接改写成long prt，prt属性直接存储整数值。</span></p>
+<p><br /><span style="font-family: 'Microsoft YaHei';"><strong>EMBSTR编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果字符串的值是字符，并且其长度小于32个字节，那么Redis将会使用EMBSTR编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理18.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>ROW编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果字符串的值是字符，并且其长度大于32个字节，那么Redis将会使用ROW编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理19.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>EMBSTR和ROW编码方式在内存中都会创建一个RedisObject和SDS，区别在于EMBSTR编码方式中RedisObject和SDS共同使用同一块内存单元，Redis内存分配器只需要分配一次内存，而ROW编码方式中需要分别为RedisObject和SDS分配内存单元。</span></p>
+<p><br /><span style="font-family: 'Microsoft YaHei';"><strong>编码转换</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果字符串的值不再是整数或者用long无法进行表示，那么INT编码方式将会转换成ROW编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果字符串的值其长度大于32个字节，那么EMBSTR编码方式将会转换成ROW编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>INT编码方式和EMBSTR编码方式在满足条件的情况下，将会转换成ROW编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>INT编码方式不能转换成embstr编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h3><span style="font-family: 'Microsoft YaHei';">字符串共享对象</span></h3>
+<p><span style="font-family: 'Microsoft YaHei';">Redis在启动时会初始化值为0~9999的SDS作为共享对象，当set一个Key其Value是在0~9999范围时，会直接使用该共享对象，DictEntry中的Value指针直接指向该共享SDS对应的RedisObject。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">在集群模式中，Redis的每个节点启动时都会初始化值为0~9999的SDS作为共享对象。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">在RedisV4.0以上，使用Object refcount命令不再返回共享对象实际被引用的次数，而是直接返回Integer.MAX_VALUE。</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理20.png" alt="" /></span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">5.2 列表对象</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">列表对象支持ZIPLIST、LINKEDLIST两种编码方式</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>ZIPLIST编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果列表对象保存的所有元素的长度都小于64个字节同时元素的数量小于512个，那么Redis将会使用ZIPLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理21.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>LINKEDLIST编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果列表对象保存的元素的长度大于64个字节或元素的数量大于512个，那么Redis将会使用LINKEDLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理22.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>编码转换</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果列表对象保存的元素的长度大于64个字节或元素的数量大于512个，那么Redis将会使用LINKEDLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">可以通过list-max-ziplist-value和list-max-ziplist-entries参数调整列表对象ZIPLIST编码方式所允许保存的元素的最大值以及最多可以保存元素的数量。</span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2><span style="font-family: 'Microsoft YaHei';">5.3 哈希对象</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">哈希对象支持ZIPLIST和HT两种编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>ZIPLIST编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果哈希对象保存的所有键值对的键和值的字符串长度都小于64个字节同时键值对的数量小于512个，那么Redis将会使用ZIPLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理23.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>HT编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果哈希对象保存的键值对的键或值的字符串长度大于64个字节或键值对的数量大于512个，那么Redis将会使用HASHTABLE编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理24.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>编码转换</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果哈希对象保存的键值对的键或值的字符串长度大于64个字节或键值对的数量大于512个，那么Redis将会使用HASHTABLE编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">可以通过hash-max-ziplist-value和hash-max-ziplist-entries参数调整哈希对象ZIPLIST编码方式所允许保存的元素的最大值以及最多可以保存元素的数量。</span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2><span style="font-family: 'Microsoft YaHei';">5.4 集合对象</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">集合对象支持INTSET和HT两种编码方式</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>INTSET编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果集合对象保存的所有元素都是整数同时元素的数量不超过512个，那么Redis将会使用INTSET编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理25.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>HT编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果集合对象保存的元素并不是整数或元素的数量超过512个，那么Redis将会使用HASHTABLE编码方式。</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理26.png" alt="" /></span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>编码转换</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果集合对象保存的元素并不是整数或元素的数量超过512个，那么Redis将会使用HASHTABLE编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">可以通过set-max-intset-entries参数调整集合对象INTSET编码方式最多可以保存元素的数量。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p>&nbsp;</p>
+<h2><span style="font-family: 'Microsoft YaHei';">5.5 有序集合对象</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">有序集合对象支持ZIPLIST和SKIPLIST两种编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>ZIPLIST编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果有序集合对象保存的所有元素的字符串长度都小于64个字节同时元素的数量不超过128个，那么Redis将会使用ZIPLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理27.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>SKIPLIST编码方式</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果有序集合对象保存的元素的字符串长度大于64个字节或元素的数量超过128个，那么Redis将会使用SKIPLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理28.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>编码转换</strong></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果有序集合对象保存的元素的字符串长度大于64个字节或元素的数量超过128个，那么Redis将会使用SKIPLIST编码方式。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">可以通过zset-max-ziplist-value和zset-max-ziplist-entries参数调整有序集合对象ZIPLIST编码方式所允许保存的元素的最大值以及最多可以保存元素的数量。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">6.Redis内存分配器</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">Redis提供了jemalloc、libc、tcmalloc内存分配器,默认使用jemalloc，需要在编译时指定。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">Jemalloc内存分配器</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">jemalloc内存分配器将内存划分为小、大、巨大三个范围，每个范围又包含多个大小不同的内存单元。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理29.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">DictEntry、RedisObject以及对象在初始化时，Redis内存分配器都分配一个合适的内存大小。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">如果频繁修改Value，且Value的值相差很大，那么Redis内存分配器需要重新为对象分配内存，然后释放掉对象之前所占用的内存（编码转换或者数组越界）</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">7.Redis内存监控</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">可以使用info memory命令查看Redis内存的使用情况</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理30.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">used_memory：redis有效数据占用的内存大小(包括使用的虚拟内存)</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">uesd_memory_rss：redis有效数据占用的内存大小(不包括使用的虚拟内存)、redis进程所占用的内存大小、内存碎片(与TOP命令查看的内存一直)</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">mem_fragmentation_ratio(内存碎片率) = used_memory_rss / used_memory</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">mem_allocator：redis内存分配器，可选jemalloc(默认)、libc、tcmalloc</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><span style="color: #ff0000;"><strong>*</strong></span>max_memory配置的是Redis有效数据最大可使用的内存大小，不包括内存碎片,因此Redis实际占用的内存大小最终一定会比max_memory要大。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">内存碎片率</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">1.当内存碎片率 &lt; 1时，表示redis正在使用虚拟内存。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">2.当内存碎片率严重 &gt; 1，表示redis存在大量的内存碎片。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong><span style="color: #ff0000;">*</span></strong>内存碎片率在1~1.1之间是比较健康的状态。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>有可能产生内存碎片的操作</strong>：频繁更新Value且Value的值相差很大(重新为对象分配内存,释放之前的内存)、Redis的内存淘汰机制。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';"><strong>产生内存碎片的根本原因</strong>：Redis释放的内存无法被操作系统所回收。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h2><span style="font-family: 'Microsoft YaHei';">解决内存碎片的方法</span></h2>
+<p><span style="font-family: 'Microsoft YaHei';">1.重启Redis服务，会重新读取RDB文件进行数据的恢复，重新为对象分配内存。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">2.Redis4.0提供了清除内存碎片的功能</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000; font-family: 'Microsoft YaHei';">#运行期自动清除
+activedefrag yes
+
+#手动执行命令清除
+memory purge</span></code></pre>
+
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<h1><span style="font-family: 'Microsoft YaHei';">8.Redis监视器</span></h1>
+<p><span style="font-family: 'Microsoft YaHei';"><img src="./images/Redis设计原理31.png" alt="" /></span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">客户端向服务器发送命令请求时，服务器除了会执行相应的命令以外，还会将关于这条命令请求的信息转发给所有的监视器。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">通过执行monitor命令，客户端可以将自己变成一个监视器,实时接收服务器当前正在执行的命令请求的相关信息。</span></p>
+<p><span style="font-family: 'Microsoft YaHei';">&nbsp;</span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,164 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修对url路径中的参数进行加密--Java' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>对url路径中的参数进行加密--Java</center></div><div class='banquan'>原文出处:本文由博客园博主小胡Hugh提供。<br/>
+原文连接:https://www.cnblogs.com/hu-hugh/p/duiurl-lu-jing-zhong-de-can-shu-jin-xing-jia-mi.html</div><br>
+    <p>需求：<br />
+后台对一些比较敏感的参数进行数据加密，然后在传送到前端。当前端跳转到后台时，再由后台对其进行解密。</p>
+<p>参考 <a href="https://blog.csdn.net/qq_39135287/article/details/82019780">针对url参数的加密解密算法（java版）</a><br />
+修改：对中间的js页面加密代码改写为java</p>
+<pre><code><code>package com.example.utils;
+
+import java.util.Random;
+import java.util.regex.Pattern;
+/*
+ *功能：对url加密算法（只针对window.location.href跳转，不针对post表单提交及ajax方式）
+ *算法：对于暴露在浏览器地址栏中的属性值进行加密，如一个属性为agentID=1，
+ *     若对1加密后为k230101io934jksd32r4，说明如下：
+ *     前三位为随机数；
+ *     第四到第五位为要加密字符转换成16进制的位数，
+ *       如：要加密字符为15转换成16进制为f，位数为1，则第四、五位为01；
+ *     第六位标识要加密字符为何种字符，0：纯数字，1：字符
+ *       若是字符和数字的混合，则不加密；
+ *     从第七位开始为16进制转换后的字符（字母和非数字先转换成asc码）；
+ *     若加密后的字符总位数不足20位，则用随机数补齐到20位，若超出20位，则不加随机数。
+ *     即加密后总位数至少为20位。
+ */
+public class EncryptionUtils {
+    
+    private static String encode16(String str) {
+        str = str.toLowerCase();
+        if (!Pattern.matches(&quot;^[-\\+]?\\d+$&quot;, str)){//非整数字符，对每一个字符都转换成16进制，然后拼接
+            String[] s=str.split(&quot;&quot;);
+            String temp=&quot;&quot;;
+            for(int i=0;i&lt;s.length;i++){
+                s[i]=stringToUnicode(s[i]);//先转换成Unicode编码
+                temp=temp+s[i];
+            }
+            return temp+&quot;:&quot;+1;//1代表字符
+        }else{//数字直接转换成16进制
+            str=Integer.toHexString(Integer.valueOf(str));
+//            System.out.println(&quot;aa----&gt;&quot;+str);
+            return str+&quot;:&quot;+0;//0代表纯数字
+        }
+    }
+
+    /**
+     * 字符串转unicode
+     *
+     * @param str
+     * @return
+     */
+    private static String stringToUnicode(String str) {
+        StringBuffer sb = new StringBuffer();
+        char[] c = str.toCharArray();
+        for (int i = 0; i &lt; c.length; i++) {
+            sb.append(Integer.toHexString(c[i]));
+        }
+        return sb.toString();
+    }
+
+    private static String produceRandom(int n){
+        String num=&quot;&quot;;
+        Random random = new Random();
+        for(int i=0;i&lt;n;i++) {
+            num += random.nextInt(10);
+        }
+        return num;
+    }
+
+    //主加密函数
+    public static String encodeValue(String str){
+        String encryptStr=&quot;&quot;;//最终返回的加密后的字符串
+        encryptStr+=produceRandom(3);//产生3位随机数
+        String encode16 = encode16(str);
+//        System.out.println(&quot;----encode16-----&gt;&quot;+encode16);
+        String[] temp = encode16.split(&quot;:&quot;);//对要加密的字符转换成16进制
+        int numLength=temp[0].length();//转换后的字符长度
+        String numLengthStr=Integer.toHexString(numLength);//字符长度换算成16进制
+        if(numLengthStr.length()==1){//如果是1，补一个0
+            numLengthStr=&quot;0&quot;+numLengthStr;
+        }else if(numLengthStr.length()&gt;2){//转换后的16进制字符长度如果大于2位数，则返回，不支持
+            return &quot;&quot;;
+        }
+        encryptStr+=numLengthStr;
+//        System.out.println(&quot;encryptStr-----&gt;&quot;+encryptStr);
+
+        if(temp[1].equals(&quot;0&quot;)){
+            encryptStr+=&quot;0&quot;;
+        }else if(temp[1].equals(&quot;1&quot;)){
+            encryptStr+=&quot;1&quot;;
+        }
+//        System.out.println(&quot;encryptStr-----&gt;&quot;+encryptStr);
+        encryptStr+=temp[0];
+//        System.out.println(&quot;encryptStr-----&gt;&quot;+encryptStr);
+
+        if(encryptStr.length()&lt;20){//如果小于20位，补上随机数
+            String ran=produceRandom(20-encryptStr.length());
+//            System.out.println(&quot;补充的数字为&quot;+ran);
+            encryptStr+=ran;
+        }
+        return encryptStr;
+    }
+
+/*
+解密为加密的逆过程
+*/
+    public static String decodeValue(String value){
+        if(value.equals(&quot;&quot;)){
+            throw new NullPointerException();
+        }
+        if(value.length()&lt;20){
+            throw new NullPointerException();
+        }
+        String charLength=value.substring(3, 5);//加密后的字符有多少位
+        int charLen=Integer.parseInt(charLength,16);//转换成10进制
+        int type=Integer.parseInt(value.substring(5, 6));//加密字符的类型（0：数字，1：字符串）
+        String valueEnc=value.substring(6, 6+charLen);//16进制字符串
+        if(type==0){
+            int trueValue=Integer.parseInt(valueEnc,16);
+            return String.valueOf(trueValue);
+        }else{
+            StringBuilder sb=new StringBuilder();
+            String[] valueEncArray=valueEnc.split(&quot;&quot;);
+            for(int i=0;i&lt;valueEncArray.length-1;i+=2){
+                int value10=Integer.parseInt(valueEncArray[i]+valueEncArray[i+1],16);//转换成10进制的asc码
+                sb.append((char)value10);//asc码转换成字符
+            }
+            return sb.toString();
+        }
+    }
+
+    public static void main(String[] args) {
+        String str=&quot;123&quot;;
+        System.out.println(Pattern.matches(&quot;^[-\\+]?\\d+$&quot;, str));
+        String s = encodeValue(str);
+        System.out.println(&quot;加密结果------&gt;&quot;+s);
+
+        String decodeValue = decodeValue(s);
+        System.out.println(&quot;解密结果------&gt;&quot;+decodeValue);
+
+    }
+}
+</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,389 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot之全局处理统一返回' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot之全局处理统一返回</center></div><div class='banquan'>原文出处:本文由博客园博主Purgeyao提供。<br/>
+原文连接:https://www.cnblogs.com/Purgeyao/p/11599810.html</div><br>
+    <h1 id="springboot之全局处理统一返回">springboot之全局处理统一返回</h1>
+<h2 id="简介">简介</h2>
+<p>在REST风格的开发中，避免通常会告知前台返回是否成功以及状态码等信息。这里我们通常返回的时候做一次<code>util</code>的包装处理工作，如：<code>Result</code>类似的类，里面包含<code>succ</code>、<code>code</code>、<code>msg</code>、<code>data</code>等字段。</p>
+<p>接口调用返回类似如下:</p>
+<pre><code><code>{
+  &quot;succ&quot;: false,        // 是否成功
+  &quot;ts&quot;: 1566467628851,  // 时间戳
+  &quot;data&quot;: null,         // 数据
+  &quot;code&quot;: &quot;CLOUD800&quot;,   // 错误类型
+  &quot;msg&quot;: &quot;业务异常&quot;,    // 错误描述
+  &quot;fail&quot;: true
+}</code></code></pre>
+<p>当然在每个接口里返回要通过<code>Result</code>的工具类将这些信息给封装一下，这样导致业务和技术类的代码耦合在一起。</p>
+<p>接口调用处理类似如下:</p>
+<pre><code><code>  @GetMapping(&quot;hello&quot;)
+  public Result list(){
+    return Result.ofSuccess(&quot;hello&quot;);
+  }</code></code></pre>
+<p>结果:</p>
+<pre><code><code>{
+  &quot;succ&quot;: ture,         // 是否成功
+  &quot;ts&quot;: 1566467628851,  // 时间戳
+  &quot;data&quot;: &quot;hello&quot;,      // 数据
+  &quot;code&quot;: null,         // 错误类型
+  &quot;msg&quot;: null,          // 错误描述
+  &quot;fail&quot;: true
+}</code></code></pre>
+<p>我们将这些操抽出一个公共<code>starter</code>包，各个服务依赖即可，做一层统一拦截处理的工作，进行技术解耦。</p>
+<h2 id="配置">配置</h2>
+<blockquote>
+<p>unified-dispose-springboot-starter</p>
+</blockquote>
+<p>这个模块里包含异常处理以及全局返回封装等功能，下面。</p>
+<p>完整目录结构如下：</p>
+<pre><code><code>├── pom.xml
+├── src
+│   ├── main
+│   │   ├── java
+│   │   │   └── com
+│   │   │       └── purgetiem
+│   │   │           └── starter
+│   │   │               └── dispose
+│   │   │                   ├── GlobalDefaultConfiguration.java
+│   │   │                   ├── GlobalDefaultProperties.java
+│   │   │                   ├── Interceptors.java
+│   │   │                   ├── Result.java
+│   │   │                   ├── advice
+│   │   │                   │   └── CommonResponseDataAdvice.java
+│   │   │                   ├── annotation
+│   │   │                   │   ├── EnableGlobalDispose.java
+│   │   │                   │   └── IgnorReponseAdvice.java
+│   │   │                   └── exception
+│   │   │                       ├── GlobalDefaultExceptionHandler.java
+│   │   │                       ├── category
+│   │   │                       │   └── BusinessException.java
+│   │   │                       └── error
+│   │   │                           ├── CommonErrorCode.java
+│   │   │                           └── details
+│   │   │                               └── BusinessErrorCode.java
+│   │   └── resources
+│   │       ├── META-INF
+│   │       │   └── spring.factories
+│   │       └── dispose.properties
+│   └── test
+│       └── java</code></code></pre>
+<hr />
+<blockquote>
+<p>统一返回处理</p>
+</blockquote>
+<p>按照一般的模式，我们都需要创建一个可以进行处理包装的工具类以及一个返回对象。</p>
+<p><strong>Result(返回类):</strong></p>
+<p>创建<code>Result&lt;T&gt;</code> <code>T</code>为<code>data</code>的数据类型，这个类包含了前端常用的字段，还有一些常用的静态初始化<code>Result</code>对象的方法。</p>
+<pre><code><code>/**
+ * 返回统一数据结构
+ *
+ * @author purgeyao
+ * @since 1.0
+ */
+@Data
+@ToString
+@NoArgsConstructor
+@AllArgsConstructor
+public class Result&lt;T&gt; implements Serializable {
+
+  /**
+   * 是否成功
+   */
+  private Boolean succ;
+
+  /**
+   * 服务器当前时间戳
+   */
+  private Long ts = System.currentTimeMillis();
+
+  /**
+   * 成功数据
+   */
+  private T data;
+
+  /**
+   * 错误码
+   */
+  private String code;
+
+  /**
+   * 错误描述
+   */
+  private String msg;
+
+  public static Result ofSuccess() {
+    Result result = new Result();
+    result.succ = true;
+    return result;
+  }
+
+  public static Result ofSuccess(Object data) {
+    Result result = new Result();
+    result.succ = true;
+    result.setData(data);
+    return result;
+  }
+
+  public static Result ofFail(String code, String msg) {
+    Result result = new Result();
+    result.succ = false;
+    result.code = code;
+    result.msg = msg;
+    return result;
+  }
+
+  public static Result ofFail(String code, String msg, Object data) {
+    Result result = new Result();
+    result.succ = false;
+    result.code = code;
+    result.msg = msg;
+    result.setData(data);
+    return result;
+  }
+
+  public static Result ofFail(CommonErrorCode resultEnum) {
+    Result result = new Result();
+    result.succ = false;
+    result.code = resultEnum.getCode();
+    result.msg = resultEnum.getMessage();
+    return result;
+  }
+
+  /**
+   * 获取 json
+   */
+  public String buildResultJson(){
+    JSONObject jsonObject = new JSONObject();
+    jsonObject.put(&quot;succ&quot;, this.succ);
+    jsonObject.put(&quot;code&quot;, this.code);
+    jsonObject.put(&quot;ts&quot;, this.ts);
+    jsonObject.put(&quot;msg&quot;, this.msg);
+    jsonObject.put(&quot;data&quot;, this.data);
+    return JSON.toJSONString(jsonObject, SerializerFeature.DisableCircularReferenceDetect);
+  }
+}</code></code></pre>
+<p>这样已经满足一般返回处理的需求了，在接口可以这样使用：</p>
+<pre><code><code>  @GetMapping(&quot;hello&quot;)
+  public Result list(){
+    return Result.ofSuccess(&quot;hello&quot;);
+  }</code></code></pre>
+<p>当然这样是耦合的使用，每次都需要调用<code>Result</code>里的包装方法。</p>
+<hr />
+<blockquote>
+<p><code>ResponseBodyAdvice</code> 返回统一拦截处理</p>
+</blockquote>
+<p><code>ResponseBodyAdvice</code>在 spring 4.1 新加入的一个接口，在消息体被<code>HttpMessageConverter</code>写入之前允许<code>Controller</code> 中 <code>@ResponseBody</code>修饰的方法或<code>ResponseEntity</code>调整响应中的内容，比如做一些返回处理。</p>
+<p><strong><code>ResponseBodyAdvice</code>接口里一共包含了两个方法</strong></p>
+<ul>
+<li><p><code>supports</code>:该组件是否支持给定的控制器方法返回类型和选择的{@code HttpMessageConverter}类型</p></li>
+<li><p><code>beforeBodyWrite</code>:在选择{@code HttpMessageConverter}之后调用，在调用其写方法之前调用。</p></li>
+</ul>
+<p><strong>那么我们就可以在这两个方法做一些手脚。</strong></p>
+<ul>
+<li><p><code>supports</code>用于判断是否需要做处理。</p></li>
+<li><p><code>beforeBodyWrite</code>用于做返回处理。</p></li>
+</ul>
+<p><code>CommonResponseDataAdvice</code>类实现<code>ResponseBodyAdvice</code>两个方法。</p>
+<p><code>filter(MethodParameter methodParameter)</code> 私有方法里进行判断是否要进行拦截统一返回处理。</p>
+<p><strong>如:</strong></p>
+<ul>
+<li>添加自定义注解<code>@IgnorReponseAdvice</code>忽略拦截。</li>
+<li>判断某些类不进行拦截.</li>
+<li>判断某些包下所有类不进行拦截。如<code>swagger</code>的<code>springfox.documentation</code>包下的接口忽略拦截等。</li>
+</ul>
+<p><strong>filter方法:</strong><br />
+判断为false就不需要进行拦截处理。</p>
+<pre><code><code>  private Boolean filter(MethodParameter methodParameter) {
+    Class&lt;?&gt; declaringClass = methodParameter.getDeclaringClass();
+    // 检查过滤包路径
+    long count = globalDefaultProperties.getAdviceFilterPackage().stream()
+        .filter(l -&gt; declaringClass.getName().contains(l)).count();
+    if (count &gt; 0) {
+      return false;
+    }
+    // 检查&lt;类&gt;过滤列表
+    if (globalDefaultProperties.getAdviceFilterClass().contains(declaringClass.getName())) {
+      return false;
+    }
+    // 检查注解是否存在
+    if (methodParameter.getDeclaringClass().isAnnotationPresent(IgnorReponseAdvice.class)) {
+      return false;
+    }
+    if (methodParameter.getMethod().isAnnotationPresent(IgnorReponseAdvice.class)) {
+      return false;
+    }
+    return true;
+  }</code></code></pre>
+<p><strong>CommonResponseDataAdvice</strong>类:</p>
+<p>最核心的就在<code>beforeBodyWrite</code>方法处理里。</p>
+<ol>
+<li>判断<code>Object o</code>是否为<code>null</code>，为<code>null</code>构建<code>Result</code>对象进行返回。</li>
+<li>判断<code>Object o</code>是否是<code>Result</code>子类或其本身，该情况下，可能是接口返回时创建了<code>Result</code>,为了避免再次封装一次，判断是<code>Result</code>子类或其本身就返回<code>Object o</code>本身。</li>
+<li>判断<code>Object o</code>是否是为<code>String</code>,在测试的过程中发现<code>String</code>的特殊情况，在这里做了一次判断操作，如果为<code>String</code>就进行<code>JSON.toJSON(Result.ofSuccess(o)).toString()</code>序列号操作。</li>
+<li>其他情况默认返回<code>Result.ofSuccess(o)</code>进行包装处理。</li>
+</ol>
+<pre><code><code>/**
+ * {@link IgnorReponseAdvice} 处理解析 {@link ResponseBodyAdvice} 统一返回包装器
+ *
+ * @author purgeyao
+ * @since 1.0
+ */
+@RestControllerAdvice
+public class CommonResponseDataAdvice implements ResponseBodyAdvice&lt;Object&gt; {
+
+  private GlobalDefaultProperties globalDefaultProperties;
+
+  public CommonResponseDataAdvice(GlobalDefaultProperties globalDefaultProperties) {
+    this.globalDefaultProperties = globalDefaultProperties;
+  }
+
+  @Override
+  @SuppressWarnings(&quot;all&quot;)
+  public boolean supports(MethodParameter methodParameter,
+      Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; aClass) {
+    return filter(methodParameter);
+  }
+
+  @Nullable
+  @Override
+  @SuppressWarnings(&quot;all&quot;)
+  public Object beforeBodyWrite(Object o, MethodParameter methodParameter, MediaType mediaType,
+      Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; aClass, ServerHttpRequest serverHttpRequest,
+      ServerHttpResponse serverHttpResponse) {
+
+    // o is null -&gt; return response
+    if (o == null) {
+      return Result.ofSuccess();
+    }
+    // o is instanceof ConmmonResponse -&gt; return o
+    if (o instanceof Result) {
+      return (Result&lt;Object&gt;) o;
+    }
+    // string 特殊处理
+    if (o instanceof String) {
+      return JSON.toJSON(Result.ofSuccess(o)).toString();
+    }
+    return Result.ofSuccess(o);
+  }
+
+  private Boolean filter(MethodParameter methodParameter) {
+    ···略
+  }
+
+}</code></code></pre>
+<p>这样基本完成了核心的处理工作。当然还少了上文提到的<code>@IgnorReponseAdvice</code>注解。</p>
+<p><strong>@IgnorReponseAdvice</strong>:<br />
+比较简单点，只作为一个标识的作用。</p>
+<pre><code><code>/**
+ * 统一返回包装标识注解
+ *
+ * @author purgeyao
+ * @since 1.0
+ */
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface IgnorReponseAdvice {
+
+}</code></code></pre>
+<blockquote>
+<p>加入spring容器</p>
+</blockquote>
+<p>最后将<code>GlobalDefaultExceptionHandler</code>以<code>bean</code>的方式注入<code>spring</code>容器。</p>
+<pre><code><code>@Configuration
+@EnableConfigurationProperties(GlobalDefaultProperties.class)
+@PropertySource(value = &quot;classpath:dispose.properties&quot;, encoding = &quot;UTF-8&quot;)
+public class GlobalDefaultConfiguration {
+
+  ···略
+  
+  @Bean
+  public CommonResponseDataAdvice commonResponseDataAdvice(GlobalDefaultProperties globalDefaultProperties){
+    return new CommonResponseDataAdvice(globalDefaultProperties);
+  }
+
+}</code></code></pre>
+<p>将<code>GlobalDefaultConfiguration</code>在<code>resources/META-INF/spring.factories</code>文件下加载。</p>
+<pre><code><code>org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.purgetime.starter.dispose.GlobalDefaultConfiguration</code></code></pre>
+<p>不过我们这次使用注解方式开启。其他项目依赖包后，需要添加<code>@EnableGlobalDispose</code>才可以将全局拦截的特性开启。</p>
+<p>将刚刚创建的<code>spring.factories</code>注释掉，创建<code>EnableGlobalDispose</code>注解。</p>
+<pre><code><code>@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+@Import(GlobalDefaultConfiguration.class)
+public @interface EnableGlobalDispose {
+
+}</code></code></pre>
+<p>使用<code>@Import</code>将<code>GlobalDefaultConfiguration</code>导入即可。</p>
+<blockquote>
+<p>使用</p>
+</blockquote>
+<p>添加依赖</p>
+<pre><code><code>&lt;dependency&gt;
+  &lt;groupId&gt;com.purgeteam&lt;/groupId&gt;
+  &lt;artifactId&gt;unified-dispose-deepblueai-starter&lt;/artifactId&gt;
+  &lt;version&gt;0.1.1.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>启动类开启<code>@EnableGlobalDispose</code>注解即可。</p>
+<blockquote>
+<ol>
+<li>业务使用</li>
+</ol>
+</blockquote>
+<p>接口：</p>
+<pre class="java"><code>@GetMapping(&quot;test&quot;)
+public String test(){
+  return &quot;test&quot;;
+}</code></code></pre>
+<p>返回</p>
+<pre class="json"><code>{
+  &quot;succ&quot;: true,             // 是否成功
+  &quot;ts&quot;: 1566386951005,      // 时间戳
+  &quot;data&quot;: &quot;test&quot;,           // 数据
+  &quot;code&quot;: null,             // 错误类型
+  &quot;msg&quot;: null,              // 错误描述
+  &quot;fail&quot;: false             
+}</code></code></pre>
+<blockquote>
+<ol>
+<li>忽略封装注解:@IgnorReponseAdvice</li>
+</ol>
+</blockquote>
+<p><code>@IgnorReponseAdvice</code>允许范围为：类 + 方法，标识在类上这个类下的说有方法的返回都将忽略返回封装。</p>
+<p>接口：</p>
+<pre class="java"><code>@IgnorReponseAdvice // 忽略数据包装 可添加到类、方法上
+@GetMapping(&quot;test&quot;)
+public String test(){
+  return &quot;test&quot;;
+}</code></code></pre>
+<p>返回 <code>test</code></p>
+<h2 id="总结">总结</h2>
+<p>项目里很多重复的code，我们可以通过一定的方式去简化，以达到一定目的减少开发量。</p>
+<blockquote>
+<p>示例代码地址:<a href="https://github.com/purgeteam/unified-dispose-springboot">unified-dispose-springboot</a></p>
+</blockquote>
+<blockquote>
+<p>作者GitHub:<br />
+<a href="https://github.com/purgeyao">Purgeyao</a> 欢迎关注</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,334 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修EurekaClient自动装配及启动流程解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>EurekaClient自动装配及启动流程解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11689212.html</div><br>
+    <blockquote>
+<p>在<a href="https://mp.weixin.qq.com/s/6R1tWi5W_B6FiVpkIonnaw">上篇文章</a>中,我们简单介绍了EurekaServer自动装配及启动流程解析，本篇文章则继续研究EurekaClient的相关代码</p>
+</blockquote>
+<p>老规矩，先看<code>spring.factories</code>文件，其中引入了一个配置类<code>EurekaDiscoveryClientConfigServiceBootstrapConfiguration</code></p>
+<pre><code><code>@ConditionalOnClass(ConfigServicePropertySourceLocator.class)
+@ConditionalOnProperty(value = &quot;spring.cloud.config.discovery.enabled&quot;, matchIfMissing = false)
+@Configuration
+@Import({ EurekaDiscoveryClientConfiguration.class,
+        EurekaClientAutoConfiguration.class })
+public class EurekaDiscoveryClientConfigServiceBootstrapConfiguration {
+}</code></code></pre>
+<p>上方两个注解则是这个配置类是否能够开启的条件，这里就不再展开，直接看它引入的配置类吧</p>
+<h4 id="eurekadiscoveryclientconfiguration"><code>EurekaDiscoveryClientConfiguration</code></h4>
+<ol>
+<li>细心的读者可能会发现这里又注册了一个<code>Marker</code>类，可以猜测也是某个地方的开关</li>
+<li><code>EurekaClientConfigurationRefresher</code>这个类看名字就知道这是当配置被动态刷新时的一个处理器，这里也不再展开了</li>
+<li><code>EurekaHealthCheckHandlerConfiguration</code>这里面注册了一个Eureka健康检查的处理类，这个健康检查相关的原理分析可以参考这篇文章：<a href="https://mp.weixin.qq.com/s/SFc2-NZZ3Nv7bX1QRfqQ7g">SpringBoot健康检查实现原理</a></li>
+</ol>
+<h4 id="eurekaclientautoconfiguration"><code>EurekaClientAutoConfiguration</code></h4>
+<p>这个类里面全是重点，也是我们本文的核心</p>
+<h5 id="注解">注解</h5>
+<pre><code><code>@Configuration
+@EnableConfigurationProperties
+@ConditionalOnClass(EurekaClientConfig.class)
+@Import(DiscoveryClientOptionalArgsConfiguration.class)
+@ConditionalOnBean(EurekaDiscoveryClientConfiguration.Marker.class)
+@ConditionalOnProperty(value = &quot;eureka.client.enabled&quot;, matchIfMissing = true)
+@AutoConfigureBefore({ NoopDiscoveryClientAutoConfiguration.class,
+        CommonsClientAutoConfiguration.class, ServiceRegistryAutoConfiguration.class })
+@AutoConfigureAfter(name = {&quot;org.springframework.cloud.autoconfigure.RefreshAutoConfiguration&quot;,
+        &quot;org.springframework.cloud.netflix.eureka.EurekaDiscoveryClientConfiguration&quot;,
+        &quot;org.springframework.cloud.client.serviceregistry.AutoServiceRegistrationAutoConfiguration&quot;})</code></code></pre>
+<p>首先可以看到这个类一共包含这些注解，我们来一一解析比较重要的几个注解吧</p>
+<h6 id="importdiscoveryclientoptionalargsconfiguration.class"><code>@Import(DiscoveryClientOptionalArgsConfiguration.class)</code></h6>
+<p>引入了两个bean，<code>RestTemplateDiscoveryClientOptionalArgs</code>和<code>MutableDiscoveryClientOptionalArgs</code> ，这两个类的作用暂且不说</p>
+<h6 id="conditionalonbeaneurekadiscoveryclientconfiguration.marker.class"><code>@ConditionalOnBean(EurekaDiscoveryClientConfiguration.Marker.class)</code></h6>
+<p>刚才说的<code>Marker</code>类的作用出来了</p>
+<h6 id="autoconfigurebefore"><code>@AutoConfigureBefore</code></h6>
+<p>既然必须在这三个类完成自动装配之后才能进行装配，那就代表着这三个类肯定大有用途，研究一下吧</p>
+<h6 id="noopdiscoveryclientautoconfiguration"><code>NoopDiscoveryClientAutoConfiguration</code></h6>
+<p>故名思意，负责服务发现的类，咱们重点关注一下其中的几个方法</p>
+<ol>
+<li><code>init</code></li>
+</ol>
+<pre><code><code>@PostConstruct
+    public void init() {
+        String host = &quot;localhost&quot;;
+        try {
+            host = InetAddress.getLocalHost().getHostName();
+        }
+        catch (UnknownHostException e) {
+            log.warn(&quot;Cannot get host info: (&quot; + e.getMessage() + &quot;)&quot;);
+        }
+        int port = findPort();
+        this.serviceInstance = new DefaultServiceInstance(
+                this.environment.getProperty(&quot;spring.application.name&quot;, &quot;application&quot;),
+                host, port, false);
+    }</code></code></pre>
+<p>这里构造了一个<code>DefaultServiceInstance</code>对象，这个对象包含了当前项目的ip+端口+项目名称</p>
+<ol>
+<li>注入bean<code>NoopDiscoveryClient</code></li>
+</ol>
+<pre><code><code>@Bean
+    public DiscoveryClient discoveryClient() {
+        return new NoopDiscoveryClient(this.serviceInstance);
+    }</code></code></pre>
+<p>再深入看一下这个类</p>
+<pre><code><code>public class NoopDiscoveryClient implements DiscoveryClient {
+
+    public NoopDiscoveryClient(ServiceInstance instance) {
+    }
+
+    @Override
+    public String description() {
+        return &quot;Spring Cloud No-op DiscoveryClient&quot;;
+    }
+
+    @Override
+    public List&lt;ServiceInstance&gt; getInstances(String serviceId) {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public List&lt;String&gt; getServices() {
+        return Collections.emptyList();
+    }
+
+}</code></code></pre>
+<p>这个类包含了获取当前实例以及当前服务的方法，但是返回的都是空，那么是不是会在后面的某个地方被覆盖呢？</p>
+<h6 id="commonsclientautoconfiguration"><code>CommonsClientAutoConfiguration</code></h6>
+<p>进去深入了解一下，哎哟，注册了几个bean：<code>DiscoveryClientHealthIndicator</code>、<code>DiscoveryCompositeHealthIndicator</code>。原来是健康检查相关的东西，那就忽略了</p>
+<h6 id="serviceregistryautoconfiguration"><code>ServiceRegistryAutoConfiguration</code></h6>
+<p>这个配置类中主要注册了一个bean：<code>ServiceRegistryEndpoint</code>这个类主要是对外提供对与Eureka状态的检查</p>
+<pre><code><code>@ReadOperation
+    public ResponseEntity getStatus() {
+        if (this.registration == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(&quot;no registration found&quot;);
+        }
+
+        return ResponseEntity.ok().body(this.serviceRegistry.getStatus(this.registration));
+    }</code></code></pre>
+<p>而Eureka的状态则是通过<code>serviceRegistry</code>对象获取的，这个对象会再下方详细分析</p>
+<h5 id="注册bean">注册bean</h5>
+<p>接着来看这个类注入的几个bean</p>
+<h6 id="eurekaclientconfigbean"><code>EurekaClientConfigBean</code></h6>
+<pre><code><code>@Bean
+    @ConditionalOnMissingBean(value = EurekaClientConfig.class, search = SearchStrategy.CURRENT)
+    public EurekaClientConfigBean eurekaClientConfigBean(ConfigurableEnvironment env) {
+        EurekaClientConfigBean client = new EurekaClientConfigBean();
+        if (&quot;bootstrap&quot;.equals(this.env.getProperty(&quot;spring.config.name&quot;))) {
+            client.setRegisterWithEureka(false);
+        }
+        return client;
+    }</code></code></pre>
+<p>这个bean中包含了<code>eureka.client.xxx</code>系列的一些配置，详细的配置信息可以参考这里：https://github.com/shiyujun/syj-study-demo/blob/master/src/main/java/cn/shiyujun/EurekaConfig.md</p>
+<h6 id="eurekainstanceconfigbean"><code>EurekaInstanceConfigBean</code></h6>
+<p>这个bean中主要是包含eureka实例（<code>eureka.instance.xxx</code>系列）的一些配置信息，详细的配置信息同上</p>
+<h6 id="refreshableeurekaclientconfiguration.discoveryclient"><code>RefreshableEurekaClientConfiguration.DiscoveryClient</code></h6>
+<pre><code><code>        @Bean(destroyMethod = &quot;shutdown&quot;)
+        @ConditionalOnMissingBean(value = EurekaClient.class, search = SearchStrategy.CURRENT)
+        @org.springframework.cloud.context.config.annotation.RefreshScope
+        @Lazy
+        public EurekaClient eurekaClient(ApplicationInfoManager manager, EurekaClientConfig config, EurekaInstanceConfig instance) {
+            manager.getInfo(); // force initialization
+            return new CloudEurekaClient(manager, config, this.optionalArgs,
+                    this.context);
+        }</code></code></pre>
+<p>其中<code>CloudEurekaClient</code>是<code>DiscoveryClient</code>的子类，而<code>DiscoveryClient</code>则是EurekaClient的核心类</p>
+<pre><code><code>    public CloudEurekaClient(ApplicationInfoManager applicationInfoManager,
+                             EurekaClientConfig config,
+                             AbstractDiscoveryClientOptionalArgs&lt;?&gt; args,
+                             ApplicationEventPublisher publisher) {
+                             //这里会调用父类DiscoveryClient的构造方法
+        super(applicationInfoManager, config, args);
+        this.applicationInfoManager = applicationInfoManager;
+        this.publisher = publisher;
+        this.eurekaTransportField = ReflectionUtils.findField(DiscoveryClient.class, &quot;eurekaTransport&quot;);
+        ReflectionUtils.makeAccessible(this.eurekaTransportField);
+    }</code></code></pre>
+<p>父类的构造方法中执行的代码块比较长，一些赋值操作等就忽略了,这里只摘出比较重要的部分</p>
+<ol>
+<li>初始化拉取监控和心跳监控</li>
+</ol>
+<pre><code><code>       if (config.shouldFetchRegistry()) {
+            this.registryStalenessMonitor = new ThresholdLevelsMetric(this, METRIC_REGISTRY_PREFIX + &quot;lastUpdateSec_&quot;, new long[]{15L, 30L, 60L, 120L, 240L, 480L});
+        } else {
+            this.registryStalenessMonitor = ThresholdLevelsMetric.NO_OP_METRIC;
+        }
+
+        if (config.shouldRegisterWithEureka()) {
+            this.heartbeatStalenessMonitor = new ThresholdLevelsMetric(this, METRIC_REGISTRATION_PREFIX + &quot;lastHeartbeatSec_&quot;, new long[]{15L, 30L, 60L, 120L, 240L, 480L});
+        } else {
+            this.heartbeatStalenessMonitor = ThresholdLevelsMetric.NO_OP_METRIC;
+        }</code></code></pre>
+<ol>
+<li>当当前实例不需要注册到EurekaServer时，构造方法走到这里就结束了</li>
+</ol>
+<pre><code><code>
+        if (!config.shouldRegisterWithEureka() &amp;&amp; !config.shouldFetchRegistry()) {
+            logger.info(&quot;Client configured to neither register nor query for data.&quot;);
+            scheduler = null;
+            heartbeatExecutor = null;
+            cacheRefreshExecutor = null;
+            eurekaTransport = null;
+            instanceRegionChecker = new InstanceRegionChecker(new PropertyBasedAzToRegionMapper(config), clientConfig.getRegion());
+            DiscoveryManager.getInstance().setDiscoveryClient(this);
+            DiscoveryManager.getInstance().setEurekaClientConfig(config);
+
+            initTimestampMs = System.currentTimeMillis();
+            logger.info(&quot;Discovery Client initialized at timestamp {} with initial instances count: {}&quot;,
+                    initTimestampMs, this.getApplications().size());
+
+            return;  
+        }</code></code></pre>
+<ol>
+<li>初始化心跳线程和刷新线程以及它们的调度器</li>
+</ol>
+<pre><code><code>  try {
+            scheduler = Executors.newScheduledThreadPool(2,
+                    new ThreadFactoryBuilder()
+                            .setNameFormat(&quot;DiscoveryClient-%d&quot;)
+                            .setDaemon(true)
+                            .build());
+
+            heartbeatExecutor = new ThreadPoolExecutor(
+                    1, clientConfig.getHeartbeatExecutorThreadPoolSize(), 0, TimeUnit.SECONDS,
+                    new SynchronousQueue&lt;Runnable&gt;(),
+                    new ThreadFactoryBuilder()
+                            .setNameFormat(&quot;DiscoveryClient-HeartbeatExecutor-%d&quot;)
+                            .setDaemon(true)
+                            .build()
+            );  
+
+            cacheRefreshExecutor = new ThreadPoolExecutor(
+                    1, clientConfig.getCacheRefreshExecutorThreadPoolSize(), 0, TimeUnit.SECONDS,
+                    new SynchronousQueue&lt;Runnable&gt;(),
+                    new ThreadFactoryBuilder()
+                            .setNameFormat(&quot;DiscoveryClient-CacheRefreshExecutor-%d&quot;)
+                            .setDaemon(true)
+                            .build()
+            ); </code></code></pre>
+<ol>
+<li>从EurekaServer拉取注册信息</li>
+</ol>
+<pre><code><code> if (clientConfig.shouldFetchRegistry() &amp;&amp; !fetchRegistry(false)) {
+            fetchRegistryFromBackup();
+        }</code></code></pre>
+<p>这里<code>fetchRegistry</code>是第一次拉取注册信息，如果拉取不成功的话则执行<code>fetchRegistryFromBackup</code>从备份注册中心获取，同样，拉取的信息会放在之后的文章中</p>
+<ol>
+<li>注册之前的扩展点</li>
+</ol>
+<pre><code><code>  if (this.preRegistrationHandler != null) {
+            this.preRegistrationHandler.beforeRegistration();
+        }</code></code></pre>
+<p>这里是个空的实现，可以通过实现<code>PreRegistrationHandler</code>接口做些什么操作</p>
+<ol>
+<li>向EurekaServer发起注册</li>
+</ol>
+<pre><code><code> if (clientConfig.shouldRegisterWithEureka() &amp;&amp; clientConfig.shouldEnforceRegistrationAtInit()) {
+            try {
+                if (!register() ) {
+                    throw new IllegalStateException(&quot;Registration error at startup. Invalid server response.&quot;);
+                }
+            } catch (Throwable th) {
+                logger.error(&quot;Registration error at startup: {}&quot;, th.getMessage());
+                throw new IllegalStateException(th);
+            }
+        }</code></code></pre>
+<p>注册方法为<code>register</code>，同样这里先不展开</p>
+<ol>
+<li>初始化几个定时任务</li>
+</ol>
+<pre><code><code>initScheduledTasks();
+
+private void initScheduledTasks() {
+   // 从 EurekaServer 拉取注册信息
+   if (clientConfig.shouldFetchRegistry()) {
+       int registryFetchIntervalSeconds = clientConfig.getRegistryFetchIntervalSeconds();
+       int expBackOffBound = clientConfig.getCacheRefreshExecutorExponentialBackOffBound();
+       scheduler.schedule(
+               new TimedSupervisorTask(
+                       &quot;cacheRefresh&quot;,
+                       scheduler,
+                       cacheRefreshExecutor,
+                       registryFetchIntervalSeconds,
+                       TimeUnit.SECONDS,
+                       expBackOffBound,
+                       new CacheRefreshThread()
+               ),
+               registryFetchIntervalSeconds, TimeUnit.SECONDS);
+   }
+
+   // 向 EurekaServer 发送续租心跳
+   if (clientConfig.shouldRegisterWithEureka()) {
+       int renewalIntervalInSecs = instanceInfo.getLeaseInfo().getRenewalIntervalInSecs();
+       int expBackOffBound = clientConfig.getHeartbeatExecutorExponentialBackOffBound();
+       logger.info(&quot;Starting heartbeat executor: &quot; + &quot;renew interval is: &quot; + renewalIntervalInSecs);
+
+       scheduler.schedule(
+               new TimedSupervisorTask(
+                       &quot;heartbeat&quot;,
+                       scheduler,
+                       heartbeatExecutor,
+                       renewalIntervalInSecs,
+                       TimeUnit.SECONDS,
+                       expBackOffBound,
+                       new HeartbeatThread()
+               ),
+               renewalIntervalInSecs, TimeUnit.SECONDS);
+
+       instanceInfoReplicator = new InstanceInfoReplicator(
+               this,
+               instanceInfo,
+               clientConfig.getInstanceInfoReplicationIntervalSeconds(),
+               2); 
+
+       statusChangeListener = new ApplicationInfoManager.StatusChangeListener() {
+           @Override
+           public String getId() {
+               return &quot;statusChangeListener&quot;;
+           }
+
+           @Override
+           public void notify(StatusChangeEvent statusChangeEvent) {
+               if (InstanceStatus.DOWN == statusChangeEvent.getStatus() ||
+                       InstanceStatus.DOWN == statusChangeEvent.getPreviousStatus()) {
+                   logger.warn(&quot;Saw local status change event {}&quot;, statusChangeEvent);
+               } else {
+                   logger.info(&quot;Saw local status change event {}&quot;, statusChangeEvent);
+               }
+               instanceInfoReplicator.onDemandUpdate();
+           }
+       };
+
+       if (clientConfig.shouldOnDemandUpdateStatusChange()) {
+       //注册状态监听器
+           applicationInfoManager.registerStatusChangeListener(statusChangeListener);
+       }
+
+       instanceInfoReplicator.start(clientConfig.getInitialInstanceInfoReplicationIntervalSeconds());
+   } else {
+       logger.info(&quot;Not registering with Eureka server per configuration&quot;);
+   }
+}</code></code></pre>
+<p>至此，EurekaClient的自动装配与启动流程就解析完毕了</p>
+<blockquote>
+<p>本文由博客一文多发平台 <a href="https://openwrite.cn?from=article_bottom">OpenWrite</a> 发布！</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

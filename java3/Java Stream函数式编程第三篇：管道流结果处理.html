@@ -1,0 +1,164 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java Stream函数式编程第三篇：管道流结果处理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java Stream函数式编程第三篇：管道流结果处理</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11839517.html</div><br>
+    <h2 id="一java-stream管道数据处理操作">一、Java Stream管道数据处理操作</h2>
+<p>在本号之前写过的文章中，曾经给大家介绍过 Java Stream管道流是用于简化集合类元素处理的java API。在使用的过程中分为三个阶段。在开始本文之前，我觉得仍然需要给一些新朋友介绍一下这三个阶段，如图：</p>
+<p><img src="./images/Java Stream函数式编程第三篇：管道流结果处理0.png" alt="Java Stream函数式编程？用过都说好，案例图文详解送给你" /></p>
+<ul>
+<li>第一阶段(图中蓝色)：将集合、数组、或行文本文件转换为java Stream管道流</li>
+<li>第二阶段(图中虚线部分)：管道流式数据处理操作，处理管道中的每一个元素。上一个管道中的输出元素作为下一个管道的输入元素。</li>
+<li>第三阶段(图中绿色)：管道流结果处理操作，也就是本文的将介绍的核心内容。</li>
+</ul>
+<p>在开始学习之前，仍然有必要回顾一下我们之前给大家讲过的一个例子：</p>
+<pre><code><code>
+List&lt;String&gt; nameStrs = Arrays.asList(&quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;,&quot;Lemur&quot;);
+
+List&lt;String&gt; list = nameStrs.stream()
+        .filter(s -&gt; s.startsWith(&quot;L&quot;))
+        .map(String::toUpperCase)
+        .sorted()
+        .collect(toList());
+System.out.println(list);</code></code></pre>
+<ul>
+<li>首先使用stream()方法将字符串List转换为管道流Stream</li>
+<li>然后进行管道数据处理操作，先用fliter函数过滤所有大写L开头的字符串，然后将管道中的字符串转换为大写字母toUpperCase，然后调用sorted方法排序。这些API的用法在本号之前的文章有介绍过。其中还使用到了lambda表达式和函数引用。</li>
+<li>最后使用collect函数进行结果处理，将java Stream管道流转换为List。最终list的输出结果是:<code>[LEMUR, LION]</code></li>
+</ul>
+<p>如果你不使用java Stream管道流的话，想一想你需要多少行代码完成上面的功能呢？回到正题，这篇文章就是要给大家介绍第三阶段：对管道流处理结果都可以做哪些操作呢？下面开始吧！</p>
+<h2 id="二foreach和foreachordered">二、ForEach和ForEachOrdered</h2>
+<p>如果我们只是希望将Stream管道流的处理结果打印出来，而不是进行类型转换，我们就可以使用forEach()方法或forEachOrdered()方法。</p>
+<pre><code><code>
+Stream.of(&quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;)
+        .parallel()
+        .forEach(System.out::println);
+Stream.of(&quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;)
+        .parallel()
+        .forEachOrdered(System.out::println);</code></code></pre>
+<ul>
+<li>parallel()函数表示对管道中的元素进行并行处理，而不是串行处理，这样处理速度更快。但是这样就有可能导致管道流中后面的元素先处理，前面的元素后处理，也就是元素的顺序无法保证</li>
+<li>forEachOrdered从名字上看就可以理解，虽然在数据处理顺序上可能无法保障，但是forEachOrdered方法可以在元素输出的顺序上保证与元素进入管道流的顺序一致。也就是下面的样子（forEach方法则无法保证这个顺序）：</li>
+</ul>
+<pre><code><code>Monkey
+Lion
+Giraffe
+Lemur
+Lion</code></code></pre>
+<h2 id="三元素的收集collect">三、元素的收集collect</h2>
+<p>java Stream 最常见的用法就是：一将集合类转换成管道流，二对管道流数据处理，三将管道流处理结果在转换成集合类。那么collect()方法就为我们提供了这样的功能：将管道流处理结果在转换成集合类。</p>
+<h3 id="收集为set">3.1.收集为Set</h3>
+<p>通过Collectors.toSet()方法收集Stream的处理结果，将所有元素收集到Set集合中。</p>
+<pre><code><code>
+Set&lt;String&gt; collectToSet = Stream.of(
+   &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+) 
+.collect(Collectors.toSet());
+
+//最终collectToSet 中的元素是:[Monkey, Lion, Giraffe, Lemur]，注意Set会去重。</code></code></pre>
+<h3 id="收集到list">3.2.收集到List</h3>
+<p>同样，可以将元素收集到<code>List</code>使用<code>toList()</code>收集器中。</p>
+<pre><code><code>
+List&lt;String&gt; collectToList = Stream.of(
+   &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+).collect(Collectors.toList());
+
+// 最终collectToList中的元素是: [Monkey, Lion, Giraffe, Lemur, Lion]</code></code></pre>
+<h3 id="通用的收集方式">3.3.通用的收集方式</h3>
+<p>上面为大家介绍的元素收集方式，都是专用的。比如使用Collectors.toSet()收集为Set类型集合；使用Collectors.toList()收集为List类型集合。那么，有没有一种比较通用的数据元素收集方式，将数据收集为任意的Collection接口子类型。<br />
+所以，这里就像大家介绍一种通用的元素收集方式，你可以将数据元素收集到任意的Collection类型：即向所需Collection类型提供构造函数的方式。</p>
+<pre><code><code>
+LinkedList&lt;String&gt; collectToCollection = Stream.of(
+   &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+).collect(Collectors.toCollection(LinkedList::new));
+
+//最终collectToCollection中的元素是: [Monkey, Lion, Giraffe, Lemur, Lion]</code></code></pre>
+<p>注意：代码中使用了LinkedList::new，实际是调用LinkedList的构造函数，将元素收集到Linked List。当然你还可以使用诸如<code>LinkedHashSet::new</code>和<code>PriorityQueue::new</code>将数据元素收集为其他的集合类型，这样就比较通用了。</p>
+<h3 id="收集到array">3.4.收集到Array</h3>
+<p>通过toArray(String[]::new)方法收集Stream的处理结果，将所有元素收集到字符串数组中。</p>
+<pre><code><code>
+String[] toArray = Stream.of(
+   &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+) .toArray(String[]::new);
+
+//最终toArray字符串数组中的元素是: [Monkey, Lion, Giraffe, Lemur, Lion]</code></code></pre>
+<h3 id="收集到map">3.5.收集到Map</h3>
+<p>使用Collectors.toMap()方法将数据元素收集到Map里面，但是出现一个问题：那就是管道中的元素是作为key，还是作为value。我们用到了一个Function.identity()方法，该方法很简单就是返回一个“ t -&gt; t ”（输入就是输出的lambda表达式）。另外使用管道流处理函数<code>distinct()</code>来确保Map键值的唯一性。</p>
+<pre><code><code>
+Map&lt;String, Integer&gt; toMap = Stream.of(
+    &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+)
+.distinct()
+.collect(Collectors.toMap(
+       Function.identity(),   //元素输入就是输出，作为key
+       s -&gt; (int) s.chars().distinct().count()// 输入元素的不同的字母个数，作为value
+));
+
+// 最终toMap的结果是: {Monkey=6, Lion=4, Lemur=5, Giraffe=6}   </code></code></pre>
+<h3 id="分组收集groupingby">3.6.分组收集groupingBy</h3>
+<p>Collectors.groupingBy用来实现元素的分组收集，下面的代码演示如何根据首字母将不同的数据元素收集到不同的List，并封装为Map。</p>
+<pre><code><code>
+Map&lt;Character, List&lt;String&gt;&gt; groupingByList =  Stream.of(
+    &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;, &quot;Lion&quot;
+)
+.collect(Collectors.groupingBy(
+       s -&gt; s.charAt(0) ,  //根据元素首字母分组，相同的在一组
+       // counting()        // 加上这一行代码可以实现分组统计
+));
+
+// 最终groupingByList内的元素: {G=[Giraffe], L=[Lion, Lemur, Lion], M=[Monkey]}
+//如果加上counting() ，结果是:  {G=1, L=3, M=1}</code></code></pre>
+<h2 id="四其他常用方法">四、其他常用方法</h2>
+<pre><code><code>
+boolean containsTwo = IntStream.of(1, 2, 3).anyMatch(i -&gt; i == 2);
+// 判断管道中是否包含2，结果是: true
+
+long nrOfAnimals = Stream.of(
+    &quot;Monkey&quot;, &quot;Lion&quot;, &quot;Giraffe&quot;, &quot;Lemur&quot;
+).count();
+// 管道中元素数据总计结果nrOfAnimals: 4
+
+
+int sum = IntStream.of(1, 2, 3).sum();
+// 管道中元素数据累加结果sum: 6
+
+
+OptionalDouble average = IntStream.of(1, 2, 3).average();
+//管道中元素数据平均值average: OptionalDouble[2.0]
+
+
+
+int max = IntStream.of(1, 2, 3).max().orElse(0);
+//管道中元素数据最大值max: 3
+
+
+
+IntSummaryStatistics statistics = IntStream.of(1, 2, 3).summaryStatistics();
+// 全面的统计结果statistics: IntSummaryStatistics{count=3, sum=6, min=1, average=2.000000, max=3}
+</code></code></pre>
+<h2 id="期待您的关注">期待您的关注</h2>
+<ul>
+<li>博主最近新写了一本书：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

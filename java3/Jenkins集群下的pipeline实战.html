@@ -1,0 +1,180 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Jenkins集群下的pipeline实战' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Jenkins集群下的pipeline实战</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11874732.html</div><br>
+    <h3 id="关于jenkins集群">关于Jenkins集群</h3>
+<p>在<a href="https://xinchen.blog.csdn.net/article/details/103097240">《快速搭建Jenkins集群》</a>一文中，我们借助docker快速搭建了Jenkins集群，今天就在这个集群环境中创建pipeline任务，体验Jenkins集群下的并行任务；</p>
+<h3 id="环境信息">环境信息</h3>
+<p>整个集群环境一共有三台电脑，信息如下：<br />
+| 主机名 | IP地址 | 作用 |<br />
+|--|--|--|<br />
+| master | 192.168.133.131 | Jenkins集群的master节点，提供web服务 |<br />
+| agent1 | 192.168.133.132 | Jenkins集群的一号工作接节点，标签是<font color="blue">maven</font> |<br />
+| agent2 | 192.168.133.133 | Jenkins集群的二号工作接节点，标签是<font color="blue">gradle</font> |</p>
+<h3 id="实战内容">实战内容</h3>
+<p>本次实战要体验Jenkins集群同时执行两个任务，都是编译构建GitHub上的热门开源项目：</p>
+<ol>
+<li>在agent1上编译和构建spring-cloud-alibaba，再通过scp命令将构建结果传输到master电脑的<font color="blue">/usr/local/build_result</font>目录下；</li>
+<li>在agent2编译和构建spring-framework，再通过scp命令将构建结果传输到master电脑的<font color="blue">/usr/local/build_result</font>目录下；</li>
+</ol>
+<h3 id="准备工作">准备工作</h3>
+<p>要做以下准备工作才能顺利执行后续的任务：</p>
+<ol>
+<li>在master电脑上创建文件夹<font color="blue">/usr/local/build_result</font></li>
+<li>配置maven，在Jenkins网页上选择<font color="blue">Global Tool Configuration</font>，如下图红框所示：<br />
+<img src="./images/Jenkins集群下的pipeline实战0.png" alt="在这里插入图片描述" /></li>
+<li>新增一个maven配置，名为<font color="blue">mvn-3.6.2</font>，然后点击“保存”按钮，如下图：<br />
+<img src="./images/Jenkins集群下的pipeline实战1.png" alt="在这里插入图片描述" /></li>
+<li>agent1和agent2上用scp命令传输文件到master上的时候，第一次ssh要在控制台输入&quot;yes&quot;，为了避免执行任务的时候出现这个等待输入的操作，我们去手动执行一遍，后面就再也不用了，ssh登录agent1之后，执行以下命令进入容器：</li>
+</ol>
+<pre><code><code>docker exec -it agent /bin/bash</code></code></pre>
+<ol>
+<li>执行命令<font color="blue">ssh root@192.168.133.131</font>，这时候控制台提示输入<font color="blue">yes</font>或者<font color="blue">no</font>，请您输入<font color="blue">yes</font>，再根据提示输入master的密码，此时登录master成功：</li>
+</ol>
+<pre><code><code>[root@agent1 16]# docker exec -it agent /bin/bash
+root@82eb8cfec0a6:/# ssh root@192.168.133.131
+The authenticity of host &#39;192.168.133.131 (192.168.133.131)&#39; can&#39;t be established.
+ECDSA key fingerprint is SHA256:DPE2nldWHiOhC4DB9doy7jPWNZVup6XFZ+sR2i1gqz8.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added &#39;192.168.133.131&#39; (ECDSA) to the list of known hosts.
+root@192.168.133.131&#39;s password: 
+Last login: Sat Nov 16 19:59:42 2019 from 192.168.133.132</code></code></pre>
+<ol>
+<li>此时您是在agent1的容器中ssh登录了master，所以要连续输入两次<font color="blue">exit</font>命令才能返回到agent1的控制台；</li>
+<li>在agent2电脑上也执行相同的操作；</li>
+</ol>
+<p>至此，准备完毕，可以创建任务了；</p>
+<h3 id="编译构建spring-cloud-alibaba的任务">编译构建spring-cloud-alibaba的任务</h3>
+<p>spring-cloud-alibaba是个maven工程，要用maven来编译构建：</p>
+<ol>
+<li>在Jenkins网页上，点击下图红框位置，创建一个任务：<br />
+<img src="./images/Jenkins集群下的pipeline实战2.png" alt="在这里插入图片描述" /></li>
+<li>如下图，创建名为<font color="blue">spring-clolud-alibaba</font>的pipeline任务：<br />
+<img src="./images/Jenkins集群下的pipeline实战3.png" alt="在这里插入图片描述" /></li>
+<li>下图红框位置就是输入pipeline脚本的地方：<br />
+<img src="./images/Jenkins集群下的pipeline实战4.png" alt="在这里插入图片描述" /></li>
+<li>在上图红框位置输入以下内容：</li>
+</ol>
+<pre><code><code>pipeline {
+    agent {
+        label &#39;maven&#39;
+    }
+    tools {
+        maven &#39;mvn-3.6.2&#39;
+    }
+    stages {
+        stage(&#39;Checkout&#39;) {
+            steps {
+                echo &#39;从GitHub下载spring-cloud-alibaba工程的源码(2.1.1.RELEASE归档包)&#39;
+                sh &#39;wget https://github.com/alibaba/spring-cloud-alibaba/archive/v2.1.1.RELEASE.tar.gz&#39;
+                echo &#39;下载结束，解压归档包&#39;
+                sh &#39;tar -zxf v2.1.1.RELEASE.tar.gz&#39;
+            }
+        }        
+        stage(&#39;Build&#39;) {
+            steps {
+                echo &#39;开始编译构建&#39;
+                sh &#39;cd spring-cloud-alibaba-2.1.1.RELEASE &amp;&amp; mvn clean package -U -DskipTests&#39;
+            }
+        }
+        stage(&#39;Save&#39;) {
+            steps {
+                echo &#39;将构建结果传送到存储服务器&#39;
+                sh &#39;cd spring-cloud-alibaba-2.1.1.RELEASE/spring-cloud-alibaba-nacos-discovery/target &amp;&amp; sshpass -p 888888 scp ./*.jar root@192.168.133.131:/usr/local/build_result&#39;
+                echo &#39;传送完毕&#39;
+            }
+        }
+        stage(&#39;Clean&#39;) {
+            steps {
+                echo &#39;清理Maven工程&#39;
+                sh &#39;cd spring-cloud-alibaba-2.1.1.RELEASE &amp;&amp; mvn clean&#39;
+                echo &#39;清理完毕&#39;
+            }
+        }
+    }
+}</code></code></pre>
+<ol>
+<li>点击底部的&quot;保存&quot;按钮后，点击下图红框中的&quot;立即构建&quot;即可开始任务：</li>
+</ol>
+<p><img src="./images/Jenkins集群下的pipeline实战5.png" alt="在这里插入图片描述" /></p>
+<ol>
+<li><p>点击下图红框中的红色圆球，即可跳转到实时输出任务信息的页面：<br />
+<img src="./images/Jenkins集群下的pipeline实战6.png" alt="在这里插入图片描述" /></p></li>
+<li><p>页面实时输出构建信息：<br />
+<img src="./images/Jenkins集群下的pipeline实战7.png" alt="在这里插入图片描述" /></p></li>
+<li><p>主页面可以看到是agent1在执行任务，如下图红框所示，可见pipeline脚本中的标签已经生效了，将任务调度到标签为<font color="blue">maven</font>的节点去执行：<br />
+<img src="./images/Jenkins集群下的pipeline实战8.png" alt="在这里插入图片描述" /><br />
+编译构建spring-cloud-alibaba工程是个费时的操作，我们现在去创建另一个任务：编译构建spring-framework</p>
+<h3 id="编译构建spring-framework的任务">编译构建spring-framework的任务</h3>
+spring-framework是个gradle工程，不需要准备gradle环境，在执行编译命令时会自动下载gradle工具：</li>
+<li>创建名为<font color="blue">spring-framework</font>的pipeline任务：</li>
+<li>pipeline脚本如下：</li>
+</ol>
+<pre><code><code>pipeline {
+    agent {
+        label &#39;gradle&#39;
+    }
+
+    stages {
+        stage(&#39;Checkout&#39;) {
+            steps {
+                echo &#39;从GitHub下载spring-framework工程的源码(master分支)&#39;
+                checkout([$class: &#39;GitSCM&#39;, branches: [[name: &#39;*/master&#39;]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: &#39;https://github.com/spring-projects/spring-framework.git&#39;]]])
+            }
+        }        
+        stage(&#39;Build&#39;) {
+            steps {
+                echo &#39;开始编译构建&#39;
+                sh &#39;./gradlew build&#39;
+            }
+        }
+        stage(&#39;传送构建结果&#39;) {
+            steps {
+                echo &#39;将构建结果传送到存储服务器&#39;
+                sh &#39;cd spring-core/build/libs &amp;&amp; sshpass -p 888888 scp ./*.jar root@192.168.133.131:/usr/local/build_result &amp;&amp; cd ../../..&#39;
+                echo &#39;传送完毕&#39;
+            }
+        }
+        stage(&#39;Clean&#39;) {
+            steps {
+                echo &#39;清理gradle工程&#39;
+                sh &#39;./gradlew clean&#39;
+                echo &#39;清理完毕&#39;
+            }
+        }
+    }
+}</code></code></pre>
+<ol>
+<li><p>立即执行此任务，可见任务已经被调度到agent2上去执行了，此时的agent1和agent2正在同时执行任务，如下图：<br />
+<img src="./images/Jenkins集群下的pipeline实战9.png" alt="在这里插入图片描述" /></p>
+<h3 id="查看构建结果">查看构建结果</h3>
+上述两个任务在构建成功后，都会通过scp命令将构建结果传送到master的<font color="blue">/usr/local/build_result</font>目录下：</li>
+</ol>
+<pre><code><code>[root@master build_result]# ls
+agent.jar                      spring-cloud-alibaba-nacos-discovery-2.1.1.RELEASE.jar          spring-cloud-alibaba-nacos-discovery-2.1.1.RELEASE-sources.jar  spring-objenesis-repack-3.1.jar
+spring-cglib-repack-3.3.0.jar  spring-cloud-alibaba-nacos-discovery-2.1.1.RELEASE-javadoc.jar  spring-core-5.2.2.BUILD-SNAPSHOT.jar</code></code></pre>
+<p><br><br />
+至此，Jenkins集群下的pipeline实战就完成了，借助pipeline的标签参数可以控制任务的调度节点，实现多任务同时在多节点执行；</p>
+<h3 id="欢迎关注公众号程序员欣宸">欢迎关注公众号：程序员欣宸</h3>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

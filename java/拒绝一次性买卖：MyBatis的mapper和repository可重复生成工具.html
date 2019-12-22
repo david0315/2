@@ -1,0 +1,110 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修拒绝一次性买卖：MyBatis的mapper和repository可重复生成工具' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>拒绝一次性买卖：MyBatis的mapper和repository可重复生成工具</center></div><div class='banquan'>原文出处:本文由博客园博主明年我18提供。<br/>
+原文连接:https://www.cnblogs.com/default/p/11525790.html</div><br>
+    <h2 id="背景">背景</h2>
+<p>MyBatis的历史可谓久远了，码农们也在用着各式各样的代码生成工具。然而这些工具大部分都有一个缺点，那就是只能一次性生成文件。如果我们期间在生成的文件里做了修改，再次生成时，很多工具会覆盖我们的修改。</p>
+<p>为什么会在生成文件后进行修改呢？ 因为工具只会帮我们生成通用的数据库访问方法（比如只生成基本的CURD操作），我们不可避免的要根据实际的业务需要，添加其他的操作方法。</p>
+<p>同时，数据库也不是设计完之后就一成不变的了，我们也可能在开发的过程中，调整已经建好的表结构。这个时候问题就来了，利用工具再生成一次？那就要人肉合并修改；手动添加更改后的字段进去？ 太多了怕遗漏。</p>
+<p>所以，我们需要找到一个方法，解决这个痛点。</p>
+<h2 id="原理">原理</h2>
+<p>熟悉.NET的同学可能知道，大名鼎鼎Visual Studio也会帮开发人员生成很多代码，比如asp.net中的aspx的后台代码，它是如何保证被工具所生成的代码片段和开发人员自己写的代码片段不冲突的呢？它实际上用到了C#的分部类（partial)特性。</p>
+<p>简单来说，分部类，就是把一个类的代码，放到多个文件中去写，C#编译器负责把他们编译到一个类中。有了这个特性，代码生成器就只专注他负责的partial文件就可以了，开发人员的代码写到另外一个partial文件中，当年用partial + T4，写了很多代码生成模板，屡试不爽。</p>
+<p>但我们的JAVA不支持这个神器啊（这里说句题外话，几年前我从C#转到JAVA的时候，就感觉C#在语言层面比JAVA好太多了，现在好几年没碰C#了，不知道它又先进到什么程度了），怎么办呢？</p>
+<p>只有用不是办法的办法了，那就是继承。实体类、Repository接口，用继承的方式，把工具生成的代码和预留给开发人员人肉的代码，分割到两个文件中。</p>
+<p>但mapper.xml怎么办？这个MyBatis帮我们想好了（赞一个），利用namespace即可做到。只要namespace指向同一个Repository接口，不论是不是在同一个xml文件里，MyBatis都可以正确找到。</p>
+<p>例如我们有一个Repository是这么定义的：</p>
+<pre><code><code>public interface UserRepository{
+    //aaa
+    User selectByPrimaryKey(@Param(&quot;id&quot;) Long id);
+
+    User selectByAccount(@Param(&quot;account&quot;) String account);
+}
+</code></code></pre>
+<p>那么以下的两个mapper.xml结合起来是完全可用的</p>
+<p>UserMapper1.xml</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE mapper PUBLIC &quot;-//mybatis.org//DTD Mapper 3.0//EN&quot; &quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot; &gt;
+&lt;mapper namespace=&quot;com.abc.demo.repository.UserRepository&quot;&gt;
+    &lt;sql id=&quot;TableName&quot;&gt;
+        jm_user
+    &lt;/sql&gt;
+   &lt;!--asdfdsfsdf--&gt;
+    &lt;sql id=&quot;BaseColumnList&quot;&gt;
+     `id`, `account`, `email`, `is_active`
+    &lt;/sql&gt;
+
+    &lt;resultMap id=&quot;BaseResultMap&quot; type=&quot;com.abc.demo.entity.User&quot; autoMapping=&quot;false&quot;&gt;
+        &lt;result column=&quot;id&quot; property=&quot;id&quot; jdbcType=&quot;BIGINT&quot;/&gt;
+        &lt;result column=&quot;account&quot; property=&quot;account&quot; jdbcType=&quot;VARCHAR&quot;/&gt;
+        &lt;result column=&quot;email&quot; property=&quot;email&quot; jdbcType=&quot;VARCHAR&quot;/&gt;
+        &lt;result column=&quot;is_active&quot; property=&quot;isActive&quot; jdbcType=&quot;BIT&quot;/&gt;
+    &lt;/resultMap&gt;
+    &lt;select id=&quot;selectByPrimaryKey&quot; resultMap=&quot;BaseResultMap&quot;&gt;
+        select
+        &lt;include refid=&quot;BaseColumnList&quot;/&gt;
+        from
+        &lt;include refid=&quot;TableName&quot;/&gt;
+        where
+            `id` = #{id}
+    &lt;/select&gt;
+&lt;/mapper&gt;
+</code></code></pre>
+<p>UserMapper2.xml</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE mapper PUBLIC &quot;-//mybatis.org//DTD Mapper 3.0//EN&quot; &quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot; &gt;
+&lt;mapper namespace=&quot;com.abc.demo.repository.UserRepository&quot;&gt;
+    &lt;select id=&quot;selectByAccount&quot; resultMap=&quot;BaseResultMap&quot;&gt;
+        select
+        &lt;include refid=&quot;BaseColumnList&quot;/&gt;
+        from
+        &lt;include refid=&quot;TableName&quot;/&gt;
+        where
+            `account` = #{account}
+    &lt;/select&gt;
+&lt;/mapper&gt;</code></code></pre>
+<p>你看，UserMapper2.xml中只定义了selectByAccount方法，BaseColumnList、TableName、BaseResultMap都没有重新定义，可以直接用UserMapper1.xml的。</p>
+<h2 id="jasmine-基于数据库模型和velocity模板的代码生成工具">jasmine —— 基于数据库模型和velocity模板的代码生成工具</h2>
+<p>利用以上原理，我写了一个代码生成工具，读取数据库模型，并基于velocity模板，生成代码。<br />
+可以命令行形式运行，也可以作为IDEA的插件运行。</p>
+<p>项目地址：https://github.com/kongxiangxin/jasmine<br />
+工具下载地址：https://github.com/kongxiangxin/jasmine/releases</p>
+<p>源码里提供了一个示例DEMO，里面包含了MyBatis的代码生成模板，支持如下特性：</p>
+<ol>
+<li>一键生成实体类、MyBatis Repository、MyBatis Mapper</li>
+<li>实体类、MyBatis Repository和MyBatis Mapper均利用继承策略，划分出XXXX和XXXXBase两个文件，其中XXXX如果文件存在则不覆盖，XXXXBase每次生成都会覆盖。如果在生成后你需要做一些代码上的调整，请在XXXX文件中修改，而不要在XXXXBase中修改。这样做的好处是一旦我们的表结构发生变化需要重新生成时，不会覆盖您手动改过的代码。</li>
+<li>如果表存在is_deleted字段，生成的delete方法是逻辑删除而不是物理删除。</li>
+<li>如果表存在record_version字段，update语句带有乐观锁，即update .... set record_version=record_version + 1 where .... and record_version=#{record_version}</li>
+<li>如果表存在create_time，insert语句这一列的值是now()</li>
+<li>如果表存在update_time, insert和update语句这一列的值是now()</li>
+</ol>
+<h3 id="quick-start">Quick Start</h3>
+<ol>
+<li>去releases页面，下载最新的jasmine-[version].zip，解压。</li>
+<li>clone源码至本地，根据实际情况，修改demo/jasmine.properties中jdbc相关的配置（主要是数据库连接配置）</li>
+<li>执行以下命令：</li>
+</ol>
+<pre><code><code>/path/to/jasmine-[version]/bin/jasmine /path/to/jasmine-src/demo/jasmine.properties</code></code></pre>
+<p>如果一切正常，会在demo下看到生成出来的文件</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

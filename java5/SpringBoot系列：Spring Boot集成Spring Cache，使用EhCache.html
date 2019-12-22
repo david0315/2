@@ -1,0 +1,169 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot系列：Spring Boot集成Spring Cache，使用EhCache' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot系列：Spring Boot集成Spring Cache，使用EhCache</center></div><div class='banquan'>原文出处:本文由博客园博主杨小格子提供。<br/>
+原文连接:https://www.cnblogs.com/imyanger/p/11729480.html</div><br>
+    <p>前面的章节，讲解了<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>，Spring Cache已经完成了多种Cache的实现，包括EhCache、RedisCache、ConcurrentMapCache等。</p>
+<p>这一节我们来看看Spring Cache使用EhCache。</p>
+<h3 id="一ehcache使用演示">一、EhCache使用演示</h3>
+<p>EhCache是一个纯Java的进程内缓存框架，具有快速、精干等特点，Hibernate中的默认Cache就是使用的EhCache。</p>
+<p>本章节示例是在<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>的源码基础上进行改造。源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p20-springboot-cache" class="uri">https://github.com/imyanger/springboot-project/tree/master/p20-springboot-cache</a></p>
+<p>使用EhCache作为缓存，我们先引入相关依赖。</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;!--ehcache依赖--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;net.sf.ehcache&lt;/groupId&gt;
+    &lt;artifactId&gt;ehcache&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-cache&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>然后创建EhCache的配置文件ehcache.xml。</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;ehcache xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot;
+         xsi:noNamespaceSchemaLocation=&quot;http://ehcache.org/ehcache.xsd&quot;
+         updateCheck=&quot;false&quot;&gt;
+
+    &lt;!--
+        磁盘存储:将缓存中暂时不使用的对象,转移到硬盘,类似于Windows系统的虚拟内存
+        path:指定在硬盘上存储对象的路径
+        path可以配置的目录有：
+        user.home（用户的家目录）
+        user.dir（用户当前的工作目录）
+        java.io.tmpdir（默认的临时目录）
+        ehcache.disk.store.dir（ehcache的配置目录）
+        绝对路径（如：d:\\ehcache）
+        查看路径方法：String tmpDir = System.getProperty(&quot;java.io.tmpdir&quot;);
+     --&gt;
+    &lt;diskStore path=&quot;java.io.tmpdir&quot; /&gt;
+
+    &lt;!--
+        defaultCache:默认的缓存配置信息,如果不加特殊说明,则所有对象按照此配置项处理
+        maxElementsInMemory:设置了缓存的上限,最多存储多少个记录对象
+        eternal:代表对象是否永不过期 (指定true则下面两项配置需为0无限期)
+        timeToIdleSeconds:最大的发呆时间 /秒
+        timeToLiveSeconds:最大的存活时间 /秒
+        overflowToDisk:是否允许对象被写入到磁盘
+        说明：下列配置自缓存建立起600秒(10分钟)有效 。
+        在有效的600秒(10分钟)内，如果连续120秒(2分钟)未访问缓存，则缓存失效。
+        就算有访问，也只会存活600秒。
+     --&gt;
+    &lt;defaultCache maxElementsInMemory=&quot;10000&quot; eternal=&quot;false&quot; timeToIdleSeconds=&quot;600&quot;
+                  timeToLiveSeconds=&quot;600&quot; overflowToDisk=&quot;true&quot; /&gt;
+
+    &lt;cache name=&quot;cache&quot; maxElementsInMemory=&quot;10000&quot; eternal=&quot;false&quot; timeToIdleSeconds=&quot;120&quot;
+           timeToLiveSeconds=&quot;600&quot; overflowToDisk=&quot;true&quot; /&gt;
+
+&lt;/ehcache&gt;</code></code></pre>
+<p>然后SpringBoot配置文件中，指明缓存类型并声明Ehcache配置文件的位置。</p>
+<pre class="yml"><code>server:
+  port: 10900
+
+spring:
+  profiles:
+    active: dev
+  cache:
+    type: ehcache
+    ehcache:
+      config: classpath:/ehcache.xml</code></code></pre>
+<p>这样就可以开始使用Ehcache了，测试代码与<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>一致。</p>
+<p>SpringBoot启动类，@EnableCaching开启Spring Cache缓存功能。</p>
+<pre><code><code>@EnableCaching
+@SpringBootApplication
+public class SpringbootApplication {
+
+    public static void main(String[] args) {
+        String tmpDir = System.getProperty(&quot;java.io.tmpdir&quot;);
+        System.out.println(&quot;临时路径：&quot; + tmpDir);
+        SpringApplication.run(SpringbootApplication.class, args);
+    }
+
+}</code></code></pre>
+<p>CacheApi接口调用类，方便调用进行测试。</p>
+<pre><code><code>@RestController
+@RequestMapping(&quot;cache&quot;)
+public class CacheApi {
+
+    @Autowired
+    private CacheService cacheService;
+
+    @GetMapping(&quot;get&quot;)
+    public User  get(@RequestParam int id){
+        return cacheService.get(id);
+    }
+
+    @PostMapping(&quot;set&quot;)
+    public User  set(@RequestParam int id, @RequestParam String code, @RequestParam String name){
+        User u = new User(code, name);
+        return cacheService.set(id, u);
+    }
+
+    @DeleteMapping(&quot;del&quot;)
+    public void  del(@RequestParam int id){
+        cacheService.del(id);
+    }
+    
+}</code></code></pre>
+<p>CacheService缓存业务处理类，添加缓存，更新缓存和删除。</p>
+<pre><code><code>@Slf4j
+@Service
+public class CacheService {
+
+    private Map&lt;Integer, User&gt; dataMap = new HashMap &lt;Integer, User&gt;(){
+        {
+            for (int i = 1; i &lt; 100 ; i++) {
+                User u = new User(&quot;code&quot; + i, &quot;name&quot; + i);
+                put(i, u);
+            }
+        }
+     };
+
+    // 获取数据
+    @Cacheable(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public User get(int id){
+        log.info(&quot;通过id{}查询获取&quot;, id);
+        return dataMap.get(id);
+    }
+
+    // 更新数据
+    @CachePut(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public User set(int id, User u){
+        log.info(&quot;更新id{}数据&quot;, id);
+        dataMap.put(id, u);
+        return u;
+     }
+
+    //删除数据
+    @CacheEvict(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public void del(int id){
+        log.info(&quot;删除id{}数据&quot;, id);
+        dataMap.remove(id);
+    }
+    
+}</code></code></pre>
+<p>源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p22-springboot-cache-ehcache" class="uri">https://github.com/imyanger/springboot-project/tree/master/p22-springboot-cache-ehcache</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

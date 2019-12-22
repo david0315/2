@@ -1,0 +1,265 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty网络框架' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty网络框架</center></div><div class='banquan'>原文出处:本文由博客园博主辣鸡小篮子提供。<br/>
+原文连接:https://www.cnblogs.com/funyoung/p/11978750.html</div><br>
+    <h1 id="netty">Netty网络框架</h1>
+<p>Netty是一个异步的基于事件驱动的网络框架。</p>
+<h3 id="nettyjavanio">为什么要使用Netty而不直接使用JAVA中的NIO</h3>
+<p>1.Netty支持三种IO模型同时支持三种Reactor模式。</p>
+<p>2.Netty支持很多应用层的协议，提供了很多decoder和encoder。</p>
+<p>3.Netty能够解决TCP长连接所带来的缺陷（粘包、半包等）</p>
+<p>4.Netty支持应用层的KeepAlive。</p>
+<p>5.Netty规避了JAVA NIO中的很多BUG，性能更好。</p>
+<hr />
+<h2 id="netty-1">Netty启动服务端</h2>
+<p>1.创建ServerBootstrap服务端启动对象。</p>
+<p>2.配置bossGroup和workerGroup，其中bossGroup负责接收连接，workerGroup负责处理连接的读写就绪事件。</p>
+<p>3.配置父Channel，一般为NioServerSocketChannel。</p>
+<p>4.配置子Channel与Handler之间的关系。</p>
+<p>5.给父Channel配置参数。</p>
+<p>6.给子Channel配置参数。</p>
+<p>7.绑定端口，启动服务。</p>
+<pre><code><code class="language-JAVA">private void start() {
+        EventLoopGroup bossGroup = new NioEventLoopGroup();
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        ServerBootstrap serverBootstrap = new ServerBootstrap();
+        serverBootstrap
+                .group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel.class) // 配置父Channel
+                .childHandler(new ChannelInitializer&lt;SocketChannel&gt;() { // 配置子Channel与Handler之间的关系
+                    @Override
+                    protected void initChannel(SocketChannel socketChannel) {
+                        // 往ChannelPipeline中添加ChannelHandler
+                        socketChannel.pipeline().addLast(
+                                new HttpRequestDecoder(),
+                                new HttpObjectAggregator(65535),
+                                new HttpResponseEncoder(),
+                                new HttpServerHandler()
+                        );
+                    }
+                })
+                .option(ChannelOption.SO_BACKLOG, 128) // 给父Channel配置参数
+                .childOption(ChannelOption.SO_KEEPALIVE, true); // 给子Channel配置参数
+
+        try {
+            // 绑定端口，启动服务
+            System.out.println(&quot;start server and bind 8888 port ...&quot;);
+            serverBootstrap.bind(8888).sync();
+        } catch (InterruptedException e) {
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+        }
+    }
+</code></code></pre>
+<h2 id="netty-2">Netty启动客户端</h2>
+<p>1.创建Bootstrap客户端启动对象。</p>
+<p>2.配置workerGroup，负责处理连接的读写就绪事件。</p>
+<p>3.配置父Channel，一般为NioSocketChannel。</p>
+<p>4.给父Channel配置参数。</p>
+<p>5.配置父Channel与Handler之间的关系。</p>
+<p>6.连接服务器。</p>
+<pre><code><code class="language-JAVA">private void start() {
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
+
+        Bootstrap bootstrap = new Bootstrap();
+        bootstrap.group(workerGroup)
+                .channel(NioSocketChannel.class) // 配置父Channel
+                .option(ChannelOption.SO_KEEPALIVE, true) // 给父Channel配置参数
+                .handler(new ChannelInitializer&lt;SocketChannel&gt;() { // 配置父Channel与Handler之间的关系
+                    @Override
+                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                        socketChannel.pipeline().addLast(new TimeClientHandler());
+                    }
+                });
+                
+        try {
+            bootstrap.connect(new InetSocketAddress(8888)).sync(); // 连接服务器
+        } catch (InterruptedException e) {
+            workerGroup.shutdownGracefully();
+        }
+    }
+</code></code></pre>
+<h2 id="channelinboundhandler">ChannelInBoundHandler接口声明了事件的处理方法</h2>
+<pre><code><code>channelActive():当建立一个新的Channel时调用该方法
+
+handlerAdd():当往Channel的ChannelPipeline中添加Handler时调用该方法
+
+handlerRemove():当移除ChannelPipeline中的Handler时调用该方法
+
+channelRead():当Channel有数据可读时调用该方法
+
+exceptionCaught():当在处理事件发生异常时调用该方法
+</code></code></pre>
+<p>ServerSocketChannel每接收到一个新的连接时都会建立一个SocketChannel，然后调用ChannelInitializer的init方法初始化Channel，方法中配置Channel与Handler之间的关系，然后调用Handler的handlerAdd()和channelActive()方法。</p>
+<h2 id="channelpipeline">关于ChannelPipeline</h2>
+<p>ChannelPipeline底层使用双向链表。</p>
+<p><img src="./images/Netty网络框架0.png" alt="" /></p>
+<p>当Channel有数据可读时，会沿着链表从前往后寻找有IN性质的Handler进行处理。</p>
+<p>当Channel写入数据时，会沿着链表从后往前寻找有OUT性质的Handler进行处理。</p>
+<h2 id="writeflush">关于write()和flush()方法</h2>
+<src class="mermaid">    graph TB;
+    S1[Channel的write方法] --将数据写入到缓冲区--> buffer[缓冲区];
+    S2[Channel的flush方法] --发送缓冲区中的数据并清空--> buffer[缓冲区];
+    buffer --发送--> S3[SocketChannel];
+
+<pre><code><code class="language-JAVA">write():将数据写入到缓冲区
+flush():发送缓冲区中的数据并进行清空
+writeAndFlush():将数据写入到缓冲区,同时发送缓冲区中的数据并进行清空
+</code></code></pre>
+<p>Channel的writeAndFlush()和flush()方法会从链表的最后一个节点开始从后往前寻找有OUT性质的Handler进行处理。</p>
+<p>ChannelHandlerContext的writeAndFlush()和flush()方法会从当前节点从后往前寻找有OUT性质的Handler进行处理。</p>
+<h2 id="section">关于写就绪事件</h2>
+<p>当SocketChannel可以写入数据时，将会触发写就绪事件，所以一般不能随便监听，否则将会一直触发。</p>
+<p>当SocketChannel在写入数据写不进时（缓冲区已经满了），向Selector传递要监听此Channel的写就绪事件，然后强制发送缓冲区中的数据并进行清空，此时将会触发写就绪事件，当Selector处理完写就绪事件后，应当剔除监听此Channel的写就绪事件。</p>
+<h2 id="netty-3">为什么说Netty中的所有操作都是异步的</h2>
+<p>Channel中的所有任务都会放入到其绑定的EventLoop的任务队列中，然后等待被EventLoop中的线程处理。</p>
+<h2 id="channelfuture">关于ChannelFuture</h2>
+<p>由于Netty中的所有操作都是异步的，因此一般会返回ChannelFuture对象，用于存储Channel异步执行的结果。</p>
+<p>当创建ChannelFuture实例时，isDone()方法返回false，仅当ChannelFuture被设置成成功或者失败时，isDone()方法才返回true。</p>
+<p>可以往ChannelFuture中添加ChannelFutureListener，当任务被执行完毕后由IO线程自动调用。</p>
+<hr />
+<h1 id="nettybytebuf">Netty中的ByteBuf</h1>
+<p><img src="./images/Netty网络框架1.png" alt="" /></p>
+<p>ByteBuf有readerIndex和writerIndex两个指针，默认都为0，当进行写操作时移动writerIndex指针，读操作时移动readerIndex指针。</p>
+<p>可读容量 = writerIndex - readerIndex</p>
+<p>*只有read()/write()方法才会移动指针，get()/set()方法不会移动指针。</p>
+<p>*ByteBuf支持动态扩容。</p>
+<h3 id="bytebuf">ByteBuf的创建和管理</h3>
+<p>使用ByteBufAllocator来创建和管理ByteBuf，其分别提供PooledByteBufAllocator和UnpooledByteBufAllocator实现类，分别代表池化和非池化。</p>
+<p>*Netty同时也提供了Pooled和Unpooled工具类来创建和管理ByteBuf。</p>
+<h3 id="bytebufpooled">池化的ByteBuf（Pooled）</h3>
+<p>每次使用时都从池中取出一个ByteBuf对象，当使用完毕后再放回到池中。</p>
+<p>每个ByteBuf都有一个refCount属性，仅当refCount属性为0时才将ByteBuf对象放回到池中。</p>
+<p>ByteBuf的release()方法可以使refCount属性减1（一般由最后一个访问ByteBuf的Handler进行处理）</p>
+<h3 id="bytebufunpooled">非池化的ByteBuf（Unpooled）</h3>
+<p>每次使用时都创建一个新的ByteBuf对象。</p>
+<h3 id="bytebuf-1">使用池化ByteBuf的风险</h3>
+<p>如果每次使用ByteBuf后却不进行释放，那么有可能发生内存泄漏，对象池中会不停的创建ByteBuf对象。</p>
+<p>非池化的ByteBuf对象能够依赖JVM自动进行回收。</p>
+<h3 id="bytebuf-2">关于堆内和堆外的ByteBuf</h3>
+<p>池化和非池化的ByteBufAllocator中都可以创建堆内和堆外的ByteBuf对象。</p>
+<p>堆外的ByteBuf可以避免在进行IO操作时数据从堆内内存复制到操作系统内存的过程，所以对于IO操作来说一般使用堆外的ByteBuf，而对于内部业务数据处理来说使用堆内的ByteBuf。</p>
+<hr />
+<h1 id="nettyio">Netty支持的IO模型</h1>
+<p>Netty支持BIO、NIO、AIO三种IO模型。</p>
+<p><img src="./images/Netty网络框架2.png" alt="" /></p>
+<p>*其中AIO模型只在Netty的5.x版本有提供，但不建议使用，因为Netty不再维护同时也废除了5.x版本，其原因是在Linux中AIO比NIO强不了多少。</p>
+<h3 id="nettyio-1">Netty如何切换IO模型</h3>
+<p>只需要将EventLoopGroup和ServerSocketChannel换成相应IO模型的API即可。</p>
+<hr />
+<h1 id="nettyreactor">Netty中使用Reactor模式</h1>
+<h3 id="reactor">Reactor单线程模式</h3>
+<p><img src="./images/Netty网络框架3.png" alt="" /></p>
+<pre><code><code class="language-JAVA">EventLoopGroup eventLoopGroup = new NioEventLoopGroup(1);
+</code></code></pre>
+<h3 id="reactor-1">Reactor多线程模式</h3>
+<p><img src="./images/Netty网络框架4.png" alt="" /></p>
+<pre><code><code class="language-JAVA">EventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+</code></code></pre>
+<p>*默认CPU核数 x 2个EventLoop。</p>
+<h3 id="reactor-2">主从Reactor多线程模式</h3>
+<p><img src="./images/Netty网络框架5.png" alt="" /></p>
+<pre><code><code class="language-JAVA">EventLoopGroup bossGroup = new NioEventLoopGroup();
+EventLoopGroup workerGroup = new NioEventLoopGroup();
+</code></code></pre>
+<hr />
+<h1 id="tcp">关于TCP的粘包和半包</h1>
+<h3 id="section-1">粘包（多个数据包被合并成一个进行发送）</h3>
+<src class="mermaid">    graph LR;
+    data1[ABC] --> compact[ABCDEF];
+    data2[DEF] --> compact;
+    compact --send--> net[网络]
+
+<h3 id="section-2">半包（一个数据包被拆分成多个进行发送）</h3>
+<src class="mermaid">    graph LR;
+    data1[ABCDEF] --> part1[ABC];
+    data1 --> part2[DEF];
+    part1 --send--> net1[网络];        
+    part2 --send--> net2[网络];
+
+<h3 id="section-3">发生粘包的原因</h3>
+<p>1.写入的数据远小于缓冲区的大小，TCP协议为了性能的考虑，合并后再进行发送。</p>
+<h3 id="section-4">发生半包的原因</h3>
+<p>1.写入的数据大于缓冲区的大小，因此必须拆包后再进行传输（缓冲区已满，强制flush）</p>
+<p>2.写入的数据大于协议的MTU（最大传输单元），因此必须拆包后再进行传输。</p>
+<h3 id="tcp-1">TCP长连接的缺陷</h3>
+<p><img src="./images/Netty网络框架6.png" alt="" /></p>
+<p>长连接中可以发送多个请求，同时TCP协议是流式协议，消息无边界，所以有一个很棘手的问题，接收方怎么去知道一个请求中的数据到底是哪里到哪里，以及一个请求中的数据有可能是粘包后的结果，同时多个请求中的数据有可能是半包后的结果。</p>
+<h3 id="section-5">解决方案</h3>
+<p>1.使用短连接，连接开始和连接结束之间的数据就是请求的数据。</p>
+<p>2.使用固定的长度，每个请求中的数据都使用固定的长度，接收方以接收到固定长度的数据来确定一个完整的请求数据。</p>
+<p>3.使用指定的分隔符，每个请求中的数据的末尾都加上一个分隔符，接收方以分隔符来确定一个完整的请求数据。</p>
+<p>4.使用特定长度的字段去存储请求数据的长度，接收方根据请求数据的长度来确定一个完整的请求数据。</p>
+<h3 id="nettytcp">Netty对TCP长连接缺陷的解决方案</h3>
+<pre><code><code>FixedLengthFrameDecoder:使用固定的长度
+
+DelimiterBasedFrameDecoder:使用指定的分隔符
+
+LengthFieldBasedFrameDecoder:使用特定长度的字段去存储请求数据的长度
+</code></code></pre>
+<hr />
+<h1 id="tcpkeepalive">关于TCP的KeepAlive</h1>
+<p>正常情况下双方建立连接后是不会断开的，KeepAlive就是防止连接双方中的任意一方由于意外断开而通知不到对方，导致对方一直持有连接，占用资源。</p>
+<p>*建立连接需要三次握手、正常断开连接需要四次挥手。</p>
+<p>KeepAlive有三个核心参数</p>
+<pre><code><code>net.ipv4.tcp_keepalive_timeout:连接的超时时间(默认7200s)
+
+net.ipv4.tcp_keepalive_intvl:发送探测包的间隔(默认75s)
+
+tnet.ipv4.cp_keepalive_probes:发送探测包的个数(默认9个)
+</code></code></pre>
+<p>这三个参数都是系统参数，会影响部署在机器上的所有应用。</p>
+<p><strong>KeepAlive的开关是在应用层开启的，只有当应用层开启了KeepAlive，KeepAlive才会生效。</strong></p>
+<pre><code><code>java.net.Socket.setKeepAlive(boolean on);
+</code></code></pre>
+<p>当连接在指定时间内没有发送请求时，开启KeepAlive的一端就会向对方发送一个探测包，如果对方没有回应，则每隔指定时间发送一个探测包，总共发送指定个探测包，如果对方都没有回应则认为对方不可用，断开连接。</p>
+<h3 id="keepalive">为什么要做应用层的KeepAlive</h3>
+<p>1.KeepAlive参数是系统参数，对于应用来说不够灵活。</p>
+<p>2.默认检测一个不可用的连接所需要的时间太长。</p>
+<h3 id="keepalive-1">怎么做应用层的KeepAlive</h3>
+<p>1.定时任务</p>
+<p>客户端定期向所有已经建立连接的服务端发送心跳检测，如果服务端连续没有回应指定个心跳检测，则认为对方不可用，此时客户端应该重连。</p>
+<p>服务端定期向所有已经建立连接的客户端发送心跳检测，如果客户端连续没有回应指定个心跳检测，则认为对方不可用，此时应该断开连接。</p>
+<p>2.计时器</p>
+<p>连接在指定时间内没有发送请求则认为对方不可用</p>
+<h3 id="nettykeepalive">Netty对KeepAlive的支持</h3>
+<p><strong>Netty开启KeepAlive</strong></p>
+<pre><code><code>Bootstrap.option(ChannelOption.SO_KEEPALIVE,true);
+ServerBootstrap.childOption(ChannelOption.SO_KEEPALIVE,true);
+</code></code></pre>
+<p><strong>Netty提供的KeepAlive机制</strong></p>
+<p>Netty提供的IdleStateHandler能够检测处于Idle状态的连接。</p>
+<p>Idle状态类型</p>
+<pre><code><code>reader_idle:SocketChannel在指定时间内都没有数据可读
+
+writer_idle:SocketChannel在指定时间内没有写入数据
+
+all_idle:SocketChannel在指定时间内没有数据可读或者没有写入数据
+</code></code></pre>
+<p>直接将IdleStateHandler添加到ChannelPipeline即可，当Netty检测到处于Idle状态的连接时，将会自动调用其Handler的userEventTriggered()方法，用户只需要在该方法中判断Idle状态的类型，然后做出相应的处理。</p>
+<h3 id="httpkeepalive">关于HTTP的KeepAlive</h3>
+<p>HTTP的KeepAlive是对长连接和短连接的选择，并不是保持连接存活的一种机制。</p>
+<p>HTTP是基于请求和响应的，客户端发送请求给服务端然后等待服务端的响应，当服务端检测到请求头中包含Connection:KeepAlive时，表示客户端使用长连接，此时服务端应该保持连接，当检测到请求头中包含Connection:close时，表示客户端使用短连接，此时服务端应该主动断开连接。</p>
+<p>TCP并不是基于请求和响应的，客户端可以发送请求给服务端，同时服务端也可以发送请求给客户端。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

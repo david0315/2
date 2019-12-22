@@ -1,0 +1,410 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修ModelAndViewContainer、ModelMap、Model详细介绍【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>ModelAndViewContainer、ModelMap、Model详细介绍【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11446758.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>一个开源的技术产品做得好不好，主要是看你能解决多少非功能性问题（因为功能性问题是所有产品都能够想到的）</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p>写这篇文章非我本意，因为我觉得对如题的这个几个类的了解还是比较基础且简单的一块内容，直到有超过两个同学问过我一些问题的时候：通过聊天发现小伙伴都听说过这几个类，但对于他们的使用、功能定位是傻傻分不清楚的（因为名字上都有很多的相似之处）。<br />
+那么书写本文就是当作一篇科普类文章记录下来，已经非常熟悉小伙伴就没太大必要往下继续阅读本文内容了，因为这块不算难的（当然我只是建议而已~）。</p>
+<h2 id="modelandviewcontainer">ModelAndViewContainer</h2>
+<p>我把这个类放在首位，是因为相较而言它的逻辑性稍强一点，并且对于理解处理器<code>ReturnValue</code>返回值的处理上有很好的帮助。</p>
+<p><code>ModelAndViewContainer</code>：可以把它定义为<code>ModelAndView</code>上下文的容器，它承担着<code>整个请求</code>过程中的数据传递工作--&gt;保存着<code>Model</code>和<code>View</code>。官方doc对它的解释是这句话：</p>
+<pre><code><code>Records model and view related decisions made by {@link HandlerMethodArgumentResolver HandlerMethodArgumentResolvers} and
+{@link HandlerMethodReturnValueHandler HandlerMethodReturnValueHandlers} during the course of invocation of a controller method.</code></code></pre>
+<p>翻译成&quot;人话&quot;便是：记录<code>HandlerMethodArgumentResolver</code>和 <code>HandlerMethodReturnValueHandler</code>在处理Controller的<code>handler</code>方法时 使用的模型<code>model</code>和视图<code>view</code>相关信息.。</p>
+<p>当然它除了保存<code>Model</code>和<code>View</code>外，还额外提供了一些其它功能。下面我们先来熟悉熟悉它的API、源码：</p>
+<pre><code><code>// @since 3.1
+public class ModelAndViewContainer {
+    // =================它所持有的这些属性还是蛮重要的=================
+    // redirect时,是否忽略defaultModel 默认值是false：不忽略
+    private boolean ignoreDefaultModelOnRedirect = false;
+    // 此视图可能是个View，也可能只是个逻辑视图String
+    @Nullable
+    private Object view;
+    // defaultModel默认的Model
+    // 注意：ModelMap 只是个Map而已，但是实现类BindingAwareModelMap它却实现了org.springframework.ui.Model接口
+    private final ModelMap defaultModel = new BindingAwareModelMap();
+    // 重定向时使用的模型（提供set方法设置进来）
+    @Nullable
+    private ModelMap redirectModel;
+    // 控制器是否返回重定向指令
+    // 如：使用了前缀&quot;redirect:xxx.jsp&quot;这种，这个值就是true。然后最终是个RedirectView
+    private boolean redirectModelScenario = false;
+    // Http状态码
+    @Nullable
+    private HttpStatus status;
+    
+    private final Set&lt;String&gt; noBinding = new HashSet&lt;&gt;(4);
+    private final Set&lt;String&gt; bindingDisabled = new HashSet&lt;&gt;(4);
+
+    // 很容易想到，它和@SessionAttributes标记的元素有关
+    private final SessionStatus sessionStatus = new SimpleSessionStatus();
+    // 这个属性老重要了：标记handler是否**已经完成**请求处理
+    // 在链式操作中，这个标记很重要
+    private boolean requestHandled = false;
+    ...
+
+    public void setViewName(@Nullable String viewName) {
+        this.view = viewName;
+    }
+    public void setView(@Nullable Object view) {
+        this.view = view;
+    }
+    // 是否是视图的引用
+    public boolean isViewReference() {
+        return (this.view instanceof String);
+    }
+
+    // 是否使用默认的Model
+    private boolean useDefaultModel() {
+        return (!this.redirectModelScenario || (this.redirectModel == null &amp;&amp; !this.ignoreDefaultModelOnRedirect));
+    }
+    
+    // 注意子方法和下面getDefaultModel()方法的区别
+    public ModelMap getModel() {
+        if (useDefaultModel()) { // 使用默认视图
+            return this.defaultModel;
+        } else {
+            if (this.redirectModel == null) { // 若重定向视图为null，就new一个空的返回
+                this.redirectModel = new ModelMap();
+            }
+            return this.redirectModel;
+        }
+    }
+    // @since 4.1.4
+    public ModelMap getDefaultModel() {
+        return this.defaultModel;
+    }
+
+    // @since 4.3 可以设置响应码，最终和ModelAndView一起被View渲染时候使用
+    public void setStatus(@Nullable HttpStatus status) {
+        this.status = status;
+    }
+
+    // 以编程方式注册一个**不应**发生数据绑定的属性，对于随后声明的@ModelAttribute也是不能绑定的
+    // 虽然方法是set 但内部是add哦  ~~~~
+    public void setBindingDisabled(String attributeName) {
+        this.bindingDisabled.add(attributeName);
+    }
+    public boolean isBindingDisabled(String name) {
+        return (this.bindingDisabled.contains(name) || this.noBinding.contains(name));
+    }
+    // 注册是否应为相应的模型属性进行数据绑定
+    public void setBinding(String attributeName, boolean enabled) {
+        if (!enabled) {
+            this.noBinding.add(attributeName);
+        } else {
+            this.noBinding.remove(attributeName);
+        }
+    }
+
+    // 这个方法需要重点说一下：请求是否已在处理程序中完全处理
+    // 举个例子：比如@ResponseBody标注的方法返回值，无需View继续去处理，所以就可以设置此值为true了
+    // 说明：这个属性也就是可通过源生的ServletResponse、OutputStream来达到同样效果的
+    public void setRequestHandled(boolean requestHandled) {
+        this.requestHandled = requestHandled;
+    }
+    public boolean isRequestHandled() {
+        return this.requestHandled;
+    }
+
+    // =========下面是Model的相关方法了==========
+    // addAttribute/addAllAttributes/mergeAttributes/removeAttributes/containsAttribute
+}</code></code></pre>
+<p>直观的阅读过源码后，至少我能够得到如下结论，分享给大家：</p>
+<ul>
+<li>它维护了模型model：包括<code>defaultModle</code>和<code>redirectModel</code></li>
+<li><strong>defaultModel是默认使用的Model</strong>，redirectModel是用于传递redirect时的Model</li>
+<li>在<code>Controller</code>处理器入参写了<code>Model或ModelMap</code>类型时候，实际传入的是<code>defaultModel</code>。<br />
+- defaultModel它实际是<code>BindingAwareModel</code>，是个<code>Map</code>。而且继承了<code>ModelMap</code>又实现了<code>Model</code>接口，所以在处理器中使用<code>Model</code>或<code>ModelMap</code>时，其实都是使用同一个对象~~~<br />
+- 可参考<code>MapMethodProcessor</code>，它最终调用的都是<code>mavContainer.getModel()</code>方法</li>
+<li>若处理器入参类型是<code>RedirectAttributes</code>类型，最终传入的是<code>redirectModel</code>。<br />
+- 至于为何实际传入的是<code>defaultModel</code>？？参考：<code>RedirectAttributesMethodArgumentResolver</code>，使用的是<code>new RedirectAttributesModelMap(dataBinder)</code>。</li>
+<li>维护视图view（兼容支持逻辑视图名称）</li>
+<li><strong>维护是否redirect信息</strong>,及根据这个判断HandlerAdapter使用的是defaultModel或redirectModel</li>
+<li>维护<code>@SessionAttributes</code>注解信息<strong>状态</strong></li>
+<li>维护handler是否处理标记（重要）</li>
+</ul>
+<p>下面我主要花笔墨重点介绍一下它的<code>requestHandled</code>这个属性的作用：</p>
+<h4 id="requesthandled属性">requestHandled属性</h4>
+<p><strong>1、首先看看<code>isRequestHandled()</code>方法的使用：</strong><br />
+<code>RequestMappingHandlerAdapter</code>对<code>mavContainer.isRequestHandled()</code>方法的使用，或许你就能悟出点啥了：</p>
+<blockquote>
+<p>这个方法的执行实际是：<code>HandlerMethod</code>完全调用执行完成后，就执行这个方法去拿<code>ModelAndView</code>了（传入了request和<code>ModelAndViewContainer</code>）</p>
+</blockquote>
+<pre><code><code>RequestMappingHandlerAdapter：
+    @Nullable
+    private ModelAndView getModelAndView(ModelAndViewContainer mavContainer ModelFactory modelFactory, NativeWebRequest webRequest) throws Exception {
+        // 将列为@SessionAttributes的模型属性提升到会话
+        modelFactory.updateModel(webRequest, mavContainer);
+        if (mavContainer.isRequestHandled()) {
+            return null;
+        }
+
+        ModelMap model = mavContainer.getModel();
+        ModelAndView mav = new ModelAndView(mavContainer.getViewName(), model, mavContainer.getStatus());
+        // 真正的View 可见ModelMap/视图名称、状态HttpStatus最终都交给了Veiw去渲染
+        if (!mavContainer.isViewReference()) {
+            mav.setView((View) mavContainer.getView());
+        }
+        
+        // 这个步骤：是Spring MVC对重定向的支持~~~~
+        // 重定向之间传值，使用的RedirectAttributes这种Model~~~~
+        if (model instanceof RedirectAttributes) {
+            Map&lt;String, ?&gt; flashAttributes = ((RedirectAttributes) model).getFlashAttributes();
+            HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
+            if (request != null) {
+                RequestContextUtils.getOutputFlashMap(request).putAll(flashAttributes);
+            }
+        }
+    }</code></code></pre>
+<p>可以看到如果<code>ModelAndViewContainer</code>已经被处理过，此处直接返回null，<em>也就是不会再继续处理Model和View了~</em></p>
+<p><strong>2、<code>setRequestHandled()</code>方法的使用</strong><br />
+作为设置方法，调用的地方有好多个，总结如下：</p>
+<ul>
+<li><code>AsyncTaskMethodReturnValueHandler</code>：处理返回值类型是<code>WebAsyncTask</code>的方法</li>
+</ul>
+<pre><code><code>// 若返回null，就没必要继续处理了
+if (returnValue == null) {
+    mavContainer.setRequestHandled(true);
+    return;
+}</code></code></pre>
+<ul>
+<li><code>CallableMethodReturnValueHandler/DeferredResultMethodReturnValueHandler/StreamingResponseBodyReturnValueHandler</code>：处理返回值类型是<code>Callable/DeferredResult/ListenableFuture/CompletionStage/StreamingResponseBody</code>的方法（原理同上）</li>
+<li><code>HttpEntityMethodProcessor</code>：返回值类型是<code>HttpEntity</code>的方法</li>
+</ul>
+<pre><code><code>// 看一看到，这种返回值的都会标注为已处理，这样就不再需要视图（渲染）了
+    @Override
+    public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType, ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+        mavContainer.setRequestHandled(true); // 第一句就是这句代码
+        if (returnValue == null) {
+            return;
+        }
+        ... // 交给消息处理器去写        
+        outputMessage.flush();
+    }</code></code></pre>
+<ul>
+<li>同上的原理的还有<code>HttpHeadersReturnValueHandler/RequestResponseBodyMethodProcessor/ResponseBodyEmitterReturnValueHandler</code>等等返回值处理器</li>
+<li><code>ServletInvocableHandlerMethod/HandlerMethod</code>在处理Handler方法时，有时也会标注true已处理（比如：get请求NotModified/已设置了<code>HttpStatus</code>状态码/<code>isRequestHandled()==true</code>等等case）。除了这些case，method方法执行完成后可都会显示设置false的（因为执行完handlerMethod后，还需要交给视图渲染~）</li>
+<li><code>ServletResponseMethodArgumentResolver</code>：这唯一一个是处理入参时候的。若入参类型是<code>ServletResponse/OutputStream/Writer</code>，并且<code>mavContainer != null</code>，它就设置为true了（因为<code>Spring MVC</code>认为既然你自己引入了response，那你就自己做输出吧，<strong>因此使用时此处是需要特别注意的细节地方</strong>~）</li>
+</ul>
+<pre><code><code>resolveArgument()方法：
+
+        if (mavContainer != null) {
+            mavContainer.setRequestHandled(true); // 相当于说你自己需要`ServletResponse`，那返回值就交给你自己处理吧~~~~
+        }</code></code></pre>
+<p>本文最重要类：<code>ModelAndViewContainer</code>部分就介绍到这。接下来就介绍就很简单了，轻松且愉快</p>
+<hr />
+<h2 id="model">Model</h2>
+<p><code>org.springframework.ui.Model</code>的概念不管是在<code>MVC</code>设计模式上，还是在<code>Spring MVC</code>里都是被经常提到的：它用于控制层给前端返回所需的数据（渲染所需的数据）</p>
+<pre><code><code>//  @since 2.5.1 它是一个接口
+public interface Model {
+    ...
+    // addAttribute/addAllAttributes/mergeAttributes/containsAttribute
+    ...
+    // Return the current set of model attributes as a Map.
+    Map&lt;String, Object&gt; asMap();
+}</code></code></pre>
+<p>它的继承树如下：<br />
+<img src="./images/ModelAndViewContainer、ModelMap、Model详细介绍【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+最重要的那必须是<code>ExtendedModelMap</code>啊，它留到介绍<code>ModelMap</code>的时候再详说，简单看看其余子类。</p>
+<h4 id="redirectattributes">RedirectAttributes</h4>
+<p>从命名就能看出是和重定向有关的，它扩展了Model接口：</p>
+<pre><code><code>// @since 3.1
+public interface RedirectAttributes extends Model {
+    ...
+    // 它扩展的三个方法，均和flash属性有关
+    RedirectAttributes addFlashAttribute(String attributeName, @Nullable Object attributeValue);
+    // 这里没指定key，因为key根据Conventions#getVariableName()自动生成
+    RedirectAttributes addFlashAttribute(Object attributeValue);
+    // Return the attributes candidate for flash storage or an empty Map.
+    Map&lt;String, ?&gt; getFlashAttributes();
+}</code></code></pre>
+<h6 id="redirectattributesmodelmap">RedirectAttributesModelMap</h6>
+<p>它实现了<code>RedirectAttributes</code>接口，同时也继承自<code>ModelMap</code>，所以&quot;间接&quot;实现了<code>Model</code>接口的所有方法。</p>
+<pre><code><code>public class RedirectAttributesModelMap extends ModelMap implements RedirectAttributes {
+    @Nullable
+    private final DataBinder dataBinder;
+    private final ModelMap flashAttributes = new ModelMap();
+    ...
+    @Override
+    public RedirectAttributesModelMap addAttribute(String attributeName, @Nullable Object attributeValue) {
+        super.addAttribute(attributeName, formatValue(attributeValue));
+        return this;
+    }
+
+    // 可见这里的dataBinder是用于数据转换的
+    // 把所有参数都转换为String类型（因为Http都是string传参嘛）
+    @Nullable
+    private String formatValue(@Nullable Object value) {
+        if (value == null) {
+            return null;
+        }
+        return (this.dataBinder != null ? this.dataBinder.convertIfNecessary(value, String.class) : value.toString());
+    }
+    ...
+
+    @Override
+    public Map&lt;String, Object&gt; asMap() {
+        return this;
+    }
+    @Override
+    public RedirectAttributes addFlashAttribute(String attributeName, @Nullable Object attributeValue) {
+        this.flashAttributes.addAttribute(attributeName, attributeValue);
+        return this;
+    }
+    ...
+}</code></code></pre>
+<p>我认为它唯一自己的做的有意义的事：借助<code>DataBinder</code>把添加进来的属性参数会转为<code>String</code>类型（为何是转换为<code>String</code>类型，你有想过吗？？？）~</p>
+<h4 id="concurrentmodel">ConcurrentModel</h4>
+<p>它是<code>Spring5.0</code>后才有的，是线程安全的<code>Model</code>，并没提供什么新鲜东西，略（运用于有线程安全问题的场景）</p>
+<hr />
+<h2 id="modelmap">ModelMap</h2>
+<p><code>ModelMap</code>继承自<code>LinkedHashMap</code>，因此它的本质其实就是个Map而已。<br />
+它的特点是：借助Map的能力<code>间接的</code>实现了<code>org.springframework.ui.Model</code>的接口方法，这种设计技巧更值得我们参考学习的（曲线救国的意思有木有~）。<br />
+<img src="./images/ModelAndViewContainer、ModelMap、Model详细介绍【享学Spring MVC】1.png" alt="在这里插入图片描述" /><br />
+so，这里只需要看看<code>ExtendedModelMap</code>即可。它自己继承自<code>ModelMap</code>，没有啥特点，全部是调用父类的方法完成的接口方法复写，喵喵他的子类吧~</p>
+<h5 id="bindingawaremodelmap">BindingAwareModelMap</h5>
+<p>注意：它和普通<code>ModelMap</code>的区别是：它能感知数据校验结果（如果放进来的key存在对应的绑定结果，并且你的value不是绑定结果本身。那就移除掉<code>MODEL_KEY_PREFIX</code> + key这个key的键值对~）。</p>
+<pre><code><code>public class BindingAwareModelMap extends ExtendedModelMap {
+
+    // 注解复写了Map的put方法，一下子就拦截了所有的addAttr方法。。。
+    @Override
+    public Object put(String key, Object value) {
+        removeBindingResultIfNecessary(key, value);
+        return super.put(key, value);
+    }
+    @Override
+    public void putAll(Map&lt;? extends String, ?&gt; map) {
+        map.forEach(this::removeBindingResultIfNecessary);
+        super.putAll(map);
+    }
+
+    // 本类处理的逻辑：
+    private void removeBindingResultIfNecessary(Object key, Object value) {
+        // key必须是String类型才会给与处理
+        if (key instanceof String) {
+            String attributeName = (String) key;
+            if (!attributeName.startsWith(BindingResult.MODEL_KEY_PREFIX)) {
+                String bindingResultKey = BindingResult.MODEL_KEY_PREFIX + attributeName;
+                BindingResult bindingResult = (BindingResult) get(bindingResultKey);
+
+                // 如果有校验结果，并且放进来的value值不是绑定结果本身，那就移除掉绑定结果（相当于覆盖掉）
+                if (bindingResult != null &amp;&amp; bindingResult.getTarget() != value) {
+                    remove(bindingResultKey);
+                }
+            }
+        }
+    }
+}</code></code></pre>
+<p>Spring MVC默认使用的就是这个<code>ModelMap</code>，但它提供的感知功能大多数情况下我们都用不着。不过反正也不用你管，乖乖用着呗</p>
+<hr />
+<h2 id="modelandview">ModelAndView</h2>
+<p>顾名思义，<code>ModelAndView</code>指模型和视图的集合，既包含模型又包含视图；<code>ModelAndView</code>一般可以作为<code>Controller</code>的返回值，所以它的实例是开发者<strong>自己手动创建的</strong>，这也是它和上面的主要区别（上面都是容器创建，然后注入给我们使用的~）。</p>
+<p><strong>因为这个类是直接面向开发者的，所以建议里面的一些API还是要熟悉点较好：</strong></p>
+<pre><code><code>public class ModelAndView {
+    @Nullable
+    private Object view; // 可以是View，也可以是String
+    @Nullable
+    private ModelMap model;
+
+    // 显然，你也可以自己就放置好一个http状态码进去
+    @Nullable
+    private HttpStatus status;  
+    // 标记这个实例是否被调用过clear()方法~~~
+    private boolean cleared = false;
+
+    // 总共这几个属性：它提供的构造函数非常的多  这里我就不一一列出
+    public void setViewName(@Nullable String viewName) {
+        this.view = viewName;
+    }
+    public void setView(@Nullable View view) {
+        this.view = view;
+    }
+    @Nullable
+    public String getViewName() {
+        return (this.view instanceof String ? (String) this.view : null);
+    }
+    @Nullable
+    public View getView() {
+        return (this.view instanceof View ? (View) this.view : null);
+    }
+    public boolean hasView() {
+        return (this.view != null);
+    }
+    public boolean isReference() {
+        return (this.view instanceof String);
+    }
+
+    // protected方法~~~
+    @Nullable
+    protected Map&lt;String, Object&gt; getModelInternal() {
+        return this.model;
+    }
+    public ModelMap getModelMap() {
+        if (this.model == null) {
+            this.model = new ModelMap();
+        }
+        return this.model;
+    }
+
+    // 操作ModelMap的一些方法如下：
+    // addObject/addAllObjects
+
+    public void clear() {
+        this.view = null;
+        this.model = null;
+        this.cleared = true;
+    }
+    // 前提是：this.view == null 
+    public boolean isEmpty() {
+        return (this.view == null &amp;&amp; CollectionUtils.isEmpty(this.model));
+    }
+    
+    // 竟然用的was，歪果仁果然严谨  哈哈
+    public boolean wasCleared() {
+        return (this.cleared &amp;&amp; isEmpty());
+    }
+}</code></code></pre>
+<p>很多人疑问：为何<code>Controller</code>的处理方法不仅仅可以返回<code>ModelAndView</code>，还可以通过返回<code>Map/Model/ModelMap</code>等来直接向页面传值呢？？？<strong>如果返回值是后三者，又是如何找到view完成渲染的呢？</strong></p>
+<p>这个问题我抛出来，本文不给答案。因为都聊到这了，此问题应该不算难的了，建议小伙伴<strong>必须自行弄懂缘由（请不要放过有用的知识点）</strong>。若实在有不懂之处可以给留言我会帮你解答的~<br />
+答案参考提示：可参阅<code>ModelMethodProcessor</code>和<code>ModelMethodProcessor</code>对返回值的处理模块</p>
+<blockquote>
+<p>绝大多数情况下，我都建议返回<code>ModelAndView</code>，而不是其它那哥三。因为它哥三都没有指定视图名，所以通过<code>DispatcherServlet.applyDefaultViewName()</code>生成的视图名一般都不是我们需要的。（<strong>除非你的目录、命名等等都<code>特别特别的规范</code>，那顺便倒是可以省不少事~~~</strong>）</p>
+</blockquote>
+<hr />
+<h6 id="modelfactory">ModelFactory</h6>
+<p>关于<code>ModelFactory</code>它的介绍，<a href="https://blog.csdn.net/f641385712/article/details/98260361">这篇文章</a> 里算是已经详细讲解过了，这里再简述两句它的作用。<br />
+<code>ModelFactory</code>是用来维护Model的，具体包含两个功能</p>
+<ol>
+<li>初始化Model</li>
+<li><h2 id="处理器执行后将model中相应的参数更新到sessionattributes中处理modelattribute和sessionattributes">处理器执行后将<code>Mode</code>l中相应的参数更新到<code>SessionAttributes</code>中（处理<code>@ModelAttribute</code>和<code>@SessionAttributes</code>）</h2>
+<h4 id="总结">总结</h4>
+本以为本文不会很长的，没想到还是写成了超10000字的中篇文章。希望这篇文章能够帮助你对<code>Spring MVC</code>对模型、视图这块核心内容的理解，帮你扫除途中的一些障碍，共勉~<br />
+==若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞==</li>
+</ol>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

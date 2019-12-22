@@ -1,0 +1,285 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Flink 从 0 到 1 学习 —— Flink Data transformation(转换)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Flink 从 0 到 1 学习 —— Flink Data transformation(转换)</center></div><div class='banquan'>原文出处:本文由博客园博主zhisheng_tian提供。<br/>
+原文连接:https://www.cnblogs.com/zhisheng/p/11795072.html</div><br>
+    <hr />
+<p>toc: true<br />
+title: Flink 从 0 到 1 学习 —— Flink Data transformation(转换)<br />
+date: 2018-11-04<br />
+tags:</p>
+<ul>
+<li>Flink</li>
+<li>大数据</li>
+<li><h2 id="流式计算">流式计算</h2></li>
+</ul>
+<h3 id="前言">前言</h3>
+<p>在第一篇介绍 Flink 的文章 <a href="http://www.54tianzhisheng.cn/2018/10/13/flink-introduction/#Flink-%E7%A8%8B%E5%BA%8F%E4%B8%8E%E6%95%B0%E6%8D%AE%E6%B5%81%E7%BB%93%E6%9E%84">《《从0到1学习Flink》—— Apache Flink 介绍》</a> 中就说过 Flink 程序的结构</p>
+<!--more-->
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)0.png" /></p>
+<p>Flink 应用程序结构就是如上图所示：</p>
+<p>1、Source: 数据源，Flink 在流处理和批处理上的 source 大概有 4 类：基于本地集合的 source、基于文件的 source、基于网络套接字的 source、自定义的 source。自定义的 source 常见的有 Apache kafka、Amazon Kinesis Streams、RabbitMQ、Twitter Streaming API、Apache NiFi 等，当然你也可以定义自己的 source。</p>
+<p>2、Transformation：数据转换的各种操作，有 Map / FlatMap / Filter / KeyBy / Reduce / Fold / Aggregations / Window / WindowAll / Union / Window join / Split / Select / Project 等，操作很多，可以将数据转换计算成你想要的数据。</p>
+<p>3、Sink：接收器，Flink 将转换计算后的数据发送的地点 ，你可能需要存储下来，Flink 常见的 Sink 大概有如下几类：写入文件、打印出来、写入 socket 、自定义的 sink 。自定义的 sink 常见的有 Apache kafka、RabbitMQ、MySQL、ElasticSearch、Apache Cassandra、Hadoop FileSystem 等，同理你也可以定义自己的 Sink。</p>
+<p>在上四篇文章介绍了 Source 和 Sink：</p>
+<p>1、<a href="http://www.54tianzhisheng.cn/2018/10/28/flink-sources/">《从0到1学习Flink》—— Data Source 介绍</a></p>
+<p>2、<a href="http://www.54tianzhisheng.cn/2018/10/30/flink-create-source/">《从0到1学习Flink》—— 如何自定义 Data Source ？</a></p>
+<p>3、<a href="http://www.54tianzhisheng.cn/2018/10/29/flink-sink/">《从0到1学习Flink》—— Data Sink 介绍</a></p>
+<p>4、<a href="http://www.54tianzhisheng.cn/2018/10/31/flink-create-sink/">《从0到1学习Flink》—— 如何自定义 Data Sink ？</a></p>
+<p>那么这篇文章我们就来看下 Flink Data Transformation 吧，数据转换操作还是蛮多的，需要好好讲讲！</p>
+<h3 id="transformation">Transformation</h3>
+<h4 id="map">Map</h4>
+<p>这是最简单的转换之一，其中输入是一个数据流，输出的也是一个数据流：</p>
+<p>还是拿上一篇文章的案例来将数据进行 map 转换操作：</p>
+<pre><code><code>SingleOutputStreamOperator&lt;Student&gt; map = student.map(new MapFunction&lt;Student, Student&gt;() {
+    @Override
+    public Student map(Student value) throws Exception {
+        Student s1 = new Student();
+        s1.id = value.id;
+        s1.name = value.name;
+        s1.password = value.password;
+        s1.age = value.age + 5;
+        return s1;
+    }
+});
+map.print();</code></code></pre>
+<p>将每个人的年龄都增加 5 岁，其他不变。</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)1.png" /></p>
+<h4 id="flatmap">FlatMap</h4>
+<p>FlatMap 采用一条记录并输出零个，一个或多个记录。</p>
+<pre><code><code>SingleOutputStreamOperator&lt;Student&gt; flatMap = student.flatMap(new FlatMapFunction&lt;Student, Student&gt;() {
+    @Override
+    public void flatMap(Student value, Collector&lt;Student&gt; out) throws Exception {
+        if (value.id % 2 == 0) {
+            out.collect(value);
+        }
+    }
+});
+flatMap.print();</code></code></pre>
+<p>这里将 id 为偶数的聚集出来。</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)2.png" /></p>
+<h4 id="filter">Filter</h4>
+<p>Filter 函数根据条件判断出结果。</p>
+<pre><code><code>SingleOutputStreamOperator&lt;Student&gt; filter = student.filter(new FilterFunction&lt;Student&gt;() {
+    @Override
+    public boolean filter(Student value) throws Exception {
+        if (value.id &gt; 95) {
+            return true;
+        }
+        return false;
+    }
+});
+filter.print();</code></code></pre>
+<p>这里将 id 大于 95 的过滤出来，然后打印出来。</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)3.png" /></p>
+<h4 id="keyby">KeyBy</h4>
+<p>KeyBy 在逻辑上是基于 key 对流进行分区。在内部，它使用 hash 函数对流进行分区。它返回 KeyedDataStream 数据流。</p>
+<pre><code><code>KeyedStream&lt;Student, Integer&gt; keyBy = student.keyBy(new KeySelector&lt;Student, Integer&gt;() {
+    @Override
+    public Integer getKey(Student value) throws Exception {
+        return value.age;
+    }
+});
+keyBy.print();</code></code></pre>
+<p>上面对 student 的 age 做 KeyBy 操作分区</p>
+<h4 id="reduce">Reduce</h4>
+<p>Reduce 返回单个的结果值，并且 reduce 操作每处理一个元素总是创建一个新值。常用的方法有 average, sum, min, max, count，使用 reduce 方法都可实现。</p>
+<pre><code><code>SingleOutputStreamOperator&lt;Student&gt; reduce = student.keyBy(new KeySelector&lt;Student, Integer&gt;() {
+    @Override
+    public Integer getKey(Student value) throws Exception {
+        return value.age;
+    }
+}).reduce(new ReduceFunction&lt;Student&gt;() {
+    @Override
+    public Student reduce(Student value1, Student value2) throws Exception {
+        Student student1 = new Student();
+        student1.name = value1.name + value2.name;
+        student1.id = (value1.id + value2.id) / 2;
+        student1.password = value1.password + value2.password;
+        student1.age = (value1.age + value2.age) / 2;
+        return student1;
+    }
+});
+reduce.print();</code></code></pre>
+<p>上面先将数据流进行 keyby 操作，因为执行 reduce 操作只能是 KeyedStream，然后将 student 对象的 age 做了一个求平均值的操作。</p>
+<h4 id="fold">Fold</h4>
+<p>Fold 通过将最后一个文件夹流与当前记录组合来推出 KeyedStream。 它会发回数据流。</p>
+<pre><code><code>KeyedStream.fold(&quot;1&quot;, new FoldFunction&lt;Integer, String&gt;() {
+    @Override
+    public String fold(String accumulator, Integer value) throws Exception {
+        return accumulator + &quot;=&quot; + value;
+    }
+})</code></code></pre>
+<h4 id="aggregations">Aggregations</h4>
+<p>DataStream API 支持各种聚合，例如 min，max，sum 等。 这些函数可以应用于 KeyedStream 以获得 Aggregations 聚合。</p>
+<pre><code><code>KeyedStream.sum(0) 
+KeyedStream.sum(&quot;key&quot;) 
+KeyedStream.min(0) 
+KeyedStream.min(&quot;key&quot;) 
+KeyedStream.max(0) 
+KeyedStream.max(&quot;key&quot;) 
+KeyedStream.minBy(0) 
+KeyedStream.minBy(&quot;key&quot;) 
+KeyedStream.maxBy(0) 
+KeyedStream.maxBy(&quot;key&quot;)</code></code></pre>
+<p>max 和 maxBy 之间的区别在于 max 返回流中的最大值，但 maxBy 返回具有最大值的键， min 和 minBy 同理。</p>
+<h4 id="window">Window</h4>
+<p>Window 函数允许按时间或其他条件对现有 KeyedStream 进行分组。 以下是以 10 秒的时间窗口聚合：</p>
+<pre><code><code>inputStream.keyBy(0).window(Time.seconds(10));</code></code></pre>
+<p>Flink 定义数据片段以便（可能）处理无限数据流。 这些切片称为窗口。 此切片有助于通过应用转换处理数据块。 要对流进行窗口化，我们需要分配一个可以进行分发的键和一个描述要对窗口化流执行哪些转换的函数</p>
+<p>要将流切片到窗口，我们可以使用 Flink 自带的窗口分配器。 我们有选项，如 tumbling windows, sliding windows, global 和 session windows。 Flink 还允许您通过扩展 WindowAssginer 类来编写自定义窗口分配器。 这里先预留下篇文章来讲解这些不同的 windows 是如何工作的。</p>
+<h4 id="windowall">WindowAll</h4>
+<p>windowAll 函数允许对常规数据流进行分组。 通常，这是非并行数据转换，因为它在非分区数据流上运行。</p>
+<p>与常规数据流功能类似，我们也有窗口数据流功能。 唯一的区别是它们处理窗口数据流。 所以窗口缩小就像 Reduce 函数一样，Window fold 就像 Fold 函数一样，并且还有聚合。</p>
+<pre><code><code>inputStream.keyBy(0).windowAll(Time.seconds(10));</code></code></pre>
+<h4 id="union">Union</h4>
+<p>Union 函数将两个或多个数据流结合在一起。 这样就可以并行地组合数据流。 如果我们将一个流与自身组合，那么它会输出每个记录两次。</p>
+<pre><code><code>inputStream.union(inputStream1, inputStream2, ...);</code></code></pre>
+<h4 id="window-join">Window join</h4>
+<p>我们可以通过一些 key 将同一个 window 的两个数据流 join 起来。</p>
+<pre><code><code>inputStream.join(inputStream1)
+           .where(0).equalTo(1)
+           .window(Time.seconds(5))     
+           .apply (new JoinFunction () {...});</code></code></pre>
+<p>以上示例是在 5 秒的窗口中连接两个流，其中第一个流的第一个属性的连接条件等于另一个流的第二个属性。</p>
+<h4 id="split">Split</h4>
+<p>此功能根据条件将流拆分为两个或多个流。 当您获得混合流并且您可能希望单独处理每个数据流时，可以使用此方法。</p>
+<pre><code><code>SplitStream&lt;Integer&gt; split = inputStream.split(new OutputSelector&lt;Integer&gt;() {
+    @Override
+    public Iterable&lt;String&gt; select(Integer value) {
+        List&lt;String&gt; output = new ArrayList&lt;String&gt;(); 
+        if (value % 2 == 0) {
+            output.add(&quot;even&quot;);
+        }
+        else {
+            output.add(&quot;odd&quot;);
+        }
+        return output;
+    }
+});</code></code></pre>
+<h4 id="select">Select</h4>
+<p>此功能允许您从拆分流中选择特定流。</p>
+<pre><code><code>SplitStream&lt;Integer&gt; split;
+DataStream&lt;Integer&gt; even = split.select(&quot;even&quot;); 
+DataStream&lt;Integer&gt; odd = split.select(&quot;odd&quot;); 
+DataStream&lt;Integer&gt; all = split.select(&quot;even&quot;,&quot;odd&quot;);</code></code></pre>
+<h4 id="project">Project</h4>
+<p>Project 函数允许您从事件流中选择属性子集，并仅将所选元素发送到下一个处理流。</p>
+<pre><code><code>DataStream&lt;Tuple4&lt;Integer, Double, String, String&gt;&gt; in = // [...] 
+DataStream&lt;Tuple2&lt;String, String&gt;&gt; out = in.project(3,2);</code></code></pre>
+<p>上述函数从给定记录中选择属性号 2 和 3。 以下是示例输入和输出记录：</p>
+<pre><code><code>(1,10.0,A,B)=&gt; (B,A)
+(2,20.0,C,D)=&gt; (D,C)</code></code></pre>
+<h3 id="最后">最后</h3>
+<p>本文主要介绍了 Flink Data 的常用转换方式：Map、FlatMap、Filter、KeyBy、Reduce、Fold、Aggregations、Window、WindowAll、Union、Window Join、Split、Select、Project 等。并用了点简单的 demo 介绍了如何使用，具体在项目中该如何将数据流转换成我们想要的格式，还需要根据实际情况对待。</p>
+<h3 id="关注我">关注我</h3>
+<p>转载请务必注明原创地址为：<a href="http://www.54tianzhisheng.cn/2018/11/04/Flink-Data-transformation/" class="uri">http://www.54tianzhisheng.cn/2018/11/04/Flink-Data-transformation/</a></p>
+<p>微信公众号：<strong>zhisheng</strong></p>
+<p>另外我自己整理了些 Flink 的学习资料，目前已经全部放到微信公众号（zhisheng）了，你可以回复关键字：<strong>Flink</strong> 即可无条件获取到。另外也可以加我微信 你可以加我的微信：<strong>yuanblog_tzs</strong>，探讨技术！</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)4.png" /></p>
+<p>更多私密资料请加入知识星球！</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)5.png" /></p>
+<h3 id="github-代码仓库">Github 代码仓库</h3>
+<p><a href="https://github.com/zhisheng17/flink-learning/" class="uri">https://github.com/zhisheng17/flink-learning/</a></p>
+<p>以后这个项目的所有代码都将放在这个仓库里，包含了自己学习 flink 的一些 demo 和博客</p>
+<h3 id="博客">博客</h3>
+<p>1、<a href="http://www.54tianzhisheng.cn/2018/10/13/flink-introduction/">Flink 从0到1学习 —— Apache Flink 介绍</a></p>
+<p>2、<a href="http://www.54tianzhisheng.cn/2018/09/18/flink-install">Flink 从0到1学习 —— Mac 上搭建 Flink 1.6.0 环境并构建运行简单程序入门</a></p>
+<p>3、<a href="http://www.54tianzhisheng.cn/2018/10/27/flink-config/">Flink 从0到1学习 —— Flink 配置文件详解</a></p>
+<p>4、<a href="http://www.54tianzhisheng.cn/2018/10/28/flink-sources/">Flink 从0到1学习 —— Data Source 介绍</a></p>
+<p>5、<a href="http://www.54tianzhisheng.cn/2018/10/30/flink-create-source/">Flink 从0到1学习 —— 如何自定义 Data Source ？</a></p>
+<p>6、<a href="http://www.54tianzhisheng.cn/2018/10/29/flink-sink/">Flink 从0到1学习 —— Data Sink 介绍</a></p>
+<p>7、<a href="http://www.54tianzhisheng.cn/2018/10/31/flink-create-sink/">Flink 从0到1学习 —— 如何自定义 Data Sink ？</a></p>
+<p>8、<a href="http://www.54tianzhisheng.cn/2018/11/04/Flink-Data-transformation/">Flink 从0到1学习 —— Flink Data transformation(转换)</a></p>
+<p>9、<a href="http://www.54tianzhisheng.cn/2018/12/08/Flink-Stream-Windows/">Flink 从0到1学习 —— 介绍 Flink 中的 Stream Windows</a></p>
+<p>10、<a href="http://www.54tianzhisheng.cn/2018/12/11/Flink-time/">Flink 从0到1学习 —— Flink 中的几种 Time 详解</a></p>
+<p>11、<a href="http://www.54tianzhisheng.cn/2018/12/30/Flink-ElasticSearch-Sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 ElasticSearch</a></p>
+<p>12、<a href="http://www.54tianzhisheng.cn/2019/01/05/Flink-run/">Flink 从0到1学习 —— Flink 项目如何运行？</a></p>
+<p>13、<a href="http://www.54tianzhisheng.cn/2019/01/06/Flink-Kafka-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Kafka</a></p>
+<p>14、<a href="http://www.54tianzhisheng.cn/2019/01/13/Flink-JobManager-High-availability/">Flink 从0到1学习 —— Flink JobManager 高可用性配置</a></p>
+<p>15、<a href="http://www.54tianzhisheng.cn/2019/01/14/Flink-parallelism-slot/">Flink 从0到1学习 —— Flink parallelism 和 Slot 介绍</a></p>
+<p>16、<a href="http://www.54tianzhisheng.cn/2019/01/15/Flink-MySQL-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据批量写入到 MySQL</a></p>
+<p>17、<a href="http://www.54tianzhisheng.cn/2019/01/20/Flink-RabbitMQ-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 RabbitMQ</a></p>
+<p>18、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 HBase</a></p>
+<p>19、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 HDFS</a></p>
+<p>20、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Redis</a></p>
+<p>21、<a href="https://t.zsxq.com/uVbi2nq">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Cassandra</a></p>
+<p>22、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Flume</a></p>
+<p>23、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 InfluxDB</a></p>
+<p>24、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 RocketMQ</a></p>
+<p>25、<a href="http://www.54tianzhisheng.cn/2019/03/13/flink-job-jars/">Flink 从0到1学习 —— 你上传的 jar 包藏到哪里去了</a></p>
+<p>26、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— 你的 Flink job 日志跑到哪里去了</a></p>
+<p>27、<a href="http://www.54tianzhisheng.cn/2019/02/28/blink/">阿里巴巴开源的 Blink 实时计算框架真香</a></p>
+<p>28、<a href="http://www.54tianzhisheng.cn/2019/03/28/flink-additional-data/">Flink 从0到1学习 —— Flink 中如何管理配置？</a></p>
+<p>29、<a href="http://www.54tianzhisheng.cn/2019/06/12/flink-split/">Flink 从0到1学习—— Flink 不可以连续 Split(分流)？</a></p>
+<p>30、<a href="http://www.54tianzhisheng.cn/2019/06/13/flink-book-paper/">Flink 从0到1学习—— 分享四本 Flink 国外的书和二十多篇 Paper 论文</a></p>
+<p>31、<a href="http://www.54tianzhisheng.cn/2019/06/14/flink-architecture-deploy-test/">Flink 架构、原理与部署测试</a></p>
+<p>32、<a href="http://www.54tianzhisheng.cn/2019/06/15/Stream-processing/">为什么说流处理即未来？</a></p>
+<p>33、<a href="http://www.54tianzhisheng.cn/2019/06/16/flink-sql-oppo/">OPPO 数据中台之基石：基于 Flink SQL 构建实时数据仓库</a></p>
+<p>34、<a href="http://www.54tianzhisheng.cn/2019/06/17/flink-vs-storm/">流计算框架 Flink 与 Storm 的性能对比</a></p>
+<p>35、<a href="http://www.54tianzhisheng.cn/2019/06/18/flink-state/">Flink状态管理和容错机制介绍</a></p>
+<p>36、<a href="http://www.54tianzhisheng.cn/2019/06/20/flink-kafka-Exactly-Once/">Apache Flink 结合 Kafka 构建端到端的 Exactly-Once 处理</a></p>
+<p>37、<a href="http://www.54tianzhisheng.cn/2019/06/21/flink-in-360/">360深度实践：Flink与Storm协议级对比</a></p>
+<p>38、<a href="http://www.54tianzhisheng.cn/2019/06/26/flink-TensorFlow/">如何基于Flink+TensorFlow打造实时智能异常检测平台？只看这一篇就够了</a></p>
+<p>39、<a href="http://www.54tianzhisheng.cn/2019/07/01/flink-1.9-preview/">Apache Flink 1.9 重大特性提前解读</a></p>
+<p>40、<a href="http://www.54tianzhisheng.cn/2019/12/31/Flink-resources/">Flink 全网最全资源（视频、博客、PPT、入门、实战、源码解析、问答等持续更新）</a></p>
+<p>41、<a href="https://mp.weixin.qq.com/s/ok-YwuVbwAVtJz7hUCiZxg">Flink 灵魂两百问，这谁顶得住？</a></p>
+<p>42、<a href="http://www.54tianzhisheng.cn/2019/08/18/flink-side-output/">Flink 从0到1学习 —— 如何使用 Side Output 来分流？</a></p>
+<p>43、<a href="http://www.54tianzhisheng.cn/2019/08/06/flink-streaming-system/">你公司到底需不需要引入实时计算引擎？</a></p>
+<p>44、<a href="http://www.54tianzhisheng.cn/2019/08/19/flink/">一文让你彻底了解大数据实时计算引擎 Flink</a></p>
+<h3 id="源码解析">源码解析</h3>
+<p>1、<a href="http://www.54tianzhisheng.cn/2019/01/30/Flink-code-compile/">Flink 源码解析 —— 源码编译运行</a></p>
+<p>2、<a href="http://www.54tianzhisheng.cn/2019/03/14/Flink-code-structure/">Flink 源码解析 —— 项目结构一览</a></p>
+<p>3、<a href="http://www.54tianzhisheng.cn/tags/Flink/">Flink 源码解析—— local 模式启动流程</a></p>
+<p>4、<a href="http://www.54tianzhisheng.cn/2019/03/15/Flink-code-Standalone-start/">Flink 源码解析 —— standalone session 模式启动流程</a></p>
+<p>5、<a href="http://www.54tianzhisheng.cn/2019/03/16/Flink-code-Standalone-JobManager-start/">Flink 源码解析 —— Standalone Session Cluster 启动流程深度分析之 Job Manager 启动</a></p>
+<p>6、<a href="http://www.54tianzhisheng.cn/2019/03/17/Flink-code-Standalone-TaskManager-start/">Flink 源码解析 —— Standalone Session Cluster 启动流程深度分析之 Task Manager 启动</a></p>
+<p>7、<a href="http://www.54tianzhisheng.cn/2019/03/18/Flink-code-batch-wordcount-start/">Flink 源码解析 —— 分析 Batch WordCount 程序的执行过程</a></p>
+<p>8、<a href="http://www.54tianzhisheng.cn/2019/03/19/Flink-code-streaming-wordcount-start/">Flink 源码解析 —— 分析 Streaming WordCount 程序的执行过程</a></p>
+<p>9、<a href="http://www.54tianzhisheng.cn/2019/03/21/Flink-code-JobGraph/">Flink 源码解析 —— 如何获取 JobGraph？</a></p>
+<p>10、<a href="http://www.54tianzhisheng.cn/2019/03/20/Flink-code-StreamGraph/">Flink 源码解析 —— 如何获取 StreamGraph？</a></p>
+<p>11、<a href="http://www.54tianzhisheng.cn/2019/03/25/Flink-code-jobmanager/">Flink 源码解析 —— Flink JobManager 有什么作用？</a></p>
+<p>12、<a href="http://www.54tianzhisheng.cn/2019/03/25/Flink-code-taskmanager/">Flink 源码解析 —— Flink TaskManager 有什么作用？</a></p>
+<p>13、<a href="http://www.54tianzhisheng.cn/2019/03/27/Flink-code-JobManager-submitJob/">Flink 源码解析 —— JobManager 处理 SubmitJob 的过程</a></p>
+<p>14、<a href="http://www.54tianzhisheng.cn/2019/03/28/Flink-code-TaskManager-submitJob/">Flink 源码解析 —— TaskManager 处理 SubmitJob 的过程</a></p>
+<p>15、<a href="http://www.54tianzhisheng.cn/2019/03/23/Flink-code-checkpoint/">Flink 源码解析 —— 深度解析 Flink Checkpoint 机制</a></p>
+<p>16、<a href="http://www.54tianzhisheng.cn/2019/03/22/Flink-code-serialize/">Flink 源码解析 —— 深度解析 Flink 序列化机制</a></p>
+<p>17、<a href="http://www.54tianzhisheng.cn/2019/03/24/Flink-code-memory-management/">Flink 源码解析 —— 深度解析 Flink 是如何管理好内存的？</a></p>
+<p>18、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-core</a></p>
+<p>19、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-datadog</a></p>
+<p>20、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-dropwizard</a></p>
+<p>21、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-graphite</a></p>
+<p>22、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-influxdb</a></p>
+<p>23、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-jmx</a></p>
+<p>24、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-slf4j</a></p>
+<p>25、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-statsd</a></p>
+<p>26、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-prometheus</a></p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)6.png" /></p>
+<p>26、<a href="http://www.54tianzhisheng.cn/2019/07/03/Flink-code-Annotations/">Flink Annotations 源码解析</a></p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— Flink Data transformation(转换)7.png" /></p>
+<p>27、<a href="http://www.54tianzhisheng.cn/2019/03/26/Flink-code-ExecutionGraph/">Flink 源码解析 —— 如何获取 ExecutionGraph ？</a></p>
+<p>28、<a href="https://t.zsxq.com/UvrRNJM">大数据重磅炸弹——实时计算框架 Flink</a></p>
+<p>29、<a href="https://t.zsxq.com/QVFqjea">Flink Checkpoint-轻量级分布式快照</a></p>
+<p>30、<a href="http://www.54tianzhisheng.cn/2019/07/04/Flink-code-clients/">Flink Clients 源码解析</a><br />
+原文出处：<a href="http://www.54tianzhisheng.cn/">zhisheng的博客</a>，欢迎关注我的公众号：zhisheng</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

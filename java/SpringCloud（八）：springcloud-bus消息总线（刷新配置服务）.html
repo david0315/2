@@ -1,0 +1,223 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）</center></div><div class='banquan'>原文出处:本文由博客园博主探歌提供。<br/>
+原文连接:https://www.cnblogs.com/lgg20/p/11850794.html</div><br>
+    <h1 class="postTitle"><a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/huangjuncong/p/9077099.html">Bus消息总线</a>：</h1>
+<p><span style="font-size: 16px;">好了现在我们接着上一篇的随笔，继续来讲。上一篇我们讲到，我们如果要去更新所有微服务的配置，在不重启的情况下去更新配置，只能依靠spring cloud config了，但是，是我们要一个服务一个服务的发送post请求，</span></p>
+<p><span style="font-size: 16px;">我们能受的了吗？这比之前的没配置中心好多了，那么我们如何继续避免挨个挨个的向服务发送Post请求来告知服务，你的配置信息改变了，需要及时修改内存中的配置信息。</span></p>
+<p><span style="font-size: 16px;">这时候我们就不要忘记消息队列的发布订阅模型。让所有为服务来订阅这个事件，当这个事件发生改变了，就可以通知所有微服务去更新它们的内存中的配置信息。</span></p>
+<p><span style="font-size: 16px;">这时Bus消息总线就能解决，你只需要在springcloud Config Server端发出refresh，就可以触发所有微服务更新了。</span></p>
+<p><span style="font-size: 18px;">Spring Cloud Bus除了支持RabbitMQ的自动化配置之外，还支持现在被广泛应用的Kafka。在本文中，我们将搭建一个Kafka的本地环境，并通过它来尝试使用Spring Cloud Bus对Kafka的支持，实现消息总线的功能。</span></p>
+<p><span style="font-size: 18px;">window下安装kafka和zooker，超详细：<a href="https://blog.csdn.net/weixin_33446857/article/details/81982455">https://blog.csdn.net/weixin_33446857/article/details/81982455</a></span></p>
+<p><span style="font-size: 18px;">kafka：安装下载教程网址（CentOS Linux）：<a href="https://www.cnblogs.com/subendong/p/7786547.html">https://www.cnblogs.com/subendong/p/7786547.html</a></span></p>
+<p><span style="font-size: 18px;">zooker的下载安装网址：<a href="https://blog.csdn.net/ring300/article/details/80446918">https://blog.csdn.net/ring300/article/details/80446918</a></span></p>
+<p><span style="font-size: 18px;"><strong>项目： 一个服务端。2个客户端。</strong></span></p>
+<p><span style="font-size: 18px;"><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）0.png" alt="" /><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）1.png" alt="" /><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）2.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;"><strong>pom文件：</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 18px;"><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">project </span><span style="color: #ff0000;">xmlns</span><span style="color: #0000ff;">="http://maven.apache.org/POM/4.0.0"</span><span style="color: #ff0000;"> xmlns:xsi</span><span style="color: #0000ff;">="http://www.w3.org/2001/XMLSchema-instance"</span><span style="color: #ff0000;"> xsi:schemaLocation</span><span style="color: #0000ff;">="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">modelVersion</span><span style="color: #0000ff;">&gt;</span>4.0.0<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">modelVersion</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>com.demo<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>springcloud_serviceClient2<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>0.0.1-SNAPSHOT<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">parent</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-parent<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>2.0.3.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">relativePath</span><span style="color: #0000ff;">/&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">parent</span><span style="color: #0000ff;">&gt;</span>
+    
+     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">properties</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">project</span><span style="color: #ff0000;">.build.sourceEncoding</span><span style="color: #0000ff;">&gt;</span>UTF-8<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">project.build.sourceEncoding</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">project</span><span style="color: #ff0000;">.reporting.outputEncoding</span><span style="color: #0000ff;">&gt;</span>UTF-8<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">project.reporting.outputEncoding</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">java</span><span style="color: #ff0000;">.version</span><span style="color: #0000ff;">&gt;</span>1.8<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">java.version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">spring-cloud</span><span style="color: #ff0000;">.version</span><span style="color: #0000ff;">&gt;</span>Finchley.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">spring-cloud.version</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">properties</span><span style="color: #0000ff;">&gt;</span>   
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencyManagement</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+                <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+                <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-dependencies<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+                <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>${spring-cloud.version}<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+                <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">type</span><span style="color: #0000ff;">&gt;</span>pom<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">type</span><span style="color: #0000ff;">&gt;</span>
+                <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>import<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencyManagement</span><span style="color: #0000ff;">&gt;</span>
+         
+ <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-eureka-server<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.3.4.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+          <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-bus-kafka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.3.2.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-config<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.4.0.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-config-client<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.4.0.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+         <span style="color: #008000;">&lt;!--</span><span style="color: #008000;">Spring Boot Actuator，感应服务端变化</span><span style="color: #008000;">--&gt;</span>
+         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-actuator<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">project</span><span style="color: #0000ff;">&gt;</span></span></code></pre>
+
+<p><span style="font-size: 18px;">client1的配置文件要改为bootstrap.yml，因为这种配置格式，是优先加载的，上一篇随笔有讲过，client2的配置如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 18px;"><span style="color: #000000;">server:
+ port: </span>7008<span style="color: #000000;">
+spring:
+ application:
+  name: config2
+ cloud:
+  config:
+   label: master
+#启动什么环境下的配置，dev 表示开发环境，这跟你仓库的文件的后缀有关，比如，仓库配置文件命名格式是cloud</span>-config-<span style="color: #000000;">dev.properties,所以profile 就要写dev
+   profile: dev
+   name: cloud</span>-<span style="color: #000000;">config
+   discovery:
+    enabled: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+#这个名字是Config Server端的服务名字，不能瞎写。
+    service</span>-id: CONFIG-<span style="color: #000000;">SERVER
+    management:
+#是否需要权限拉去，默认是true,如果不false就不允许你去拉取配置中心Server更新的内容   
+  security:
+    enabled: </span><span style="color: #0000ff;">false</span><span style="color: #000000;">
+#注册中心
+eureka:
+ client:
+  service</span>-<span style="color: #000000;">url:
+   defaultZone: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8001/eureka/</span></span></code></pre>
+
+<p><span style="font-size: 18px;"><strong>启动类：</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 18px;"><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ClientApplication2 {
+
+     </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+         SpringApplication.run(ClientApplication2.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+         System.out.println(</span>"启动成功!"<span style="color: #000000;">);<br /></span></span></code></pre>
+
+<p><span style="font-size: 18px;"><strong>controller类：</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 18px;"><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo.web;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Value;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.context.config.annotation.RefreshScope;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.GetMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestParam;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RefreshScope
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Controller {
+    
+         </span><span style="color: #008000;">/*</span><span style="color: #008000;">@Value("${spring.cloud}")
+        private String config;
+
+        @GetMapping("/test/config")
+        public String test() {
+            return config;
+        }</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    
+    @Value(</span>"${name}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String name;
+    @Value(</span>"${age}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Integer age;
+
+    @RequestMapping(</span>"/test"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String test(){
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.name+<span style="color: #0000ff;">this</span><span style="color: #000000;">.age;
+    }
+    
+}</span></span></code></pre>
+
+<p><span style="font-size: 18px;">接着将client2中的的代码基本和client的一样，只是暴露服务的端口不同。</span></p>
+<p><span style="font-size: 18px;">然后：</span></p>
+<p><span style="font-size: 18px;">把zooker，kafka启动；（标题下面链接）</span></p>
+<p><span style="font-size: 18px;">把前面的工程，1个注册中心，一个springcloud-config-server,两个springcloud-config-client,springcloud-config-client1启动起来，</span></p>
+<p><span style="font-size: 18px;"><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）3.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">&nbsp;可以看到springcloudBus是在0分片上，如果两个config-client启动都出现上面信息，证明启动成功了。</span></p>
+<p><span style="font-size: 18px;">访问：http://localhost:7000/cloud-config-dev.properties</span></p>
+<p><span style="font-size: 18px;">&nbsp;<img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）4.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">&nbsp;再访问两个client,如下：</span></p>
+<p><span style="font-size: 18px;">http://localhost:7006/test&nbsp; &nbsp; &nbsp;&nbsp;http://localhost:7008/test</span></p>
+<p><span style="font-size: 18px;">&nbsp;<img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）5.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">&nbsp;好了，好戏开始了，现在我们去git仓库上修改配置中心的文件，将年龄改为24，如下：</span></p>
+<p><span style="font-size: 18px;"><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）6.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">&nbsp;接下来，我们我们用refresh刷新配置服务端7000配置，通知两个client去更新内存中的配置信息。用postman发送localhost:7000/bus/refresh,如下：</span></p>
+<p><span style="font-size: 18px;">注意：spring1.x和spring2.x 刷新的路径不一样。</span></p>
+<p><span style="font-size: 18px;"><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）7.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">----------------------------------------------------</span></p>
+<p><span style="font-size: 18px;">&nbsp;看一下返回的结果：</span></p>
+<p><span style="font-size: 18px;"><img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）8.png" alt="" /></span></p>
+<p><span style="font-size: 18px;">可以看到没有返回什么信息，但是不要担心，这是成功的通知所有client去更新了内存中的信息了。</span></p>
+<p><span style="font-size: 18px;">接着我们分别重新请求config-server,两个client,刷新页面，结果如下：</span></p>
+<p><span style="font-size: 18px;">&nbsp;<img src="./images/SpringCloud（八）：springcloud-bus消息总线（刷新配置服务）9.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">&nbsp;</span></p>
+<p><span style="font-size: 18px;">到目前为止，上面都是刷新说有的配置的信息的，如果我们想刷新某个特定服务的配置信息也是可以的。我们可以指定刷新范围，如下：</span></p>
+<h3 id="指定刷新范围"><span style="font-size: 18px;">指定刷新范围</span></h3>
+<p><span style="font-size: 18px;">　　上面的例子中，我们通过向服务实例请求Spring Cloud Bus的<code>/bus/refresh</code>接口，从而触发总线上其他服务实例的<code>/refresh</code>。但是有些特殊场景下（比如：灰度发布），我们希望可以刷新微服务中某个具体实例的配置。</span></p>
+<p><span style="font-size: 18px;">　　Spring Cloud Bus对这种场景也有很好的支持：<code>/bus/refresh</code>接口还提供了<code>destination</code>参数，用来定位具体要刷新的应用程序。比如，我们可以请求<code>/bus/refresh?destination=服务名字:9000</code>，此时总线上的各应用实例会根据<code>destination</code>属性的值来判断是否为自己的实例名，</span></p>
+<p><span style="font-size: 18px;">若符合才进行配置刷新，若不符合就忽略该消息。</span></p>
+<p><span style="font-size: 18px;"><code>　　destination</code>参数除了可以定位具体的实例之外，还可以用来定位具体的服务。定位服务的原理是通过使用Spring的PathMatecher（路径匹配）来实现，比如：<code>/bus/refresh?destination=customers:**</code>，该请求会触发<code>customers</code>服务的所有实例进行刷新。</span></p>
+<p><span style="font-size: 18px;">&nbsp;</span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

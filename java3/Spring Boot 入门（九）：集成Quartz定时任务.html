@@ -1,0 +1,181 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot 入门（九）：集成Quartz定时任务' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot 入门（九）：集成Quartz定时任务</center></div><div class='banquan'>原文出处:本文由博客园博主从入门到到放弃提供。<br/>
+原文连接:https://www.cnblogs.com/dz-boss/p/11729505.html</div><br>
+    <p>本片文章续《<a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/dz-boss/p/11729419.html">Spring Boot 入门（八）：集成RabbitMQ消息队列</a>》，关于Quartz定时任务请参考《<a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/zhanghaoliang/p/7886110.html">Quartz的基本使用之入门（2.3.0版本）</a>》</p>
+<p>spring boot实现定时任务，除了集成Quartz外，还可以直接使用scheduler注解。使用1个简单的注解就可以完成，为什么还要较为复杂的集成Quartz呢？这里我简单回答下这2中方式的区别，这也是我在项目中为什么要选择Quartz这种方式。</p>
+<p>1.scheduler注解方式，一旦定时任务产生异常，那么此定时任务就无法再次启动，意味该定时任务就失效了，而Quartz不会。</p>
+<p>2.scheduler注解方式，当前面的定时任务没有完成的时候，无法再次开启定时任务，这说明scheduler注解方式是单线程，而Quartz是多线程，同一定时任务可以并发处理。</p>
+<p>3.scheduler注解方式，对于定时的格式很少，只能简单的在注解中配置，很多复杂的定时任务没法完成，而Quartz的格式很丰富，可以配置各种各样的定时任务。</p>
+<p>基于上述原因，定时任务应该选择Quartz。</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18pt;">1.增加依赖</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> &lt;!--quartz--&gt;
+<span style="color: #008080;"> 2</span>         &lt;dependency&gt;
+<span style="color: #008080;"> 3</span>             &lt;groupId&gt;org.quartz-scheduler&lt;/groupId&gt;
+<span style="color: #008080;"> 4</span>             &lt;artifactId&gt;quartz&lt;/artifactId&gt;
+<span style="color: #008080;"> 5</span>             &lt;version&gt;2.2.1&lt;/version&gt;
+<span style="color: #008080;"> 6</span>         &lt;/dependency&gt;
+<span style="color: #008080;"> 7</span>         &lt;!-- 该依赖必加，里面有sping对schedule的支持 --&gt;
+<span style="color: #008080;"> 8</span>         &lt;dependency&gt;
+<span style="color: #008080;"> 9</span>             &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+<span style="color: #008080;">10</span>             &lt;artifactId&gt;spring-context-support&lt;/artifactId&gt;
+<span style="color: #008080;">11</span>         &lt;/dependency&gt;</code></pre>
+
+<p><span style="font-size: 18pt;">2.增加conf</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">package</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span> <span style="color: #0000ff;">import</span> org.quartz.*<span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #008080;"> 5</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Service;
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span> <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 9</span> <span style="color: #008000;"> * @program: 
+</span><span style="color: #008080;">10</span> <span style="color: #008000;"> * @description: 定时任务创建job，通过注入Scheduler对任务进行操作
+</span><span style="color: #008080;">11</span> <span style="color: #008000;"> * </span><span style="color: #808080;">@author</span><span style="color: #008000;">: DZ
+</span><span style="color: #008080;">12</span> <span style="color: #008000;"> * @create: 2019-10-19 18:28
+</span><span style="color: #008080;">13</span> <span style="color: #008000;"> *</span><span style="color: #008000;">*/</span>
+<span style="color: #008080;">14</span> <span style="color: #000000;">@Service
+</span><span style="color: #008080;">15</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> QuartzConf {
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String JOB_GROUP = "job_group"<span style="color: #000000;">;
+</span><span style="color: #008080;">17</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String TRIGGER_GROUP = "trigger_group"<span style="color: #000000;">;
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">    @Autowired
+</span><span style="color: #008080;">19</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> Scheduler scheduler;
+</span><span style="color: #008080;">20</span> 
+<span style="color: #008080;">21</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;">22</span> <span style="color: #008000;">     * 创建定时任务
+</span><span style="color: #008080;">23</span> <span style="color: #008000;">     *定义相应的任务（JobDetial）和触发器(trigger)，并将其加到一个执行日程(Scheduler)中，并通过监听器启动日程。
+</span><span style="color: #008080;">24</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> jobDetailName
+</span><span style="color: #008080;">25</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> cronExpression
+</span><span style="color: #008080;">26</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> jobClass
+</span><span style="color: #008080;">27</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> SchedulerException
+</span><span style="color: #008080;">28</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;">29</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> createScheduleJob(String jobDetailName, String cronExpression, Class&lt;? <span style="color: #0000ff;">extends</span> Job&gt; jobClass) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SchedulerException {
+</span><span style="color: #008080;">30</span>         JobDetail jobDetail =<span style="color: #000000;"> JobBuilder.newJob(jobClass)
+</span><span style="color: #008080;">31</span>                 .withIdentity("task_" +<span style="color: #000000;"> jobDetailName, JOB_GROUP).storeDurably().requestRecovery().build();
+</span><span style="color: #008080;">32</span>         CronScheduleBuilder scheduleBuilder =<span style="color: #000000;"> CronScheduleBuilder.cronSchedule(cronExpression);
+</span><span style="color: #008080;">33</span>         Trigger trigger = TriggerBuilder.newTrigger().withIdentity("task_" +<span style="color: #000000;"> jobDetailName, TRIGGER_GROUP).withSchedule(scheduleBuilder).build();
+</span><span style="color: #008080;">34</span> <span style="color: #000000;">        scheduler.scheduleJob(jobDetail, trigger);
+</span><span style="color: #008080;">35</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">36</span> }</code></pre>
+
+<p><span style="font-size: 18pt;">3.增加过滤器</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 6</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> lombok.extern.slf4j.Slf4j;
+</span><span style="color: #008080;"> 7</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.quartz.SchedulerException;
+</span><span style="color: #008080;"> 8</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.slf4j.MDC;
+</span><span style="color: #008080;"> 9</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #008080;">10</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.ApplicationListener;
+</span><span style="color: #008080;">11</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Configuration;
+</span><span style="color: #008080;">12</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.event.ContextRefreshedEvent;
+</span><span style="color: #008080;">13</span> 
+<span style="color: #008080;">14</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.UUID;
+</span><span style="color: #008080;">15</span> 
+<span style="color: #008080;">16</span> <span style="color: #008000;">/**</span>
+<span style="color: #008080;">17</span> <span style="color: #008000;"> * @program: 
+</span><span style="color: #008080;">18</span> <span style="color: #008000;"> * @description: 启动监听去初始化Quartz
+</span><span style="color: #008080;">19</span> <span style="color: #008000;"> * </span><span style="color: #808080;">@author</span><span style="color: #008000;">: DZ
+</span><span style="color: #008080;">20</span> <span style="color: #008000;"> * @create: 2019-10-19 18:32
+</span><span style="color: #008080;">21</span> <span style="color: #008000;"> *</span><span style="color: #008000;">*/</span>
+<span style="color: #008080;">22</span> <span style="color: #000000;">@Slf4j
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">@Configuration
+</span><span style="color: #008080;">24</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ApplicationStartQuartzJobListener <span style="color: #0000ff;">implements</span> ApplicationListener&lt;ContextRefreshedEvent&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">    @Autowired
+</span><span style="color: #008080;">26</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> QuartzConf quartzConf;
+</span><span style="color: #008080;">27</span> 
+<span style="color: #008080;">28</span>    <span style="color: #008000;">/*</span><span style="color: #008000;"> 时间格式：
+</span><span style="color: #008080;">29</span> <span style="color: #008000;">    *    *     *     *    *     *   *
+</span><span style="color: #008080;">30</span> <span style="color: #008000;">    [秒] [分] [小时] [日] [月] [周] [年]</span><span style="color: #008000;">*/</span>
+<span style="color: #008080;">31</span> 
+<span style="color: #008080;">32</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;">33</span> <span style="color: #008000;">     * 初始启动quartz
+</span><span style="color: #008080;">34</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;">35</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">36</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
+</span><span style="color: #008080;">37</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">38</span>             log.info("任务开始启动..."<span style="color: #000000;">);
+</span><span style="color: #008080;">39</span>           <span style="color: #008080;">40</span>             quartzConf.createScheduleJob("TestTask", "*/30 * * * * ?", TestTask.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">41</span>             log.info("任务已经启动..."<span style="color: #000000;">);
+</span><span style="color: #008080;">42</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SchedulerException e) {
+</span><span style="color: #008080;">43</span>             log.error("定时任务启动失败"<span style="color: #000000;">, e);
+</span><span style="color: #008080;">44</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">45</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">46</span> }</code></pre>
+
+<p>如果整个项目就一个定时任务，其实也不需要过滤器，直接将定时任务的类名写在cong中即可。如果有多个定时任务，定义多个trigger和job也可以。这样代码的冗余度比较高</p>
+<p>此监听器的作用在于：项目启动的时候，监听器将所有的定时任务注册到日程中，相当于开启定时任务。从而做到了只需要定义一套trigger和job就可以写多个定时任务。</p>
+<p><span style="font-size: 18pt;">4.写定时任务</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span> <span style="color: #008080;"> 4</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> lombok.extern.slf4j.Slf4j;
+</span><span style="color: #008080;"> 5</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.quartz.Job;
+</span><span style="color: #008080;"> 6</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.quartz.JobExecutionContext;
+</span><span style="color: #008080;"> 7</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.quartz.JobExecutionException;
+</span><span style="color: #008080;"> 8</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.quartz.JobKey;
+</span><span style="color: #008080;"> 9</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.slf4j.MDC;
+</span><span style="color: #008080;">10</span> 
+<span style="color: #008080;">11</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.UUID;
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span> <span style="color: #008000;">/**</span>
+<span style="color: #008080;">14</span> <span style="color: #008000;"> * @program:
+</span><span style="color: #008080;">15</span> <span style="color: #008000;"> * @description: 测试定时任务
+</span><span style="color: #008080;">16</span> <span style="color: #008000;"> * </span><span style="color: #808080;">@author</span><span style="color: #008000;">: DZ
+</span><span style="color: #008080;">17</span> <span style="color: #008000;"> * @create: 2019-10-19 18:49
+</span><span style="color: #008080;">18</span> <span style="color: #008000;"> *</span><span style="color: #008000;">*/</span>
+<span style="color: #008080;">19</span> <span style="color: #000000;">@Slf4j
+</span><span style="color: #008080;">20</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> TestTask <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Job {
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">22</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> execute(JobExecutionContext jobExecutionContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> JobExecutionException {
+</span><span style="color: #008080;">23</span>        <span style="color: #008080;">25</span>         JobKey key =<span style="color: #000000;"> jobExecutionContext.getJobDetail().getKey();
+</span><span style="color: #008080;">26</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> todo 业务逻辑</span>
+<span style="color: #008080;">27</span>         log.info("----------" + key + "任务执行中,currentTime:" +<span style="color: #000000;"> DateUtil.getCurrentDate());
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">29</span> }</code></pre>
+
+<p>&nbsp;这个位置除了实现Job接口外，还可以继承QuartzJobBean类，其实QuartzJobBean也是Job的子类，只不过对部分参数进行了初始化</p>
+<p>启动服务，查看结果</p>
+<p><img src="./images/Spring Boot 入门（九）：集成Quartz定时任务0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>此外，如果不对定时任务做线程池的配置，那么默认是10个线程，这里也可以增加对线程池的配置，在yml中增加属性：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">Spring:  
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">#  quartz定时器配置
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">  quartz:
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">    properties:
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">      org:
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">        quartz:
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">          scheduler:
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            instanceName: quartzScheduler
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">            instanceId: AUTO
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">          threadPool:
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">            class: org.quartz.simpl.SimpleThreadPool
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            threadCount: 20
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">            threadPriority: 5
+</span><span style="color: #008080;">14</span>             threadsInheritContextClassLoaderOfInitializingThread: true</code></pre>
+
+<p>此时就是定义了20个线程</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

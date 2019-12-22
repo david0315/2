@@ -1,0 +1,355 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修使用spring拦截器手写权限认证框架' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>使用spring拦截器手写权限认证框架</center></div><div class='banquan'>原文出处:本文由博客园博主﹏岸与海的距离╮提供。<br/>
+原文连接:https://www.cnblogs.com/mingyuan1031/p/11413123.html</div><br>
+    <p>1、新建用户对象封装的实体类</p>
+<src class="cnblogs_code">
+<pre><code>*
+ *<span style="color: #000000;"> 主体类
+ </span>* wmy 13:20 2019/8/15
+ *<span style="color: #000000;"> @Param
+ </span>* @<span style="color: #0000ff;">return</span>
+ **/
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Subject {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Object bean;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String token;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Date expired;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getToken() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> token;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setToken(String token) {
+        </span><span style="color: #0000ff;">this</span>.token =<span style="color: #000000;"> token;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Date getExpired() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> expired;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setExpired(Date expired) {
+        </span><span style="color: #0000ff;">this</span>.expired =<span style="color: #000000;"> expired;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getBean() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setBean(Object bean) {
+        </span><span style="color: #0000ff;">this</span>.bean =<span style="color: #000000;"> bean;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String toString() {
+        </span><span style="color: #0000ff;">return</span> "Subject{" +
+                "bean=" + bean +
+                ", token='" + token + '\'' +
+                ", expired=" + expired +
+                '}'<span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>2、使用单例模式创建用户对象的容器</p>
+<src class="cnblogs_code">
+<pre><code>  @Bean("tokens"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> Map&lt;String, Subject&gt;<span style="color: #000000;"> getTokens() {
+        Map</span>&lt;String, Subject&gt; tokens = <span style="color: #0000ff;">new</span> HashMap&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tokens;
+    }</span></code></pre>
+
+<p>3、封装成用户对象操作的工具类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Component
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> SubjectUtil <span style="color: #0000ff;">implements</span><span style="color: #000000;"> BeanFactoryAware {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> BeanFactory beanFactory = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String token = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> String getToken() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> token;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setToken(String token) {
+        SubjectUtil.token </span>=<span style="color: #000000;"> token;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setBeanFactory(BeanFactory beanFactory) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+        SubjectUtil.beanFactory </span>=<span style="color: #000000;"> beanFactory;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> BeanFactory getBeanFactory() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> beanFactory;
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 获得当前用户id
+     * wmy 15:29 2019/8/19
+     * @Param []
+     * @return java.lang.Integer
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Integer getSubjectID() {
+       </span><span style="color: #0000ff;">return</span> SubjectUtil.getBean(token,BrandUserR.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getId();
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 厂商id
+     * wmy 9:44 2019/8/26
+     * @Param []
+     * @return java.lang.Integer
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Integer getBrandID() {
+        </span><span style="color: #0000ff;">return</span> SubjectUtil.getBean(token,BrandUserR.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getBrandId();
+    }
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 获得在线用户封装
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Subject getSubject(String token) {
+
+        Map</span>&lt;String, Subject&gt; beans = (Map&lt;String, Subject&gt;) beanFactory.getBean("tokens"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> beans.get(token);
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 获得在线用户
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Object getBean(String token) {
+        Map</span>&lt;String, Subject&gt; beans = (Map&lt;String, Subject&gt;) beanFactory.getBean("tokens"<span style="color: #000000;">);
+        Subject subject </span>=<span style="color: #000000;"> beans.get(token);
+        </span><span style="color: #0000ff;">if</span> (subject != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> subject.getBean();
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获得在线用户</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> &lt;T&gt; T getBean(String token, Class&lt;T&gt;<span style="color: #000000;"> clazz) {
+
+        Map</span>&lt;String, Subject&gt; beans = (Map&lt;String, Subject&gt;) beanFactory.getBean("tokens"<span style="color: #000000;">);
+        Subject subject </span>=<span style="color: #000000;"> beans.get(token);
+        </span><span style="color: #0000ff;">if</span> (subject != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            Object bean </span>=<span style="color: #000000;"> subject.getBean();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (clazz.isInstance(bean)) {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> clazz.cast(bean);
+            }
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 添加在线用户
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addTokenBean(String token, Object bean, Date expired) {
+
+        Object beans </span>= beanFactory.getBean("tokens"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (beans != <span style="color: #0000ff;">null</span> &amp;&amp; beans <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Map) {
+            Map</span>&lt;String, Subject&gt; map = (Map&lt;String, Subject&gt;<span style="color: #000000;">) beans;
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">map.containsKey(token)) {
+                Subject subject </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Subject();
+                subject.setBean(bean);
+                subject.setExpired(expired);
+                subject.setToken(token);
+                map.put(token, subject);
+            }
+        }
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 删除用户
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> removeTokenBean(String token) {
+
+        Map</span>&lt;String, Subject&gt; beans = (Map&lt;String, Subject&gt;) beanFactory.getBean("tokens"<span style="color: #000000;">);
+        beans.remove(token);
+    }
+
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 获得所有在线用户
+     * wmy 10:53 2019/8/19
+     * @Param []
+     * @return java.util.Map&lt;java.lang.String,com.raise3d.config.Subject&gt;
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Map&lt;String, Subject&gt;<span style="color: #000000;"> getBeans() {
+        Object beans </span>= beanFactory.getBean("tokens"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (beans != <span style="color: #0000ff;">null</span> &amp;&amp; beans <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Map) {
+            Map</span>&lt;String, Subject&gt; map = (Map&lt;String, Subject&gt;<span style="color: #000000;">) beans;
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> map;
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 清楚所有用户
+     * wmy 13:02 2019/8/19
+     * @Param []
+     * @return void
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear() {
+        Object beans </span>= beanFactory.getBean("tokens"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (beans != <span style="color: #0000ff;">null</span> &amp;&amp; beans <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Map) {
+            Map</span>&lt;String, Subject&gt; map = (Map&lt;String, Subject&gt;<span style="color: #000000;">) beans;
+            map.clear();
+        }
+    }
+}</span></code></pre>
+
+<p>4、拦截器的实现</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/*</span><span style="color: #008000;">
+ * 登录拦截器
+ * wmy 14:02 2019/8/19
+ * @Param
+ * @return
+ *</span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> LoginInterceptor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> HandlerInterceptor {
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        </span><span style="color: #0000ff;">if</span> (!request.getMethod().equals("OPTIONS"<span style="color: #000000;">)) {
+            String token </span>= request.getHeader("Authorization"<span style="color: #000000;">);
+            </span><span style="color: #0000ff;">int</span> verify =<span style="color: #000000;"> verify(token);
+            </span><span style="color: #0000ff;">if</span> (verify == 0<span style="color: #000000;">) {
+                PrintWriter writer </span>=<span style="color: #000000;"> response.getWriter();
+                writer.write(Config.MSG_ACCESS_DENIED);
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (verify == 2<span style="color: #000000;">) {
+                PrintWriter writer </span>=<span style="color: #000000;"> response.getWriter();
+                writer.write(Config.MSG_ACCESS_EXPIRED);
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (SubjectUtil.getToken() == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                PrintWriter writer </span>=<span style="color: #000000;"> response.getWriter();
+                writer.write(Config.MSG_ACCESS_DENIED);
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        SubjectUtil.setToken(</span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 认证方法
+     * wmy 11:29 2019/8/15
+     * @Param [token]
+     * @return java.lang.Boolean
+     *</span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> verify(String token) {
+        </span><span style="color: #0000ff;">if</span> (token != <span style="color: #0000ff;">null</span>) <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            Subject subject </span>=<span style="color: #000000;"> SubjectUtil.getSubject(token);
+            </span><span style="color: #0000ff;">if</span> (subject != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">判断是否过期</span>
+                <span style="color: #0000ff;">if</span> (subject.getExpired().getTime() + Config.MSG_EXPIRED &lt;<span style="color: #000000;"> System.currentTimeMillis()) {
+                    </span><span style="color: #0000ff;">return</span> 2<span style="color: #000000;">;
+                } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">token.equals(SubjectUtil.getToken())) {
+                        </span><span style="color: #0000ff;">while</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+                            </span><span style="color: #0000ff;">if</span> (SubjectUtil.getToken() == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                                SubjectUtil.setToken(token);
+                                </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+                            }
+                            System.out.println(</span>"********** token切换中 *********"<span style="color: #000000;">);
+                        }
+                    }
+                    </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+                }
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>5、把拦截器注入岛spring容器中，配置跨域，使用spring定时器，定时清除过期用户</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Configuration
+@EnableScheduling
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> WebMvcConfig <span style="color: #0000ff;">extends</span><span style="color: #000000;"> WebMvcConfigurerAdapter {
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(</span><span style="color: #0000ff;">new</span> LoginInterceptor()).addPathPatterns("/**").excludePathPatterns("/brandUser/login"<span style="color: #000000;">);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addCorsMappings(CorsRegistry registry) {
+        registry.addMapping(</span>"/**").allowedOrigins("*"<span style="color: #000000;">);
+    }
+
+
+    @Bean(</span>"tokens"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> Map&lt;String, Subject&gt;<span style="color: #000000;"> getTokens() {
+        Map</span>&lt;String, Subject&gt; tokens = <span style="color: #0000ff;">new</span> HashMap&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tokens;
+    }
+
+
+    @Scheduled(fixedDelay </span>= 2 * 60 * 60 * 1000)<span style="color: #008000;">//</span><span style="color: #008000;">两个小时执行一次</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> expiredTokens() {
+        Map</span>&lt;String, Subject&gt; beans =<span style="color: #000000;"> SubjectUtil.getBeans();
+        Set</span>&lt;String&gt; tokens = <span style="color: #0000ff;">new</span> HashSet&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">if</span> (beans.size() &gt; 0<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String key : beans.keySet()) {
+                </span><span style="color: #0000ff;">if</span> (beans.get(key).getExpired().getTime() + Config.MSG_EXPIRED &lt;<span style="color: #000000;"> System.currentTimeMillis()) {
+                    tokens.add(key);
+                }
+            }
+            </span><span style="color: #0000ff;">if</span> (tokens.size() &gt; 0<span style="color: #000000;">) {
+                tokens.stream().forEach(token </span>-&gt;<span style="color: #000000;"> SubjectUtil.removeTokenBean(token));
+            }
+        }
+    }
+
+}</span></code></pre>
+
+<p>6、测试</p>
+<src class="cnblogs_code">
+<pre><code>   @PostMapping("/test"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Result test() {
+
+        String token </span>=<span style="color: #000000;"> SubjectUtil.getToken();
+        BrandUserR bean </span>= SubjectUtil.getBean(token, BrandUserR.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Result.ok(bean);
+
+    }
+
+    @PostMapping(</span>"/test2"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Result test2() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">SubjectUtil.clear();</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> Result.ok(SubjectUtil.getBean(SubjectUtil.getToken()));
+    }</span></code></pre>
+
+<p><img src="./images/使用spring拦截器手写权限认证框架0.png" alt="" /></p>
+<p><img src="./images/使用spring拦截器手写权限认证框架1.png" alt="" /></p>
+<p>未做压力测试，适合做后台管理系统使用，并发高的项目慎用。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

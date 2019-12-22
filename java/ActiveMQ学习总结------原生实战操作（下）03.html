@@ -1,0 +1,485 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修ActiveMQ学习总结------原生实战操作（下）03' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>ActiveMQ学习总结------原生实战操作（下）03</center></div><div class='banquan'>原文出处:本文由博客园博主Arebirth提供。<br/>
+原文连接:https://www.cnblogs.com/arebirth/p/activemq03.html</div><br>
+    <h2><strong>本篇将继续延续上一篇的内容，作为知识补充篇，为接下来我们学习spring整合ActiveMQ打好基础</strong></h2>
+<p><strong>本篇主要学习内容：</strong></p>
+<p><strong>　　1.ActiveMQ 队列服务监听</strong></p>
+<p><strong>　　2.ActiveMQ Topic模型</strong></p>
+<hr />
+<p>&nbsp;</p>
+<h3><strong>回顾下上一篇ActiveMQ学习总结我们学习到了：</strong></h3>
+<p>　　1.ActiveMQ术语及API介绍</p>
+<p>　　2.ActiveMQ 文本消息处理</p>
+<p>　　3.ActiveMQ 对象消息处理</p>
+<p><strong>相信大现在对ActiveMQ的一些简单操作已经很轻松掌握了</strong></p>
+<p>上一篇文章地址：<a href="https://www.cnblogs.com/arebirth/p/activemq02.html">https://www.cnblogs.com/arebirth/p/activemq02.html</a></p>
+<hr />
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2>一 ActiveMQ实现队列服务监听</h2>
+<p>在我们上一篇的练习中，所有的消费者都是接收一次消息即断开连接，这样是不是很不方便。</p>
+<p>试想一下，如果我们的provider在consumer接收完第一条消息后又继续发送了一条消息，那么consumer已经断开连接了，是不是就不能连接不间断的实时获取消息？</p>
+<p><strong>解决方案：</strong></p>
+<p>　　很容易，用我们的队列服务监听即可</p>
+<p>&nbsp;</p>
+<p><strong><span style="color: #ff0000;">注</span>*：根据上一章的学习，大家对环境搭建使用配置，肯定都已经相当清楚了，这里就不过多阐述，直接进行代码实战</strong></p>
+<p>&nbsp;</p>
+<h3><strong>1 消息生产者</strong></h3>
+<p><strong>相比之下，我么你的生产者照之前是没有任何变化的，主要的变化还是在cosumer身上</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.activemq.ActiveMQConnectionFactory;
+
+</span><span style="color: #0000ff;">import</span> javax.jms.*<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ActiveMQQueueListenerProducer {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> sendTextActiveMq(String txt) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义链接工厂</span>
+        ConnectionFactory connectionFactory = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义链接对象</span>
+        Connection connection = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义会话</span>
+        Session session = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">目的地</span>
+        Destination destination = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义消息的发送者</span>
+        MessageProducer producer = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义消息</span>
+        Message message = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接工厂</span>
+            connectionFactory = <span style="color: #0000ff;">new</span> ActiveMQConnectionFactory("admin", "admin", "tcp://169.254.18.20:61616"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接诶对象</span>
+            connection =<span style="color: #000000;"> connectionFactory.createConnection();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">启动链接</span>
+<span style="color: #000000;">            connection.start();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建会话</span>
+            session = connection.createSession(<span style="color: #0000ff;">false</span><span style="color: #000000;">, Session.AUTO_ACKNOWLEDGE);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建目的地</span>
+            destination = session.createQueue("queue-listener"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息生产者</span>
+            producer =<span style="color: #000000;"> session.createProducer(destination);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息对象</span>
+            message =<span style="color: #000000;"> session.createTextMessage(txt);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">发送消息</span>
+<span style="color: #000000;">            producer.send(message);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+            ex.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">回收资源</span>
+            <span style="color: #0000ff;">if</span> (producer != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    producer.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+            </span><span style="color: #0000ff;">if</span> (session != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    session.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+            </span><span style="color: #0000ff;">if</span> (connection != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    connection.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<h3>2 消息消费者</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.activemq.ActiveMQConnectionFactory;
+
+</span><span style="color: #0000ff;">import</span> javax.jms.*<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ActiveMQQueueListenerConsumer {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> receiveTextActiveMq() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义链接工厂</span>
+        ConnectionFactory connectionFactory = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义链接对象</span>
+        Connection connection = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义会话</span>
+        Session session = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 目的地</span>
+        Destination destination = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义消息的发送者</span>
+        MessageConsumer consumer = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义消息</span>
+        Message message = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接工厂</span>
+            connectionFactory = <span style="color: #0000ff;">new</span> ActiveMQConnectionFactory("admin", "admin", "tcp://169.254.18.20:61616"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接对象</span>
+            connection =<span style="color: #000000;"> connectionFactory.createConnection();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">启动链接</span>
+<span style="color: #000000;">            connection.start();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建会话</span>
+            session = connection.createSession(<span style="color: #0000ff;">false</span><span style="color: #000000;">, Session.AUTO_ACKNOWLEDGE);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建目的地</span>
+            destination = session.createQueue("queue-listener"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息消费者</span>
+            consumer =<span style="color: #000000;"> session.createConsumer(destination);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">队列服务监听</span>
+            consumer.setMessageListener(<span style="color: #0000ff;">new</span><span style="color: #000000;"> MessageListener() {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">ActiveMQ回调方法。通过该方法将消息传递到consumer</span>
+<span style="color: #000000;">                @Override
+                </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onMessage(Message message) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">处理消息</span>
+                    String msg = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                        msg </span>=<span style="color: #000000;"> ((TextMessage) message).getText();
+                    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println(</span>"Producer say:" +<span style="color: #000000;"> msg);
+                }
+            });
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<h3>3 测试</h3>
+<blockquote>
+<p><strong>3.1 provider测试</strong></p>
+<src class="cnblogs_code">
+<pre><code>package<span> cn.arebirth.mq;
+
+public class<span> ProducerTest {
+    public static void<span> main(String[] args) {
+        ActiveMQQueueListenerProducer.sendTextActiveMq("Hello,consumer!"<span>);
+    }
+}</span></span></span></span></code></pre>
+
+<p><strong>观察我们的控制台可以发现已经成功发布到队列</strong></p>
+<p><strong><img src="./images/ActiveMQ学习总结------原生实战操作（下）030.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>3.2 consumer测试</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ConsumerTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ActiveMQQueueListenerConsumer.receiveTextActiveMq();
+    }
+}</span></code></pre>
+
+<p><strong>我们运行后可以发现，它接收到了消息，但是它的进程并没有关闭，</strong></p>
+<p><strong><img src="./images/ActiveMQ学习总结------原生实战操作（下）031.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>我们用provider继续发布一条消息，看看consumer能不能接收到</strong></p>
+<p><strong><img src="./images/ActiveMQ学习总结------原生实战操作（下）032.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>可以看到，consumer持续在后台监听我们发布的消息，</strong></p>
+<p><strong><img src="./images/ActiveMQ学习总结------原生实战操作（下）033.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+</blockquote>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>通过上面代码，不难发现，provider没有任何改动，只是consumer修改了一部分</p>
+<p>通过调用匿名内部类的方法来实现持续监听</p>
+<src class="cnblogs_code">
+<pre><code> consumer.setMessageListener(<span style="color: #0000ff;">new</span><span style="color: #000000;"> MessageListener() {
+    @Override
+                </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onMessage(Message message) {
+
+        }
+    
+}</span></code></pre>
+
+<p><span style="color: #ff0000;">注意</span>：因为涉及到队列持续监听，所以我们不能在finally处给资源回收，否则还在监听状态，资源都回收没了，也就无从监听啦。</p>
+<p>&nbsp;</p>
+<hr />
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2>二 Topic模型</h2>
+<p><strong>在本系列文章第一篇也有介绍过一些Topic模型的概念，那么这里我们将以原理+实战的方式来带领大家掌握</strong></p>
+<p>&nbsp;</p>
+<h3><strong>1 Publish/Subscribe处理模式（Topic）<br /></strong></h3>
+<h3><strong>消息生产者（发布）消息到topic中，同时有多个消息消费者（订阅）消费该消息。</strong></h3>
+<p><strong><img src="./images/ActiveMQ学习总结------原生实战操作（下）034.png" alt="" /></strong></p>
+<p><strong>和点对点方式不同，发布到Topic的消息会被<span style="color: #ff0000;">所有的订阅者消费，而点对点的只能是指定的消费者去消费</span></strong></p>
+<p><strong><span style="color: #ff0000;"><span style="color: #000000;">当生产者发布消息，不管是否有消费者，都不会保存消息，也就是说它是发完就啥也不管了那种，</span></span></strong></p>
+<p><strong><span style="color: #ff0000;"><span style="color: #000000;">所以要注意：一定要有消费者，然后在有生产者，否则生产者不发完消息什么也不管了，你消费者在生产者之后才有，那么你是接收不到消息的。</span></span></strong></p>
+<p>&nbsp;</p>
+<p><strong><span style="color: #ff0000;"><span style="color: #000000;">接下来我们就以实战的方式鼓捣下。</span></span></strong></p>
+<p>&nbsp;</p>
+<p><strong><span style="color: #ff0000;"><span style="color: #000000;">2 创建生产者</span></span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.activemq.ActiveMQConnectionFactory;
+
+</span><span style="color: #0000ff;">import</span> javax.jms.*<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ActiveMQTopicProducer {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> sendTextActiveMQ(String txt){
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义链接工厂</span>
+        ConnectionFactory connectionFactory = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义链接对象</span>
+        Connection connection = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义会话</span>
+        Session session = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">目的地</span>
+        Destination destination = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义消息的发送者</span>
+        MessageProducer producer = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定义消息</span>
+        Message message = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接工厂</span>
+            connectionFactory = <span style="color: #0000ff;">new</span> ActiveMQConnectionFactory("admin", "admin", "tcp://169.254.18.20:61616"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接诶对象</span>
+            connection =<span style="color: #000000;"> connectionFactory.createConnection();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">启动链接</span>
+<span style="color: #000000;">            connection.start();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建会话</span>
+            session = connection.createSession(<span style="color: #0000ff;">false</span><span style="color: #000000;">, Session.AUTO_ACKNOWLEDGE);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建目的地</span>
+            destination = session.createTopic("topic-test"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息生产者</span>
+            producer =<span style="color: #000000;"> session.createProducer(destination);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息对象</span>
+            message =<span style="color: #000000;"> session.createTextMessage(txt);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">发送消息</span>
+<span style="color: #000000;">            producer.send(message);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+            ex.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">回收资源</span>
+            <span style="color: #0000ff;">if</span> (producer != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    producer.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+            </span><span style="color: #0000ff;">if</span> (session != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    session.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+            </span><span style="color: #0000ff;">if</span> (connection != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    connection.close();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>我们可以发现，在创建目的地destination的时候代码有了变动</p>
+<src class="cnblogs_code">
+<pre><code>destination = session.createTopic("topic-test");</code></pre>
+
+<p>变成了createTopic，对这就是topic模式了。</p>
+<p>&nbsp;</p>
+<h3>3 创建消费者</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.activemq.ActiveMQConnectionFactory;
+
+</span><span style="color: #0000ff;">import</span> javax.jms.*<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ActiveMQTopicConsumer <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Runnable {
+
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> receiveTextActiveMQ(String threadName) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义链接工厂</span>
+        ConnectionFactory connectionFactory = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义链接对象</span>
+        Connection connection = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义会话</span>
+        Session session = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 目的地</span>
+        Destination destination = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义消息的发送者</span>
+        MessageConsumer consumer = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义消息</span>
+        Message message = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接工厂</span>
+            connectionFactory = <span style="color: #0000ff;">new</span> ActiveMQConnectionFactory("admin", "admin", "tcp://169.254.18.20:61616"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建链接对象</span>
+            connection =<span style="color: #000000;"> connectionFactory.createConnection();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">启动链接</span>
+<span style="color: #000000;">            connection.start();
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建会话</span>
+            session = connection.createSession(<span style="color: #0000ff;">false</span><span style="color: #000000;">, Session.AUTO_ACKNOWLEDGE);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建目的地</span>
+            destination = session.createTopic("topic-test"<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建消息的消费者</span>
+            consumer =<span style="color: #000000;"> session.createConsumer(destination);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">服务监听</span>
+            consumer.setMessageListener(<span style="color: #0000ff;">new</span><span style="color: #000000;"> MessageListener() {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">ActiveMQ回调方法。通过该方法将消息传递到consumer</span>
+<span style="color: #000000;">                @Override
+                </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onMessage(Message message) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">处理消息</span>
+                    String msg = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                        msg </span>=<span style="color: #000000;"> ((TextMessage) message).getText();
+                    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println(threadName </span>+ "--Producer say:" +<span style="color: #000000;"> msg);
+                }
+            });
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+        receiveTextActiveMQ(Thread.currentThread().getName());
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>我们可以发现，在创建目的地destination的时候代码有了变动</p>
+<src class="cnblogs_code">
+<pre><code>destination = session.createTopic("topic-test");</code></pre>
+
+<p><strong>还有实现了Runnable这个是为了一会测试的时候，多线程启动，看效果，是否多个都会接受到，（如果看着糊涂的话，你也可以去掉线程的部分，单独复制多个对象，并启动，效果也是一样的）</strong></p>
+<p>&nbsp;</p>
+<h3><strong>4 测试（<span style="color: #ff0000;">要先启动消费者</span>，否则消费者是接收不到消息的！<span style="color: #000000;">当然，你自己可以试一下</span>）</strong></h3>
+<blockquote>
+<p><strong>4.1 测试消费者</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ConsumerTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ActiveMQTopicConsumer a1 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ActiveMQTopicConsumer();
+        Thread t1 </span>= <span style="color: #0000ff;">new</span> Thread(a1,"a1"<span style="color: #000000;">);
+
+        ActiveMQTopicConsumer a2 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ActiveMQTopicConsumer();
+        Thread t2 </span>= <span style="color: #0000ff;">new</span> Thread(a2,"a2"<span style="color: #000000;">);
+
+        ActiveMQTopicConsumer a3 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ActiveMQTopicConsumer();
+        Thread t3 </span>= <span style="color: #0000ff;">new</span> Thread(a3,"a3"<span style="color: #000000;">);
+
+        t1.start();
+        t2.start();
+        t3.start();
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>可以看到，我们的消费者已经启动了，三个线程。并以监听服务的方式启动</p>
+<p><img src="./images/ActiveMQ学习总结------原生实战操作（下）035.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>4.2 测试生产者</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.arebirth.mq;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ProducerTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ActiveMQTopicProducer.sendTextActiveMQ(</span>"hello,topic"<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>可以看到，在topics下面，我们发布的内容已经有记录了<img src="./images/ActiveMQ学习总结------原生实战操作（下）036.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>然后我们在看下，我们的consumer</p>
+<p>&nbsp;</p>
+<p><img src="./images/ActiveMQ学习总结------原生实战操作（下）037.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>可以发现，三个consumer都已经接收到了</strong></p>
+</blockquote>
+<h3>&nbsp;</h3>
+<p>ps：</p>
+<p>　　如果你对ActiveMQ原理性的东西感到困惑，可以看下我们前面的文章：<a href="https://www.cnblogs.com/arebirth/p/activemq01.html">https://www.cnblogs.com/arebirth/p/activemq01.html</a></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

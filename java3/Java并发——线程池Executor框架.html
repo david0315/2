@@ -1,0 +1,506 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java并发——线程池Executor框架' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java并发——线程池Executor框架</center></div><div class='banquan'>原文出处:本文由博客园博主冰湖一角提供。<br/>
+原文连接:https://www.cnblogs.com/bingyimeiling/p/11637097.html</div><br>
+    <h2><span style="color: #0000ff;">线程池</span></h2>
+<h4><span style="color: #0000ff;">无限制的创建线程</span></h4>
+<p>若采用"为每个任务分配一个线程"的方式会存在一些缺陷，尤其是当需要创建大量线程时：</p>
+<ul>
+<li>线程生命周期的开销非常高</li>
+<li>资源消耗</li>
+<li>稳定性</li>
+</ul>
+<h4><span style="color: #0000ff;">引入线程池</span></h4>
+<p>任务是一组逻辑工作单元，线程则是使任务异步执行的机制。当存在大量并发任务时，创建、销毁线程需要很大的开销，运用线程池可以大大减小开销。</p>
+<p>&nbsp;</p>
+<h2><span style="color: #0000ff;">Executor框架</span></h2>
+<p><img src="./images/Java并发——线程池Executor框架0.png" alt="" /></p>
+<p>说明：</p>
+<ul>
+<li><strong>Executor</strong>&nbsp;执行器接口，该接口定义执行Runnable任务的方式。</li>
+<li><strong>ExecutorService</strong>&nbsp;该接口定义提供对Executor的服务。</li>
+<li><strong>ScheduledExecutorService</strong>&nbsp;定时调度接口。</li>
+<li><strong>AbstractExecutorService</strong>&nbsp;执行框架抽象类。</li>
+<li><strong>ThreadPoolExecutor</strong>&nbsp;JDK中线程池的具体实现。</li>
+<li><strong>Executors</strong>&nbsp;线程池工厂类。</li>
+</ul>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;"><strong>ThreadPoolExecutor&nbsp;线程池类</strong></span></h3>
+<hr />
+<p>&nbsp;</p>
+<p>线程池是一个复杂的任务调度工具，它涉及到任务、线程池等的生命周期问题。要配置一个线程池是比较复杂的，尤其是对于线程池的原理不是很清楚的情况下，很有可能配置的线程池不是较优的。</p>
+<p>JDK中的线程池均由ThreadPoolExecutor类实现。其构造方法如下：</p>
+<p><img src="./images/Java并发——线程池Executor框架1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>参数说明：</p>
+<p>corePoolSize：核心线程数。</p>
+<p>maximumPoolSize：最大线程数。</p>
+<p>keepAliveTime：线程存活时间。当线程数大于core数，那么超过该时间的线程将会被终结。</p>
+<p>unit：keepAliveTime的单位。java.util.concurrent.TimeUnit类存在静态静态属性：&nbsp;NANOSECONDS、MICROSECONDS、MILLISECONDS、SECONDS</p>
+<p>workQueue：Runnable的阻塞队列。若线程池已经被占满，则该队列用于存放无法再放入线程池中的Runnable。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>另一个构造方法：</p>
+<src class="cnblogs_code">
+<pre><code>ThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,BlockingQueue&lt;Runnable&gt; workQueue, RejectedExecutionHandler handler)</code></pre>
+
+<p>&nbsp;</p>
+<p>该方法在下面的扩展部分有更深入的讲解。其中handler表示线程池对拒绝任务的处理策略。</p>
+<p>&nbsp;</p>
+<p>ThreadPoolExecutor的使用需要注意以下概念：</p>
+<ul>
+<li>
+<src>若线程池中的线程数量小于corePoolSize，即使线程池中的线程都处于空闲状态，也要创建新的线程来处理被添加的任务。
+</li>
+<li>
+<src>若线程池中的线程数量等于&nbsp;corePoolSize且缓冲队列&nbsp;workQueue未满，则任务被放入缓冲队列。
+</li>
+<li>
+<src>若线程池中线程的数量大于corePoolSize且缓冲队列workQueue满，且线程池中的数量小于maximumPoolSize，则建新的线程来处理被添加的任务。
+</li>
+<li>
+<src>若线程池中线程的数量大于corePoolSize且缓冲队列workQueue满，且线程池中的数量等于maximumPoolSize，那么通过&nbsp;handler所指定的策略来处理此任务。
+</li>
+<li>当线程池中的线程数量大于corePoolSize时，如果某线程空闲时间超过keepAliveTime，线程将被终止。</li>
+</ul>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;">Executors 工厂方法</span></h3>
+<hr />
+<p>&nbsp;</p>
+<p>JDK内部提供了五种最常见的线程池。由Executors类的五个静态工厂方法创建。</p>
+<ul>
+<li>newFixedThreadPool(...)</li>
+<li>newSingleThreadExecutor(...)</li>
+<li>newCachedThreadPool(...)</li>
+<li>newScheduledThreadPool(...)</li>
+<li>newSingleThreadScheduledExecutor()</li>
+</ul>
+<p><span style="font-size: 16px;">&nbsp;</span></p>
+<h4><span style="color: #0000ff; font-size: 16px;">单线程的线程池&nbsp;newSingleThreadExecutor</span></h4>
+<p>这个线程池只有一个线程在工作，也就是相当于单线程串行执行所有任务。</p>
+<p><img src="./images/Java并发——线程池Executor框架2.png" alt="" /></p>
+<p>返回单线程的Executor，将多个任务交给此Exector时，这个线程处理完一个任务后接着处理下一个任务，若该线程出现异常，将会有一个新的线程来替代。此线程池保证所有任务的执行顺序按照任务的提交顺序执行。</p>
+<p>说明：LinkedBlockingQueue会无限的添加需要执行的Runnable。</p>
+<p>&nbsp;</p>
+<h4><span style="color: #0000ff; font-size: 16px;">创建固定大小的线程池&nbsp;newFixedThreadPool</span></h4>
+<p>每次提交一个任务就创建一个线程，直到线程达到线程池的最大大小。线程池的大小一旦达到最大值就会保持不变，如果某个线程因为执行异常而结束，那么线程池会补充一个新线程。</p>
+<p>public static ExecutorSevice newFixedThreadPool()</p>
+<p>返回一个包含指定数目线程的线程池，如果任务数量多于线程数目，那么没有没有执行的任务必须等待，直到有任务完成为止。</p>
+<p>&nbsp;</p>
+<h4><span style="color: #0000ff; font-size: 16px;">可缓存的线程池&nbsp;newCachedThreadPool</span></h4>
+<p>如果线程池的大小超过了处理任务所需要的线程，那么就会回收部分空闲（60秒不执行任务）的线程，当任务数增加时，此线程池又可以智能的添加新线程来处理任务。此线程池不会对线程池大小做限制，线程池大小完全依赖于操作系统（或者说JVM）能够创建的最大线程大小。</p>
+<p><img src="./images/Java并发——线程池Executor框架3.png" alt="" /></p>
+<p>newCachedThreadPool方法创建的线程池可以自动的扩展线程池的容量。核心线程数量为0。</p>
+<p>SynchronousQueue是个特殊的队列。&nbsp;SynchronousQueue队列的容量为0。当试图为SynchronousQueue添加Runnable，则执行会失败。只有当一边从SynchronousQueue取数据，一边向SynchronousQueue添加数据才可以成功。SynchronousQueue仅仅起到数据交换的作用，并不保存线程。但newCachedThreadPool()方法没有线程上限。Runable添加到SynchronousQueue会被立刻取出。</p>
+<p>根据用户的任务数创建相应的线程来处理，该线程池不会对线程数目加以限制，完全依赖于JVM能创建线程的数量，可能引起内存不足。</p>
+<p><span style="color: #0000ff;">&nbsp;</span></p>
+<h4><span style="color: #0000ff; font-size: 16px;">定时任务调度的线程池&nbsp;newScheduledThreadPool</span></h4>
+<p>创建一个大小无限的线程池。此线程池支持定时以及周期性执行任务的需求。</p>
+<p>例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ScheduledThreadPoolTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ScheduledExecutorService ses </span>= Executors.newScheduledThreadPool(10<span style="color: #000000;">);
+        ses.scheduleWithFixedDelay(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+            
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    Thread.sleep(</span>1000<span style="color: #000000;">);
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Date());
+            }
+        }, </span>1000, 2000<span style="color: #000000;">, TimeUnit.MILLISECONDS);
+    }
+    
+}</span></code></pre>
+
+<h4><span style="font-size: 16px; color: #0000ff;">单线程的定时任务调度线程池&nbsp;newSingleThreadScheduledExecutor</span></h4>
+<p>此线程池支持定时以及周期性执行任务的需求。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;"><strong>Executor接口</strong></span></h3>
+<p>Executor是一个线程执行接口。任务执行的主要抽象不是Thead，而是Executor。</p>
+<src class="cnblogs_code">
+<pre><code>public interface Executor{
+    void executor(Runnable command);
+}</code></pre>
+
+<p>&nbsp;</p>
+<p>Executor将任务的提交过程与执行过程解耦，并用Runnable来表示任务。执行的任务放入run方法中即可，将Runnable接口的实现类交给线程池的execute方法，作为它的一个参数。如果需要给任务传递参数，可以通过创建一个Runnable接口的实现类来完成。</p>
+<p>Executor可以支持多种不同类型的任务执行策略。</p>
+<p>Executor基于生产者消费者模式，提交任务的操作相当于生产者，执行任务的线程则相当于消费者。</p>
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>ExecutorService接口</strong></span></p>
+<p>线程池接口。ExecutorService在Executor的基础上增加了一些方法，其中有两个核心的方法：</p>
+<src class="cnblogs_code">
+<pre><code>Future&lt;?&gt; submit(Runnable task)
+
+&lt;T&gt; Future&lt;T&gt; submit(Callable&lt;T&gt; task)</code></pre>
+
+<p>&nbsp;</p>
+<p>这两个方法都是向线程池中提交任务，它们的区别在于Runnable在执行完毕后没有结果，Callable执行完毕后有一个结果。这在多个线程中传递状态和结果是非常有用的。另外他们的相同点在于都返回一个Future对象。Future对象可以阻塞线程直到运行完毕（获取结果，如果有的话），也可以取消任务执行，当然也能够检测任务是否被取消或者是否执行完毕。</p>
+<p>在没有Future之前我们检测一个线程是否执行完毕通常使用Thread.join()或者用一个死循环加状态位来描述线程执行完毕。现在有了更好的方法能够阻塞线程，检测任务执行完毕甚至取消执行中或者未开始执行的任务。</p>
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>ScheduledExecutorService接口</strong></span></p>
+<p>ScheduledExecutorService描述的功能和Timer/TimerTask类似，解决那些需要任务重复执行的问题。这包括延迟时间一次性执行、延迟时间周期性执行以及固定延迟时间周期性执行等。当然了继承ExecutorService的ScheduledExecutorService拥有ExecutorService的全部特性。</p>
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;"><strong>线程池生命周期</strong></span></h3>
+<p>线程是有多种执行状态的，同样管理线程的线程池也有多种状态。JVM会在所有线程（非后台daemon线程）全部终止后才退出，为了节省资源和有效释放资源关闭一个线程池就显得很重要。有时候无法正确的关闭线程池，将会阻止JVM的结束。</p>
+<p>线程池Executor是异步的执行任务，因此任何时刻不能够直接获取提交的任务的状态。这些任务有可能已经完成，也有可能正在执行或者还在排队等待执行。因此关闭线程池可能出现一下几种情况：</p>
+<ul>
+<li>平缓关闭：已经启动的任务全部执行完毕，同时不再接受新的任务。</li>
+<li>立即关闭：取消所有正在执行和未执行的任务。</li>
+</ul>
+<p>另外关闭线程池后对于任务的状态应该有相应的反馈信息。</p>
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>启动线程池</strong></span></p>
+<p>线程池在构造前（new操作）是初始状态，一旦构造完成线程池就进入了执行状态RUNNING。严格意义上讲线程池构造完成后并没有线程被立即启动，只有进行"预启动"或者接收到任务的时候才会启动线程。</p>
+<p>线程池是处于运行状态，随时准备接受任务来执行。</p>
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>关闭线程池</strong></span></p>
+<p>线程池运行中可以通过shutdown()和shutdownNow()来改变运行状态。</p>
+<ul>
+<li>shutdown()：平缓的关闭线程池。线程池停止接受新的任务，同时等待已经提交的任务执行完毕，包括那些进入队列还没有开始的任务。shutdown()方法执行过程中，线程池处于SHUTDOWN状态。</li>
+<li>shutdownNow()：立即关闭线程池。线程池停止接受新的任务，同时线程池取消所有执行的任务和已经进入队列但是还没有执行的任务。shutdownNow()方法执行过程中，线程池处于STOP状态。<strong>shutdownNow方法本质是调用Thread.interrupt()方法。但我们知道该方法仅仅是让线程处于<strong><strong>interrupted</strong></strong>状态，并不会让线程真正的停止！所以若只调用或只调用一次shutdownNow()方法，不一定会让线程池中的线程都关闭掉，线程中必须要有处理<strong>interrupt事件的机制。</strong></strong></li>
+</ul>
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>线程池结束</strong></span></p>
+<p>一旦shutdown()或者shutdownNow()执行完毕，线程池就进入TERMINATED状态，即线程池就结束了。</p>
+<ul>
+<li>isTerminating() 如果关闭后所有任务都已完成，则返回&nbsp;true。</li>
+<li>isShutdown() 如果此执行程序已关闭，则返回&nbsp;true。</li>
+</ul>
+<p>&nbsp;</p>
+<p>例：使用固定大小的线程池。并将任务添加到线程池。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.Executors;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.ExecutorService;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> JavaThreadPool {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建一个可重用固定线程数的线程池</span>
+        ExecutorService pool = Executors.newFixedThreadPool(2<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建实现了Runnable接口对象，Thread对象当然也实现了Runnable接口</span>
+        Thread t1 = <span style="color: #0000ff;">new</span><span style="color: #000000;"> MyThread();
+        Thread t2 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MyThread();
+        Thread t3 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MyThread();
+        Thread t4 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MyThread();
+        Thread t5 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MyThread();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将线程放入池中进行执行</span>
+<span style="color: #000000;">        pool.execute(t1);
+        pool.execute(t2);
+        pool.execute(t3);
+        pool.execute(t4);
+        pool.execute(t5);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 关闭线程池</span>
+<span style="color: #000000;">        pool.shutdown();
+    }
+
+}
+
+
+</span><span style="color: #0000ff;">class</span> MyThread <span style="color: #0000ff;">extends</span><span style="color: #000000;"> Thread {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+        System.out.println(Thread.currentThread().getName() </span>+ "正在执行。。。"<span style="color: #000000;">);
+    }
+
+}</span></code></pre>
+
+<h2><span style="color: #0000ff;">Java线程池扩展</span></h2>
+<h3><span style="color: #0000ff;">ThreadPoolExecutor线程池的执行监控</span></h3>
+<p>ThreadPoolExecutor中定义了三个空方法，用于监控线程的执行情况。</p>
+<p>ThreadPoolExecutor源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> beforeExecute(Thread t, Runnable r) { }
+
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> afterExecute(Runnable r, Throwable t) { }
+
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> terminated() { }</code></pre>
+
+<p>例：使用覆盖方法，定义新的线程池。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ExtThreadPoolTest {
+    
+    </span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> MyTask <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Runnable {
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String name;
+        
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MyTask(String name) {
+            </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+            </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+        }
+        
+        @Override
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                Thread.sleep(</span>500<span style="color: #000000;">);
+                System.out.println(</span>"执行中:"+<span style="color: #0000ff;">this</span><span style="color: #000000;">.name);
+                Thread.sleep(</span>500<span style="color: #000000;">);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        
+        ExecutorService es </span>= <span style="color: #0000ff;">new</span> ThreadPoolExecutor(5,5,0,TimeUnit.MILLISECONDS,<span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Runnable&gt;<span style="color: #000000;">()){
+
+            @Override
+            </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> beforeExecute(Thread t, Runnable r) {
+                System.out.println(</span>"准备执行:" +<span style="color: #000000;"> ((MyTask)r).name);
+            }
+
+            @Override
+            </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> afterExecute(Runnable r, Throwable t) {
+                System.out.println(</span>"执行完成:" +<span style="color: #000000;"> ((MyTask)r).name);
+            }
+
+            @Override
+            </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> terminated() {
+                System.out.println(</span>"执行退出"<span style="color: #000000;">);
+            }
+            
+        };
+        
+        
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i=0;i&lt;5;i++<span style="color: #000000;">){
+            MyTask task </span>= <span style="color: #0000ff;">new</span> MyTask("Task-"+<span style="color: #000000;">i);
+            es.execute(task);
+        }
+        
+        Thread.sleep(</span>10);    <span style="color: #008000;">//</span><span style="color: #008000;"> 等待terminated()执行</span>
+<span style="color: #000000;">        
+        es.shutdown();    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 若无该方法，主线程不会结束。</span>
+<span style="color: #000000;">    }
+    
+}</span></code></pre>
+
+<h3><span style="color: #0000ff;">ThreadPoolExecutor的拒绝策略</span></h3>
+<p>线程池不可能处理无限多的线程。所以一旦线程池中中需要执行的任务过多，线程池对于某些任务就无法处理了。拒绝策略即对这些无法处理的任务进行处理。可能丢弃掉这些不能处理的任务，也可能用其他方式。</p>
+<p>ThreadPoolExecutor类还有另一个构造方法。该构造方法中的RejectedExecutionHandler&nbsp;用于定义拒绝策略。&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #0000ff;">public</span> ThreadPoolExecutor(<span style="color: #0000ff;">int</span><span style="color: #000000;"> corePoolSize,
+                              </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> maximumPoolSize,
+                              </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> keepAliveTime,
+                              TimeUnit unit,
+                              BlockingQueue</span>&lt;Runnable&gt;<span style="color: #000000;"> workQueue,
+                              ThreadFactory threadFactory,
+                              RejectedExecutionHandler handler) {
+    
+    .....
+    
+    }</span></code></pre>
+
+<p>JDK内部已经提供一些拒绝策略。</p>
+<p><img src="./images/Java并发——线程池Executor框架4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p><strong><span style="color: #0000ff;">AbortPolicy</span>&nbsp;</strong>一旦线程不能处理，则抛出异常。</p>
+<p>AbortPolicy源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> AbortPolicy <span style="color: #0000ff;">implements</span><span style="color: #000000;"> RejectedExecutionHandler {
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Creates an {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> AbortPolicy}.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span><span style="color: #000000;"> AbortPolicy() { }
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Always throws RejectedExecutionException.
+         *
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> r the runnable task requested to be executed
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> e the executor attempting to execute this task
+         * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> RejectedExecutionException always.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> RejectedExecutionException("Task " + r.toString() +
+                                                 " rejected from " +<span style="color: #000000;">
+                                                 e.toString());
+        }
+    }</span></code></pre>
+
+<p><span style="color: #0000ff;">&nbsp;</span></p>
+<p><span style="color: #0000ff;"><strong>DiscardPolicy</strong></span>&nbsp;一旦线程不能处理，则丢弃任务。</p>
+<p>DiscardPolicy源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> DiscardPolicy <span style="color: #0000ff;">implements</span><span style="color: #000000;"> RejectedExecutionHandler {
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Creates a {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> DiscardPolicy}.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span><span style="color: #000000;"> DiscardPolicy() { }
+
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Does nothing, which has the effect of discarding task r.
+         *
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> r the runnable task requested to be executed
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> e the executor attempting to execute this task
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+        }
+
+    }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="color: #0000ff;"><strong>CallerRunsPolicy</strong>&nbsp;</span>一旦线程不能处理，则将任务返回给提交任务的线程处理。</p>
+<p>CallerRunsPolicy源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> CallerRunsPolicy <span style="color: #0000ff;">implements</span><span style="color: #000000;"> RejectedExecutionHandler {
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Creates a {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> CallerRunsPolicy}.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span><span style="color: #000000;"> CallerRunsPolicy() { }
+
+ 
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Executes task r in the caller's thread, unless the executor
+         * has been shut down, in which case the task is discarded.
+         *
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> r the runnable task requested to be executed
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> e the executor attempting to execute this task
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">e.isShutdown()) {
+                r.run();
+            }
+        }
+    }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="color: #0000ff;"><strong>DiscardOldestPolicy</strong>&nbsp;</span>一旦线程不能处理，丢弃掉队列中最老的任务。</p>
+<p>DiscardOldestPolicy源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> DiscardOldestPolicy <span style="color: #0000ff;">implements</span><span style="color: #000000;"> RejectedExecutionHandler {
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Creates a {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> DiscardOldestPolicy} for the given executor.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span><span style="color: #000000;"> DiscardOldestPolicy() { }
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * Obtains and ignores the next task that the executor
+         * would otherwise execute, if one is immediately available,
+         * and then retries execution of task r, unless the executor
+         * is shut down, in which case task r is instead discarded.
+         *
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> r the runnable task requested to be executed
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> e the executor attempting to execute this task
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">e.isShutdown()) {
+                e.getQueue().poll();
+                e.execute(r);
+            }
+        }
+    }</span></code></pre>
+
+<p>&nbsp;</p>
+<p>例：自定义拒绝策略。打印并丢弃无法处理的任务。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> RejectedPolicyHandleTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        ExecutorService es </span>= <span style="color: #0000ff;">new</span> ThreadPoolExecutor(5,5,0,TimeUnit.MILLISECONDS,<span style="color: #0000ff;">new</span> SynchronousQueue&lt;Runnable&gt;(),Executors.defaultThreadFactory(),<span style="color: #0000ff;">new</span><span style="color: #000000;"> RejectedExecutionHandler() {
+            
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 打印并丢弃。</span>
+                System.out.println(r.toString()+" is discard"<span style="color: #000000;">);
+            }
+        });
+        
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i=0;i&lt;Integer.MAX_VALUE;i++<span style="color: #000000;">){
+            MyTask task </span>= <span style="color: #0000ff;">new</span> MyTask("Task-"+<span style="color: #000000;">i);
+            es.execute(task);
+            Thread.sleep(</span>10<span style="color: #000000;">);
+        }
+        
+        es.shutdown();    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 若无该方法，主线程不会结束。</span>
+<span style="color: #000000;">        
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;">ThreadFactory 线程工厂</span></h3>
+<p>ThreadPoolExecutor类构造器的参数其中之一即为ThreadFactory线程工厂。</p>
+<p>ThreadFactory用于创建线程池中的线程。</p>
+<src class="cnblogs_code">
+<pre><code>public interface ThreadFactory {
+    Thread newThread(Runnable r);
+}</code></pre>
+
+<p>&nbsp;</p>
+<p>ThreadFactory的实现类中一般定义线程了线程组，线程数与线程名称。</p>
+<p>DefaultThreadFactory源码：</p>
+<src class="cnblogs_code">
+<src class="cnblogs_code_toolbar"><span class="cnblogs_code_copy"><a title="复制代码"><img src="./images/Java并发——线程池Executor框架5.png" alt="复制代码" /></a></span>
+<pre><code>static class DefaultThreadFactory implements ThreadFactory {
+        private static final AtomicInteger poolNumber = new AtomicInteger(1);
+        private final ThreadGroup group;
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+        private final String namePrefix;
+
+        DefaultThreadFactory() {
+            SecurityManager s = System.getSecurityManager();
+            group = (s != null) ? s.getThreadGroup() :
+                                  Thread.currentThread().getThreadGroup();
+            namePrefix = "pool-" +
+                          poolNumber.getAndIncrement() +
+                         "-thread-";
+        }
+
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(group, r,
+                                  namePrefix + threadNumber.getAndIncrement(),
+                                  0);
+            if (t.isDaemon())
+                t.setDaemon(false);
+            if (t.getPriority() != Thread.NORM_PRIORITY)
+                t.setPriority(Thread.NORM_PRIORITY);
+            return t;
+        }
+    }</code></pre>
+<src class="cnblogs_code_toolbar"><span class="cnblogs_code_copy"><a title="复制代码"><img src="./images/Java并发——线程池Executor框架5.png" alt="复制代码" /></a></span>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3><span style="color: #0000ff;"><strong>CompletionService接口</strong></span></h3>
+<p>这里需要稍微提一下的是CompletionService接口，它是用于描述顺序获取执行结果的一个线程池包装器。它依赖一个具体的线程池调度，但是能够根据任务的执行先后顺序得到执行结果，这在某些情况下可能提高并发效率。</p>
+<p>&nbsp;</p>
+<p>来源：https://www.cnblogs.com/shijiaqi1066/p/3412300.html</p>
+<p>&nbsp;</p>
+<p><strong>欢迎关注微信公众号【Java典籍】，收看更多Java技术干货！关注即送java全套资料一份</strong></p>
+<p><strong>　　&nbsp;<strong>▼微信扫一扫下图&darr;&darr;&darr;二维码关注</strong></strong></p>
+<p>　<img src="./images/Java并发——线程池Executor框架7.png" alt="" width="151" height="151" /></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

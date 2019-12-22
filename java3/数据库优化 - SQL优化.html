@@ -1,0 +1,218 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修数据库优化 - SQL优化' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>数据库优化 - SQL优化</center></div><div class='banquan'>原文出处:本文由博客园博主张坚提供。<br/>
+原文连接:https://www.cnblogs.com/jianzh5/p/11781053.html</div><br>
+    <p>前面一篇文章从实例的角度进行数据库优化，通过配置一些参数让数据库性能达到最优。但是一些“不好”的SQL也会导致数据库查询变慢，影响业务流程。本文从SQL角度进行数据库优化，提升SQL运行效率。</p>
+<h2 id="判断问题sql">判断问题SQL</h2>
+<p>判断SQL是否有问题时可以通过两个表象进行判断：</p>
+<ul>
+<li>系统级别表象
+<ul>
+<li>CPU消耗严重</li>
+<li>IO等待严重</li>
+<li>页面响应时间过长</li>
+<li>应用的日志出现超时等错误</li>
+</ul></li>
+</ul>
+<p>可以使用<code>sar</code>命令，<code>top</code>命令查看当前系统状态。<br />
+<img src="./images/数据库优化 - SQL优化0.png" alt="file" /></p>
+<p>也可以通过<code>Prometheus、Grafana</code>等监控工具观察系统状态。（感兴趣的可以翻看我之前的文章）<br />
+<img src="./images/数据库优化 - SQL优化1.png" alt="image" /></p>
+<ul>
+<li>SQL语句表象
+<ul>
+<li>冗长</li>
+<li>执行时间过长</li>
+<li>从全表扫描获取数据</li>
+<li>执行计划中的rows、cost很大</li>
+</ul></li>
+</ul>
+<p>冗长的SQL都好理解，一段SQL太长阅读性肯定会差，而且出现问题的频率肯定会更高。更进一步判断SQL问题就得从执行计划入手，如下所示：<br />
+<img src="./images/数据库优化 - SQL优化2.png" alt="image" /></p>
+<p>执行计划告诉我们本次查询走了全表扫描<code>Type=ALL</code>，rows很大(9950400)基本可以判断这是一段&quot;有味道&quot;的SQL。</p>
+<h2 id="获取问题sql">获取问题SQL</h2>
+<p>不同数据库有不同的获取方法，以下为目前主流数据库的慢查询SQL获取工具</p>
+<ul>
+<li>MySQL
+<ul>
+<li>慢查询日志</li>
+<li>测试工具loadrunner</li>
+<li>Percona公司的ptquery等工具</li>
+</ul></li>
+<li>Oracle
+<ul>
+<li>AWR报告</li>
+<li>测试工具loadrunner等</li>
+<li>相关内部视图如v$sql、v$session_wait等</li>
+<li>GRID CONTROL监控工具</li>
+</ul></li>
+<li>达梦数据库
+<ul>
+<li>AWR报告</li>
+<li>测试工具loadrunner等</li>
+<li>达梦性能监控工具（dem）</li>
+<li>相关内部视图如v$sql、v$session_wait等</li>
+</ul></li>
+</ul>
+<h2 id="sql编写技巧">SQL编写技巧</h2>
+<p>SQL编写有以下几个通用的技巧：</p>
+<p>• 合理使用索引</p>
+<blockquote>
+<p>索引少了查询慢；索引多了占用空间大，执行增删改语句的时候需要动态维护索引，影响性能<br />
+选择率高（重复值少）且被where频繁引用需要建立B树索引；一般join列需要建立索引；复杂文档类型查询采用全文索引效率更好；索引的建立要在查询和DML性能之间取得平衡；复合索引创建时要注意基于非前导列查询的情况</p>
+</blockquote>
+<p>• 使用UNION ALL替代UNION</p>
+<blockquote>
+<p>UNION ALL的执行效率比UNION高，UNION执行时需要排重；UNION需要对数据进行排序</p>
+</blockquote>
+<p>• 避免select * 写法</p>
+<blockquote>
+<p>执行SQL时优化器需要将 * 转成具体的列；每次查询都要回表，不能走覆盖索引。</p>
+</blockquote>
+<p>• JOIN字段建议建立索引</p>
+<blockquote>
+<p>一般JOIN字段都提前加上索引</p>
+</blockquote>
+<p>• 避免复杂SQL语句</p>
+<blockquote>
+<p>提升可阅读性；避免慢查询的概率；可以转换成多个短查询，用业务端处理</p>
+</blockquote>
+<p>• 避免where 1=1写法</p>
+<p>• 避免order by rand()类似写法</p>
+<blockquote>
+<p>RAND()导致数据列被多次扫描</p>
+</blockquote>
+<h2 id="sql优化">SQL优化</h2>
+<h3 id="执行计划">执行计划</h3>
+<p>完成SQL优化一定要先读执行计划，执行计划会告诉你哪些地方效率低，哪里可以需要优化。我们以MYSQL为例，看看执行计划是什么。（每个数据库的执行计划都不一样，需要自行了解）<br />
+<code>explain sql</code><br />
+<img src="./images/数据库优化 - SQL优化3.png" alt="image" /></p>
+<table>
+<thead>
+<tr class="header">
+<th>字段</th>
+<th>解释</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>id</td>
+<td>每个被独立执行的操作标识，标识对象被操作的顺序，id值越大，先被执行，如果相同，执行顺序从上到下</td>
+</tr>
+<tr class="even">
+<td>select_type</td>
+<td>查询中每个select 字句的类型</td>
+</tr>
+<tr class="odd">
+<td>table</td>
+<td>被操作的对象名称，通常是表名，但有其他格式</td>
+</tr>
+<tr class="even">
+<td>partitions</td>
+<td>匹配的分区信息(对于非分区表值为NULL)</td>
+</tr>
+<tr class="odd">
+<td>type</td>
+<td>连接操作的类型</td>
+</tr>
+<tr class="even">
+<td>possible_keys</td>
+<td>可能用到的索引</td>
+</tr>
+<tr class="odd">
+<td>key</td>
+<td>优化器实际使用的索引(<strong>最重要的列</strong>) 从最好到最差的连接类型为<code>const</code>、<code>eq_reg</code>、<code>ref</code>、<code>range</code>、<code>index</code>和<code>ALL</code>。当出现<code>ALL</code>时表示当前SQL出现了“坏味道”</td>
+</tr>
+<tr class="even">
+<td>key_len</td>
+<td>被优化器选定的索引键长度，单位是字节</td>
+</tr>
+<tr class="odd">
+<td>ref</td>
+<td>表示本行被操作对象的参照对象，无参照对象为NULL</td>
+</tr>
+<tr class="even">
+<td>rows</td>
+<td>查询执行所扫描的元组个数（对于innodb，此值为估计值）</td>
+</tr>
+<tr class="odd">
+<td>filtered</td>
+<td>条件表上数据被过滤的元组个数百分比</td>
+</tr>
+<tr class="even">
+<td>extra</td>
+<td>执行计划的重要补充信息，当此列出现<code>Using filesort</code> , <code>Using temporary</code> 字样时就要小心了，很可能SQL语句需要优化</td>
+</tr>
+</tbody>
+</table>
+<p>接下来我们用一段实际优化案例来说明SQL优化的过程及优化技巧。</p>
+<h3 id="优化案例">优化案例</h3>
+<ul>
+<li><p>表结构<br />
+<code>CREATE TABLE `a`   (       `id`          int(11) NOT NULLAUTO_INCREMENT,       `seller_id`   bigint(20)                                       DEFAULT NULL,       `seller_name` varchar(100) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,       `gmt_create`  varchar(30)                                      DEFAULT NULL,       PRIMARY KEY (`id`)   );   CREATE TABLE `b`   (       `id`          int(11) NOT NULLAUTO_INCREMENT,       `seller_name` varchar(100) DEFAULT NULL,       `user_id`     varchar(50)  DEFAULT NULL,       `user_name`   varchar(100) DEFAULT NULL,       `sales`       bigint(20)   DEFAULT NULL,       `gmt_create`  varchar(30)  DEFAULT NULL,       PRIMARY KEY (`id`)   );   CREATE TABLE `c`   (       `id`         int(11) NOT NULLAUTO_INCREMENT,       `user_id`    varchar(50)  DEFAULT NULL,       `order_id`   varchar(100) DEFAULT NULL,       `state`      bigint(20)   DEFAULT NULL,       `gmt_create` varchar(30)  DEFAULT NULL,       PRIMARY KEY (`id`)   );</code></p></li>
+<li><p>三张表关联，查询当前用户在当前时间前后10个小时的订单情况，并根据订单创建时间升序排列，具体SQL如下<br />
+<code>select a.seller_id,          a.seller_name,          b.user_name,          c.state   from a,        b,        c   where a.seller_name = b.seller_name     and b.user_id = c.user_id     and c.user_id = 17     and a.gmt_create       BETWEEN DATE_ADD(NOW(), INTERVAL – 600 MINUTE)       AND DATE_ADD(NOW(), INTERVAL 600 MINUTE)   order by a.gmt_create；</code></p></li>
+<li><p>查看数据量</p>
+<p><img src="./images/数据库优化 - SQL优化4.png" alt="image" /></p></li>
+<li><p>原执行时间</p>
+<p><img src="./images/数据库优化 - SQL优化5.png" alt="image" /></p></li>
+<li><p>原执行计划</p>
+<p><img src="./images/数据库优化 - SQL优化6.png" alt="image" /></p></li>
+<li>初步优化思路
+<ol>
+<li>SQL中 where条件字段类型要跟表结构一致，表中<code>user_id</code> 为varchar(50)类型，实际SQL用的int类型，存在隐式转换，也未添加索引。将b和c表<code>user_id</code> 字段改成int类型。</li>
+<li>因存在b表和c表关联，将b和c表<code>user_id</code>创建索引</li>
+<li>因存在a表和b表关联，将a和b表<code>seller_name</code>字段创建索引</li>
+<li>利用复合索引消除临时表和排序</li>
+</ol></li>
+<li><p>初步优化SQL<br />
+<code>alter table b modify `user_id` int(10) DEFAULT NULL;   alter table c modify `user_id` int(10) DEFAULT NULL;   alter table c add index `idx_user_id`(`user_id`);   alter table b add index `idx_user_id_sell_name`(`user_id`,`seller_name`);   alter table a add index `idx_sellname_gmt_sellid`(`gmt_create`,`seller_name`,`seller_id`);</code></p></li>
+<li><p>查看优化后执行时间</p>
+<p><img src="./images/数据库优化 - SQL优化7.png" alt="image" /></p></li>
+<li><p>查看优化后执行计划<br />
+<img src="./images/数据库优化 - SQL优化8.png" alt="image" /></p></li>
+<li><p>查看warnings信息<br />
+<img src="./images/数据库优化 - SQL优化9.png" alt="image" /></p></li>
+<li><p>继续优化<br />
+<code>alter table a modify &quot;gmt_create&quot; datetime DEFAULT NULL;</code></p></li>
+<li><p>查看执行时间</p>
+<p><img src="./images/数据库优化 - SQL优化10.png" alt="image" /></p></li>
+<li><p>查看执行计划</p>
+<p><img src="./images/数据库优化 - SQL优化11.png" alt="image" /></p></li>
+<li>优化总结
+<ol>
+<li>查看执行计划 explain</li>
+<li>如果有告警信息，查看告警信息 show warnings;</li>
+<li>查看SQL涉及的表结构和索引信息</li>
+<li>根据执行计划，思考可能的优化点</li>
+<li>按照可能的优化点执行表结构变更、增加索引、SQL改写等操作</li>
+<li>查看优化后的执行时间和执行计划</li>
+<li><p>如果优化效果不明显，重复第四步操作</p>
+<blockquote>
+<p>请关注个人公众号:JAVA日知录</p>
+</blockquote></li>
+</ol></li>
+</ul>
+<p><img src="./images/数据库优化 - SQL优化12.png" alt="avatar" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

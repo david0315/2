@@ -1,0 +1,70 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修分布式锁的Redis实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>分布式锁的Redis实现</center></div><div class='banquan'>原文出处:本文由博客园博主安逸惬意提供。<br/>
+原文连接:https://www.cnblogs.com/Gon-only/p/11749583.html</div><br>
+    <p>　　当我们开始开发项目部署运行时，项目规模不大，只是在一个JVM实例中运行，对同一资源的并发访问用JDK自带的锁机制就可以解决资源同时访问的问题。而随着项目的不断发展，单体应用已经无法满足日益增长的访问需求，我们开始考虑多台部署，提高接收客户端的连接请求，提高项目的吞吐量。一台变多台，其中不可避免的问题就是如何控制解决不同线程对同一资源的并发访问。其中一种手段就是使用redis进行分布式锁的控制。</p>
+<p>　　我们可以在获取访问资源锁之前判断redis中是否存在对应代表该资源锁key的value，如果存在，则说明已经被获取，反之还没有客户端获取该资源对应的锁，可以进行获取锁。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">boolean</span> lock = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 3</span>             lcok = getLock(taskId);   <span style="color: #008000;">//</span><span style="color: #008000;">获取锁</span>
+<span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (lock) {
+</span><span style="color: #008080;"> 5</span>                 doSomething();   <span style="color: #008000;">//</span><span style="color: #008000;">业务逻辑</span>
+<span style="color: #008080;"> 6</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 7</span>         } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 8</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (lock) {
+</span><span style="color: #008080;"> 9</span>                 releaseLock(taskId);   <span style="color: #008000;">//</span><span style="color: #008000;">释放锁</span>
+<span style="color: #008080;">10</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">11</span>         }</code></pre>
+
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> getLock(String taskId) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (existsKey(taskId)) {
+</span><span style="color: #008080;">3</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">4</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">5</span> <span style="color: #000000;">            setKey(taskId);
+</span><span style="color: #008080;">6</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">7</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">8</span>     }</code></pre>
+
+<p>　　上面的部分实现代码给了一个大概的解决思路，看起来没有问题的，但是仔细看看还是存在问题滴，存在什么问题呢？</p>
+<p>　　当正在执行doSomething()方法时，突然系统宕机挂掉了，无法执行释放锁的操作，redis中对应的资源key的锁一直存在，之后运行代码就会出现问题。另一个问题就是执行getLock(taskId)方法时，该方法不是原子性的，有可能同时两个线程都判断为不存在该资源锁，都执行了setKey方法，导致同时获得锁资源的情况。</p>
+<p>　　如何解决上面的两个问题呢？从Redis官方API中有SET my_key my_value NX PX&nbsp;milliseconds的方法，得到了解决方案。它提供了一个只有在某个key不存在的情况下才会设置key的值的原子命令，该命令也能设置key值过期时间。其中，NX表示只有当键key不存在的时候才会设置key的值，PX表示设置键key的过期时间，单位是毫秒。</p>
+<p>　　到现在是否完全解决了并发获取锁的问题了呢？系统可能存在这种情况，当客户端A获取锁之后，执行业务代码的时间超过了之前设置的过期时间，导致锁的自动释放，而客户端B刚好获得新的资源锁，但客户端A恰好执行完业务操作，释放锁的时候，该锁是客户端B重新获得的锁，导致出现问题。这时，我们想到可以在设置key值时给定一个随机数，在释放资源锁的同时，判断是否和之前设置的value值相同，相同则释放，反之不释放。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>     <span style="color: #0000ff;">if</span>(getKey(taskId)==<span style="color: #000000;">random_value){
+</span><span style="color: #008080;">2</span> <span style="color: #000000;">            deleteKey(taskId);
+</span><span style="color: #008080;">3</span>         }</code></pre>
+
+<p>　　很可惜，上面的整个if操作也不是原子性的，getKey方法和deleteKey方法之间由于某种原因而延迟1秒钟操作了，而这1秒内刚好设置的的超时时间而锁释放，被新的客户端获得锁，1秒之后执行deleteKey方法又会误删除新客户端的锁，问题依旧存在。接下来我们只要想办法解决上面判断的原子性就能解决误删除锁的问题。Redis可以使用Lua脚本保证操作的原子性。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">if</span> redis.call("get",KEYS[1]) == ARGV[1<span style="color: #000000;">] then
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">return</span> redis.call("del",KEYS[1<span style="color: #000000;">])
+</span><span style="color: #008080;">3</span> <span style="color: #0000ff;">else</span>
+<span style="color: #008080;">4</span>     <span style="color: #0000ff;">return</span> 0
+<span style="color: #008080;">5</span> end</code></pre>
+
+<p>　　其中ARGV[1]表示设置key时指定的随机值。由于Lua脚本的原子性，在Redis执行该脚本的过程中，其他客户端的命令都需要等待该Lua脚本执行完才能执行，所以不会出现上面所说的误删除锁问题。至此，使用Redis实现分布式锁的方案就相对完善了。<span style="background-color: #ff0000;">上述分布式锁的实现方案中，都是针对单节点Redis而言的。</span></p>
+<p>　　</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

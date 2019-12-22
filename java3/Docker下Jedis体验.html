@@ -1,0 +1,380 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Docker下Jedis体验' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Docker下Jedis体验</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11531533.html</div><br>
+    <p>jedis是redis的java版本的客户端实现，本文通过一些web请求&amp;响应的实例展示了jedis的基本用法；</p>
+<p>开始编码前我们先把环境准备好，总共两个server，对应两个docker容器：</p>
+<ol>
+<li>redis，采用redis的3.2.8版本，本次实战用的是redis单机；</li>
+<li>tomcat，采用7.0.77-jre8版本，由于要支持在线部署，所以tomcat镜像对官方镜像做了少量定制，详情请参照<a href="http://blog.csdn.net/boling_cavalry/article/details/70184605">《实战docker，编写Dockerfile定制tomcat镜像，实现web应用在线部署》</a>，这里可以不用自己动手做，在hub.docker.com下载bolingcavalry/online_deploy_tomcat:0.0.1镜像即可，为了支持在线部署，请在本地maven环境的settings.xml中的servers节点内增加一个server节点，内容如下：</li>
+</ol>
+<pre><code><code>&lt;server&gt;
+       &lt;id&gt;tomcat7&lt;/id&gt;
+       &lt;username&gt;bolingcavalry&lt;/username&gt;
+       &lt;password&gt;bolingcavalrypswd&lt;/password&gt;
+     &lt;/server&gt;</code></code></pre>
+<p>以上只是对环境做个介绍，不需要自己动手去挨个构建，通过一个docker-compose.yml即可搭建成功，docker-compose.yml文件内容如下：</p>
+<pre class="yml"><code>version: &#39;2&#39;
+services:
+  redis001: 
+    image: daocloud.io/library/redis:3.2.8
+    restart: always
+  tomcat001: 
+    image: bolingcavalry/online_deploy_tomcat:0.0.1
+    links: 
+      - redis001:redishost
+    ports: 
+      - &quot;8080:8080&quot;
+    environment:
+      TOMCAT_SERVER_ID: tomcat_server_001
+    restart: always</code></code></pre>
+<p>打开控制台，在docker-compose.yml文件所在目录下执行以下命令：</p>
+<pre><code><code>docker-compose up -d</code></code></pre>
+<p>执行完毕后环境就搭建成功了，在浏览器输入&quot;localhost:8080&quot;可以看到熟悉的tomcat首页:</p>
+<p>[外链图片转存中...(img-dXCPA2Gd-1568682376493)]</p>
+<p>环境OK了，可以开始编码了，源代码的git地址是git@github.com:zq2599/blog_demos.git，里面有多个工程，本篇用到的工程是redisdemo，如下图红框所示：</p>
+<p><img src="./images/Docker下Jedis体验0.png" alt="这里写图片描述" /></p>
+<p>这是个maven工程，首先看下maven依赖，pom中的依赖除了jedis，还要加上spring，jstl，common等常用库，如下：</p>
+<pre class="xml"><code>&lt;dependency&gt;
+            &lt;groupId&gt;junit&lt;/groupId&gt;
+            &lt;artifactId&gt;junit&lt;/artifactId&gt;
+            &lt;version&gt;4.11&lt;/version&gt;
+            &lt;!-- 表示开发的时候引入，发布的时候不会加载此包 --&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+        &lt;!-- spring核心包 --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-core&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-web&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-oxm&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-tx&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-jdbc&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-webmvc&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-aop&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-context-support&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-test&lt;/artifactId&gt;
+            &lt;version&gt;${spring.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;!-- 导入java ee jar 包 --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;javax&lt;/groupId&gt;
+            &lt;artifactId&gt;javaee-api&lt;/artifactId&gt;
+            &lt;version&gt;7.0&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;!-- JSTL标签类 --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;jstl&lt;/groupId&gt;
+            &lt;artifactId&gt;jstl&lt;/artifactId&gt;
+            &lt;version&gt;1.2&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;!-- 映入JSON --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.codehaus.jackson&lt;/groupId&gt;
+            &lt;artifactId&gt;jackson-mapper-asl&lt;/artifactId&gt;
+            &lt;version&gt;1.9.13&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;!-- 上传组件包 --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;commons-fileupload&lt;/groupId&gt;
+            &lt;artifactId&gt;commons-fileupload&lt;/artifactId&gt;
+            &lt;version&gt;1.3.1&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;commons-io&lt;/groupId&gt;
+            &lt;artifactId&gt;commons-io&lt;/artifactId&gt;
+            &lt;version&gt;2.4&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;commons-codec&lt;/groupId&gt;
+            &lt;artifactId&gt;commons-codec&lt;/artifactId&gt;
+            &lt;version&gt;1.9&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;!-- redis --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;redis.clients&lt;/groupId&gt;
+            &lt;artifactId&gt;jedis&lt;/artifactId&gt;
+            &lt;version&gt;2.9.0&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>然后是web.xml中的配置，包括spring mvc配置和扩展配置文件(spring-extends.xml)：</p>
+<pre class="xml"><code>&lt;!-- Spring的配置文件 --&gt;
+    &lt;context-param&gt;
+        &lt;param-name&gt;contextConfigLocation&lt;/param-name&gt;
+        &lt;param-value&gt;classpath:spring-extends.xml&lt;/param-value&gt;
+    &lt;/context-param&gt;
+
+    &lt;!-- 编码过滤器 --&gt;
+    &lt;filter&gt;
+        &lt;filter-name&gt;encodingFilter&lt;/filter-name&gt;
+        &lt;filter-class&gt;org.springframework.web.filter.CharacterEncodingFilter&lt;/filter-class&gt;
+        &lt;async-supported&gt;true&lt;/async-supported&gt;
+        &lt;init-param&gt;
+            &lt;param-name&gt;encoding&lt;/param-name&gt;
+            &lt;param-value&gt;UTF-8&lt;/param-value&gt;
+        &lt;/init-param&gt;
+    &lt;/filter&gt;
+    &lt;filter-mapping&gt;
+        &lt;filter-name&gt;encodingFilter&lt;/filter-name&gt;
+        &lt;url-pattern&gt;/*&lt;/url-pattern&gt;
+    &lt;/filter-mapping&gt;
+
+    &lt;!-- Spring监听器 --&gt;
+    &lt;listener&gt;
+        &lt;listener-class&gt;org.springframework.web.context.ContextLoaderListener&lt;/listener-class&gt;
+    &lt;/listener&gt;
+
+    &lt;!-- 防止Spring内存溢出监听器 --&gt;
+    &lt;listener&gt;
+        &lt;listener-class&gt;org.springframework.web.util.IntrospectorCleanupListener&lt;/listener-class&gt;
+    &lt;/listener&gt;
+
+    &lt;!-- Spring MVC servlet --&gt;
+    &lt;servlet&gt;
+        &lt;servlet-name&gt;SpringMVC&lt;/servlet-name&gt;
+        &lt;servlet-class&gt;org.springframework.web.servlet.DispatcherServlet&lt;/servlet-class&gt;
+        &lt;init-param&gt;
+            &lt;param-name&gt;contextConfigLocation&lt;/param-name&gt;
+            &lt;param-value&gt;classpath:spring-mvc.xml&lt;/param-value&gt;
+        &lt;/init-param&gt;
+        &lt;load-on-startup&gt;1&lt;/load-on-startup&gt;
+        &lt;async-supported&gt;true&lt;/async-supported&gt;
+    &lt;/servlet&gt;
+    &lt;servlet-mapping&gt;
+        &lt;servlet-name&gt;SpringMVC&lt;/servlet-name&gt;
+        &lt;url-pattern&gt;/&lt;/url-pattern&gt;
+    &lt;/servlet-mapping&gt;</code></code></pre>
+<p>接下来就是java编码了，由于web请求是多线程并发进行的，多个线程会同时使用redis服务，所以我们使用jedis的连接池JedisPool来为并发请求同时提供jedis服务的实例；</p>
+<p>连接池一个就够了，所以这里创建了一个单例的类RedisPool，它的功能如下：</p>
+<blockquote>
+<p>实例化一个Jedis资源池对象，也就是JedisPool；<br />
+为业务线程提供获取Jedis和归还Jedis的服务；</p>
+</blockquote>
+<p>接下来我们看一下RedisPool的关键代码，包括实例化，JedisPool创建，获取Jedis，归还Jedis四个部分：</p>
+<p>RedisPool的实例化：</p>
+<pre class="java"><code>public static RedisPool getInstance(){
+        if(null==instance) {
+            synchronized (RedisPool.class){
+                if(null==instance){
+                    instance = new RedisPool();
+                }
+            }
+        }
+
+        return instance;
+    }</code></code></pre>
+<p>下面时资源池的初始化代码，注意红框部分的ADDR参数是redis服务器的ip，本例中要连接的是docker 容器，所以ADDR的值用的是&quot;redishost&quot;，这个和tomcat容器启动时的link参数中的redis容器的别名一致：</p>
+<p><img src="./images/Docker下Jedis体验1.png" alt="这里写图片描述" /></p>
+<p>下面是getJedis方法，从资源池取出一个Jedis实例给业务线程，由于jedisPool.getResource方法是线程安全的，所以getJedis()可以被多个线程同时调用，不用锁操作：</p>
+<pre class="java"><code>public Jedis getJedis(){
+        try {
+            if(null!=jedisPool){
+                Jedis jedis = jedisPool.getResource();
+                return jedis;
+            }else{
+                return null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }</code></code></pre>
+<p>下面是业务线程用完Jedis实例后，归还给资源池时调用的方法，注意，本次使用的jedis是2.9.0版本，所以继续使用jedisPool.returnResource，jedis3.0版本之后就要用新的方法来归还到资源池了：</p>
+<pre class="java"><code>public void returnResource(final Jedis jedis){
+        if(jedis!=null){
+            //jedis.close()取代jedisPool.returnResource(jedis)方法将3.0版本开始
+            jedisPool.returnResource(jedis);
+        }
+    }</code></code></pre>
+<p>写完了RedisPool，就解决了Jedis的来源问题，接下来我们看下如何使用Jedis：</p>
+<p>本文只是入门学习，所以只展示了部分Jedis服务，通过RedisService接口对外提供，API如下：</p>
+<pre><code><code>/**
+     * string操作，常规设置key－value
+     * @param key
+     * @param value
+     */
+    void strSet(String key, String value);
+
+    /**
+     * string操作，常规通过key获取value
+     * @param key
+     * @return
+     */
+    String setGet(String key);
+
+    /**
+     * list操作，尾部追加数据
+     * @param key
+     * @param value
+     */
+    void listAppend(String key, String value);
+
+    /**
+     * list操作，获取说有数据
+     */
+    List&lt;String&gt; listGetAll(String key);
+
+    /**
+     * 指定键值在redis中是否存在
+     * @param key
+     * @return
+     */
+    boolean exists(String key);</code></code></pre>
+<p>具体的实现在RedisServiceImpl中，我们挑几个看看：</p>
+<pre><code><code>@Override
+    public void strSet(String key, String value) {
+        Jedis jedis = borrowJedis();
+
+        if(null!=jedis){
+            jedis.set(key, value);
+        }
+
+        returnJedis(jedis);
+    }
+
+    @Override
+    public String setGet(String key) {
+        Jedis jedis = borrowJedis();
+
+        if(null!=jedis){
+            String value = jedis.get(key);
+            returnJedis(jedis);
+            return value;
+        }
+
+        return null;
+    }
+
+    @Override
+    public void listAppend(String key, String value) {
+        Jedis jedis = borrowJedis();
+
+        if(null!=jedis){
+            jedis.rpush(key, value);
+            returnJedis(jedis);
+        }
+    }
+
+    @Override
+    public List&lt;String&gt; listGetAll(String key) {
+        List&lt;String&gt; list = null;
+
+        Jedis jedis = borrowJedis();
+
+        if(null!=jedis){
+            list = jedis.lrange(key, 0, -1);
+            returnJedis(jedis);
+        }
+
+        return null==list ? new ArrayList() : list;
+    }</code></code></pre>
+<p>可以发现，Jedis提供的api与redis客户端上的命令是很像的，例如jedis.get，jedis.lrange等等，基本上会操作命令行就能找到对应的api了。</p>
+<p>再看看上次的对RedisService的调用场景，本例中用的是spring mvc，所以我们先看下RedisController:</p>
+<p>下面四个方法代表了四个url入口：</p>
+<pre><code><code>@RequestMapping(&quot;/simpleset&quot;)
+    public String simpleset(HttpServletRequest request, Model model) {
+        addCommon(model);
+        return &quot;simple_set&quot;;
+    }
+
+    @RequestMapping(&quot;/simpleget&quot;)
+    public String simpleget(HttpServletRequest request, Model model) {
+        addCommon(model);
+        return &quot;simple_get&quot;;
+    }
+
+    @RequestMapping(&quot;/listappend&quot;)
+    public String listappend(HttpServletRequest request, Model model) {
+        addCommon(model);
+        return &quot;list_append&quot;;
+    }
+
+    @RequestMapping(&quot;/listgetall&quot;)
+    public String listgetall(HttpServletRequest request, Model model) {
+        addCommon(model);
+        return &quot;list_get_all&quot;;
+    }</code></code></pre>
+<p>以第一个simpleset为例，在浏览器中输入http://localhost:8080/redisdemo/simpleset，对应的simpleset方法会被调用，打开simple_get.jsp，如下图：</p>
+<p><img src="./images/Docker下Jedis体验2.png" alt="这里写图片描述" /></p>
+<p>输入了key，value，点击提交后，由于form中指定了提交地址是strget，所以RedisController的get方法会被调用：</p>
+<pre class="java"><code>@RequestMapping(&quot;/strget&quot;)
+    public String get(HttpServletRequest request, Model model) {
+        String key = request.getParameter(&quot;key&quot;);
+
+        String rlt;
+
+        //判断key在redis中是否存在
+        if(redisService.exists(key)){
+            rlt = &quot;simple_get_success&quot;;
+            String value = redisService.setGet(key);
+
+            model.addAttribute(&quot;value&quot;, value);
+        }else{
+            rlt = &quot;check&quot;;
+            model.addAttribute(&quot;exists&quot;, &quot;不存在&quot;);
+        }
+
+        model.addAttribute(&quot;key&quot;, key);
+
+        addCommon(model);
+        return rlt;
+    }</code></code></pre>
+<p>key如果存在，就取出数据，并跳转到simple_get_success.jsp页面，否则跳转到check.jsp页面，分别展示不同的内容。</p>
+<p>以上就是jedis基本用法的简介，详情请见redisdemo源码。</p>
+<p>另外，部署工程的时候，请使用命令<font color="red">mvn clean package -U -Dmaven.test.skip=true tomcat7:redeploy</font>，就能将工程编译打包部署到tomcat上去。</p>
+<h3 id="欢迎关注我的公众号程序员欣宸">欢迎关注我的公众号：程序员欣宸</h3>
+<p><img src="./images/Docker下Jedis体验3.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

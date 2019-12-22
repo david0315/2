@@ -1,0 +1,126 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单</center></div><div class='banquan'>原文出处:本文由博客园博主zlt2000提供。<br/>
+原文连接:https://www.cnblogs.com/zlt2000/p/11712943.html</div><br>
+    <p><img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单0.png" alt="file" /></p>
+<h2 id="一说明">一、说明</h2>
+<p>网关的核心概念就是路由配置和路由规则，而作为所有请求流量的入口，在实际生产环境中为了保证高可靠和高可用，是尽量要避免重启的，所以实现动态路由是非常有必要的；本文主要介绍 <code>Spring Cloud Gateway</code> 实现的思路，并且以<code>Nacos</code>为数据源来讲解</p>
+<p><strong>PS</strong>：关于 <code>Spring Cloud Zuul</code> 的动态路由请看文章《<a href="https://mp.weixin.qq.com/s/9fR-hgJ69R1iiYXiARMTLw">Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单</a>》</p>
+<p> </p>
+<h2 id="二实现要点">二、实现要点</h2>
+<p>要实现动态路由只需关注下面4个点</p>
+<ol>
+<li>网关启动时，<code>动态路由</code>的数据怎样加载进来</li>
+<li><code>静态路由</code>与<code>动态路由</code>以那个为准，ps：<code>静态路由</code>指的是配置文件里写死的路由配置</li>
+<li>监听<code>动态路由</code>的数据源变化</li>
+<li>数据有变化时怎样<code>通知gateway</code>刷新路由</li>
+</ol>
+<p> </p>
+<h2 id="三具体实现">三、具体实现</h2>
+<p><code>Spring Cloud Gateway</code> 中加载路由信息分别由以下几个类负责</p>
+<ol>
+<li><strong>PropertiesRouteDefinitionLocator</strong>：从配置文件中读取路由信息(如YML、Properties等)</li>
+<li><strong>RouteDefinitionRepository</strong>：从存储器中读取路由信息(如内存、配置中心、Redis、MySQL等)</li>
+<li><strong>DiscoveryClientRouteDefinitionLocator</strong>：从注册中心中读取路由信息(如Nacos、Eurka、Zookeeper等)</li>
+</ol>
+<p> <br />
+我们可以通过自定义 <code>RouteDefinitionRepository</code> 的实现类来实现动态路由的目的</p>
+<p> </p>
+<h3 id="实现动态路由的数据加载">3.1. 实现动态路由的数据加载</h3>
+<p>创建一个<code>Nacos</code>的<code>RouteDefinitionRepository</code>实现类</p>
+<p><strong>NacosRouteDefinitionRepository类</strong>可查看：<a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-gateway/sc-gateway/src/main/java/com/central/gateway/route/NacosRouteDefinitionRepository.java">NacosRouteDefinitionRepository.java</a><br />
+<img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单1.png" alt="file" /></p>
+<blockquote>
+<p>重写 <code>getRouteDefinitions</code> 方法实现路由信息的读取</p>
+</blockquote>
+<p> <br />
+<strong>配置Nacos监听器，监听路由配置信息的变化</strong><br />
+<img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单2.png" alt="file" /></p>
+<blockquote>
+<p>路由变化只需要往 <code>ApplicationEventPublisher</code> 推送一个 <code>RefreshRoutesEvent</code> 事件即刻，gateway会自动监听该事件并调用 <code>getRouteDefinitions</code> 方法更新路由信息</p>
+</blockquote>
+<p> </p>
+<h3 id="创建配置类">3.2. 创建配置类</h3>
+<p><strong>DynamicRouteConfig类</strong>可查看：<a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-gateway/sc-gateway/src/main/java/com/central/gateway/config/DynamicRouteConfig.java">DynamicRouteConfig.java</a><br />
+<img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单3.png" alt="file" /></p>
+<p> </p>
+<h3 id="添加nacos路由配置">3.3. 添加<code>Nacos</code>路由配置</h3>
+<p><img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单4.png" alt="file" /><br />
+新增配置项：</p>
+<ul>
+<li>Data Id：scg-routes</li>
+<li>Group：SCG_GATEWAY</li>
+<li>配置内容：</li>
+</ul>
+<pre><code><code>[
+    {
+        &quot;id&quot;: &quot;csdn&quot;,
+        &quot;predicates&quot;: [{
+            &quot;name&quot;: &quot;Path&quot;,
+            &quot;args&quot;: {
+                    &quot;pattern&quot;: &quot;/csdn/**&quot;
+            }
+        }],
+        &quot;uri&quot;: &quot;https://www.csdn.net/&quot;,
+        &quot;filters&quot;: []
+    },
+    {
+        &quot;id&quot;: &quot;github&quot;,
+        &quot;predicates&quot;: [{
+            &quot;name&quot;: &quot;Path&quot;,
+            &quot;args&quot;: {
+                    &quot;pattern&quot;: &quot;/github/**&quot;
+            }
+        }],
+        &quot;uri&quot;: &quot;http://github.com/&quot;,
+        &quot;filters&quot;: []
+    }
+]</code></code></pre>
+<blockquote>
+<p>添加两条路由数据</p>
+</blockquote>
+<p> </p>
+<h2 id="四测试">四、测试</h2>
+<p>启动网关通过 <code>/actuator/gateway/routes</code> 端点查看当前路由信息</p>
+<p><img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单5.png" alt="file" /></p>
+<blockquote>
+<p>可以看到 <code>Nacos</code> 里配置的两条路由信息</p>
+</blockquote>
+<p> <br />
+<strong>完整的Spring Cloud Gateway代码请查看</strong><br />
+<a href="https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-gateway/sc-gateway" class="uri">https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-gateway/sc-gateway</a></p>
+<p> </p>
+<p><strong>推荐阅读</strong></p>
+<ul>
+<li><a href="https://mp.weixin.qq.com/s/NG-RIPDBkJsH3qo6_rJGWQ">日志排查问题困难？分布式日志链路跟踪来帮你</a></li>
+<li><a href="https://mp.weixin.qq.com/s/I_piUnr63asLUcrN0eUxAA">zuul集成Sentinel最新的网关流控组件</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9fR-hgJ69R1iiYXiARMTLw">Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9XQ-SIbYsov3KBx9TGFN0g">Spring Cloud开发人员如何解决服务冲突和实例乱窜？</a></li>
+<li><a href="https://mp.weixin.qq.com/s/0yCmHzlXDC9BkbUuEt0_fQ">Spring Cloud同步场景分布式事务怎样做？试试Seata</a></li>
+<li><a href="https://mp.weixin.qq.com/s/dJz63WQl7UDjcbmDy06FyA">Spring Cloud异步场景分布式事务怎样做？试试RocketMQ</a></li>
+</ul>
+<p> <br />
+<strong>扫码关注有惊喜！</strong></p>
+<p><img src="./images/Spring Cloud Gateway的动态路由怎样做？集成Nacos实现很简单6.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

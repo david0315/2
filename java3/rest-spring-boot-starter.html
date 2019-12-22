@@ -1,0 +1,173 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修rest-spring-boot-starter' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>rest-spring-boot-starter</center></div><div class='banquan'>原文出处:本文由博客园博主bener提供。<br/>
+原文连接:https://www.cnblogs.com/bener/p/11801660.html</div><br>
+    <h1 id="rest-spring-boot-starter">rest-spring-boot-starter</h1>
+<blockquote>
+<p>基于spring boot，统一业务异常处理，统一返回格式包装</p>
+</blockquote>
+<h2 id="依赖">依赖</h2>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;tk.fishfish&lt;/groupId&gt;
+    &lt;artifactId&gt;rest-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.0.0.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h2 id="统一业务异常处理">统一业务异常处理</h2>
+<pre class="java"><code>@RestController
+public class DemoController {
+
+    @GetMapping(&quot;/list&quot;)
+    public List&lt;String&gt; list() {
+        throw new BizException(10001, &quot;xxx错误&quot;);
+    }
+
+}</code></code></pre>
+<p>业务异常统一处理：</p>
+<pre class="json"><code>{
+    &quot;code&quot;: 10001,
+    &quot;msg&quot;: &quot;xxx错误&quot;,
+    &quot;data&quot;: null
+}</code></code></pre>
+<h2 id="统一返回格式包装">统一返回格式包装</h2>
+<pre class="java"><code>@RestController
+public class DemoController {
+
+    @GetMapping(&quot;/list&quot;)
+    public List&lt;String&gt; list() {
+        return Arrays.asList(&quot;1&quot;, &quot;2&quot;);
+    }
+
+}</code></code></pre>
+<p>返回值进行包装，忽略<code>org.springframework.http.ResponseEntity</code>值类型。</p>
+<pre class="json"><code>{
+    &quot;code&quot;: 0,
+    &quot;msg&quot;: null,
+    &quot;data&quot;: [
+        &quot;1&quot;,
+        &quot;2&quot;
+    ]
+}</code></code></pre>
+<h2 id="原理">原理</h2>
+<p>定义统一格式：</p>
+<pre class="json"><code>{
+    &quot;code&quot;: 返回码,
+    &quot;msg&quot;: 描述,
+    &quot;data&quot;: 数据
+}</code></code></pre>
+<p>约定：</p>
+<ul>
+<li>code：-1，代表全局异常处理的错误；0，成功；正数，业务错误码</li>
+<li>msg：一段描述</li>
+<li>data：真正的数据</li>
+</ul>
+<h3 id="异常处理">异常处理</h3>
+<p>使用<code>org.springframework.web.bind.annotation.RestControllerAdvice</code>，全局捕获异常。</p>
+<pre class="java"><code>package tk.fishfish.rest;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.annotation.Order;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * 全局异常处理，优先级为100
+ *
+ * @author 奔波儿灞
+ * @since 1.0
+ */
+@Order(100)
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(BizException.class)
+    public ApiResult&lt;Void&gt; handleBizException(BizException e) {
+        LOG.warn(&quot;handle bizException&quot;, e);
+        Integer code = e.getCode();
+        String msg = e.getMessage();
+        return ApiResult.fail(code, msg);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ApiResult&lt;Void&gt; handleException(Exception e) {
+        LOG.warn(&quot;handle exception&quot;, e);
+        String msg = e.getMessage();
+        return ApiResult.fail(-1, msg);
+    }
+
+}</code></code></pre>
+<h3 id="统一返回">统一返回</h3>
+<p>通过实现<code>org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice</code>，在写入响应前统一包装返回内容。</p>
+<pre class="java"><code>package tk.fishfish.rest;
+
+import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+
+/**
+ * 返回body处理，包装成ApiResult。如果是ResponseEntity，则不包装
+ *
+ * @author 奔波儿灞
+ * @see tk.fishfish.rest.ApiResult
+ * @since 1.0
+ */
+@RestControllerAdvice(annotations = RestController.class)
+public class ApiResultResponseBodyAdvice implements ResponseBodyAdvice&lt;Object&gt; {
+
+    @Override
+    public boolean supports(MethodParameter methodParameter, Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; aClass) {
+        return true;
+    }
+
+    @Override
+    public Object beforeBodyWrite(Object body, MethodParameter methodParameter,
+                                  MediaType mediaType, Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; aClass,
+                                  ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
+        // ResponseEntity，则不包装
+        if (body instanceof ResponseEntity) {
+            return body;
+        }
+        // ApiResult，也不包装
+        if (body instanceof ApiResult) {
+            return body;
+        }
+        // todo 基本数据类型是否特殊处理
+        // 其余统一包装成ApiResult
+        return ApiResult.ok(body);
+    }
+
+}</code></code></pre>
+<h2 id="项目地址">项目地址</h2>
+<ul>
+<li><a href="https://github.com/xuanbo/rest-spring-boot-starter">Github</a></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

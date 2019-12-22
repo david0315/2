@@ -1,0 +1,159 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修rocketmq 部署启动指南-Docker 版' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>rocketmq 部署启动指南-Docker 版</center></div><div class='banquan'>原文出处:本文由博客园博主good_andyxu提供。<br/>
+原文连接:https://www.cnblogs.com/goodAndyxublog/p/11457164.html</div><br>
+    <p><img src="./images/rocketmq 部署启动指南-Docker 版0.png" /></p>
+<p>最近学习使用 rocketmq，需要搭建 rocketmq 服务端，本文主要记录 rocketmq 搭建过程以及这个过程踩到的一些坑。</p>
+<h2 id="准备工作">准备工作</h2>
+<p>在搭建之前，我们需要做一些准备工作，这里我们需要使用 docker 搭建服务，所以需要提前安装 docker。此外，由于 rocketmq 需要部署 broker 与 nameserver ，考虑到分开部署比较麻烦，这里将会使用 docker-compose。</p>
+<p><em>rocketmq 架构图如下:</em></p>
+<p><img src="./images/rocketmq 部署启动指南-Docker 版1.png" alt="rocketmq" /></p>
+<p>另外，还需要搭建一个 web 可视化控制台，可以监控 mq 服务状态，以及消息消费情况，这里使用 rocketmq-console，同样该程序也将使用 docker 安装。</p>
+<h2 id="部署过程">部署过程</h2>
+<p>首先我们需要 rocketmq docker 镜像，这里我们可以选择自己制作，直接拉取 <a href="git@github.com:apache/rocketmq-docker.git" class="uri">git@github.com:apache/rocketmq-docker.git</a> ，然后再制作镜像。 另外还可以直接使用 docker hub 上官方制作的镜像，镜像名： <code>rocketmqinc/rocketmq</code>。</p>
+<p>接着创建 mq 配置文件 <code>broker.conf</code>，文件放置到 <code>/opt/rocketmq/conf</code> ，配置如下:</p>
+<pre><code><code>brokerClusterName = DefaultCluster  
+brokerName = broker-a  
+brokerId = 0  
+deleteWhen = 04  
+fileReservedTime = 48  
+brokerRole = ASYNC_MASTER  
+flushDiskType = ASYNC_FLUSH  
+# 如果是本地程序调用云主机 mq，这个需要设置成 云主机 IP
+brokerIP1=10.10.101.80 
+</code></code></pre>
+<p>在创建如下文件夹：<code>/opt/rocketmq/logs</code>，<code>/opt/rocketmq/store</code>，最后创建 docker-compose.yml 文件，配置如下：</p>
+<pre class="yaml"><code>version: &#39;2&#39;
+services:
+  namesrv:
+    image: rocketmqinc/rocketmq
+    container_name: rmqnamesrv
+    ports:
+      - 9876:9876
+    volumes:
+      - /opt/rocketmq/logs:/home/rocketmq/logs
+      - /opt/rocketmq/store:/home/rocketmq/store
+    command: sh mqnamesrv
+  broker:
+    image: rocketmqinc/rocketmq
+    container_name: rmqbroker
+    ports:
+      - 10909:10909
+      - 10911:10911
+      - 10912:10912
+    volumes:
+      - /opt/rocketmq/logs:/home/rocketmq/logs
+      - /opt/rocketmq/store:/home/rocketmq/store
+      - /opt/rocketmq/conf/broker.conf:/opt/rocketmq-4.4.0/conf/broker.conf
+    #command: sh mqbroker -n namesrv:9876
+    command: sh mqbroker -n namesrv:9876 -c ../conf/broker.conf
+    depends_on:
+      - namesrv
+    environment:
+      - JAVA_HOME=/usr/lib/jvm/jre
+  console:
+    image: styletang/rocketmq-console-ng
+    container_name: rocketmq-console-ng
+    ports:
+      - 8087:8080
+    depends_on:
+      - namesrv
+    environment:
+      - JAVA_OPTS= -Dlogging.level.root=info   -Drocketmq.namesrv.addr=rmqnamesrv:9876 
+      - Dcom.rocketmq.sendMessageWithVIPChannel=false</code></code></pre>
+<p><strong>注意点</strong></p>
+<p>这里需要注意 rocketmq broker 与 rokcetmq-console 都需要与 rokcetmq nameserver 连接，需要知道 nameserver ip。使用 docker-compose 之后，上面三个 docker 容器将会一起编排，<strong>可以直接使用容器名代替容器 ip</strong>，如这里 nameserver 容器名 rmqnamesrv。</p>
+<p>配置完成之后，运行 docker-compose up 启动三个容器，启动成功后，访问 ip:8087，查看 mq 外部控制台，如果可以看到以下信息，rocketmq 服务启动成功。</p>
+<p><img src="./images/rocketmq 部署启动指南-Docker 版2.png" alt="mq 控制台" /></p>
+<h2 id="初体验-rocketmq">初体验 rocketmq</h2>
+<p>这里将会使用 springboot 快速上手使用 mq，将会使用 <code>rocketmq-spring-boot-starter</code> 模块，pom 配置如下：</p>
+<pre class="pom"><code>&lt;!--在pom.xml中添加依赖--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.apache.rocketmq&lt;/groupId&gt;
+    &lt;artifactId&gt;rocketmq-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;2.0.3&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p><strong>消费服务发送方配置如下：</strong></p>
+<pre><code><code>## application.properties
+rocketmq.name-server=ip:9876
+rocketmq.producer.group=my-group</code></code></pre>
+<p><strong>消费服务发送方程序如下：</strong></p>
+<pre class="java"><code>@SpringBootApplication
+public class ProducerApplication implements CommandLineRunner {
+    @Resource
+    private RocketMQTemplate rocketMQTemplate;
+
+    public static void main(String[] args){
+        SpringApplication.run(ProducerApplication.class, args);
+    }
+
+    public void run(String... args) throws Exception {
+        rocketMQTemplate.convertAndSend(&quot;test-topic-1&quot;, &quot;Hello, World!&quot;);
+        rocketMQTemplate.send(&quot;test-topic-1&quot;, MessageBuilder.withPayload(&quot;Hello, World! I&#39;m from spring message&quot;).build());
+    }
+
+}</code></code></pre>
+<p><strong>消息消费方配置如下：</strong></p>
+<pre><code><code>## application.properties
+rocketmq.name-server=ip:9876</code></code></pre>
+<p><strong>消息消费方运行程序如下：</strong></p>
+<pre class="java"><code>@SpringBootApplication
+public class ConsumerApplication{
+
+    public static void main(String[] args){
+        SpringApplication.run(ConsumerApplication.class, args);
+    }
+
+    @Slf4j
+    @Service
+    @RocketMQMessageListener(topic = &quot;test-topic-1&quot;, consumerGroup = &quot;my-consumer_test-topic-1&quot;)
+    public static class MyConsumer1 implements RocketMQListener&lt;String&gt; {
+        public void onMessage(String message) {
+            log.info(&quot;received message: {}&quot;, message);
+        }
+    }
+}</code></code></pre>
+<h2 id="相关问题">相关问题</h2>
+<ol>
+<li>消息发送方消息发送异常，异常如图所示：<code>Caused by: org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException: sendDefaultImpl call timeout</code>。</li>
+</ol>
+<p>该异常是由于 brokerip 未设置正确导致，登录 mq 服务控制台，可以查看 broker 配置信息。</p>
+<p><img src="./images/rocketmq 部署启动指南-Docker 版3.png" alt="image.png" /></p>
+<p>上面 <code>192.168.128.3:10911</code> 是 docker 容器 IP，这是一个主机内部 IP。这里需要将 IP 设置为云主机的 IP，需要在 <code>broker.conf</code> 修改 <code>brokerIP1</code> 参数。</p>
+<ol>
+<li>mq 控制台无法正常查看 mq 服务信息。</li>
+</ol>
+<p>这个问题主要是 nameserver ip 设置错误导致。查看 mq 控制台运维页面，可以看到此时连接的 nameserver 地址信息。</p>
+<p><img src="./images/rocketmq 部署启动指南-Docker 版4.png" alt="image.png" /></p>
+<p>可以看到这里设置的地址为：<code>127.0.0.1:9876</code>。由于这里 mq 控制台使用 docker 容器，容器内直接访问 <code>127.0.0.1:9876</code> 将会访问自己内部，而非宿主机内正确程序。</p>
+<p>这里需要在 docker 配置环境变量，配置如下：</p>
+<pre><code><code>- JAVA_OPTS= -Dlogging.level.root=info   -Drocketmq.namesrv.addr=rmqnamesrv:9876 </code></code></pre>
+<h2 id="帮助文档">帮助文档</h2>
+<p><a href="https://github.com/apache/rocketmq-docker">rocketmq-docker</a><br />
+<a href="%5Bhttps://www.jianshu.com/p/072f18681351?utm_campaign=maleskine&amp;utm_content=note&amp;utm_medium=seo_notes&amp;utm_source=recommendation%5D(https://www.jianshu.com/p/072f18681351?utm_campaign=maleskine&amp;utm_content=note&amp;utm_medium=seo_notes&amp;utm_source=recommendation)">RocketMq docker 搭建和基本概念</a><br />
+<a href="https://github.com/apache/rocketmq-spring/blob/master/README_zh_CN.md">RocketMQ-Spring</a><br />
+<img src="./images/rocketmq 部署启动指南-Docker 版5.png" alt="其他平台.png" /></p>
+<hr />
+<p>我的博客即将同步至腾讯云+社区，邀请大家一同入驻：https://cloud.tencent.com/developer/support-plan?invite_code=z2e3cwkcr4x9</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

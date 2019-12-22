@@ -1,0 +1,82 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修一起MySQL时间戳精度引发的血案' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>一起MySQL时间戳精度引发的血案</center></div><div class='banquan'>原文出处:本文由博客园博主javaadu提供。<br/>
+原文连接:https://www.cnblogs.com/javaadu/p/11482716.html</div><br>
+    <h2 id="写在前面">写在前面</h2>
+<p>最近工作中遇到两例mysql时间戳相关的问题，一个是mysql-connector-java和msyql的精度不一致导致数据查不到；另一例是应用服务器时区错误导致数据查询不到。通过这篇文章，希望能够解答关于mysql中时间戳的几个问题：</p>
+<ol>
+<li>mysql中的DATETIME精度为什么只支持到秒？</li>
+<li>mysql中的DATETIME类型跟时区有关吗？</li>
+<li>mysql设计表的时候，表示时间的字段改如何选择？</li>
+</ol>
+<h2 id="案例分析-datetime的精度问题">案例分析 DATETIME的精度问题</h2>
+<p>前段时间，将负责的应用的mysql-connector-java的版本从5.1.16升级到5.1.30，在做功能回归的时候发现，使用了类似上面的SQL的用例的运行时数据会有遗漏，导致功能有问题。</p>
+<p>考虑到我负责的应用中，有个功能需要用到类似下面这种SQL，即使用时间戳作为查询的条件，查询在某个时间戳之后的所有数据。<br />
+<img src="./images/一起MySQL时间戳精度引发的血案0.png" /></p>
+<p>经过排查发现：mysql-connector-java在5.1.23之前会将秒后面的精度丢弃再传给MySQL服务端，正好我们使用的mysql版本中DATETIME的精度是秒；在我将mysql-connector-java升级到5.1.30后，从java应用通过mysql-connector-java将时间戳传到MySQL服务端的时候，就不会将毫秒数丢弃了，从mysql-connector-java的角度看是修复了一个BUG，但是对于我的应用来说却是触发了一个BUG。</p>
+<p>如果你面对这个问题，你会怎么修复呢？</p>
+<p>我们当时想了三种方案：</p>
+<ul>
+<li>将mybatis的Mapper接口中的时间戳参数的类型，从java.util.Date改成java.sql.Date；</li>
+<li><p>在传入Mapper接口之前，将传入的时间戳按秒取正，代码如下<img src="./images/一起MySQL时间戳精度引发的血案1.png" alt="22.png" /></p></li>
+<li><p>在查询之前，将传入的时间戳减1秒；</p></li>
+</ul>
+<p>经过验证，方案1会，java.util.Date转过去的java.sql.Date对象会将日期之后的精度全部丢掉，从而导致查询出更多不必要的数据；方案3是可以的，就是可能会查出多一两条数据；方案2也是可以的，相当于从代码上对mysql-connector-java的特性做了补偿。最终我选择的是方案2。</p>
+<h2 id="案例复现">案例复现</h2>
+<p>利用homebrew安装MySQL，版本是8.0.15，装好后建一个表，用来存放用户信息，SQL如下：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案2.png" alt="55.png" /></p>
+<p>使用spirngboot + mybatis作为开发框架，定义一个用户实体，代码如下所示：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案3.png" alt="44.png" /></p>
+<p>定义该实体对应的Mapper，代码如下：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案4.png" alt="33.png" /></p>
+<p>设置连接mysql相关的配置，代码如下：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案5.png" alt="image.png" /></p>
+<p>编写测试代码，先插入一条数据，然后用时间戳作为查询条件去查询，代码如下：<img src="./images/一起MySQL时间戳精度引发的血案6.png" alt="image.png" /></p>
+<p>运行单测，如我们的设想，确实是没有查询出数据来，结果如下：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案7.png" alt="image.png" /></p>
+<p>然后修改代码，利用上面的代码将查询的时间戳按秒取正，代码如下：<br />
+<img src="./images/一起MySQL时间戳精度引发的血案8.png" alt="image.png" /></p>
+<p>再次运行单测，如我们的设想，这次可以查询出数据来了。</p>
+<p>不过，这里有个小插曲，我在最开始设计表的时候，使用的SQL语句是下面这样的，<br />
+<img src="./images/一起MySQL时间戳精度引发的血案9.png" alt="SQL_2.png" /></p>
+<p>聪明如你一定发现了，这里的datetime已经支持小数点后更小的时间精度了，最多支持6位即最多可以支持到微妙级别。这个特性是什么时候引入的呢，我去查阅了[MySQL的官方文档][9]，发现这个特性是在mysql 5.6.4之后开始支持的。<br />
+<img src="./images/一起MySQL时间戳精度引发的血案10.png" alt="image.png" /></p>
+<h2 id="知识点总结">知识点总结</h2>
+<p>经过了前面的实际案例分析和案例复现，想必读者已经对mysql中DATETIME这个类型有了一定的认识，接下来跟我一起看下，我们从这个案例中可以总结出哪些经验。</p>
+<ol>
+<li>mysql-connector-java的版本和mysql的版本需要配套使用，例如5.6.4之前的版本，就最好不要使用mysql-connector-java的5.1.23之后的版本，否则就可能会遇到我们这次遇到的问题。</li>
+<li>MySQL中用来表示时间的字段类型有：DATE、DATETIME、TIMESTAMP，它们之间有相同点，各自也有自己的特性，我总结了一个表格，如下所示：<img src="./images/一起MySQL时间戳精度引发的血案11.png" alt="image.png" /></li>
+<li>DATETIME类型在MySQL中是以“YYYYMMDDHHMMSS”格式的整数存放的，与时区无关，使用8个字节的空间；</li>
+<li>TIMESTAMP类型可以保存的时间范围要小很多，显示的值依赖时区，MySQL的服务器、操作系统以及客户端连接都有时区的设置。</li>
+<li>一般情况下推荐使用DATETIME作为时间戳字段，不推荐使用bigint类型来存储时间。</li>
+<li>在开发中，应该尽量避免使用时间戳作为查询条件，如果必须要用，则需要充分考虑MySQL的精度和查询参数的精度等问题。</li>
+</ol>
+<h2 id="参考资料">参考资料</h2>
+<ol>
+<li><a href="https://dev.mysql.com/doc/refman/8.0/en/datetime.html" class="uri">https://dev.mysql.com/doc/refman/8.0/en/datetime.html</a></li>
+<li>《高性能MySQL》</li>
+</ol>
+<hr />
+<p>本号（javaadu）专注于后端技术、JVM问题排查和优化、Java面试题、个人成长和自我管理等主题，为读者提供一线开发者的工作和成长经验，期待你能在这里有所收获。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

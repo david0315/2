@@ -1,0 +1,271 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修实战SpringCloud响应式微服务系列教程（第十章）响应式RESTful服务完整代码示例' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>实战SpringCloud响应式微服务系列教程（第十章）响应式RESTful服务完整代码示例</center></div><div class='banquan'>原文出处:本文由博客园博主Java知音*提供。<br/>
+原文连接:https://www.cnblogs.com/javazhiyin/p/11797349.html</div><br>
+    <p><strong>本文为实战SpringCloud响应式微服务系列教程第十章，本章给出</strong><strong>响应式RESTful服务完整代码示例</strong><strong>。建议没有之前基础的童鞋，先看之前的章节，章节目录放在文末。</strong></p>
+<h2>1.搭建响应式RESTful服务。</h2>
+<p>在前面章节中我们讲了如何使用 Spring Initializer初始化响应式web应用，本节中就不再做过多介绍（请回顾<a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247490263&amp;idx=2&amp;sn=3e125ad7519caf6e1da3f1908c25c76a&amp;chksm=ebd625fbdca1aced6def7a369582d0785577a61c981c8836cb03ac60d1abb74a644d9779aacb&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">第九章内容</a>）。</p>
+<p>在学习本章内容之前需要了解mongodb以及redis，mongodb以及redis可查阅相关资料进行全面了解，并在本地环境搭建mongodb和redis。</p>
+<h2>2.application.yml文件配置</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">server:
+  port: 9801
+spring:
+  application:
+    name: advert
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/db_advert
+  http:
+    encoding:
+      force: true
+      charset: UTF-8
+      enabled: true
+  redis:
+    host: 127.0.0.1
+    password: 123456
+logback:
+  level: info</span></code></pre>
+
+<p>&nbsp;</p>
+<p>以上配置代码是我们目前学习的响应式RESTful服务的全部配置，配置比较简单，<code>spring.data.mongodb.uri: mongodb://localhost:27017/db_advert</code>和<code>spring.data.redis</code>是我们服务的核心配置，我们知道传统的数据库是不支持响应式数据读取的，所以这里使用mongodb和redis代替。</p>
+<h2>3.集成响应式的MongoDB</h2>
+<p>springboot 本身提供了cassandra/couchbase/mongodb/redis这几个NoSQL数据库的响应式驱动：</p>
+<p>阻塞式的spring-boot-starter-data-mongodb 改为响应式的mongodb依赖spring-boot-starter-data-mongodb-reactive：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-data-mongodb-reactive<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>&nbsp;</p>
+<h3>（1）编写实体类：</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 广告投放
+ </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+@Document(collection</span>="advert")<span style="color: #008000;">//</span><span style="color: #008000;">集合名</span>
+<span style="color: #000000;">@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> Advert <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Serializable {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span> serialVersionUID = -8985545025018238754L<span style="color: #000000;">;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 主键
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Id
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String id;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 内容
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String content;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 发布人
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Long userId;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 创建时间
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Date creatData;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 图片地址
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String imgUrl;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 视频地址
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String videoUrl;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 广告类型（视频图片）
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String advertType;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 今日投放地区
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String launchArea;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 投放时长(小时为单位)
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> durationTime;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 广告类型
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> classify;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 计费方式
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> billingMode;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 展示位置（首页轮播，其他轮播，首页其他位置，其他）
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> displayPosition;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 广告主题
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String advertTitle;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 是否需要自定义展示页面
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> isCustom;
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 索引关键词
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> String keyWords;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>其中@document把一个java类声明为mongodb的文档,可以通过collection参数指定这个类对应的文档,标注在实体类上,类似于hibernate的entity注解。其他注解均为lombok的注解。</p>
+<h3>（2）编写repository接口</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.shmc.advert.model.po.Advert;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.data.mongodb.repository.Tailable;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Repository;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Flux;
+@Repository
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span> AdvertRepository <span style="color: #0000ff;">extends</span> ReactiveMongoRepository&lt;Advert,Long&gt;<span style="color: #000000;"> {
+    @Tailable
+    Flux</span>&lt;Advert&gt;<span style="color: #000000;"> findBy();
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>其中@Repository是org.springframework.stereotype.Repository的注解，这个大家应该都很熟悉了不做解释。</p>
+<p>从以上代码中我们可以清楚看到AdvertRepository 继承了ReactiveMongoRepository，ReactiveMongoRepository正是我们依赖的maven响应式mongodb-reactive中的类，其中@Tailable注解，该注解类似于Linux中的tail ，可以将DB的变化以响应式流的方式获取到并推送给前端。</p>
+<p>除了可以继承ReactiveMongoRepository之外我们还可以通过注入MongoTemplate来操作mongodb，但是MongoTemplate做不到实时监控和主动推送。如：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Autowired
+MongoTemplate mongoTemplate;</span></code></pre>
+
+<p>&nbsp;</p>
+<h3>（3）编写Service接口以及实现类</h3>
+<p>Service接口：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.shmc.advert.model.po.Advert;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Flux;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Mono;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> AdvertService {
+    Mono</span>&lt;Advert&gt;<span style="color: #000000;"> saveAdvert(Advert advert);
+    Mono</span>&lt;Advert&gt;<span style="color: #000000;"> findById(String id);
+    Flux</span>&lt;Advert&gt;<span style="color: #000000;"> findAll();
+    Flux</span>&lt;Advert&gt;<span style="color: #000000;"> findByAll();
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>Service实现类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Service
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AdvertServiceImpl <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AdvertService {
+    @Autowired
+    MongoTemplate mongoTemplate;
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> AdvertRepository advertRepository;
+    @Override
+    </span><span style="color: #0000ff;">public</span> Mono&lt;Advert&gt;<span style="color: #000000;"> saveAdvert(Advert advert){
+        advert.setId(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> IdWorker().nextId());
+        advert.setCreatData(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Date());
+        mongoTemplate.insert(advert);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Mono.just(advert);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Mono&lt;Advert&gt;<span style="color: #000000;"> findById(String id){
+        Query query </span>= <span style="color: #0000ff;">new</span> Query(Criteria.where("id"<span style="color: #000000;">).is(id));
+        </span><span style="color: #0000ff;">return</span> Mono.just(mongoTemplate.findOne(query,Advert.<span style="color: #0000ff;">class</span><span style="color: #000000;">));
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Flux&lt;Advert&gt;<span style="color: #000000;"> findAll(){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advertRepository.findAll();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Flux&lt;Advert&gt;<span style="color: #000000;"> findByAll(){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advertRepository.findBy();
+    }
+}</span></code></pre>
+
+<h3>（4）编写Controller</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.shmc.advert.model.po.Advert;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.shmc.advert.service.AdvertService;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.http.MediaType;
+</span><span style="color: #0000ff;">import</span> org.springframework.web.bind.annotation.*<span style="color: #000000;">;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Flux;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Mono;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.time.Duration;
+
+@RestController
+@RequestMapping(</span>"/advert"<span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> AdvertController {
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> AdvertService advertService;
+
+    @PostMapping(</span>"/saveAdvert"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> Mono&lt;Advert&gt;<span style="color: #000000;"> saveAdvert(@RequestBody Advert advert){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advertService.saveAdvert(advert);
+    }
+
+    @GetMapping(</span>"/findById/{id}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> Mono&lt;Advert&gt;<span style="color: #000000;"> findById(@PathVariable String id){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advertService.findById(id);
+    }
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 以stream+json流的方式推送到客户端
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span><span style="color: #000000;">
+    @GetMapping(value </span>= "/findAllPreSec", produces =<span style="color: #000000;"> MediaType.APPLICATION_STREAM_JSON_VALUE)
+    </span><span style="color: #0000ff;">public</span> Flux&lt;Advert&gt;<span style="color: #000000;"> findAllPreSec() {
+        </span><span style="color: #0000ff;">return</span> advertService.findAll().delayElements(Duration.ofSeconds(1<span style="color: #000000;">));
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 数据变更
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span><span style="color: #000000;">
+    @GetMapping(value </span>= "/findByAll", produces =<span style="color: #000000;"> MediaType.APPLICATION_STREAM_JSON_VALUE)
+    </span><span style="color: #0000ff;">public</span> Flux&lt;Advert&gt;<span style="color: #000000;"> findByAll(){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advertService.findByAll();
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>至此基于RESTful的响应式服务我们全部完成了，启动程序访问&ldquo;/advert/findAllPreSec"接口和&rdquo;/advert/findByAll&ldquo;接口就可以看到响应式的数据推送了。</p>
+<p>findAllPreSec这个方法。使用了delayElements使得每隔一秒钟获取一条数据发送给客户端，以&ldquo;异步响应式流&rdquo;的方式逐条推送。</p>
+<p>这里指定了MediaType是APPLICATION_STREAM_JSON，即application/stream+json格式。</p>
+<p>在浏览器中就可以看到每隔一秒出现一条记录。运行程序，访问findByAll接口，然后测试调用save接口添加advert数据，或者直接通过MongoDB Compass客户端添加Stu数据，就会看到在页面中实时看到新添加的数据了。</p>
+<p>下一章会吧代码上传到gitee，各位看官如有需要请自行下载。</p>
+<h3>系列章节目录</h3>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489088&amp;idx=1&amp;sn=68f56dc89abbdad803b16f91e20e385c&amp;chksm=ebd6296cdca1a07aee0a76554f19c1e3b0df8a0357a9ade96cc22c656cf0f92ddf79b32eb339&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第一章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489157&amp;idx=2&amp;sn=b473396d3b11a040508a9cc70f22c163&amp;chksm=ebd629a9dca1a0bf77edbe7cbce108e43371707b30dae0699eeac75464325b4122d820817b30&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第二章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489407&amp;idx=2&amp;sn=48e31d4d54cd0bd7a31a77d322400df4&amp;chksm=ebd62853dca1a145a5477f24b1396c6895160493dac0e0e3a038bebd25cdf434a8cc9c091d85&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第三章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489450&amp;idx=2&amp;sn=dd7ed3a0764b4a86caaa9e1de022dc7a&amp;chksm=ebd62886dca1a1903da1cd75ab9ef631eb5b9f58c9f316da615be1b0b139349476b54b7bf70c&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第四章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489638&amp;idx=2&amp;sn=c43488a38ce0bd4534ceebf52b185e5e&amp;chksm=ebd6274adca1ae5cb770826c30f5c88c394e96fee9dda5010f87017463fad6cd18cc1a5c33b6&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第五章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489831&amp;idx=2&amp;sn=7b8635e0b3627388dad7703579bad3b0&amp;chksm=ebd6260bdca1af1d242dc20f160f96dda5595fa416dd5d5a6c7f37d96ab26c5273b671d98125&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第六章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247489962&amp;idx=2&amp;sn=9ea324e5b94a16f91498843c0f0c004d&amp;chksm=ebd62686dca1af903949b46549f7d7cf0caf81a13a47234afee1be0bc3931c85cc770e21e29d&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第七章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247490243&amp;idx=2&amp;sn=245419c6634987d0e915c13efe280a44&amp;chksm=ebd625efdca1acf9b474724a618b3342f5ed4230acdd35c9a4afd6759e1d1cf15cd9402f74cc&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第八章）</a></p>
+<p><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247490263&amp;idx=2&amp;sn=3e125ad7519caf6e1da3f1908c25c76a&amp;chksm=ebd625fbdca1aced6def7a369582d0785577a61c981c8836cb03ac60d1abb74a644d9779aacb&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">实战SpringCloud响应式微服务系列教程（第九章）</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

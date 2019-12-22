@@ -1,0 +1,124 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring源码系列7：Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring源码系列7：Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别</center></div><div class='banquan'>原文出处:本文由博客园博主三人行{必有我师}提供。<br/>
+原文连接:https://www.cnblogs.com/smallstudent/p/11724142.html</div><br>
+    <h2 id="概念">概念</h2>
+<p>Bean创建过程中的“<strong>实例化</strong>”与“<strong>初始化</strong>”名词</p>
+<ul>
+<li>实例化(Instantiation): 要生成对象, 对象还未生成.</li>
+<li>初始化(Initialization): 对象已经生成.，赋值操作。</li>
+</ul>
+<p><strong>BeanPostProcessor</strong> :<br />
+发生在 BeanDefiniton 加工Bean 阶段. 具有拦截器的含义. 可以拦截BeanDefinition创建Bean的过程, 然后插入拦截方法,做扩展工作.</p>
+<ul>
+<li>postProcessBeforeInitialization初始化前置处理 （对象已经生成）</li>
+<li>postProcessAfterInitialization初始化后置处理 （对象已经生成）</li>
+</ul>
+<p><strong>InstantiationAwareBeanPostProcessor</strong>: 继承于BeanPostProcessor ,所以他也是一种参与BeanDefinition加工Bean过程的BeanPostProcessor拦截器, 并且丰富了BeanPostProcessor的拦截.</p>
+<ul>
+<li>postProcessBeforeInstantiation 实例化前置处理 （对象未生成）</li>
+<li>postProcessAfterInstantiation 实例化后置处理 （对象已经生成）</li>
+<li>postProcessPropertyValues 修改属性值。（对象已经生成）</li>
+</ul>
+<p>总的来说：</p>
+<p>BeanPostProcessor定义的方法是在对象初始化过程中做处理。<br />
+InstantiationAwareBeanPostProcessor定义的方法是在对象实例化过程中做处理</p>
+<h2 id="发生时机">发生时机</h2>
+<p><strong>1.postProcessBeforeInstantiation 调用时机</strong>：<br />
+BeanDefinition创建Bean的开端是在<strong>createBean()方法</strong>也就是流水线的开始处。</p>
+<pre><code><code>        @Override
+    protected Object createBean(String beanName, RootBeanDefinition mbd, Object[] args) throws BeanCreationException {
+        ...省略
+        try {
+            // Give BeanPostProcessors a chance to return a proxy instead of the target bean instance.
+            Object bean = resolveBeforeInstantiation(beanName, mbdToUse);
+            if (bean != null) {
+                return bean;
+            }
+        }
+        catch (Throwable ex) {
+            throw new BeanCreationException(mbdToUse.getResourceDescription(), beanName,
+                    &quot;BeanPostProcessor before instantiation of bean failed&quot;, ex);
+        }
+
+        Object beanInstance = doCreateBean(beanName, mbdToUse, args);
+        if (logger.isDebugEnabled()) {
+            logger.debug(&quot;Finished creating instance of bean &#39;&quot; + beanName + &quot;&#39;&quot;);
+        }
+        return beanInstance;
+    }</code></code></pre>
+<p>看这段英文注释: Give BeanPostProcessors a chance to return a proxy instead of the target bean instance.</p>
+<p><strong>给BeanPostProcessor一个机会去返回一个代理对象. 就是在流水线doCreateBean()生成对象之前, 给用户自定义返回一个对象的机会.</strong></p>
+<p>再看看resolveBeforeInstantiation(beanName, mbdToUse)是如何处理自定义返回对象的.</p>
+<pre><code><code>protected Object resolveBeforeInstantiation(String beanName, RootBeanDefinition mbd) {
+        Object bean = null;
+        if (!Boolean.FALSE.equals(mbd.beforeInstantiationResolved)) {
+            // Make sure bean class is actually resolved at this point.
+            if (!mbd.isSynthetic() &amp;&amp; hasInstantiationAwareBeanPostProcessors()) {
+                Class&lt;?&gt; targetType = determineTargetType(beanName, mbd);
+                if (targetType != null) {
+                    bean = applyBeanPostProcessorsBeforeInstantiation(targetType, beanName);
+                    if (bean != null) {
+                        bean = applyBeanPostProcessorsAfterInitialization(bean, beanName);
+                    }
+                }
+            }
+            mbd.beforeInstantiationResolved = (bean != null);
+        }
+        return bean;
+    }</code></code></pre>
+<ul>
+<li>判断是有有InstantiationAwareBeanPostProcessor的BeanPostProcessor</li>
+<li>有则调用的是InstantiationAwareBeanPostProcessor的<strong>postProcessBeforeInstantiation()实例化前置处理方法</strong>，也就是在Bean没有生成之前执行。（注意：这里所说的是Bean未生成指的是Bean没有走spring定义创建Bean的流程，也就是doCreateBean()方法。）</li>
+<li>如果<strong>postProcessBeforeInstantiation()返回的对象不为空</strong>, 那么<strong>对象的生成阶段直接完成</strong>了</li>
+<li>接着调用postProcessAfterInitialization()**[初始化后置处理**] 处理这个对象.</li>
+<li>如果为空?则走流水线doCreateBean()创建对象, 对象初始化.</li>
+</ul>
+<p><strong>2.postProcessAfterInstantiation调用时机</strong></p>
+<p>上文resolveBeforeInstantiation()没有返回bean.则走流水线创建Bean</p>
+<p>doCreateBean(beanName, mbdToUse, args)创建对象，会经过<strong>populateBean(beanName, mbd, instanceWrapper)</strong>方法。</p>
+<p>populateBean(beanName, mbd, instanceWrapper)依次执行<strong>postProcessAfterInstantiation() </strong>与<strong>postProcessPropertyValues()</strong></p>
+<p><strong>3.postProcessBeforeInitialization调用时机</strong></p>
+<p>doCreateBean(beanName, mbdToUse, args)创建对象，会经过<strong>initializeBean(beanName, exposedObject, mbd);</strong>方法。</p>
+<p>initializeBean(beanName, exposedObject, mbd); 会首先执行 <strong>postProcessBeforeInitialization()</strong>方法</p>
+<p><strong>4.postProcessAfterInitialization</strong></p>
+<p>initializeBean(beanName, exposedObject, mbd); 会首先执行 <strong>postProcessAfterInitialization()</strong>方法</p>
+<h2 id="总结">总结:</h2>
+<p><strong>实例化---&gt;初始化</strong></p>
+<ul>
+<li>BeanPostProcessor定义的方法是在对象初始化过程中做处理。</li>
+<li>InstantiationAwareBeanPostProcessor定义的方法是在对象实例化过程中做处理</li>
+</ul>
+<p>会形成两种执行流程完成BeanDefinition 创建Bean.</p>
+<ol>
+<li>postProcessBeforeInstantiation()--自定义对象--&gt;postProcessAfterInitialization();</li>
+<li>postProcessBeforeInstantiation() --&gt;postProcessAfterInstantiation--&gt;postProcessBeforeInitialization()--&gt;postProcessAfterInitialization()</li>
+</ol>
+<p>我们看出:<strong>postProcessBeforeInstantiation一定执行, postProcessAfterInitialization一定执行</strong>.</p>
+<p>至此:不知道读者是否体会到了InstantiationAwareBeanPostProcessor与BeanPostProcessor接口 以及其定义的4个方法的妙处.</p>
+<p>四个方法执行的顺序对理解spring创建流程有着重要意义。</p>
+<p><strong>BeanPostProcessor 本身就是一种拦截的设计思想. 拦截的目的就是做额外的操作, 即 扩展。</strong></p>
+<p>欢迎大家关注我的公众号【源码行动】，最新个人理解及时奉送。<br />
+<img src="./images/spring源码系列7：Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别0.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

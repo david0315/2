@@ -1,0 +1,187 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修死磕 java线程系列之线程的生命周期' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>死磕 java线程系列之线程的生命周期</center></div><div class='banquan'>原文出处:本文由博客园博主彤哥读源码提供。<br/>
+原文连接:https://www.cnblogs.com/tong-yuan/p/11701358.html</div><br>
+    <p><img src="./images/死磕 java线程系列之线程的生命周期0.png" alt="thread_life" /></p>
+<p>（手机横屏看源码更方便）</p>
+<hr />
+<p>注：java源码分析部分如无特殊说明均基于 java8 版本。</p>
+<h2 id="简介">简介</h2>
+<p>大家都知道线程是有生命周期，但是彤哥可以认真负责地告诉你网上几乎没有一篇文章讲得是完全正确的。</p>
+<p><strong>常见的错误</strong>有：就绪状态、运行中状态（RUNNING）、死亡状态、中断状态、只有阻塞没有等待状态、流程图乱画等，最常见的错误就是说线程只有5种状态。</p>
+<p>今天这篇文章会彻底讲清楚线程的生命周期，并分析synchronized锁、基于AQS的锁中线程状态变化的逻辑。</p>
+<p>所以，对synchronized锁和AQS原理（源码）不了解的同学，请翻一下彤哥之前的文章先熟悉这两部分的内容，否则肯定记不住这里讲的线程生命周期。</p>
+<h2 id="问题">问题</h2>
+<p>（1）线程的状态有哪些？</p>
+<p>（2）synchronized锁各阶段线程处于什么状态？</p>
+<p>（3）重入锁、条件锁各阶段线程处于什么状态？</p>
+<h2 id="先上源码">先上源码</h2>
+<p>关于线程的生命周期，我们可以看一下<code>java.lang.Thread.State</code>这个类，它是线程的内部枚举类，定义了线程的各种状态，并且注释也很清晰。</p>
+<pre><code><code>
+public enum State {
+    /**
+     * 新建状态，线程还未开始
+     */
+    NEW,
+
+    /**
+     * 可运行状态，正在运行或者在等待系统资源，比如CPU
+     */
+    RUNNABLE,
+
+    /**
+     * 阻塞状态，在等待一个监视器锁（也就是我们常说的synchronized）
+     * 或者在调用了Object.wait()方法且被notify()之后也会进入BLOCKED状态
+     */
+    BLOCKED,
+
+    /**
+     * 等待状态，在调用了以下方法后进入此状态
+     * 1. Object.wait()无超时的方法后且未被notify()前，如果被notify()了会进入BLOCKED状态
+     * 2. Thread.join()无超时的方法后
+     * 3. LockSupport.park()无超时的方法后
+     */
+    WAITING,
+
+    /**
+     * 超时等待状态，在调用了以下方法后会进入超时等待状态
+     * 1. Thread.sleep()方法后【本文由公从号“彤哥读源码”原创】
+     * 2. Object.wait(timeout)方法后且未到超时时间前，如果达到超时了或被notify()了会进入BLOCKED状态
+     * 3. Thread.join(timeout)方法后
+     * 4. LockSupport.parkNanos(nanos)方法后
+     * 5. LockSupport.parkUntil(deadline)方法后
+     */
+    TIMED_WAITING,
+
+    /**
+     * 终止状态，线程已经执行完毕
+     */
+    TERMINATED;
+}</code></code></pre>
+<h2 id="流程图">流程图</h2>
+<p>线程生命周期中各状态的注释完毕了，下面我们再来看看各状态之间的流转：</p>
+<p><img src="./images/死磕 java线程系列之线程的生命周期1.png" alt="thread_life" /></p>
+<p>怎么样？是不是很复杂？彤哥几乎把网上的资料都查了一遍，没有一篇文章把这个流程图完整画出来的，下面彤哥就来一一解释：</p>
+<p>（1）为了方便讲解，我们把锁分成两大类，一类是synchronized锁，一类是基于AQS的锁（我们拿重入锁举例），也就是内部使用了LockSupport.park()/parkNanos()/parkUntil()几个方法的锁；</p>
+<p>（2）不管是synchronized锁还是基于AQS的锁，内部都是分成两个队列，一个是同步队列（AQS的队列），一个是等待队列（Condition的队列）；</p>
+<p>（3）对于内部调用了object.wait()/wait(timeout)或者condition.await()/await(timeout)方法，线程都是先进入等待队列，被notify()/signal()或者超时后，才会进入同步队列；</p>
+<p>（4）明确声明，BLOCKED状态只有线程处于synchronized的同步队列的时候才会有这个状态，其它任何情况都跟这个状态无关；</p>
+<p>（5）对于synchronized，线程执行synchronized的时候，如果立即获得了锁（没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（6）对于synchronized，线程执行synchronized的时候，如果无法获得锁（直接进入同步队列），线程处于BLOCKED状态；</p>
+<p>（5）对于synchronized内部，调用了object.wait()之后线程处于WAITING状态（进入等待队列）；</p>
+<p>（6）对于synchronized内部，调用了object.wait(timeout)之后线程处于TIMED_WAITING状态（进入等待队列）；</p>
+<p>（7）对于synchronized内部，调用了object.wait()之后且被notify()了，如果线程立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（8）对于synchronized内部，调用了object.wait(timeout)之后且被notify()了，如果线程立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（9）对于synchronized内部，调用了object.wait(timeout)之后且超时了，这时如果线程正好立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（10）对于synchronized内部，调用了object.wait()之后且被notify()了，如果线程无法获得锁（也就是进入了同步队列），线程处于BLOCKED状态；</p>
+<p>（11）对于synchronized内部，调用了object.wait(timeout)之后且被notify()了或者超时了，如果线程无法获得锁（也就是进入了同步队列），线程处于BLOCKED状态；</p>
+<p>（12）对于重入锁，线程执行lock.lock()的时候，如果立即获得了锁（没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（13）对于重入锁，线程执行lock.lock()的时候，如果无法获得锁（直接进入同步队列），线程处于WAITING状态；</p>
+<p>（14）对于重入锁内部，调用了condition.await()之后线程处于WAITING状态（进入等待队列）；</p>
+<p>（15）对于重入锁内部，调用了condition.await(timeout)之后线程处于TIMED_WAITING状态（进入等待队列）；</p>
+<p>（16）对于重入锁内部，调用了condition.await()之后且被signal()了，如果线程立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（17）对于重入锁内部，调用了condition.await(timeout)之后且被signal()了，如果线程立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（18）对于重入锁内部，调用了condition.await(timeout)之后且超时了，这时如果线程正好立即获得了锁（也就是没有进入同步队列），线程处于RUNNABLE状态；</p>
+<p>（19）对于重入锁内部，调用了condition.await()之后且被signal()了，如果线程无法获得锁（也就是进入了同步队列），线程处于WAITING状态；</p>
+<p>（20）对于重入锁内部，调用了condition.await(timeout)之后且被signal()了或者超时了，如果线程无法获得锁（也就是进入了同步队列），线程处于WAITING状态；</p>
+<p>（21）对于重入锁，如果内部调用了condition.await()之后且被signal()之后依然无法获取锁的，其实经历了两次WAITING状态的切换，一次是在等待队列，一次是在同步队列；</p>
+<p>（22）对于重入锁，如果内部调用了condition.await(timeout)之后且被signal()或超时了的，状态会有一个从TIMED_WAITING切换到WAITING的过程，也就是从等待队列进入到同步队列；</p>
+<p>为了便于理解，彤哥这里每一条都分的比较细，麻烦耐心看完。</p>
+<h2 id="测试用例">测试用例</h2>
+<p>看完上面的部分，你肯定想知道怎么去验证，下面彤哥就说说验证的方法，先给出测试用例。</p>
+<pre><code><code>public class ThreadLifeTest {
+    public static void main(String[] args) throws IOException {
+        Object object = new Object();
+        ReentrantLock lock = new ReentrantLock();
+        Condition condition = lock.newCondition();
+
+        new Thread(()-&gt;{
+            synchronized (object) {
+                try {
+                    System.out.println(&quot;thread1 waiting&quot;);
+                    object.wait();
+//                    object.wait(5000);
+                    System.out.println(&quot;thread1 after waiting&quot;);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, &quot;Thread1&quot;).start();
+
+        new Thread(()-&gt;{
+            synchronized (object) {
+                try {
+                    System.out.println(&quot;thread2 notify&quot;);
+                    // 打开或关闭这段注释，观察Thread1的状态
+//                    object.notify();【本文由公从号“彤哥读源码”原创】
+                    // notify之后当前线程并不会释放锁，只是被notify的线程从等待队列进入同步队列
+                    // sleep也不会释放锁
+                    Thread.sleep(10000000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, &quot;Thread2&quot;).start();
+
+        new Thread(()-&gt;{
+            lock.lock();
+            System.out.println(&quot;thread3 waiting&quot;);
+            try {
+                condition.await();
+//                condition.await(200, (TimeUnit).SECONDS);
+                System.out.println(&quot;thread3 after waiting&quot;);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } finally {
+                lock.unlock();
+            }
+        }, &quot;Thread3&quot;).start();
+
+        new Thread(()-&gt;{
+            lock.lock();
+            System.out.println(&quot;thread4&quot;);
+            // 打开或关闭这段注释，观察Thread3的状态
+//            condition.signal();【本文由公从号“彤哥读源码”原创】
+            // signal之后当前线程并不会释放锁，只是被signal的线程从等待队列进入同步队列
+            // sleep也不会释放锁
+            try {
+                Thread.sleep(1000000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } finally {
+                lock.unlock();
+            }
+        }, &quot;Thread4&quot;).start();
+
+    }
+}</code></code></pre>
+<p>打开或关闭上面注释部分的代码，使用IDEA的RUN模式运行代码，然后点击左边的一个摄像头按钮(jstack)，查看各线程的状态。</p>
+<p>注：不要使用DEBUG模式，DEBUG模式全都变成WAITING状态了，很神奇。</p>
+<p><img src="./images/死磕 java线程系列之线程的生命周期2.png" alt="thread_life" /></p>
+<h2 id="彩蛋">彩蛋</h2>
+<p>其实，本来这篇是准备写线程池的生命周期的，奈何线程的生命周期写了太多，等下一篇我们再来一起学习线程池的生命周期吧。</p>
+<hr />
+<p>欢迎关注我的公众号“彤哥读源码”，查看更多源码系列文章, 与彤哥一起畅游源码的海洋。</p>
+<p><img src="./images/死磕 java线程系列之线程的生命周期3.png" alt="qrcode" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

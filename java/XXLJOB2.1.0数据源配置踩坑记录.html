@@ -1,0 +1,40 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修XXLJOB2.1.0数据源配置踩坑记录' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>XXLJOB2.1.0数据源配置踩坑记录</center></div><div class='banquan'>原文出处:本文由博客园博主a710007119提供。<br/>
+原文连接:https://www.cnblogs.com/sunhaiyang/p/11551347.html</div><br>
+    <p>最近在看XXLJOB，因为截至到发文时间最新的版本是2.1.0而且需要建立的数据库与Quartz解耦了，所以就用了最新的版本。</p>
+<p>首先说一下踩坑过程：</p>
+<p>代码开发完成之后，在定时跑的时候第一次跑的多数失败，报的错是：Communications link failure</p>
+<p>上网搜了一下说是MySQL数据库连接时间超过八小时就会断开需要加一些配置，或者把数据库的时间延长。原先用的数据源是Druid，所以就把网上找到的代码加到数据源配置上，同时延长了MySQL的链接持续时间，问题依然没有解决。</p>
+<p>一次偶然的时间发现，XXLJOB本身用的数据源并不是Druid而是Tomcat自身集成的数据源，于是就萌生了换数据源的想法。最后成功了。</p>
+<p>正确的配置如下：</p>
+<p>数据源配置采用的是多数据源。用的是配置文件方式配置：</p>
+<p>其中主数据源的XML的配置代码为：</p>
+<p>spring.datasource.master.url=jdbc:mysql://*.*.*.*:3306/test?useUnicode=true&amp;characterEncoding=utf8&amp;serverTimezone=GMT%2B8<br />spring.datasource.master.username=test<br />spring.datasource.master.password=test<br />spring.datasource.master.driver-class-name=com.mysql.jdbc.Driver<br />spring.datasource.master.type=org.apache.tomcat.jdbc.pool.DataSource<br />spring.datasource.master.max-wait=10000<br />spring.datasource.master.max-active=30<br />spring.datasource.master.test-on-borrow=true<br />spring.datasource.master.validation-query=SELECT 1<br />spring.datasource.master.validation-interval=30000</p>
+<p>主数据源的配置文件的代码为：</p>
+<p>import org.apache.ibatis.session.SqlSessionFactory;<br />import org.mybatis.spring.SqlSessionFactoryBean;<br />import org.mybatis.spring.SqlSessionTemplate;<br />import org.mybatis.spring.annotation.MapperScan;<br />import org.springframework.beans.factory.annotation.Qualifier;<br />import org.springframework.boot.autoconfigure.jdbc.DataSourceBuilder;<br />import org.springframework.boot.context.properties.ConfigurationProperties;<br />import org.springframework.context.annotation.Bean;<br />import org.springframework.context.annotation.Configuration;<br />import org.springframework.context.annotation.Primary;<br />import org.springframework.core.io.support.PathMatchingResourcePatternResolver;</p>
+<p>import javax.sql.DataSource;</p>
+<p>@Configuration<br />@MapperScan(basePackages = "com.master.*", sqlSessionFactoryRef = "masterSqlSessionFactory")<br />public class MybatisConfigMaster {</p>
+<p>    /**<br />     * 将这个对象放入Spring容器中<br />     * @return<br />     */<br />    @Bean(name = "masterDataSource")<br />    /**<br />     * 表示这个数据源是默认数据源<br />     */<br />    @Primary<br />    /**<br />     * 读取application.properties中的配置参数映射成为一个对象<br />     */<br />    /**<br />     * prefix表示参数的前缀<br />     */<br />    @ConfigurationProperties(prefix = "spring.datasource.master")<br />    public DataSource getMasterDataSource() {<br />        return DataSourceBuilder.create().build();<br />    }<br />    @Bean(name = "masterSqlSessionFactory")<br />    /**<br />     * 表示这个数据源是默认数据源<br />      */<br />    @Primary<br />    /**<br />     * @Qualifier表示查找Spring容器中名字为masterDataSource的对象<br />     */<br />    public SqlSessionFactory masterSqlSessionFactory(@Qualifier("masterDataSource") DataSource datasource)<br />            throws Exception {<br />        SqlSessionFactoryBean bean = new SqlSessionFactoryBean();<br />        bean.setDataSource(datasource);<br />        bean.setMapperLocations(<br />                // 设置mybatis的xml所在位置<br />                new PathMatchingResourcePatternResolver().getResources("classpath:com/master/mapper/**/*.xml"));<br />        return bean.getObject();<br />    }<br />    @Bean("masterSqlSessionTemplate")<br />    /**<br />     * 表示这个数据源是默认数据源<br />     */<br />    @Primary<br />    public SqlSessionTemplate masterSqlSessionTemplate(<br />            @Qualifier("masterSqlSessionFactory") SqlSessionFactory sessionFactory) {<br />        return new SqlSessionTemplate(sessionFactory);<br />    }<br />}</p>
+<p>从数据源的配置与主数据源类似，只需要把包名、类名、路径名改一下，然后把@Primary注解去掉即可。这样数据源就配好了，</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

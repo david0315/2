@@ -1,0 +1,70 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他</center></div><div class='banquan'>原文出处:本文由博客园博主沉默王二提供。<br/>
+原文连接:https://www.cnblogs.com/qing-gee/p/11752617.html</div><br>
+    <h3 id="前言">01、前言</h3>
+<p>Emoji 在我们生活中真的是越来越常见了，几乎每次发消息的时候不带个 Emoji，总觉得少了点什么，似乎干巴巴的文字已经无法承载我们丰富的感情了。对于我们开发者来说，如何将 Emoji 存入 MySql 数据库或者取出来，就变成了一种必须掌握的技能了。</p>
+<!--more-->
+<p>Emoji 是一种图形符号，能够很直观地反应出某种文字含义。它让我想起远古时代的象形文字。</p>
+<p><img src="./images/如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他0.png" /></p>
+<p>Emoji 其实是一个日语词（えもじ），<code>E</code> 表示&quot;絵&quot;，<code>moji</code> 表示&quot;文字&quot;；连在一起就是&quot;絵文字&quot;，可以更形象化地表情达意。</p>
+<h3 id="糟糕">02、糟糕</h3>
+<p>如果我们直接将 Emoji 表情存入数据库的话，通常会出现下面这个错误。</p>
+<p><img src="./images/如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他1.png" /></p>
+<p>因为数据库的字符编码一般是 utf8（支持的编码范围为 <code>\u0000-\uFFFF</code>），而 Emoji 所在的编码范围是 <code>\u1F601-\u1F64F</code>，超出 MySql 的边界了。</p>
+<p>怎么解决这个问题呢？</p>
+<h3 id="utf8mb4">03、utf8mb4</h3>
+<p>可以将 MySql 的字符集由 utf8 调整为 utf8mb4。utf8mb4 是 MySql 在 5.5.3 版本之后增加的一个编码方式，用来兼容四字节的 Unicode（包括 Emoji）。</p>
+<p>理论上，utf8mb4 是 utf8 的超集，其中 mb4 是 <code>most bytes 4</code> 的意思，将字符集修改为“utf8mb4”，并不会对已有的 utf8 编码读取产生任何问题。</p>
+<p>但通常这种方式并不是最优解，因为应用层还需要将 MySql 的连接方式作出以下调整：</p>
+<pre><code><code>jdbcUrl = jdbc:mysql://localhost/jfinal_demo?characterEncoding=utf8mb4&amp;useSSL=false&amp;zeroDateTimeBehavior=convertToNull</code></code></pre>
+<p>由原来的 <code>characterEncoding=utf8</code> 调整为 <code>characterEncoding=utf8mb4</code>。</p>
+<h3 id="emojiconverter">04、EmojiConverter</h3>
+<p>更友好的解决方式应该将 Emoji 当做字符串存储，然后在取出来的时候再转成 Emoji，这样可以兼容所有的数据库版本。</p>
+<p>我在 GitHub 上找到了这样的一个库——EmojiConverter，它可以很方便地将 Emoji 转换为字符串的别名，同时也支持将这个别名转换为 Emoji。</p>
+<p>1）在 pom.xml 文件中加入 EmojiConverter</p>
+<pre class="xml"><code>&lt;dependency&gt;
+&lt;groupId&gt;com.github.binarywang&lt;/groupId&gt;
+&lt;artifactId&gt;java-emoji-converter&lt;/artifactId&gt;
+&lt;version&gt;0.1.1&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>2）存储 Emoji 之前调用 <code>toHtml()</code> 方法转换一下</p>
+<pre class="java"><code>EmojiConverter emojiConverter = EmojiConverter.getInstance();
+
+String html = emojiConverter.toHtml(keywords.getContent().trim());
+
+// JFinal 的保存方式
+Record record = new Record().set(&quot;content&quot;, html)
+Db.save(&quot;keywords&quot;, record);</code></code></pre>
+<p>比如说，要存储的内容当中包含了一个点赞的 Emoji。</p>
+<p><img src="./images/如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他2.png" /></p>
+<p>那么通过 <code>emojiConverter.toHtml()</code> 转了之后的内容是什么样子呢？是一个码点：<code>&amp;#128077</code>，debug 的时候截图如下所示。</p>
+<p><img src="./images/如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他3.png" /></p>
+<p>这样的话，MySql 保存的内容就是一个普通的字符串了，编码方式仍然可以是 utf8。</p>
+<p>3）显示 Emoji 的时候调用 <code>toUnicode()</code> 方法格式化一下</p>
+<pre class="java"><code>String unicode = emojiConverter.toUnicode(content);
+outMsg.setContent(unicode);</code></code></pre>
+<p>格式化后的内容可以正常显示在微信公众号回复的文本消息中，截图如下所示。</p>
+<p><img src="./images/如果有人问你 MySql 怎么存取 Emoji，把这篇文章扔给他4.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,84 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修怎么把CAT客户端的RootMessageId记录到每条日志中？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>怎么把CAT客户端的RootMessageId记录到每条日志中？</center></div><div class='banquan'>原文出处:本文由博客园博主万猫学社提供。<br/>
+原文连接:https://www.cnblogs.com/heihaozi/p/11868528.html</div><br>
+    <h3 id="什么是rootmessageid">什么是RootMessageId？</h3>
+<p>为了理解RootMessageId先简单介绍一下CAT的数据结构设计。CAT客户端会将所有消息都封装为一个完整的消息树（MessageTree），消息树可能包括Transaction、Event、Heartbeat、Metric等类型的消息。具体如下：</p>
+<ul>
+<li>Transaction：适合记录跨越系统边界的程序访问行为,比如远程调用，数据库调用，也适合执行时间较长的业务逻辑监控，Transaction用来记录一段代码的执行时间和次数</li>
+<li>Event：用来记录一件事发生的次数，比如记录系统异常，它和transaction相比缺少了时间的统计，开销比transaction要小</li>
+<li>Heartbeat：表示程序内定期产生的统计信息, 如CPU利用率, 内存利用率, 连接池状态, 系统负载等</li>
+<li>Metric：用于记录业务指标、指标可能包含对一个指标记录次数、记录平均值、记录总和，业务指标最低统计粒度为1分钟</li>
+</ul>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+<p>其中，Transaction类型的消息可作为消息树节点，而其他消息只可作为消息树的叶子节点，也就是Transaction是一个可嵌套的递归结构。比如：</p>
+<p><img src="./images/怎么把CAT客户端的RootMessageId记录到每条日志中？0.png" /></p>
+<p>消息树的每一节点都有一个属性messageId，用来唯一表示节点本身，其构成为：{domain}-{ip}-{timestamp}-{自增index}。另外还有两个属性，分别是parentMessageId, rootMessageId。parentMessageId表示父节点的messageId；<strong>rootMessageId</strong>则表示整个消息树的根节点的messageId。这两个属性在之后CAT的调用链分析与分布式调用链分析中发挥了关键作用。</p>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+<h3 id="为什么在日志中记录">为什么在日志中记录？</h3>
+<p>根据RootMessageId可以追踪某一个请求的整个分布式调用链，结合每一条日志快速定位耗费性能的症结，做针对性的性能优化。更加方便地做性能优化，特别是TP95、TP99等指标。</p>
+<p>遇到偶尔发生的bug，是最让人头疼的，只有先从日志中找线索，但是在海量的日志中找到出现bug的那一个请求是很困难的。有了上游API提供的RootMessageId，就可以快速过滤出那次请求的所有日志， 更快速更方便地定位线上bug。</p>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+<h3 id="在日志的什么地方记录">在日志的什么地方记录？</h3>
+<p>当然是每一句日志上都记录RootMessageId了。有的同学会说，这日志也记录的太多了。当发现线上问题无法定位时，你就会狠日志太少了。其实记录日志不怕多，就怕不全。现在硬盘很便宜了，搞个几T没有问题，另外还可以设置日志清理策略。</p>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+<h3 id="怎么记录到日志中">怎么记录到日志中？</h3>
+<p>前面说了那么多，终于到了今天的压轴大戏了。实现记录到日志有很多种方式，这里使用的是MDC（Mapped Diagnostic Contexts）。顾名思义，其目的是为了便于我们诊断线上问题而出现的方法工具类，目前我们经常使用的logback和log4j都是支持的。</p>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+<p>只需要在每个请求的入口调用MDC.put方法，把rootMessageId赋值进去就可以了，是不是很简单？示例代码：</p>
+<pre><code><code>//在Filter里，从header里获取上下文信息，包括messageId、parentMessageId、rootMessageId
+CatContext catContext = new CatContext();
+catContext.addProperty(Cat.Context.ROOT, request.getHeader(CatConstants.CAT_HTTP_HEADER_ROOT_MESSAGE_ID));
+catContext.addProperty(Cat.Context.PARENT, request.getHeader(CatConstants.CAT_HTTP_HEADER_PARENT_MESSAGE_ID));
+catContext.addProperty(Cat.Context.CHILD, request.getHeader(CatConstants.CAT_HTTP_HEADER_CHILD_MESSAGE_ID));
+if (catContext.getProperty(Cat.Context.ROOT) == null) {
+    //如果调用链的顶端，没有上下文信息，需要生成上下文信息
+    Cat.logRemoteCallClient(catContext);
+} else {
+    Cat.logRemoteCallServer(catContext);
+}
+MDC.put(&quot;traceId&quot;, catContext.getProperty(Cat.Context.ROOT));</code></code></pre>
+<p>如果你还不知道怎么集成CAT调用链，可以看看之前的《<a href="https://zhuanlan.zhihu.com/p/88919056">SpringBoot集成CAT调用链实例</a>》</p>
+<p>然后，在设置日志输出格式的配置文件里增加<code>[%X{traceId}]</code>。</p>
+<p>Logback的xml配置示例：</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;configuration scan=&quot;true&quot;&gt;
+    &lt;appender name=&quot;CONSOLE&quot; class=&quot;ch.qos.logback.core.ConsoleAppender&quot;&gt;
+        &lt;layout class=&quot;ch.qos.logback.classic.PatternLayout&quot;&gt;
+            &lt;pattern&gt;[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%thread] [%X{traceId}] [%-5level] [%-40.36logger{40}:%-4.4line] - %msg%n&lt;/pattern&gt;
+        &lt;/layout&gt;
+    &lt;/appender&gt;
+
+    &lt;root level=&quot;INFO&quot;&gt;
+        &lt;appender-ref ref=&quot;CONSOLE&quot; /&gt;
+    &lt;/root&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p>log4j的properties配置示例：</p>
+<pre><code><code>log4j.rootCategory=INFO,stdout,info,error
+log4j.rootLooger=warn,stdout,info,error
+log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+log4j.appender.stdout.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss,SSS} [%-5p] [%thread] [%X{traceId}]  method:%l - %m%n</code></code></pre>
+<p><span class="onemorestudy">欢迎关注微信公众号：<b>万猫学社</b>，每周一分享Java技术干货。</span></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

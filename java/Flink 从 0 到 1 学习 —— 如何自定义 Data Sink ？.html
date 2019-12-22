@@ -1,0 +1,373 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？</center></div><div class='banquan'>原文出处:本文由博客园博主zhisheng_tian提供。<br/>
+原文连接:https://www.cnblogs.com/zhisheng/p/11562566.html</div><br>
+    <h3 id="前言">前言</h3>
+<p>前篇文章 <a href="http://www.54tianzhisheng.cn/2018/10/29/flink-sink/">《从0到1学习Flink》—— Data Sink 介绍</a> 介绍了 Flink Data Sink，也介绍了 Flink 自带的 Sink，那么如何自定义自己的 Sink 呢？这篇文章将写一个 demo 教大家将从 Kafka Source 的数据 Sink 到 MySQL 中去。</p>
+<!--more-->
+<h3 id="准备工作">准备工作</h3>
+<p>我们先来看下 Flink 从 Kafka topic 中获取数据的 demo，首先你需要安装好了 FLink 和 Kafka 。</p>
+<p>运行启动 Flink、Zookepeer、Kafka，</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？0.png" /></p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？1.png" /></p>
+<p>好了，都启动了！</p>
+<h3 id="数据库建表">数据库建表</h3>
+<pre><code><code>DROP TABLE IF EXISTS `student`;
+CREATE TABLE `student` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(25) COLLATE utf8_bin DEFAULT NULL,
+  `password` varchar(25) COLLATE utf8_bin DEFAULT NULL,
+  `age` int(10) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;</code></code></pre>
+<h3 id="实体类">实体类</h3>
+<p>Student.java</p>
+<pre class="java"><code>package com.zhisheng.flink.model;
+
+/**
+ * Desc:
+ * weixin: zhisheng_tian
+ * blog: http://www.54tianzhisheng.cn/
+ */
+public class Student {
+    public int id;
+    public String name;
+    public String password;
+    public int age;
+
+    public Student() {
+    }
+
+    public Student(int id, String name, String password, int age) {
+        this.id = id;
+        this.name = name;
+        this.password = password;
+        this.age = age;
+    }
+
+    @Override
+    public String toString() {
+        return &quot;Student{&quot; +
+                &quot;id=&quot; + id +
+                &quot;, name=&#39;&quot; + name + &#39;\&#39;&#39; +
+                &quot;, password=&#39;&quot; + password + &#39;\&#39;&#39; +
+                &quot;, age=&quot; + age +
+                &#39;}&#39;;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public void setAge(int age) {
+        this.age = age;
+    }
+}</code></code></pre>
+<h3 id="工具类">工具类</h3>
+<p>工具类往 kafka topic student 发送数据</p>
+<pre class="java"><code>import com.alibaba.fastjson.JSON;
+import com.zhisheng.flink.model.Metric;
+import com.zhisheng.flink.model.Student;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+/**
+ * 往kafka中写数据
+ * 可以使用这个main函数进行测试一下
+ * weixin: zhisheng_tian
+ * blog: http://www.54tianzhisheng.cn/
+ */
+public class KafkaUtils2 {
+    public static final String broker_list = &quot;localhost:9092&quot;;
+    public static final String topic = &quot;student&quot;;  //kafka topic 需要和 flink 程序用同一个 topic
+
+    public static void writeToKafka() throws InterruptedException {
+        Properties props = new Properties();
+        props.put(&quot;bootstrap.servers&quot;, broker_list);
+        props.put(&quot;key.serializer&quot;, &quot;org.apache.kafka.common.serialization.StringSerializer&quot;);
+        props.put(&quot;value.serializer&quot;, &quot;org.apache.kafka.common.serialization.StringSerializer&quot;);
+        KafkaProducer producer = new KafkaProducer&lt;String, String&gt;(props);
+
+        for (int i = 1; i &lt;= 100; i++) {
+            Student student = new Student(i, &quot;zhisheng&quot; + i, &quot;password&quot; + i, 18 + i);
+            ProducerRecord record = new ProducerRecord&lt;String, String&gt;(topic, null, null, JSON.toJSONString(student));
+            producer.send(record);
+            System.out.println(&quot;发送数据: &quot; + JSON.toJSONString(student));
+        }
+        producer.flush();
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        writeToKafka();
+    }
+}</code></code></pre>
+<h3 id="sinktomysql">SinkToMySQL</h3>
+<p>该类就是 Sink Function，继承了 RichSinkFunction ，然后重写了里面的方法。在 invoke 方法中将数据插入到 MySQL 中。</p>
+<pre class="java"><code>package com.zhisheng.flink.sink;
+
+import com.zhisheng.flink.model.Student;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+
+/**
+ * Desc:
+ * weixin: zhisheng_tian
+ * blog: http://www.54tianzhisheng.cn/
+ */
+public class SinkToMySQL extends RichSinkFunction&lt;Student&gt; {
+    PreparedStatement ps;
+    private Connection connection;
+
+    /**
+     * open() 方法中建立连接，这样不用每次 invoke 的时候都要建立连接和释放连接
+     *
+     * @param parameters
+     * @throws Exception
+     */
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        super.open(parameters);
+        connection = getConnection();
+        String sql = &quot;insert into Student(id, name, password, age) values(?, ?, ?, ?);&quot;;
+        ps = this.connection.prepareStatement(sql);
+    }
+
+    @Override
+    public void close() throws Exception {
+        super.close();
+        //关闭连接和释放资源
+        if (connection != null) {
+            connection.close();
+        }
+        if (ps != null) {
+            ps.close();
+        }
+    }
+
+    /**
+     * 每条数据的插入都要调用一次 invoke() 方法
+     *
+     * @param value
+     * @param context
+     * @throws Exception
+     */
+    @Override
+    public void invoke(Student value, Context context) throws Exception {
+        //组装数据，执行插入操作
+        ps.setInt(1, value.getId());
+        ps.setString(2, value.getName());
+        ps.setString(3, value.getPassword());
+        ps.setInt(4, value.getAge());
+        ps.executeUpdate();
+    }
+
+    private static Connection getConnection() {
+        Connection con = null;
+        try {
+            Class.forName(&quot;com.mysql.jdbc.Driver&quot;);
+            con = DriverManager.getConnection(&quot;jdbc:mysql://localhost:3306/test?useUnicode=true&amp;characterEncoding=UTF-8&quot;, &quot;root&quot;, &quot;root123456&quot;);
+        } catch (Exception e) {
+            System.out.println(&quot;-----------mysql get connection has exception , msg = &quot;+ e.getMessage());
+        }
+        return con;
+    }
+}</code></code></pre>
+<h3 id="flink-程序">Flink 程序</h3>
+<p>这里的 source 是从 kafka 读取数据的，然后 Flink 从 Kafka 读取到数据（JSON）后用阿里 fastjson 来解析成 student 对象，然后在 addSink 中使用我们创建的 SinkToMySQL，这样就可以把数据存储到 MySQL 了。</p>
+<pre class="java"><code>package com.zhisheng.flink;
+
+import com.alibaba.fastjson.JSON;
+import com.zhisheng.flink.model.Student;
+import com.zhisheng.flink.sink.SinkToMySQL;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.PrintSinkFunction;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer011;
+
+import java.util.Properties;
+
+/**
+ * Desc:
+ * weixin: zhisheng_tian
+ * blog: http://www.54tianzhisheng.cn/
+ */
+public class Main3 {
+    public static void main(String[] args) throws Exception {
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        Properties props = new Properties();
+        props.put(&quot;bootstrap.servers&quot;, &quot;localhost:9092&quot;);
+        props.put(&quot;zookeeper.connect&quot;, &quot;localhost:2181&quot;);
+        props.put(&quot;group.id&quot;, &quot;metric-group&quot;);
+        props.put(&quot;key.deserializer&quot;, &quot;org.apache.kafka.common.serialization.StringDeserializer&quot;);
+        props.put(&quot;value.deserializer&quot;, &quot;org.apache.kafka.common.serialization.StringDeserializer&quot;);
+        props.put(&quot;auto.offset.reset&quot;, &quot;latest&quot;);
+
+        SingleOutputStreamOperator&lt;Student&gt; student = env.addSource(new FlinkKafkaConsumer011&lt;&gt;(
+                &quot;student&quot;,   //这个 kafka topic 需要和上面的工具类的 topic 一致
+                new SimpleStringSchema(),
+                props)).setParallelism(1)
+                .map(string -&gt; JSON.parseObject(string, Student.class)); //Fastjson 解析字符串成 student 对象
+
+        student.addSink(new SinkToMySQL()); //数据 sink 到 mysql
+
+        env.execute(&quot;Flink add sink&quot;);
+    }
+}</code></code></pre>
+<h3 id="结果">结果</h3>
+<p>运行 Flink 程序，然后再运行 KafkaUtils2.java 工具类，这样就可以了。</p>
+<p>如果数据插入成功了，那么我们查看下我们的数据库：</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？2.png" /></p>
+<p>数据库中已经插入了 100 条我们从 Kafka 发送的数据了。证明我们的 SinkToMySQL 起作用了。是不是很简单？</p>
+<h3 id="项目结构">项目结构</h3>
+<p>怕大家不知道我的项目结构，这里发个截图看下：</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？3.png" /></p>
+<h3 id="最后">最后</h3>
+<p>本文主要利用一个 demo，告诉大家如何自定义 Sink Function，将从 Kafka 的数据 Sink 到 MySQL 中，如果你项目中有其他的数据来源，你也可以换成对应的 Source，也有可能你的 Sink 是到其他的地方或者其他不同的方式，那么依旧是这个套路：继承 RichSinkFunction 抽象类，重写 invoke 方法。</p>
+<h3 id="关注我">关注我</h3>
+<p>转载请务必注明原创地址为：<a href="http://www.54tianzhisheng.cn/2018/10/31/flink-create-sink/" class="uri">http://www.54tianzhisheng.cn/2018/10/31/flink-create-sink/</a></p>
+<p>微信公众号：<strong>zhisheng</strong></p>
+<p>另外我自己整理了些 Flink 的学习资料，目前已经全部放到微信公众号（zhisheng）了，你可以回复关键字：<strong>Flink</strong> 即可无条件获取到。另外也可以加我微信 你可以加我的微信：<strong>yuanblog_tzs</strong>，探讨技术！</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？4.png" /></p>
+<p>更多私密资料请加入知识星球！</p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？5.png" /></p>
+<h3 id="github-代码仓库">Github 代码仓库</h3>
+<p><a href="https://github.com/zhisheng17/flink-learning/" class="uri">https://github.com/zhisheng17/flink-learning/</a></p>
+<p>以后这个项目的所有代码都将放在这个仓库里，包含了自己学习 flink 的一些 demo 和博客</p>
+<h3 id="博客">博客</h3>
+<p>1、<a href="http://www.54tianzhisheng.cn/2018/10/13/flink-introduction/">Flink 从0到1学习 —— Apache Flink 介绍</a></p>
+<p>2、<a href="http://www.54tianzhisheng.cn/2018/09/18/flink-install">Flink 从0到1学习 —— Mac 上搭建 Flink 1.6.0 环境并构建运行简单程序入门</a></p>
+<p>3、<a href="http://www.54tianzhisheng.cn/2018/10/27/flink-config/">Flink 从0到1学习 —— Flink 配置文件详解</a></p>
+<p>4、<a href="http://www.54tianzhisheng.cn/2018/10/28/flink-sources/">Flink 从0到1学习 —— Data Source 介绍</a></p>
+<p>5、<a href="http://www.54tianzhisheng.cn/2018/10/30/flink-create-source/">Flink 从0到1学习 —— 如何自定义 Data Source ？</a></p>
+<p>6、<a href="http://www.54tianzhisheng.cn/2018/10/29/flink-sink/">Flink 从0到1学习 —— Data Sink 介绍</a></p>
+<p>7、<a href="http://www.54tianzhisheng.cn/2018/10/31/flink-create-sink/">Flink 从0到1学习 —— 如何自定义 Data Sink ？</a></p>
+<p>8、<a href="http://www.54tianzhisheng.cn/2018/11/04/Flink-Data-transformation/">Flink 从0到1学习 —— Flink Data transformation(转换)</a></p>
+<p>9、<a href="http://www.54tianzhisheng.cn/2018/12/08/Flink-Stream-Windows/">Flink 从0到1学习 —— 介绍 Flink 中的 Stream Windows</a></p>
+<p>10、<a href="http://www.54tianzhisheng.cn/2018/12/11/Flink-time/">Flink 从0到1学习 —— Flink 中的几种 Time 详解</a></p>
+<p>11、<a href="http://www.54tianzhisheng.cn/2018/12/30/Flink-ElasticSearch-Sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 ElasticSearch</a></p>
+<p>12、<a href="http://www.54tianzhisheng.cn/2019/01/05/Flink-run/">Flink 从0到1学习 —— Flink 项目如何运行？</a></p>
+<p>13、<a href="http://www.54tianzhisheng.cn/2019/01/06/Flink-Kafka-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Kafka</a></p>
+<p>14、<a href="http://www.54tianzhisheng.cn/2019/01/13/Flink-JobManager-High-availability/">Flink 从0到1学习 —— Flink JobManager 高可用性配置</a></p>
+<p>15、<a href="http://www.54tianzhisheng.cn/2019/01/14/Flink-parallelism-slot/">Flink 从0到1学习 —— Flink parallelism 和 Slot 介绍</a></p>
+<p>16、<a href="http://www.54tianzhisheng.cn/2019/01/15/Flink-MySQL-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据批量写入到 MySQL</a></p>
+<p>17、<a href="http://www.54tianzhisheng.cn/2019/01/20/Flink-RabbitMQ-sink/">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 RabbitMQ</a></p>
+<p>18、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 HBase</a></p>
+<p>19、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 HDFS</a></p>
+<p>20、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Redis</a></p>
+<p>21、<a href="https://t.zsxq.com/uVbi2nq">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Cassandra</a></p>
+<p>22、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 Flume</a></p>
+<p>23、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 InfluxDB</a></p>
+<p>24、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— Flink 读取 Kafka 数据写入到 RocketMQ</a></p>
+<p>25、<a href="http://www.54tianzhisheng.cn/2019/03/13/flink-job-jars/">Flink 从0到1学习 —— 你上传的 jar 包藏到哪里去了</a></p>
+<p>26、<a href="https://t.zsxq.com/zV7MnuJ">Flink 从0到1学习 —— 你的 Flink job 日志跑到哪里去了</a></p>
+<p>27、<a href="http://www.54tianzhisheng.cn/2019/02/28/blink/">阿里巴巴开源的 Blink 实时计算框架真香</a></p>
+<p>28、<a href="http://www.54tianzhisheng.cn/2019/03/28/flink-additional-data/">Flink 从0到1学习 —— Flink 中如何管理配置？</a></p>
+<p>29、<a href="http://www.54tianzhisheng.cn/2019/06/12/flink-split/">Flink 从0到1学习—— Flink 不可以连续 Split(分流)？</a></p>
+<p>30、<a href="http://www.54tianzhisheng.cn/2019/06/13/flink-book-paper/">Flink 从0到1学习—— 分享四本 Flink 国外的书和二十多篇 Paper 论文</a></p>
+<p>31、<a href="http://www.54tianzhisheng.cn/2019/06/14/flink-architecture-deploy-test/">Flink 架构、原理与部署测试</a></p>
+<p>32、<a href="http://www.54tianzhisheng.cn/2019/06/15/Stream-processing/">为什么说流处理即未来？</a></p>
+<p>33、<a href="http://www.54tianzhisheng.cn/2019/06/16/flink-sql-oppo/">OPPO 数据中台之基石：基于 Flink SQL 构建实时数据仓库</a></p>
+<p>34、<a href="http://www.54tianzhisheng.cn/2019/06/17/flink-vs-storm/">流计算框架 Flink 与 Storm 的性能对比</a></p>
+<p>35、<a href="http://www.54tianzhisheng.cn/2019/06/18/flink-state/">Flink状态管理和容错机制介绍</a></p>
+<p>36、<a href="http://www.54tianzhisheng.cn/2019/06/20/flink-kafka-Exactly-Once/">Apache Flink 结合 Kafka 构建端到端的 Exactly-Once 处理</a></p>
+<p>37、<a href="http://www.54tianzhisheng.cn/2019/06/21/flink-in-360/">360深度实践：Flink与Storm协议级对比</a></p>
+<p>38、<a href="http://www.54tianzhisheng.cn/2019/06/26/flink-TensorFlow/">如何基于Flink+TensorFlow打造实时智能异常检测平台？只看这一篇就够了</a></p>
+<p>39、<a href="http://www.54tianzhisheng.cn/2019/07/01/flink-1.9-preview/">Apache Flink 1.9 重大特性提前解读</a></p>
+<p>40、<a href="http://www.54tianzhisheng.cn/2019/12/31/Flink-resources/">Flink 全网最全资源（视频、博客、PPT、入门、实战、源码解析、问答等持续更新）</a></p>
+<p>41、<a href="https://mp.weixin.qq.com/s/ok-YwuVbwAVtJz7hUCiZxg">Flink 灵魂两百问，这谁顶得住？</a></p>
+<p>42、<a href="http://www.54tianzhisheng.cn/2019/08/18/flink-side-output/">Flink 从0到1学习 —— 如何使用 Side Output 来分流？</a></p>
+<p>43、<a href="http://www.54tianzhisheng.cn/2019/08/06/flink-streaming-system/">你公司到底需不需要引入实时计算引擎？</a></p>
+<p>44、<a href="http://www.54tianzhisheng.cn/2019/08/19/flink/">一文让你彻底了解大数据实时计算引擎 Flink</a></p>
+<h3 id="源码解析">源码解析</h3>
+<p>1、<a href="http://www.54tianzhisheng.cn/2019/01/30/Flink-code-compile/">Flink 源码解析 —— 源码编译运行</a></p>
+<p>2、<a href="http://www.54tianzhisheng.cn/2019/03/14/Flink-code-structure/">Flink 源码解析 —— 项目结构一览</a></p>
+<p>3、<a href="http://www.54tianzhisheng.cn/tags/Flink/">Flink 源码解析—— local 模式启动流程</a></p>
+<p>4、<a href="http://www.54tianzhisheng.cn/2019/03/15/Flink-code-Standalone-start/">Flink 源码解析 —— standalone session 模式启动流程</a></p>
+<p>5、<a href="http://www.54tianzhisheng.cn/2019/03/16/Flink-code-Standalone-JobManager-start/">Flink 源码解析 —— Standalone Session Cluster 启动流程深度分析之 Job Manager 启动</a></p>
+<p>6、<a href="http://www.54tianzhisheng.cn/2019/03/17/Flink-code-Standalone-TaskManager-start/">Flink 源码解析 —— Standalone Session Cluster 启动流程深度分析之 Task Manager 启动</a></p>
+<p>7、<a href="http://www.54tianzhisheng.cn/2019/03/18/Flink-code-batch-wordcount-start/">Flink 源码解析 —— 分析 Batch WordCount 程序的执行过程</a></p>
+<p>8、<a href="http://www.54tianzhisheng.cn/2019/03/19/Flink-code-streaming-wordcount-start/">Flink 源码解析 —— 分析 Streaming WordCount 程序的执行过程</a></p>
+<p>9、<a href="http://www.54tianzhisheng.cn/2019/03/21/Flink-code-JobGraph/">Flink 源码解析 —— 如何获取 JobGraph？</a></p>
+<p>10、<a href="http://www.54tianzhisheng.cn/2019/03/20/Flink-code-StreamGraph/">Flink 源码解析 —— 如何获取 StreamGraph？</a></p>
+<p>11、<a href="http://www.54tianzhisheng.cn/2019/03/25/Flink-code-jobmanager/">Flink 源码解析 —— Flink JobManager 有什么作用？</a></p>
+<p>12、<a href="http://www.54tianzhisheng.cn/2019/03/25/Flink-code-taskmanager/">Flink 源码解析 —— Flink TaskManager 有什么作用？</a></p>
+<p>13、<a href="http://www.54tianzhisheng.cn/2019/03/27/Flink-code-JobManager-submitJob/">Flink 源码解析 —— JobManager 处理 SubmitJob 的过程</a></p>
+<p>14、<a href="http://www.54tianzhisheng.cn/2019/03/28/Flink-code-TaskManager-submitJob/">Flink 源码解析 —— TaskManager 处理 SubmitJob 的过程</a></p>
+<p>15、<a href="http://www.54tianzhisheng.cn/2019/03/23/Flink-code-checkpoint/">Flink 源码解析 —— 深度解析 Flink Checkpoint 机制</a></p>
+<p>16、<a href="http://www.54tianzhisheng.cn/2019/03/22/Flink-code-serialize/">Flink 源码解析 —— 深度解析 Flink 序列化机制</a></p>
+<p>17、<a href="http://www.54tianzhisheng.cn/2019/03/24/Flink-code-memory-management/">Flink 源码解析 —— 深度解析 Flink 是如何管理好内存的？</a></p>
+<p>18、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-core</a></p>
+<p>19、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-datadog</a></p>
+<p>20、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-dropwizard</a></p>
+<p>21、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-graphite</a></p>
+<p>22、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-influxdb</a></p>
+<p>23、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-jmx</a></p>
+<p>24、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-slf4j</a></p>
+<p>25、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-statsd</a></p>
+<p>26、<a href="http://www.54tianzhisheng.cn/2019/07/02/Flink-code-metrics/">Flink Metrics 源码解析 —— Flink-metrics-prometheus</a></p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？6.png" /></p>
+<p>26、<a href="http://www.54tianzhisheng.cn/2019/07/03/Flink-code-Annotations/">Flink Annotations 源码解析</a></p>
+<p><img src="./images/Flink 从 0 到 1 学习 —— 如何自定义 Data Sink ？7.png" /></p>
+<p>27、<a href="http://www.54tianzhisheng.cn/2019/03/26/Flink-code-ExecutionGraph/">Flink 源码解析 —— 如何获取 ExecutionGraph ？</a></p>
+<p>28、<a href="https://t.zsxq.com/UvrRNJM">大数据重磅炸弹——实时计算框架 Flink</a></p>
+<p>29、<a href="https://t.zsxq.com/QVFqjea">Flink Checkpoint-轻量级分布式快照</a></p>
+<p>30、<a href="http://www.54tianzhisheng.cn/2019/07/04/Flink-code-clients/">Flink Clients 源码解析</a><br />
+原文出处：<a href="http://www.54tianzhisheng.cn/">zhisheng的博客</a>，欢迎关注我的公众号：zhisheng</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

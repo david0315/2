@@ -1,0 +1,143 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Springboot源码分析之TypeFilter魔力' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Springboot源码分析之TypeFilter魔力</center></div><div class='banquan'>原文出处:本文由博客园博主TheGir1提供。<br/>
+原文连接:https://www.cnblogs.com/qinzj/p/11516642.html</div><br>
+    <h4 id="摘要">摘要：</h4>
+<p>在平常的开发中，不知道大家有没有想过这样一个问题，为什么我们自定义注解的时候要使用spring的原生注解（这里指的是类似<code>@Component</code>，<code>@Service</code>........）,要么就是 随便弄个注解，搭配自己的切面编程来实现某些业务逻辑。这篇文章主要给大家分享一下，如何脱离<code>Spring原生注解</code>自定义注解注入<code>IOC</code></p>
+<h4 id="springbootapplication注解分析">SpringBootApplication注解分析</h4>
+<p><img src="./images/Springboot源码分析之TypeFilter魔力0.png" alt="file" /><br />
+从源代码很容易看出来，它的作用就是自动装配和扫描我们的包，并将符合的类进行注册到容器。自动装配非常简单，这里不做过多分析，接下来分析一下什么叫做<code>符合规则的类</code>。在<code>@ComponentScan</code>注解上面的过滤器类型的定义</p>
+<pre><code><code>public enum FilterType {
+    ANNOTATION, //注解类型
+    ASSIGNABLE_TYPE, //指定的类型
+    ASPECTJ, //按照Aspectj的表达式，基本上不会用到
+    REGEX, //按照正则表达式
+    CUSTOM; //自定义
+
+    private FilterType() {
+    }
+}</code></code></pre>
+<h4 id="excludefilters排除过滤器">excludeFilters排除过滤器</h4>
+<p>这个是给我们排除符合的类，不让他注册到<code>IOC</code>的时候使用的, Springboot默认使用两个排除过滤器，很简单的，网上随便搜都可以找到相关说明，在这儿我举个特舒列子就行了.</p>
+<pre><code><code>package com.github.dqqzj.springboot.filter;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * @author qinzhongjian
+ * @date created in 2019-07-30 19:14
+ * @description: TODO
+ * @since JDK 1.8.0_212-b10
+ */
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Dqqzj {
+    String value();
+}</code></code></pre>
+<pre><code><code>package com.github.dqqzj.springboot.filter;
+
+import org.springframework.stereotype.Component;
+
+/**
+ * @author qinzhongjian
+ * @date created in 2019-07-29 22:30
+ * @description: TODO
+ * @since JDK 1.8.0_212-b10
+ */
+@Dqqzj(value = &quot;dqqzj&quot;)
+@Component
+public class Tt {
+}</code></code></pre>
+<pre><code><code>package com.github.dqqzj.springboot.filter;
+
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.MetadataReaderFactory;
+import org.springframework.core.type.filter.TypeFilter;
+
+import java.io.IOException;
+
+/**
+ * @author qinzhongjian
+ * @date created in 2019-07-30 19:13
+ * @description: TODO
+ * @since JDK 1.8.0_212-b10
+ */
+public class MyTypeFilter implements TypeFilter {
+    @Override
+    public boolean match(MetadataReader metadataReader, MetadataReaderFactory metadataReaderFactory) throws IOException {
+        if (metadataReader.getAnnotationMetadata().isAnnotated(Dqqzj.class.getName())) {
+            return true;
+        }
+        return false;
+    }
+}</code></code></pre>
+<p><img src="./images/Springboot源码分析之TypeFilter魔力1.png" alt="file" /><br />
+以上代码是正常逻辑，反过来这样想，如果将<code>Tt</code>类的<code>@Component</code>注解去掉是不是也行的，所以这种排除注解一般都用在正常可以注入到容器的时候进行添加的，那么我们上面说过，脱离<code>Spring</code>也可以注入到容器，该怎么实现呢？</p>
+<h4 id="includefilters包含过滤器">includeFilters包含过滤器</h4>
+<p>脱离<code>Spring原生注解</code>,将将<code>Tt</code>类的<code>@Component</code>注解去掉</p>
+<pre><code><code>package com.github.dqqzj.springboot.filter;
+
+import org.springframework.stereotype.Component;
+
+/**
+ * @author qinzhongjian
+ * @date created in 2019-07-29 22:30
+ * @description: TODO
+ * @since JDK 1.8.0_212-b10
+ */
+@Dqqzj(value = &quot;dqqzj&quot;)
+//@Component
+public class Tt {
+}</code></code></pre>
+<p><img src="./images/Springboot源码分析之TypeFilter魔力2.png" alt="file" /></p>
+<h4 id="透过现象看本质">透过现象看本质</h4>
+<p>流程进行梳理一下，注解驱动在注入容器的关键扫描类（注意这里是指的扫描，而不是什么@Bean，@Import等其余注解都是建立在这个基础之上的）</p>
+<ul>
+<li>ComponentScanAnnotationParser</li>
+<li>ClassPathBeanDefinitionScanner</li>
+<li>ClassPathScanningCandidateComponentProvider</li>
+</ul>
+<h5 id="classpathscanningcandidatecomponentproviderregisterdefaultfilters">ClassPathScanningCandidateComponentProvider#registerDefaultFilters</h5>
+<pre><code><code>protected void registerDefaultFilters() {
+        this.includeFilters.add(new AnnotationTypeFilter(Component.class));
+        ClassLoader cl = ClassPathScanningCandidateComponentProvider.class.getClassLoader();
+
+        try {
+            this.includeFilters.add(new AnnotationTypeFilter(ClassUtils.forName(&quot;javax.annotation.ManagedBean&quot;, cl), false));
+            this.logger.trace(&quot;JSR-250 &#39;javax.annotation.ManagedBean&#39; found and supported for component scanning&quot;);
+        } catch (ClassNotFoundException var4) {
+        }
+
+        try {
+            this.includeFilters.add(new AnnotationTypeFilter(ClassUtils.forName(&quot;javax.inject.Named&quot;, cl), false));
+            this.logger.trace(&quot;JSR-330 &#39;javax.inject.Named&#39; annotation found and supported for component scanning&quot;);
+        } catch (ClassNotFoundException var3) {
+        }
+
+    }</code></code></pre>
+<p>此处会将<code>@Component</code>,<code>JSR-250 'javax.annotation.ManagedBean'</code>,<code>JSR-330 'javax.inject.Named'</code>的注解进行注册，所以难怪我们的自定义注解必须要有这些派生注解，换一个角度来思考，它们这个地方进行类<code>AnnotationTypeFilter</code>的添加，我们也可以自定义<code>AnnotationTypeFilter</code>来将自己的定义规则的注解进行注入容器。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

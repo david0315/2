@@ -1,0 +1,256 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Nacos（九）：Nacos集群部署和遇到的问题' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Nacos（九）：Nacos集群部署和遇到的问题</center></div><div class='banquan'>原文出处:本文由博客园博主larscheng提供。<br/>
+原文连接:https://www.cnblogs.com/larscheng/p/11427733.html</div><br>
+    <h1 id="前言">前言</h1>
+<p>前面的系列文章已经介绍了Nacos的如何接入SpringCloud，以及Nacos的基本使用方式</p>
+<p>之前的文章中都是基于<code>单机模式</code>部署进行讲解的，本文对Nacos的<code>集群</code>部署方式进行说明</p>
+<h1 id="环境准备">环境准备</h1>
+<ul>
+<li>JDK8</li>
+<li>Centos7.5(ip:<code>10.1.8.27</code>)</li>
+<li>MySQL 5.6.5+</li>
+<li>Nacos-server：1.0.1</li>
+</ul>
+<blockquote>
+<p>请提前下载Nacos-server：1.0.1压缩包并解压至相应目录</p>
+<blockquote>
+<p>本次的Nacos-server在linux服务器上进行启动。</p>
+</blockquote>
+</blockquote>
+<h1 id="集群模式部署">集群模式部署</h1>
+<p>Nacos文档中提供了三种集群部署方案</p>
+<ol>
+<li><code>http://ip1:port/openAPI</code> 直连ip模式：
+<ul>
+<li>ip+端口进行部署，客户端直接连接Nacos的ip</li>
+</ul></li>
+<li><code>http://Vip:port/openAPI</code> 挂载虚拟IP模式：
+<ul>
+<li>配合KeepAlive，Nacos真实ip都挂载虚拟Ip下</li>
+<li>客户端访问Vip发起请求</li>
+<li>当主Nacos宕机后，备用Nacos接管，实现高可用，</li>
+</ul></li>
+<li><code>http://www.nacostest.com:port/openAPI</code> 挂载虚拟IP+域名模式：
+<ul>
+<li>为虚拟ip绑定一个域名，当Nacos集群迁移时，客户端配置无需修改。</li>
+</ul></li>
+</ol>
+<p><img src="./images/Nacos（九）：Nacos集群部署和遇到的问题0.png" /></p>
+<p>这三种方案都是为了尽可能实现高可用，后两种方案除了基本的部署流程外更多侧重于实现高可用的工作上</p>
+<blockquote>
+<p>本文以第一种ip+端口的方式为大家介绍集群部署方式</p>
+</blockquote>
+<p>当然<code>ip+端口</code>也有多种部署方式</p>
+<ul>
+<li>1ip+n端口+Nginx：普通玩家部署方式，没有过多服务器，单台服务器启动多个nacos实例，仅适合测试使用</li>
+<li>nip+n端口+Nginx：RMB玩家部署方式，服务器资源充足，组建完美集群，实现更好的容灾与隔离</li>
+</ul>
+<p>无论怎么部署，部署方式都是一样的，这里我以<code>1ip+3端口+Nginx</code>的方式进行集群搭建</p>
+<h2 id="修改配置">修改配置</h2>
+<p>1、修改Nacos-server目录<code>conf/</code>下的<code>application.properties</code>文件，添加mysql数据源</p>
+<p>2、修改集群配置</p>
+<p>ip和端口的规划如下:</p>
+<table>
+<thead>
+<tr class="header">
+<th>ip</th>
+<th>端口</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10.1.8.27</td>
+<td>8849</td>
+</tr>
+<tr class="even">
+<td>10.1.8.27</td>
+<td>8850</td>
+</tr>
+<tr class="odd">
+<td>10.1.8.27</td>
+<td>8851</td>
+</tr>
+</tbody>
+</table>
+<p>修改<code>conf/</code>下的<code>cluster.conf.example</code>文件，将其命名为<code>cluster.conf</code>，内容如下</p>
+<pre><code><code># ip:port
+10.1.8.27:8849
+10.1.8.27:8850
+10.1.8.27:8851</code></code></pre>
+<blockquote>
+<p>注：一定要记得将配置文件重命名为<code>cluster.conf</code>, 最好用实际ip，而非<code>127.0.0.1</code>，否则会出现问题</p>
+</blockquote>
+<p>3、修改启动脚本</p>
+<p>我们要在单台服务器上启动多个Nacos实例，要保证三个实例为不同的端口，这里我们可以修改启动脚本<br />
+定位到<code>export FUNCTION_MODE=&quot;all&quot;</code>这一行，修改脚本内容，使其支持以<code>-p</code>传入端口参数</p>
+<pre class="bash"><code>export MODE=&quot;cluster&quot;
+export FUNCTION_MODE=&quot;all&quot;
+# 新加
+export SERVER_PORT=&quot;8848&quot;
+while getopts &quot;:m:f:p:&quot; opt
+do
+    case $opt in
+        m)
+            MODE=$OPTARG;;
+        f)
+            FUNCTION_MODE=$OPTARG;;
+        # 新加
+        p)
+            SERVER_PORT=$OPTARG;;
+        ?)
+        echo &quot;Unknown parameter&quot;
+        exit 1;;
+    esac
+done
+# 新加
+JAVA_OPT=&quot;${JAVA_OPT} -Dserver.port=${SERVER_PORT}&quot;
+</code></code></pre>
+<p>相应的，修改shutdown脚本，使其可接收参数</p>
+<pre class="bash"><code># 新加内容
+PORT=$1
+if [ ! $PORT ]; then
+  echo &quot;please select stop port!&quot; &gt;&amp;2
+  exit 1
+fi
+
+# 添加PORT过滤
+pid=`ps ax | grep -i &#39;nacos.nacos&#39; |grep java |grep ${PORT} | grep -v grep | awk &#39;{print $1}&#39;`
+
+# 后边省略...</code></code></pre>
+<h2 id="启动nacos">启动Nacos</h2>
+<p>执行如下三条命令</p>
+<blockquote>
+<p>bash startup.sh -p 8849<br />
+bash startup.sh -p 8850<br />
+bash startup.sh -p 8851</p>
+</blockquote>
+<p><strong>如果你的机器不能同时启动3个实例，检查是否内存不够了，可以适当调整JVM参数 </strong></p>
+<p>调整启动脚本中<code>JAVA_OPT=&quot;${JAVA_OPT} -server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=320m</code>中的<code>-Xms</code> <code>-Xmx</code> <code>-Xmn</code></p>
+<p>启动成功后会打印如下一句话：</p>
+<blockquote>
+<p>nacos is starting，you can check the /usr/local/nacos/nacos/logs/start.out</p>
+</blockquote>
+<p>查看该目录下的start.out文件，可以看到如下日志</p>
+<p><img src="./images/Nacos（九）：Nacos集群部署和遇到的问题1.png" alt="startup" /></p>
+<p>此时，多节点的集群雏形已经搭建好了，可以试着访问Nacos后台</p>
+<p><a href="http://ip:8849/nacos/index.html" class="uri">http://ip:8849/nacos/index.html</a><br />
+<a href="http://ip:8850/nacos/index.html" class="uri">http://ip:8850/nacos/index.html</a><br />
+<a href="http://ip:8851/nacos/index.html" class="uri">http://ip:8851/nacos/index.html</a></p>
+<p>不出意外,可以正常访问到Nacos控制台</p>
+<p><img src="./images/Nacos（九）：Nacos集群部署和遇到的问题2.png" /></p>
+<p>从图上可以看到集群节点共有三个，其中端口8850为<code>leader</code></p>
+<h2 id="配置nginx">配置Nginx</h2>
+<p>完成上面的配置后，已经基本完成集群搭建的90%了</p>
+<p>这里我们可以通过Nginx配置，为Nacos提供统一的入口，来实现一个简单的负载均衡</p>
+<p>Nginx配置如下</p>
+<pre><code><code>upstream nacos-server {
+  server 127.0.0.1:8849;
+  server 127.0.0.1:8850;
+  server 127.0.0.1:8851;
+}
+
+server {
+  listen 8848;
+  server_name  localhost;
+  location /nacos/ {
+    proxy_pass http://nacos-server/nacos/;
+  }
+}
+</code></code></pre>
+<p>执行命令 <code>sudo nginx</code>启动nginx</p>
+<p>通过8848端口访问Nacos后台，此时Nginx会将请求分发至<code>nacos-server</code>下的地址中，这里默认的分发策略是<code>线性轮询</code></p>
+<h2 id="客户端测试">客户端测试</h2>
+<blockquote>
+<p>这里继续使用之前的Demo项目（<a href="https://www.larscheng.com/config-service">Nacos（四）</a>）</p>
+</blockquote>
+<p>1、修改下项目配置文件<code>bootstarp.yml</code></p>
+<pre class="yaml"><code>spring:
+  application:
+    name: nacos-config
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 10.1.8.27:8848
+      config:
+        server-addr: 10.1.8.27:8848
+        prefix: ${spring.application.name}
+        file-extension: yml</code></code></pre>
+<blockquote>
+<p>注：主要是修改注册中心和配置中新的地址，记得替换成你的服务器地址哦</p>
+</blockquote>
+<p>2、启动前确保已经向Nacos中添加配置文件，如果已经添加可以忽略</p>
+<p>在公共空间(public)中新建一个配置文件DataID: <code>nacos-config.yml</code>, 配置内容如下：</p>
+<pre class="yaml"><code>server: 
+    port: 9989
+nacos:
+    config: 配置文件已持久化到数据库中...</code></code></pre>
+<p>3、启动Nacos-config项目</p>
+<p>启动成功后检查日志和Nacos控制台</p>
+<p>注册成功的日志如下：</p>
+<blockquote>
+<p>09:37:19.366 [main] [nacos] [64] INFO o.s.c.a.n.r.NacosServiceRegistry - nacos registry, nacos-config 10.1.8.71:9989 register finished</p>
+</blockquote>
+<p>控制台中可以看到服务已经注册</p>
+<p><img src="./images/Nacos（九）：Nacos集群部署和遇到的问题3.png" /></p>
+<p>浏览器请求nacos-config中的接口，查看是否可以读取配置</p>
+<p>访问：<a href="http://127.0.0.1:9989/getValue" class="uri">http://127.0.0.1:9989/getValue</a> 返回：配置文件和服务信息已持久化到数据库中...</p>
+<blockquote>
+<p>集群的部署方式就介绍完了，文中的集群部署方式不是最优的方式</p>
+<blockquote>
+<p>实际生产环境下，至少应该保证各个Nacos节点位于不同服务器,以实现更好的隔离和容灾</p>
+</blockquote>
+</blockquote>
+<h1 id="出现的问题">出现的问题</h1>
+<p>这里将我在配置集群时出现的一些问题和解决方式进行说明</p>
+<p>1、在集群搭建完成后，启动nacos客户端进行服务注册时报错了，提示我<code>服务端没有启动，稍后再试</code>，如下：</p>
+<blockquote>
+<p>code:503 msg: server is STARTING now, please try again later!</p>
+</blockquote>
+<p>一脸懵B，Nacos后台都可以访问的鸭，为啥说我没启动。翻阅Nacos-server的源码后</p>
+<ul>
+<li>后台可访问只能说明<code>nacos-consloe</code>模块启动成功</li>
+<li>无法注册服务<code>nacos-naming</code>模块可能启动失败了</li>
+</ul>
+<p>参考了github中的<a href="https://github.com/alibaba/nacos/issues/770">#770-issues</a></p>
+<pre><code><code>必须保证`InetAddress.getLocalHost().getHostAddress()`或者`hostname -i`打印的结果是  
+192.xxx.xxx.xxx而不是`127.0.0.1`才行</code></code></pre>
+<p>解决办法如下：</p>
+<ul>
+<li>修改hosts，在hosts文件中添加<code>yourip  hostname</code>，例如：<code>10.1.8.27 lars</code></li>
+<li>修改cluster.conf,修改集群配置文件，全部用实际ip+端口的方式，而非<code>127.0.0.1</code></li>
+</ul>
+<h1 id="总结">总结</h1>
+<p>Nacos的集群部署基本就介绍完了，官方推荐的三种方式，他们的基本部署思路和方式都大同小异，只不过在高可用上有所不同，挑选你适合的方式动手搭建集群试试吧。</p>
+<h1 id="参考">参考</h1>
+<p><a href="https://nacos.io/zh-cn/docs/deployment.html">Nacos支持三种部署模式</a></p>
+<h2 id="社区issues"><a href="https://github.com/alibaba/nacos/issues">社区issues</a></h2>
+<ul>
+<li>文章作者: <a href="https://www.larscheng.com/">LarsCheng</a></li>
+<li>文章链接: 本文首发于个人博客：<a href="https://www.larscheng.com/nacos-namespace/" class="uri">https://www.larscheng.com/nacos-namespace/</a></li>
+<li>发布方式：<a href="https://www.openwrite.cn/">OpenWrite 最懂你的科技自媒体管理平台</a></li>
+<li>版权声明: 本博客所有文章除特别声明外，均采用 CC BY-NC-SA 4.0 许可协议。转载请注明来自 LarsCheng's Blog！</li>
+</ul>
+<hr />
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

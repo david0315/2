@@ -1,0 +1,197 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修java ThreadLocal线程设置私有变量底层源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>java ThreadLocal线程设置私有变量底层源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主灵感聚集地提供。<br/>
+原文连接:https://www.cnblogs.com/calaMan/p/11753801.html</div><br>
+    <p><span style="font-size: 16px;">　　前面也听说了ThreadLocal来实现高并发，以前都是用锁来实现，看了挺多资料的，发现其实还是区别挺大的（感觉严格来说ThreadLocal并不算高并发的解决方案</span><span style="font-size: 16px;">），现在总结一下吧。</span></p>
+<p><span style="font-size: 16px;">　　高并发中会出现的问题就是线程安全问题，可以说是多个线程对共享资源访问如何处理的问题，处理不当会的话，会出现结果和预期会完全不同。</span></p>
+<p><span style="font-size: 16px;">　　一般情况下，多个线程访问一个变量都是公用他们的值，不过有时候虽然也是访问共享变量，不过每个线程却需要自己的私有变量。这个时候ThreadLocal就有用武之地了。下面是个ThreadLocal的简单实例：</span></p>
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ThreadLocalExample {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args){
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个ThreadLocal对象</span>
+        ThreadLocal&lt;Integer&gt; threadLocal = <span style="color: #0000ff;">new</span> ThreadLocal&lt;&gt;<span style="color: #000000;">();
+        
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">设置主线程私有变量值</span>
+        threadLocal.set(100<span style="color: #000000;">);
+        
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个新线程</span>
+        <span style="color: #0000ff;">new</span> Thread(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable(){
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run(){
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">使用共享变量，设置线程私有变量</span>
+                threadLocal.set(50<span style="color: #000000;">);
+                System.out.println(Thread.currentThread().getName() </span>+ ":" +<span style="color: #000000;"> threadLocal.get());
+            }
+        }).start();
+        
+        System.out.println(Thread.currentThread().getName() </span>+ ":" +<span style="color: #000000;"> threadLocal.get());
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">输出结果：</span></p>
+<src class="cnblogs_code">
+<pre><code>main:100<span style="color: #000000;">
+Thread</span>-0:50</code></pre>
+
+<p>　　<span style="font-size: 16px;">很神奇，对多个资源之间的共享，又不想他们之间相互影响，所以使用这个是挺不错的。具体应用，spring中应用我记得挺多的，连接数据库的每个连接，还有session的存储。</span></p>
+<p><span style="font-size: 16px;">　　思考了一下，要我实现的话就用个map来存储，因为这个其实就是键值对，只不过键是线程唯一标识，值就是对应的私有变量。</span></p>
+<p><span style="font-size: 16px;">具体看了源码发现差不多，不过使用内部自己实现的一个ThreadLocalMap类，内部还一个Entry类而且Entry类继承weakRefrence（说实话第一次遇到弱应用，以前只是在jvm那本书学习了下），具体方法如下：</span></p>
+<p><span style="font-size: 16px;"><img style="display: block; margin-left: auto; margin-right: auto;" src="./images/java ThreadLocal线程设置私有变量底层源码分析0.png" alt="" /></span></p>
+<p><span style="font-size: 16px;">　　</span></p>
+<p><span style="font-size: 16px;">先看下他的set方法吧</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> set(T value) {
+    
+        Thread t </span>=<span style="color: #000000;"> Thread.currentThread();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获得所有线程共享的ThreadLocalMap对象</span>
+        ThreadLocalMap map =<span style="color: #000000;"> getMap(t);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">对象已经存在就直接插入键值对
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">不存在就创建然后再插入</span>
+        <span style="color: #0000ff;">if</span> (map != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            map.set(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">, value);
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;">
+            createMap(t, value);
+}</span></code></pre>
+
+<p><span style="font-size: 16px;">getMap方法的话一个获得所有线程共享的ThreadLocalMap对象如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">ThreadLocalMap getMap(Thread t) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> t.threadLocals;
+    }</span></code></pre>
+
+<p><span style="font-size: 16px;">然后进入Thread类进去找一下这个容器，找到下面：</span></p>
+<pre><code><span style="font-size: 16px;"><code class="language-text">ThreadLocal.ThreadLocalMap threadLocals = null;</code></span></code></pre>
+<p><span style="font-size: 16px;">然后创建：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">void</span><span style="color: #000000;"> createMap(Thread t, T firstValue) {<br />　　　　//创建ThreadLocalMap对象赋给threadLocals
+        t.threadLocals </span>= <span style="color: #0000ff;">new</span> ThreadLocalMap(<span style="color: #0000ff;">this</span><span style="color: #000000;">, firstValue);
+    }</span></code></pre>
+
+<p><span style="font-size: 16px;">至此，ThreadLocal的基本原理就已经很清晰了：<strong>各线程对共享的ThreadLocal实例进行操作，实际上是以该实例为键对内部持有的ThreadLocalMap对象进行操作</strong>。<br /></span></p>
+<p><span style="font-size: 16px;">还有get()方法的话就是利用设置的键进行获取，remove()方法也是，其实和Hashmap差不多不过解决冲突使用的拉链法（对了，下次写一篇HashHap的还有ConcurrentHashMap的话，颇有研究）。这里有个问题就是因为这个ThreadLocalMap是静态的所以在方法区中(jdk8之后为元数据区)，不进行回收的话会造成内存泄漏，而且可能会出现内存溢出，所以使用后记得remove();</span></p>
+<p><span style="font-size: 16px;">基本上其实可以了，不过好奇ThreadLocalMap怎么实现的可以接着往下看，我也好奇，所以也偷偷看了，嘿嘿嘿</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">那就来分析一下这个ThreadLocalMap这个内部类吧。</span></p>
+<p><span style="font-size: 16px;">ThreadLocalMap属于一个自定义的map，是一个带有hash功能的静态内部类，其实和java.util包下提供的Map类并没有关系。内部有一个静态的Entry类，下面具体分析Entry。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * The entries in this hash map extend WeakReference, using
+         * its main ref field as the key (which is always a
+         * ThreadLocal object).  Note that null keys (i.e. entry.get()
+         * == null) mean that the key is no longer referenced, so the
+         * entry can be expunged from table.  Such entries are referred to
+         * as "stale entries" in the code that follows.
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> Entry <span style="color: #0000ff;">extends</span> WeakReference&lt;ThreadLocal&lt;?&gt;&gt;<span style="color: #000000;"> {
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;"> The value associated with this ThreadLocal. </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            Object value;
+
+            Entry(ThreadLocal</span>&lt;?&gt;<span style="color: #000000;"> k, Object v) {
+                </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(k);
+                value </span>=<span style="color: #000000;"> v;
+            }
+        }</span></code></pre>
+
+<p><span style="font-size: 16px;">偷了一下官方的解释：</span></p>
+<p><span style="font-size: 16px;">主要是说entry继承自WeakReference，用main方法引用的字段作为entry中的key。当entry.get() == null的时候，意味着键将不再被引用。</span></p>
+<p><span style="font-size: 16px;">注意看到一个super(k)，说明调用父类的构造，去看看</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">Reference(T referent) {
+    this(referent, null);
+}
+Reference(T referent, ReferenceQueue&lt;? super T&gt; queue) {
+    this.referent = referent;
+    this.queue = (queue == null) ? ReferenceQueue.NULL : queue;
+}
+</code></pre>
+
+<p>　　<span style="font-size: 16px;">就上面这个其他没了，看了半天有点没看懂，然后去学了四种引用回来终于看懂，由于篇幅过多，在结尾我给出两篇别人的博客，可以去看完了，再回来，多学点哈哈哈。</span></p>
+<p><span style="font-size: 16px;">再看了下发现这个内部类好多，但是其实就是map的一种实现，上面也讲了set方法那就简单提一下ThreadLocalMap的set()方法相关的吧，代码下面：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> set(ThreadLocal&lt;?&gt;<span style="color: #000000;"> key, Object value) {
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> We don't use a fast path as with get() because it is at
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> least as common to use set() to create new entries as
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> it is to replace existing ones, in which case, a fast
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> path would fail more often than not.
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">把Entry对象数组拿到来</span>
+            ThreadLocal.ThreadLocalMap.Entry[] tab =<span style="color: #000000;"> table;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">长度也拿到来</span>
+            <span style="color: #0000ff;">int</span> len =<span style="color: #000000;"> tab.length;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">通过拿到key的hashcode值，进去发现神奇的一幕这里利用通过累加这个值0x61c88647来作为hashcode，
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里提一下往下走发现因为要公用这个属性，多个实例访问会有问题
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 所以使用了AtomicInteger原子操作来写值
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">并且与总长度-1做与运算就是取模，因为扩容都是2的n次方所以这样直接取模就行，速度快</span>
+            <span style="color: #0000ff;">int</span> i = key.threadLocalHashCode &amp; (len-1<span style="color: #000000;">);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">定位到对应的数组位置，进行冲突判断之类的处理</span>
+            <span style="color: #0000ff;">for</span> (ThreadLocal.ThreadLocalMap.Entry e =<span style="color: #000000;"> tab[i];
+                 e </span>!= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                 e </span>= tab[i = nextIndex(i, len)]) {   <span style="color: #008000;">//</span><span style="color: #008000;">这里是冲突遍历
+
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">这里里面就拿对应tabel下对应位置的当前引用</span>
+                ThreadLocal&lt;?&gt; k =<span style="color: #000000;"> e.get();
+
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">判断是不是对应的键，是的话就覆盖</span>
+                <span style="color: #0000ff;">if</span> (k ==<span style="color: #000000;"> key) {
+                    e.value </span>=<span style="color: #000000;"> value;
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                }
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">没有的话就生成Entry代替掉</span>
+                <span style="color: #0000ff;">if</span> (k == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    replaceStaleEntry(key, value, i);
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">这里就直接插入了</span>
+            tab[i] = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ThreadLocal.ThreadLocalMap.Entry(key, value);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">长度加1</span>
+            <span style="color: #0000ff;">int</span> sz = ++<span style="color: #000000;">size;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">判断是否做扩容</span>
+            <span style="color: #0000ff;">if</span> (!cleanSomeSlots(i, sz) &amp;&amp; sz &gt;=<span style="color: #000000;"> threshold)
+                rehash();
+        }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">里面其实挺复杂的，具体的话就是正常是使用开放定址法处理，这里使用累加一个定值解决的冲突，因为多个实例共用，特殊处理，厉害厉害。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">threadLocalHashCode代码也贴在这里吧，有兴趣可以直接去看</span>
+
+        <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> AtomicInteger nextHashCode = <span style="color: #0000ff;">new</span><span style="color: #000000;"> AtomicInteger();
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> HASH_INCREMENT = 0x61c88647<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> nextHashCode() {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> nextHashCode.getAndAdd(HASH_INCREMENT);
+        }
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> threadLocalHashCode = nextHashCode();</code></pre>
+
+<p>&nbsp;总结</p>
+<p>看完源码之后神清气爽，学到了很多啦。以前对java引用只是知道四个引用和对应的相应简单概念，为了看懂这个Entry，去学习了weakReference源码，看了别人的关于四个引用的博客写的真好，偷偷学习了下，并且知道怎么使用了。划重点会用了！！！当然对于ThreadLocal也会用了，而且好像可以手写一个简单的版本哎，可以动手试试。</p>
+<p>&nbsp;</p>
+<p>关于四种引用博客，写的真的很棒。</p>
+<p><a href="https://blog.csdn.net/swebin/article/details/78571933">https://blog.csdn.net/swebin/article/details/78571933</a></p>
+<p><a href="https://blog.csdn.net/hacker_zhidian/article/details/83043270">https://blog.csdn.net/hacker_zhidian/article/details/83043270</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

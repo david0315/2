@@ -1,0 +1,102 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringSecurity退出功能实现的正确方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringSecurity退出功能实现的正确方式</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11925681.html</div><br>
+    <p><img src="./images/SpringSecurity退出功能实现的正确方式0.png" alt="file" /></p>
+<p>本文将介绍在Spring Security框架下如何实现用户的&quot;退出&quot;logout的功能。其实这是一个非常简单的功能，我见过很多的程序员在使用了Spring Security之后，仍然去自己写controller方法实现logout功能，这种做法就好像耕地，你有机械设备你不用，你非要用牛。</p>
+<h2 id="一logout最简及最佳实践">一、logout最简及最佳实践</h2>
+<p>其实使用Spring Security进行logout非常简单，只需要在spring Security配置类配置项上加上这样一行代码:http.logout()。关于spring Security配置类的其他很多实现、如：HttpBasic模式、formLogin模式、自定义登录验证结果、使用权限表达式、session会话管理，在本号的之前的文章已经都写过了。本节的核心内容就是在原有配置的基础上，加上这样一行代码:http.logout()。</p>
+<pre><code><code>@Configuration
+@EnableWebSecurity
+public class SecSecurityConfig extends WebSecurityConfigurerAdapter {
+ 
+    @Override
+    protected void configure(final HttpSecurity http) throws Exception {
+        http.logout();
+   }
+
+}</code></code></pre>
+<p>加上logout配置之后，在你的“退出”按钮上使用/logtou作为请求登出的路径。</p>
+<pre><code><code>&lt;a href=&quot;/logout&quot; &gt;退出&lt;/a&gt;</code></code></pre>
+<p>logout功能我们就完成了。实际上的核心代码只有两行。</p>
+<h2 id="二默认的logout做了什么">二、默认的logout做了什么？</h2>
+<p>虽然我们简简单单的实现了logout功能，是不是还不足够放心？我们下面就来看一下Spring Security默认在logout过程中帮我们做了哪些动作。</p>
+<ul>
+<li>当前session失效，即：logout的核心需求，session失效就是访问权限的回收。</li>
+<li>删除当前用户的 remember-me“记住我”功能信息</li>
+<li>clear清除当前的 SecurityContext</li>
+<li>重定向到登录页面，loginPage配置项指定的页面</li>
+</ul>
+<p>通常对于一个应用来讲，以上动作就是logout功能所需要具备的功能了。</p>
+<h2 id="三个性化配置">三、个性化配置</h2>
+<p>虽然Spring Security默认使用了/logout作为退出处理请求路径，登录页面作为退出之后的跳转页面。这符合绝大多数的应用的开发逻辑，但有的时候我们需要一些个性化设置，如下：</p>
+<pre><code><code> http.logout()
+     .logoutUrl(&quot;/signout&quot;)
+     .logoutSuccessUrl(&quot;/aftersignout.html&quot;)
+     .deleteCookies(&quot;JSESSIONID&quot;)</code></code></pre>
+<ul>
+<li>通过指定logoutUrl配置改变退出请求的默认路径，当然html退出按钮的请求url也要修改</li>
+<li>通过指定logoutSuccessUrl配置，来显式指定退出之后的跳转页面</li>
+<li>还可以使用deleteCookies删除指定的cookie，参数为cookie的名称</li>
+</ul>
+<h2 id="四logoutsuccesshandler">四、LogoutSuccessHandler</h2>
+<p>如果上面的个性化配置，仍然满足不了您的应用需求。可能您的应用需要在logout的时候，做一些特殊动作，比如登录时长计算，清理业务相关的数据等等。你可以通过实现LogoutSuccessHandler 接口来实现你的业务逻辑。</p>
+<pre><code><code>@Component
+public class MyLogoutSuccessHandler implements LogoutSuccessHandler {
+    
+    @Override
+    public void onLogoutSuccess(HttpServletRequest request, 
+                                HttpServletResponse response, 
+                                Authentication authentication) 
+                                throws IOException, ServletException {
+        //这里书写你自己的退出业务逻辑
+        
+        // 重定向到登录页
+        response.sendRedirect(&quot;/login.html&quot;);
+    }
+}</code></code></pre>
+<p>然后进行配置使其生效，核心代码就是一行logoutSuccessHandler。注意logoutSuccessUrl不要与logoutSuccessHandler一起使用，否则logoutSuccessHandler将失效。</p>
+<pre><code><code>@Configuration
+@EnableWebSecurity
+public class SecSecurityConfig extends WebSecurityConfigurerAdapter {
+    
+@Autowired
+    private MyLogoutSuccessHandler myLogoutSuccessHandler;
+
+    @Override
+    protected void configure(final HttpSecurity http) throws Exception {
+         http.logout()
+             .logoutUrl(&quot;/signout&quot;)
+             //.logoutSuccessUrl(``&quot;/aftersignout.html&quot;``)
+             .deleteCookies(&quot;JSESSIONID&quot;)
+              //自定义logoutSuccessHandler
+             .logoutSuccessHandler(myLogoutSuccessHandler);   
+   }
+}</code></code></pre>
+<h2 id="期待您的关注">期待您的关注</h2>
+<ul>
+<li>博主最近新写了一本书：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

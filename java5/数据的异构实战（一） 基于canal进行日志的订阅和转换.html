@@ -1,0 +1,424 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修数据的异构实战（一） 基于canal进行日志的订阅和转换' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>数据的异构实战（一） 基于canal进行日志的订阅和转换</center></div><div class='banquan'>原文出处:本文由博客园博主Java知音*提供。<br/>
+原文连接:https://www.cnblogs.com/javazhiyin/p/11676043.html</div><br>
+    <p>什么是数据的异构处理。简单说就是<strong>为了满足我们业务的扩展性，将数据从某种特定的格式转换到新的数据格式中来。</strong></p>
+<p>为什么会有这种需求出现呢？</p>
+<p>传统的企业中，主要都是将数据存储在了关系型数据库中，例如说MySQL这种数据库，但是为了满足需求的扩展，查询的维度会不断地增加，那么这个时候我们就需要做数据的异构处理了。</p>
+<p><strong>常见的数据异构有哪些？</strong></p>
+<p>例如MySQL数据转储到Redis，MySQL数据转储到es等等，也是因为这种数据异构的场景开始出现，陆陆续续有了很多中间件在市场中冒出，例如说rocketMq，kafka，canal这种组件。</p>
+<p><strong>下边有一张通俗易懂的数据异构过程图：</strong></p>
+<p><img title="数据的异构实战（一） 基于canal进行日志的订阅和转换" src="./images/数据的异构实战（一） 基于canal进行日志的订阅和转换0.png" alt="数据的异构实战（一） 基于canal进行日志的订阅和转换" data-original="./images/数据的异构实战（一） 基于canal进行日志的订阅和转换0.png" />在这里插入图片描述</p>
+<p><strong>canal进行数据同步</strong></p>
+<p>首先，我们需要正确地打开canal服务器去订阅binlog日志。</p>
+<p>关于binlog日志查看常用的几条命令如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">#是否启用了日志
+mysql</span><span style="color: #808080;">&gt;</span>show variables <span style="color: #808080;">like</span> <span style="color: #ff0000;">'</span><span style="color: #ff0000;">log_bin</span><span style="color: #ff0000;">'</span><span style="color: #000000;">;
+#怎样知道当前的日志
+mysql</span><span style="color: #808080;">&gt;</span><span style="color: #000000;"> show master status;
+#查看mysql binlog模式
+show variables </span><span style="color: #808080;">like</span> <span style="color: #ff0000;">'</span><span style="color: #ff0000;">binlog_format</span><span style="color: #ff0000;">'</span><span style="color: #000000;">;
+#获取binlog文件列表
+show </span><span style="color: #0000ff;">binary</span><span style="color: #000000;"> logs;
+#查看当前正在写入的binlog文件
+show master statusG
+#查看指定binlog文件的内容
+show binlog events </span><span style="color: #808080;">in</span> <span style="color: #ff0000;">'</span><span style="color: #ff0000;">mysql-bin.000002</span><span style="color: #ff0000;">'</span>;</code></pre>
+
+<p>&nbsp;</p>
+<p>注意binlog日志格式要求为row格式：</p>
+<p><strong>ROW格式日志的特点</strong></p>
+<p>记录sql语句和每个字段变动的前后情况，能够清楚每行数据的变化历史，占用较多的空间，不会记录对数据没有影响的sql，例如说select语句就不会记录。可以使mysqlbinlog工具去查看内部信息。</p>
+<p><strong>STATEMENT模式的日志内容</strong></p>
+<p>STATEMENT格式的日志就和它本身的命名有点类似，只是单独地记录了sql的内容，但是没有记录上下文信息，在数据会UI福的时候可能会导致数据丢失。</p>
+<p><strong>MIX模式模式的日志内容</strong></p>
+<p>这种模式的日志内容比较灵活，当遇到了表结构变更的时候，就会记录为statement模式，如果遇到了数据修改的话就会变为row模式。</p>
+<p><strong>如何配置canal的相关信息？</strong></p>
+<p>比较简单，首先通过下载好canal的安装包，然后我们需要在canal的配置文件上边做一些手脚：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">canal的example文件夹下边的properties文件
+canal.instance.master.address</span><span style="color: #808080;">=**</span>.<span style="color: #808080;">***</span>.<span style="color: #808080;">***</span>.<span style="color: #808080;">**</span>:<span style="color: #800000; font-weight: bold;">3306</span><span style="color: #000000;">
+# 日志的文件名称
+canal.instance.master.journal.name</span><span style="color: #808080;">=</span>master<span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">96</span><span style="color: #808080;">-</span>bin.<span style="color: #800000; font-weight: bold;">000009</span><span style="color: #000000;">
+canal.instance.dbUsername</span><span style="color: #808080;">=****</span><span style="color: #000000;">
+canal.instance.dbPassword</span><span style="color: #808080;">=****</span></code></pre>
+
+<p>&nbsp;</p>
+<p>启动我们的canal程序，然后查看日志，如果显示下边这些内容就表示启动成功了：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #800000; font-weight: bold;">2019</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">10</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">13</span> <span style="color: #800000; font-weight: bold;">16</span>:<span style="color: #800000; font-weight: bold;">00</span>:<span style="color: #800000; font-weight: bold;">30.072</span> <span style="color: #ff0000;">[</span><span style="color: #ff0000;">main</span><span style="color: #ff0000;">]</span> ERROR com.alibaba.druid.pool.DruidDataSource <span style="color: #808080;">-</span> testWhileIdle <span style="color: #0000ff;">is</span> true, validationQuery <span style="color: #808080;">not</span> <span style="color: #0000ff;">set</span>
+<span style="color: #800000; font-weight: bold;">2019</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">10</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">13</span> <span style="color: #800000; font-weight: bold;">16</span>:<span style="color: #800000; font-weight: bold;">00</span>:<span style="color: #800000; font-weight: bold;">30.734</span> <span style="color: #ff0000;">[</span><span style="color: #ff0000;">main</span><span style="color: #ff0000;">]</span> INFO  c.a.otter.canal.instance.spring.CanalInstanceWithSpring <span style="color: #808080;">-</span> start CannalInstance <span style="color: #0000ff;">for</span> <span style="color: #800000; font-weight: bold;">1</span><span style="color: #808080;">-</span><span style="color: #000000;">example 
+</span><span style="color: #800000; font-weight: bold;">2019</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">10</span><span style="color: #808080;">-</span><span style="color: #800000; font-weight: bold;">13</span> <span style="color: #800000; font-weight: bold;">16</span>:<span style="color: #800000; font-weight: bold;">00</span>:<span style="color: #800000; font-weight: bold;">30.783</span> <span style="color: #ff0000;">[</span><span style="color: #ff0000;">main</span><span style="color: #ff0000;">]</span> INFO  c.a.otter.canal.instance.core.AbstractCanalInstance <span style="color: #808080;">-</span> start successful....</code></pre>
+
+<p>&nbsp;</p>
+<p><strong>ps:关于canal入门安装的教程网上有很多，这里我就不做过多的阐述了。</strong></p>
+<p>canal服务器搭建起来之后，我们便进入了java端的程序编码部分：</p>
+<p>接着再来查看我们的客户端代码，客户端中我们需要通过java程序获取canal服务器的连接，然后进入监听binlog日志的状态。</p>
+<p>可以参考下边的程序代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sise.client.simple;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.otter.canal.client.CanalConnector;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.otter.canal.client.CanalConnectors;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.otter.canal.protocol.CanalEntry;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.otter.canal.protocol.Message;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.google.protobuf.InvalidProtocolBufferException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sise.common.dto.TypeDTO;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sise.common.handle.CanalDataHandler;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.net.InetSocketAddress;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.stream.Collectors;
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 简单版本的canal监听客户端
+ *
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> idea
+ * @date 2019/10/12
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SImpleCanalClient {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String SERVER_ADDRESS = "127.0.0.1"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> Integer PORT = 11111<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String DESTINATION = "example"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String USERNAME = ""<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String PASSWORD = ""<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        CanalConnector canalConnector </span>=<span style="color: #000000;"> CanalConnectors.newSingleConnector(
+                </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> InetSocketAddress(SERVER_ADDRESS, PORT), DESTINATION, USERNAME, PASSWORD);
+        canalConnector.connect();
+        canalConnector.subscribe(</span>".*\..*"<span style="color: #000000;">);
+        canalConnector.rollback();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (; ; ) {
+            Message message </span>= canalConnector.getWithoutAck(100<span style="color: #000000;">);
+            </span><span style="color: #0000ff;">long</span> batchId =<span style="color: #000000;"> message.getId();
+            </span><span style="color: #0000ff;">if</span>(batchId!=-1<span style="color: #000000;">){
+</span><span style="color: #008000;">//</span><span style="color: #008000;">                System.out.println(message.getEntries());</span>
+<span style="color: #000000;">                System.out.println(batchId);
+                printEntity(message.getEntries());
+            }
+        }
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> printEntity(List&lt;CanalEntry.Entry&gt;<span style="color: #000000;"> entries){
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (CanalEntry.Entry entry : entries) {
+            </span><span style="color: #0000ff;">if</span> (entry.getEntryType()!=<span style="color: #000000;">CanalEntry.EntryType.ROWDATA){
+                </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                CanalEntry.RowChange rowChange</span>=<span style="color: #000000;">CanalEntry.RowChange.parseFrom(entry.getStoreValue());
+                </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (CanalEntry.RowData rowData : rowChange.getRowDatasList()) {
+                    System.out.println(rowChange.getEventType());
+                    </span><span style="color: #0000ff;">switch</span><span style="color: #000000;"> (rowChange.getEventType()){
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果希望监听多种事件，可以手动增加case</span>
+                        <span style="color: #0000ff;">case</span><span style="color: #000000;"> INSERT:
+                            String tableName </span>=<span style="color: #000000;"> entry.getHeader().getTableName();
+                            </span><span style="color: #008000;">//</span><span style="color: #008000;">测试选用t_type这张表进行映射处理</span>
+                            <span style="color: #0000ff;">if</span> ("t_type"<span style="color: #000000;">.equals(tableName)) {
+                                TypeDTO typeDTO </span>= CanalDataHandler.convertToBean(rowData.getAfterColumnsList(), TypeDTO.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+                                System.out.println(typeDTO);
+                            }
+                            System.out.println(</span>"this is INSERT"<span style="color: #000000;">);
+                            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                        </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+                            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                    }
+                }
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InvalidProtocolBufferException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 打印内容
+     *
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> columns
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> printColums(List&lt;CanalEntry.Column&gt;<span style="color: #000000;"> columns){
+        String line</span>=columns.stream().map(column -&gt; column.getName()+"="+<span style="color: #000000;">column.getValue())
+                .collect(Collectors.joining(</span>","<span style="color: #000000;">));
+        System.out.println(line);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>本地监听到了canal的example文件夹中配置的监听的日志信息之后，就会自动将该日志里面记录的数据进行打印读取。</p>
+<p>那么这个时候我们还需要做多一步处理，那就是将坚听到的数据转换为可识别的对象，然后进行对象转移处理。</p>
+<p>其实光是链接获取到canal的binlog日志并不困难，接着我们还需要将binlog日志进行统一的封装处理，需要编写一个特定的处理器将日志的内容转换为我们常用的DTO类：</p>
+<p>下边这个工具类可以借鉴一下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sise.common.handle;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.otter.canal.protocol.CanalEntry;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sise.common.dto.CourseDetailDTO;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> lombok.extern.slf4j.Slf4j;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.lang.reflect.Field;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 基于canal的数据处理器
+ *
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> idea
+ * @data 2019/10/13
+ </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+@Slf4j
+</span><span style="color: #0000ff;">public</span>  <span style="color: #0000ff;">class</span> CanalDataHandler <span style="color: #0000ff;">extends</span><span style="color: #000000;"> TypeConvertHandler {
+
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 将binlog的记录解析为一个bean对象
+     *
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> columnList
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> clazz
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> &lt;T&gt;
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; T convertToBean(List&lt;CanalEntry.Column&gt; columnList, Class&lt;T&gt;<span style="color: #000000;"> clazz) {
+        T bean </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            bean </span>=<span style="color: #000000;"> clazz.newInstance();
+            Field[] fields </span>=<span style="color: #000000;"> clazz.getDeclaredFields();
+            Field.setAccessible(fields, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            Map</span>&lt;String, Field&gt; fieldMap = <span style="color: #0000ff;">new</span> HashMap&lt;&gt;<span style="color: #000000;">(fields.length);
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Field field : fields) {
+                fieldMap.put(field.getName().toLowerCase(), field);
+            }
+            </span><span style="color: #0000ff;">if</span> (fieldMap.containsKey("serialVersionUID"<span style="color: #000000;">)) {
+                fieldMap.remove(</span>"serialVersionUID"<span style="color: #000000;">.toLowerCase());
+            }
+            System.out.println(fieldMap.toString());
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (CanalEntry.Column column : columnList) {
+                String columnName </span>=<span style="color: #000000;"> column.getName();
+                String columnValue </span>=<span style="color: #000000;"> column.getValue();
+                System.out.println(columnName);
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (fieldMap.containsKey(columnName)) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">基础类型转换不了</span>
+                    Field field =<span style="color: #000000;"> fieldMap.get(columnName);
+                    Class</span>&lt;?&gt; type =<span style="color: #000000;"> field.getType();
+                    </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(BEAN_FIELD_TYPE.containsKey(type)){
+                        </span><span style="color: #0000ff;">switch</span><span style="color: #000000;"> (BEAN_FIELD_TYPE.get(type)) {
+                            </span><span style="color: #0000ff;">case</span> "Integer"<span style="color: #000000;">:
+                                field.set(bean, parseToInteger(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "Long"<span style="color: #000000;">:
+                                field.set(bean, parseToLong(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "Double"<span style="color: #000000;">:
+                                field.set(bean, parseToDouble(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "String"<span style="color: #000000;">:
+                                field.set(bean, columnValue);
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "java.handle.Date"<span style="color: #000000;">:
+                                field.set(bean, parseToDate(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "java.sql.Date"<span style="color: #000000;">:
+                                field.set(bean, parseToSqlDate(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "java.sql.Timestamp"<span style="color: #000000;">:
+                                field.set(bean, parseToTimestamp(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            </span><span style="color: #0000ff;">case</span> "java.sql.Time"<span style="color: #000000;">:
+                                field.set(bean, parseToSqlTime(columnValue));
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                        }
+                    }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+                        field.set(bean, parseObj(columnValue));
+                    }
+                }
+
+            }
+        } </span><span style="color: #0000ff;">catch</span> (InstantiationException |<span style="color: #000000;"> IllegalAccessException e) {
+            log.error(</span>"[CanalDataHandler]convertToBean，初始化对象出现异常，对象无法被实例化,异常为{}"<span style="color: #000000;">, e);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IllegalAccessException {
+        CourseDetailDTO courseDetailDTO </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> CourseDetailDTO();
+        Class clazz </span>=<span style="color: #000000;"> courseDetailDTO.getClass();
+        Field[] fields </span>=<span style="color: #000000;"> clazz.getDeclaredFields();
+        Field.setAccessible(fields, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        System.out.println(courseDetailDTO);
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Field field : fields) {
+            </span><span style="color: #0000ff;">if</span> ("java.lang.String"<span style="color: #000000;">.equals(field.getType().getName())) {
+                field.set(courseDetailDTO, </span>"name"<span style="color: #000000;">);
+            }
+        }
+        System.out.println(courseDetailDTO);
+    }
+
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 其他类型自定义处理
+     *
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> source
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Object parseObj(String source){
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>接着是canal的核心处理器,主要的目的是将binlog转换为我们所希望的实体类对象，该类目前主要考虑兼容的数据类型为目前8种，比较有限，如果读者后续在实际开发中还遇到某些特殊的数据类型可以手动添加到map中。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sise.common.handle;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.text.ParseException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.text.SimpleDateFormat;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Date;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 类型转换器
+ *
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> idea
+ * @data 2019/10/13
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TypeConvertHandler {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> Map&lt;Class, String&gt;<span style="color: #000000;"> BEAN_FIELD_TYPE;
+
+    </span><span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+        BEAN_FIELD_TYPE </span>= <span style="color: #0000ff;">new</span> HashMap&lt;&gt;(8<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(Integer.</span><span style="color: #0000ff;">class</span>, "Integer"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(Long.</span><span style="color: #0000ff;">class</span>, "Long"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(Double.</span><span style="color: #0000ff;">class</span>, "Double"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(String.</span><span style="color: #0000ff;">class</span>, "String"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(Date.</span><span style="color: #0000ff;">class</span>, "java.handle.Date"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(java.sql.Date.</span><span style="color: #0000ff;">class</span>, "java.sql.Date"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(java.sql.Timestamp.</span><span style="color: #0000ff;">class</span>, "java.sql.Timestamp"<span style="color: #000000;">);
+        BEAN_FIELD_TYPE.put(java.sql.Time.</span><span style="color: #0000ff;">class</span>, "java.sql.Time"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Integer parseToInteger(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Integer.valueOf(source);
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Long parseToLong(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Long.valueOf(source);
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Double parseToDouble(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Double.valueOf(source);
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Date parseToDate(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">if</span> (source.length() == 10<span style="color: #000000;">) {
+            source </span>= source + " 00:00:00"<span style="color: #000000;">;
+        }
+        SimpleDateFormat sdf </span>= <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+        Date date;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            date </span>=<span style="color: #000000;"> sdf.parse(source);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ParseException e) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> date;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> java.sql.Date parseToSqlDate(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        SimpleDateFormat sdf </span>= <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd"<span style="color: #000000;">);
+        java.sql.Date sqlDate;
+        Date utilDate;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            utilDate </span>=<span style="color: #000000;"> sdf.parse(source);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ParseException e) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        sqlDate </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> java.sql.Date(utilDate.getTime());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> sqlDate;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> java.sql.Timestamp parseToTimestamp(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        SimpleDateFormat sdf </span>= <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+        Date date;
+        java.sql.Timestamp timestamp;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            date </span>=<span style="color: #000000;"> sdf.parse(source);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ParseException e) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        timestamp </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> java.sql.Timestamp(date.getTime());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> timestamp;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> java.sql.Time parseToSqlTime(String source) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSourceNull(source)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        SimpleDateFormat sdf </span>= <span style="color: #0000ff;">new</span> SimpleDateFormat("HH:mm:ss"<span style="color: #000000;">);
+        Date date;
+        java.sql.Time time;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            date </span>=<span style="color: #000000;"> sdf.parse(source);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ParseException e) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        time </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> java.sql.Time(date.getTime());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> time;
+    }
+
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isSourceNull(String source) {
+        </span><span style="color: #0000ff;">if</span> (source == "" || source == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><strong>ps: t_type表是一张我们用于做测试时候使用的表，这里我们可以根据自己实际的业务需要定制不同的实体类对象</strong></p>
+<p>现在我们已经可以通过binlog转换为实体类了，那么接下来就是如何将实体类做额外的传输和处理了。数据的传输我们通常会借助mq这类型的中间件来进行操作，关于这部分的内容我会在后续的文章中做详细的输出。</p>
+<p><em><strong>推荐阅读(点击即可跳转阅读)</strong></em></p>
+<p><strong>1.</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=2&amp;sn=0d054027651bef114ae6bec5a8f62359&amp;chksm=ebd62a07dca1a3111269692dd9b0a5ab8af7d2038b8ec6600a057573364e76db1332adc5fd46&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">SpringBoot内容聚合</a></p>
+<p><strong>2.</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=3&amp;sn=b04d8fdacf575c7ec959de4107f31091&amp;chksm=ebd62a07dca1a31186f7f62de60ba7c7a88db26233562ed7183c6f609c5e7f4ffb448f30375f&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">面试题内容聚合</a></p>
+<p><strong>3.</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=4&amp;sn=ec20f59a5b67a59d98d221bd20d78448&amp;chksm=ebd62a07dca1a31188dafea0e6984b4883fa972a32ff31da2df6f52fcc73b56c6c9454751d73&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">设计模式内容聚合</a></p>
+<p><strong>4.</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488945&amp;idx=2&amp;sn=2c0326af621ac51f33720e2608121cef&amp;chksm=ebd62a9ddca1a38b8e284b413a8eea08aa452fdeda3c4740325803514d30029a2ab4af5bdfed&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">Mybatis内容聚合</a></p>
+<p><strong>5.</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=6&amp;sn=a769526cf5c4dfc5b0f8e5a40f984cff&amp;chksm=ebd62a07dca1a3116cc6c45ceb7a81d47293b9811c8df97b5ca363c6370ffccfd913bab3599f&amp;scene=21#wechat_redirect" rel="noopener" target="_blank">多线程内容聚合</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

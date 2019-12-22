@@ -1,0 +1,264 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Docker Swarm从部署到基本操作' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Docker Swarm从部署到基本操作</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11516368.html</div><br>
+    <h3 id="关于docker-swarm">关于Docker Swarm</h3>
+<p>Docker Swarm由两部分组成：</p>
+<ol>
+<li>Docker集群：将一个或多个Docker节点组织起来，用户就能以集群的方式进行管理；</li>
+<li>应用编排：有一套API用来部署和管理容器；</li>
+</ol>
+<p>官方资料：https://docs.docker.com/swarm/</p>
+<h3 id="网络图">网络图</h3>
+<p>下图是个典型的Docker Swarm集群部署图，来自Docker官网：<br />
+<img src="./images/Docker Swarm从部署到基本操作0.png" alt="在这里插入图片描述" /><br />
+接下来照着上图来搭建一个Docker Swarm集群。</p>
+<h3 id="准备工作">准备工作</h3>
+<p>本次实战一共用到了5台机器，配置信息全部相同，如下：</p>
+<ol>
+<li>操作系统：CentOS Linux release 7.6.1810</li>
+<li>Docker服务版本：1.13.1</li>
+<li>防火墙都已经关闭；</li>
+</ol>
+<p>机器的信息如下表所示：<br />
+| IP地址 | 主机名 | 身份 |<br />
+|--|--|--|<br />
+| 192.168.121.142 | m0 | 管理节点 |<br />
+| 192.168.121.139 | m1 | 管理节点 |<br />
+| 192.168.121.140 | m2 | 管理节点 |<br />
+| 192.168.121.141 | w0 | 工作节点 |<br />
+| 192.168.121.138 | w1 | 工作节点 |</p>
+<h3 id="为什么要三个管理节点">为什么要三个管理节点？</h3>
+<p>从官方图可见，管理节点集群之间的内部管理协调使用了Raft共识算法，这样就保证了管理节点高可用（HA），一般情况下会参考以下两个原则：</p>
+<ol>
+<li>部署奇数个管理节点，这样有利于减少脑裂；</li>
+<li>不要部署太多管理节点，因为越多管理节点意味着需要花费跟多时间来达成共识；</li>
+</ol>
+<h3 id="部署集群步骤简介">部署集群步骤简介</h3>
+<p>接下来的整个部署过程分为以下几步：</p>
+<ol>
+<li>初始化第一个管理节点（m0）；</li>
+<li>加入新的管理节点（m1、m2）；</li>
+<li>加入工作节点（w0、w1）；</li>
+</ol>
+<p>接下来正式开始吧；</p>
+<h3 id="初始化第一个管理节点m0">初始化第一个管理节点（m0）</h3>
+<ol>
+<li>m0节点的IP地址是<font color="blue">192.168.121.142</font>，因此在m0节点执行以下命令：</li>
+</ol>
+<pre><code><code>docker swarm init \
+--advertise-addr 192.168.121.142:2377
+--listen-addr 192.168.121.142:2377</code></code></pre>
+<p>关于advertise-addr和listen-addr这两个参数，前者用来指定其他节点连接m0时的地址，后者指定承载swarm流量的IP和端口，它们更详细和深入的区别可以参考文章：https://boxboat.com/2016/08/17/whats-docker-swarm-advertise-addr/</p>
+<ol>
+<li>控制台返回信息如下，表明Swarm集群初始化成功：</li>
+</ol>
+<pre><code><code>Swarm initialized: current node (7585zt09o2sat82maef0ocf42) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-5huefb5501cv7p8i2op1am2oevasoqu4te8vpvapndkudvszb4-e8l6755jstd7urpdo5smyi8fv \
+    192.168.121.142:2377
+
+To add a manager to this swarm, run &#39;docker swarm join-token manager&#39; and follow the instructions.</code></code></pre>
+<ol>
+<li>列出当前Swarm集群的所有节点，可以看到唯一的节点m0的状态和身份：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker node ls
+ID                           HOSTNAME  STATUS  AVAILABILITY  MANAGER STATUS
+7585zt09o2sat82maef0ocf42 *  m0        Ready   Active        Leader</code></code></pre>
+<p>现在集群已经建立起来了，接下来我们需要加入更多的管理节点和工作节点；</p>
+<h3 id="如何加入新的节点">如何加入新的节点？</h3>
+<ol>
+<li>Docker Swarm的新节点加入策略是从管理节点获取一长串命令，被称为join token，任何想加入集群的机器只要自己执行这个join token即可加入Swarm集群；</li>
+<li>如果有新的管理节点需要加入，在m0执行命令<font color="blue">docker swarm join-token manager</font>即可得到管理节点的join token，如下所示：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker swarm join-token manager
+To add a manager to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-5huefb5501cv7p8i2op1am2oevasoqu4te8vpvapndkudvszb4-5tz9d4w7nwzu8r4ozd0ff2aiu \
+    192.168.121.142:2377</code></code></pre>
+<ol>
+<li>如果有新的工作节点需要加入，在m0执行命令<font color="blue">docker swarm join-token worker</font>即可得到工作节点的join token，如下所示：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker swarm join-token worker
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-5huefb5501cv7p8i2op1am2oevasoqu4te8vpvapndkudvszb4-e8l6755jstd7urpdo5smyi8fv \
+    192.168.121.142:2377</code></code></pre>
+<p>两种join token都准备好了，接下来开始加入新节点。</p>
+<h3 id="加入管理节点m1m2">加入管理节点m1、m2</h3>
+<ol>
+<li>在m1上执行前面取得的管理节点join token：</li>
+</ol>
+<pre><code><code>[root@m1 ~]# docker swarm join \
+&gt;     --token SWMTKN-1-5huefb5501cv7p8i2op1am2oevasoqu4te8vpvapndkudvszb4-5tz9d4w7nwzu8r4ozd0ff2aiu \
+&gt;     192.168.121.142:2377
+This node joined a swarm as a manager.</code></code></pre>
+<ol>
+<li>在m2上做同样的操作；</li>
+<li>在m0、m1、m2其中的任意一台上执行命令<font color="blue">docker node ls</font>查看Swarm集群的现状，如下图，可见三个管理节点都是正常状态，ID字段带有星号后缀表示当前执行命令的机器是m1：</li>
+</ol>
+<pre><code><code>[root@m1 ~]# docker node ls
+ID                           HOSTNAME  STATUS  AVAILABILITY  MANAGER STATUS
+0isfyre69mdu1hm11esf1q3dk    m2        Ready   Active        Reachable
+7585zt09o2sat82maef0ocf42    m0        Ready   Active        Leader
+slc0hjbs7jh2hdi8ai3wohy23 *  m1        Ready   Active        Reachable</code></code></pre>
+<h3 id="加入工作节点w0w1">加入工作节点w0、w1</h3>
+<ol>
+<li>在w0上执行前面取得的工作节点的join token：</li>
+</ol>
+<pre><code><code>[root@w0 ~]# docker swarm join \
+&gt;     --token SWMTKN-1-5huefb5501cv7p8i2op1am2oevasoqu4te8vpvapndkudvszb4-e8l6755jstd7urpdo5smyi8fv \
+&gt;     192.168.121.142:2377
+This node joined a swarm as a worker.</code></code></pre>
+<ol>
+<li>在w1上做同样的操作；</li>
+<li>在m0、m1、m2其中的任意一台上执行命令<font color="blue">docker node ls</font>查看Swarm集群的现状，可见工作节点已经全部就绪：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker node ls
+ID                           HOSTNAME  STATUS  AVAILABILITY  MANAGER STATUS
+0isfyre69mdu1hm11esf1q3dk    m2        Ready   Active        Reachable
+7585zt09o2sat82maef0ocf42 *  m0        Ready   Active        Leader
+i71bcxt1auc804syybroajtan    w1        Ready   Active        
+slc0hjbs7jh2hdi8ai3wohy23    m1        Ready   Active        Reachable
+wqcwcccva3d3mxgi5p423d4fv    w0        Ready   Active</code></code></pre>
+<p>至此，Swarm集群环境搭建完毕，接下来可以验证了。</p>
+<h3 id="验证swarm集群环境">验证Swarm集群环境</h3>
+<ol>
+<li>创建名为tomcat-net的覆盖网络(Overlay Netowork)，这是个二层网络，处于该网络下的docker容器，即使宿主机不一样，也能相互访问：</li>
+</ol>
+<pre><code><code>docker network create -d overlay tomcat-net</code></code></pre>
+<ol>
+<li>创建名为tomcat的服务，使用了刚才创建的覆盖网络：</li>
+</ol>
+<pre><code><code>docker service create --name tomcat \
+--network tomcat-net \
+-p 8080:8080 \
+--replicas 3 \
+tomcat:7.0.96-jdk8-openjdk</code></code></pre>
+<ol>
+<li>执行命令<font color="blue">docker service ls</font>查看当前所有服务：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service ls
+ID            NAME    MODE        REPLICAS  IMAGE
+kguawc4b5th4  tomcat  replicated  3/3       tomcat:7.0.96-jdk8-openjdk</code></code></pre>
+<ol>
+<li>执行命令<font color="blue">docker service ps tomcat</font>查看名为tomcat的服务，可见三个容器分别部署在m0、m2、w1机器上：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service ps tomcat
+ID            NAME      IMAGE                       NODE  DESIRED STATE  CURRENT STATE           ERROR  PORTS
+n1gs9f1plce2  tomcat.1  tomcat:7.0.96-jdk8-openjdk  w1    Running        Running 19 minutes ago         
+q8jyg088ci21  tomcat.2  tomcat:7.0.96-jdk8-openjdk  m2    Running        Running 19 minutes ago         
+h9ww33dpw56m  tomcat.3  tomcat:7.0.96-jdk8-openjdk  m0    Running        Running 19 minutes ago</code></code></pre>
+<ol>
+<li>执行命令<font color="blue">docker service inspect --pretty tomcat</font>查看名为tomcat的服务的详细信息(去掉--pretty可以看到更完整的)：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service inspect --pretty tomcat
+
+ID:     kguawc4b5th4qlwlsv183qtai
+Name:       tomcat
+Service Mode:   Replicated
+ Replicas:  3
+Placement:
+UpdateConfig:
+ Parallelism:   1
+ On failure:    pause
+ Max failure ratio: 0
+ContainerSpec:
+ Image:     tomcat:7.0.96-jdk8-openjdk@sha256:91eadffb59d9a35ada2d39fcd616a749ac580aa5e834499b7128f27be2e46623
+Resources:
+Networks: tomcat-net 
+Endpoint Mode:  vip
+Ports:
+ PublishedPort 8080
+  Protocol = tcp
+  TargetPort = 8080</code></code></pre>
+<ol>
+<li><p>打开浏览器，尝试访问m0、m1、m2、w0、w1这个五个机器的8080端口，都可以成功访问tomcat首页：<br />
+<img src="./images/Docker Swarm从部署到基本操作1.png" alt="在这里插入图片描述" /></p>
+<h3 id="服务模式">服务模式</h3></li>
+<li>服务模式一共有两种：Ingress和Host，如果不指定，则默认的是Ingress；</li>
+<li>Ingress模式下，到达Swarm任何节点的8080端口的流量，都会映射到任何服务副本的内部80端口，就算该节点上没有tomcat服务副本也会映射；</li>
+<li>Host模式下，仅在运行有容器副本的机器上开放端口，使用Host模式的命令如下：</li>
+</ol>
+<pre><code><code>docker service create --name tomcat \
+--network tomcat-net \
+--publish published=8080,target=8080,mode=host \
+--replicas 3 \
+tomcat:7.0.96-jdk8-openjdk</code></code></pre>
+<h3 id="服务扩缩容">服务扩缩容</h3>
+<ol>
+<li>执行命令<font color="blue">docker service scale tomcat=5</font>将副本数从3调整为5：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service scale tomcat=5
+tomcat scaled to 5</code></code></pre>
+<ol>
+<li>执行命令<font color="blue">docker service ps tomcat</font>查看名为tomcat的服务，可见每台机器上都分布了一个容器：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service ps tomcat
+ID            NAME      IMAGE                       NODE  DESIRED STATE  CURRENT STATE               ERROR  PORTS
+w32tjahze2fk  tomcat.1  tomcat:7.0.96-jdk8-openjdk  m2    Running        Running 42 minutes ago             
+yj5czwwhrrsh  tomcat.2  tomcat:7.0.96-jdk8-openjdk  m0    Running        Running 42 minutes ago             
+pq40995nbd0k  tomcat.3  tomcat:7.0.96-jdk8-openjdk  w1    Running        Running 42 minutes ago             
+y1y6z1jczel1  tomcat.4  tomcat:7.0.96-jdk8-openjdk  m1    Running        Running about a minute ago         
+w0dcii8f79os  tomcat.5  tomcat:7.0.96-jdk8-openjdk  w0    Running        Running about a minute ago</code></code></pre>
+<h3 id="滚动升级">滚动升级</h3>
+<ol>
+<li>当前tomcat服务中，tomcat镜像的tag是<font color="blue">7.0.96-jdk8-openjdk</font>，我们来尝试升级到<font color="blue">9.0.24-jdk11-openjdk</font>，执行以下命令：</li>
+</ol>
+<pre><code><code>docker service update \
+--image tomcat:9.0.24-jdk11-openjdk \
+--update-parallelism 1 \
+--update-delay 10s tomcat</code></code></pre>
+<p>上述命令有几处需要注意：</p>
+<p>a. update-parallelism：每次更新的容器数量，这里设置为1，表示每一个容器升级成功后才去升级下一个；</p>
+<p>b. update-delay：每一批升级成功后，升级下一批之前的等待时间，这里表示升级一个容器后等10秒再升级下一个；</p>
+<ol>
+<li>在升级过程中执行命令<font color="blue">docker service ps tomcat</font>查看服务，可以看到新版本容器逐个启动的过程：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service ps tomcat
+ID            NAME          IMAGE                        NODE  DESIRED STATE  CURRENT STATE                ERROR  PORTS
+w32tjahze2fk  tomcat.1      tomcat:7.0.96-jdk8-openjdk   m2    Running        Running 56 minutes ago              
+yj5czwwhrrsh  tomcat.2      tomcat:7.0.96-jdk8-openjdk   m0    Running        Running 56 minutes ago              
+semuna9awsn7  tomcat.3      tomcat:9.0.24-jdk11-openjdk  w1    Running        Running 15 seconds ago              
+pq40995nbd0k   \_ tomcat.3  tomcat:7.0.96-jdk8-openjdk   w1    Shutdown       Shutdown about a minute ago         
+y1y6z1jczel1  tomcat.4      tomcat:7.0.96-jdk8-openjdk   m1    Running        Running 15 minutes ago              
+oot3yex74v4t  tomcat.5      tomcat:9.0.24-jdk11-openjdk  w0    Running        Preparing 5 seconds ago             
+w0dcii8f79os   \_ tomcat.5  tomcat:7.0.96-jdk8-openjdk   w0    Shutdown       Shutdown 3 seconds ago</code></code></pre>
+<ol>
+<li><p>升级完成后，用浏览器访问服务，可见tomcat版本已经升级：<br />
+<img src="./images/Docker Swarm从部署到基本操作2.png" alt="在这里插入图片描述" /></p>
+<h3 id="删除服务">删除服务</h3>
+执行命令<font color="blue">docker service rm tomcat</font>即可删除服务：</li>
+</ol>
+<pre><code><code>[root@m0 ~]# docker service rm tomcat
+tomcat
+[root@m0 ~]# docker service ls
+ID  NAME  MODE  REPLICAS  IMAGE</code></code></pre>
+<p>至此，Docker Swarm从部署到基本操都已经体验过一次了，希望您在搭建环境的时候，本文能给您一些参考。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

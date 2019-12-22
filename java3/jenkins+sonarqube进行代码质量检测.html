@@ -1,0 +1,197 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修jenkins+sonarqube进行代码质量检测' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>jenkins+sonarqube进行代码质量检测</center></div><div class='banquan'>原文出处:本文由博客园博主JavaNeverGiveUp提供。<br/>
+原文连接:https://www.cnblogs.com/JavaNeverGiveUp/p/11906181.html</div><br>
+    <h2>JavaNeverGiveUp教程篇</h2>
+<p>用jenkins+sonarqube去检查代码是非常方便的，它能检查出代码中可能存在的一些问题，比如io流未关闭、空指针异常、死循环、代码不规范等问题。</p>
+<h2>1.&nbsp;<strong>搭建环境和下载工具包</strong></h2>
+<h3><strong>1.1搭建环境</strong></h3>
+<p>window系统+Jdk1.8+mysql5.6+python3.6</p>
+<h3><strong>1.2下载工具包</strong></h3>
+<table border="1" cellspacing="0">
+<tbody>
+<tr>
+<td valign="top" width="146">
+<p>工具包</p>
+</td>
+<td valign="top" width="139">
+<p>描述</p>
+</td>
+<td valign="top" width="282">
+<p>下载地址（未精确到版本号）</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="146">
+<p>sonarqube-7.4.zip</p>
+</td>
+<td valign="top" width="139">
+<p>sonarqube核心包</p>
+</td>
+<td valign="top" width="282">
+<p><a href="https://www.sonarqube.org/downloads/">https://www.sonarqube.org/downloads/</a></p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="146">
+<p>sonar-scanner-2.8.zip</p>
+</td>
+<td valign="top" width="139">
+<p>代码扫描器</p>
+</td>
+<td valign="top" width="282">
+<p><a href="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/">https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/</a></p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="146">
+<p>jenkins-2.190.2.zip</p>
+</td>
+<td valign="top" width="139">
+<p>jenkins核心</p>
+</td>
+<td valign="top" width="282">
+<p><a href="http://mirrors.jenkins.io/war-stable/">http://mirrors.jenkins.io/war-stable/</a></p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h2>2.&nbsp;<strong>配置SonarQube</strong></h2>
+<h3><strong>2.1数据库sonar库</strong></h3>
+<p>SonarQube需要连接mysql，并且mysql需要开启innodb存储引擎，查询是否开启的sql语句是SHOW ENGINES。mysql5.6默认开启了innodb，那么直接在数据库中创建以下数据库，Sql如下：</p>
+<table border="1" cellspacing="0">
+<tbody>
+<tr>
+<td valign="top" width="568">
+<p>创建用户sonar： &nbsp;</p>
+<p>CREATE DATABASE sonar CHARACTER SET utf8 COLLATE utf8_general_ci; &nbsp;</p>
+<p>CREATE USER 'sonar' IDENTIFIED BY 'sonar'; &nbsp;</p>
+<p>GRANT ALL ON sonar.* TO 'sonar'@'%' IDENTIFIED BY 'sonar'; &nbsp;</p>
+<p>GRANT ALL ON sonar.* TO 'sonar'@'localhost' IDENTIFIED BY 'sonar'; &nbsp;</p>
+<p>FLUSH PRIVILEGES;</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3><strong>2.2解压SonarQube到指定目录</strong></h3>
+<p>本项目解压到了D:\jenkins_sonar\sonarqube-7.4，目录结构如图2-1</p>
+<p>&nbsp;<img src="./images/jenkins+sonarqube进行代码质量检测0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="center">图2-1</p>
+<h3><strong>2.3修改SonarQube配置文件</strong></h3>
+<p>如图2-2所示，sonar.properties增加以下配置，主要是连接数据库的配置和tomcat端口。</p>
+<table border="1" cellspacing="0">
+<tbody>
+<tr>
+<td valign="top" width="568">
+<p>sonar.jdbc.username=root</p>
+<p>sonar.jdbc.password=root</p>
+<p>sonar.jdbc.url=jdbc:mysql://localhost:3306/sonar?useUnicode=true&amp;characterEncoding=utf8&amp;rewriteBatchedStatements=true&amp;useConfigs=maxPerformance</p>
+<p>sonar.web.port=9999</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<p align="center">图2-2</p>
+<p>因为SonarQube需要jdk1.8或者以上才能启动，如图2-3所示wrapper.conf指定jdk版本为1.8。</p>
+<p><img src="./images/jenkins+sonarqube进行代码质量检测1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="center">图2-3</p>
+<h3><strong>2.5 SonarQube汉化</strong></h3>
+<p>下载汉化插件sonar-l10n-zh-plugin-1.24.jar放到以下目录，下载地址<a href="https://github.com/SonarQubeCommunity/sonar-l10n-zh/releases"><span>https://github.com/SonarQubeCommunity/sonar-l10n-zh/releases</span></a></p>
+<p>&nbsp;<img src="./images/jenkins+sonarqube进行代码质量检测2.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3><strong>24 启动SonarQube</strong></h3>
+<p>打开图示windows批处理文件，如果命令行出现SonarQube is up则说</p>
+<p>用本机浏览器输入localhost:9999能正常进入首页，则说明SonarQube配置成功。</p>
+<p>&nbsp;<img src="./images/jenkins+sonarqube进行代码质量检测3.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;<img src="./images/jenkins+sonarqube进行代码质量检测4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2>3.&nbsp;<strong>配置SonarQube代码扫描器</strong></h2>
+<h3><strong>3.1解压SonarQube扫描器到指定目录</strong></h3>
+<p>如图3-1所示</p>
+<p><img src="./images/jenkins+sonarqube进行代码质量检测5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="center">&nbsp;</p>
+<p align="center">图3-1</p>
+<h3><strong>3.2 配置环境变量</strong></h3>
+<p>把解压后得到的bin目录加入到环境变量中，图示目录是D:\jenkins_sonar\sonar-scanner-3.2.0.1227-windows\bin。</p>
+<h3><strong>3.3 测试本地代码扫描</strong></h3>
+<p>在一个项目根目录下创建sonar-project.properties配置文件，并添加以下配置，以目录D:\jenkins_sonar\WebStarter-security为例。</p>
+<table border="1" cellspacing="0">
+<tbody>
+<tr>
+<td valign="top" width="568">
+<p>#sonarqube服务器地址</p>
+<p>sonar.host.url=http://localhost:9999</p>
+<p>#sonarqube用户名默认就是admin</p>
+<p>sonar.login=admin</p>
+<p>#sonarqube密码</p>
+<p>sonar.password=admin默认就是admin</p>
+<p>#项目唯一标识（不能出现重复）</p>
+<p>sonar.projectKey=WebStarter-security</p>
+<p>#项目名称</p>
+<p>sonar.projectName=WebStarter-security</p>
+<p>#源代码目录</p>
+<p>sonar.sources=./</p>
+<p>#编译生成的class文件的所在目录</p>
+<p>sonar.java.binaries=target</p>
+<p>#版本号</p>
+<p>sonar.projectVersion=1.0</p>
+<p>sonar.language=java</p>
+<p>#源代码文件编码</p>
+<p>sonar.sourceEncoding=UTF-8</p>
+<p>&nbsp;</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>用cmd进入项目根目录D:\jenkins_sonar\WebStarter-security，执行sonar-scanner命令，出现以下提示则说明项目代码扫描成功。</p>
+<p>&nbsp;</p>
+<p align="justify">&nbsp;<img src="./images/jenkins+sonarqube进行代码质量检测6.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="justify">浏览器进入<a href="http://localhost:9999/projects"><span>http://localhost:9999/projects</span></a>，右上角进行登录，默认管理员用户名和密码都是admin。</p>
+<p align="justify">点击项目名进入对应的项目，出现以下扫描结果，就是成功扫描代码了。</p>
+<p align="justify"><img src="./images/jenkins+sonarqube进行代码质量检测7.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;代码检查出来的问题</p>
+<p><img src="./images/jenkins+sonarqube进行代码质量检测8.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="justify">&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

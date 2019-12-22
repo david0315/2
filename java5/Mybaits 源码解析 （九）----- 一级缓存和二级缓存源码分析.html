@@ -1,0 +1,1245 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11770064.html</div><br>
+    <p>像Mybatis、Hibernate这样的ORM框架，封装了JDBC的大部分操作，极大的简化了我们对数据库的操作。</p>
+<p>在实际项目中，我们发现在一个事务中查询同样的语句两次的时候，第二次没有进行数据库查询，直接返回了结果，实际这种情况我们就可以称为缓存。</p>
+<h2>Mybatis的缓存级别</h2>
+<h3>&nbsp;一级缓存</h3>
+<ul>
+<li>MyBatis的一级查询缓存（也叫作本地缓存）是基于org.apache.ibatis.cache.impl.PerpetualCache 类的 HashMap本地缓存，其作用域是SqlSession，myBatis 默认一级查询缓存是开启状态，且不能关闭。</li>
+<li>在同一个SqlSession中两次执行相同的 sql查询语句，第一次执行完毕后，会将查询结果写入到缓存中，第二次会从缓存中直接获取数据，而不再到数据库中进行查询，这样就减少了数据库的访问，从而提高查询效率。</li>
+<li>基于PerpetualCache 的 HashMap本地缓存，其存储作用域为 Session，PerpetualCache 对象是在SqlSession中的Executor的localcache属性当中存放，当 Session flush 或 close 之后，该Session中的所有 Cache 就将清空。</li>
+</ul>
+<src>
+<h3>二级缓存</h3>
+<src>
+<ul>
+<li>二级缓存与一级缓存其机制相同，默认也是采用 PerpetualCache，HashMap存储，不同在于其存储作用域为 Mapper(Namespace)，每个Mapper中有一个Cache对象，存放在Configration中，并且将其放进当前Mapper的所有MappedStatement当中，并且可自定义存储源，如 Ehcache。</li>
+</ul>
+
+
+<ul>
+<li>Mapper级别缓存，定义在Mapper文件的&lt;cache&gt;标签并需要开启此缓存</li>
+</ul>
+<p>用下面这张图描述一级缓存和二级缓存的关系。</p>
+<p><img src="./images/Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析0.png" alt="" /></p>
+<h2 id="autoid-2-3-0">CacheKey</h2>
+<p>在 MyBatis 中，引入缓存的目的是为提高查询效率，降低数据库压力。既然 MyBatis 引入了缓存，那么大家思考过缓存中的 key 和 value 的值分别是什么吗？大家可能很容易能回答出 value 的内容，不就是 SQL 的查询结果吗。那 key 是什么呢？是字符串，还是其他什么对象？如果是字符串的话，那么大家首先能想到的是用 SQL 语句作为 key。但这是不对的，比如：</p>
+<src class="cnblogs_code">
+<pre><code>SELECT * FROM user where id &gt; ?</code></pre>
+
+<p>id &gt; 1 和 id &gt; 10 查出来的结果可能是不同的，所以我们不能简单的使用 SQL 语句作为 key。从这里可以看出来，运行时参数将会影响查询结果，因此我们的 key 应该涵盖运行时参数。除此之外呢，如果进行分页查询也会导致查询结果不同，因此 key 也应该涵盖分页参数。综上，我们不能使用简单的 SQL 语句作为 key。应该考虑使用一种复合对象，能涵盖可影响查询结果的因子。在 MyBatis 中，这种复合对象就是 CacheKey。下面来看一下它的定义。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> CacheKey <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Cloneable, Serializable {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DEFAULT_MULTIPLYER = 37<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DEFAULT_HASHCODE = 17<span style="color: #000000;">;
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 乘子，默认为37</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> multiplier;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> CacheKey 的 hashCode，综合了各种影响因子</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> hashcode;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 校验和</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> checksum;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 影响因子个数</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> count;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 影响因子集合</span>
+    <span style="color: #0000ff;">private</span> List&lt;Object&gt;<span style="color: #000000;"> updateList;
+    
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> CacheKey() {
+        </span><span style="color: #0000ff;">this</span>.hashcode =<span style="color: #000000;"> DEFAULT_HASHCODE;
+        </span><span style="color: #0000ff;">this</span>.multiplier =<span style="color: #000000;"> DEFAULT_MULTIPLYER;
+        </span><span style="color: #0000ff;">this</span>.count = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.updateList = <span style="color: #0000ff;">new</span> ArrayList&lt;Object&gt;<span style="color: #000000;">();
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;"> 每当执行更新操作时，表示有新的影响因子参与计算 
+     *  当不断有新的影响因子参与计算时，hashcode 和 checksum 将会变得愈发复杂和随机。这样可降低冲突率，使 CacheKey 可在缓存中更均匀的分布。
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> update(Object object) {
+            </span><span style="color: #0000ff;">int</span> baseHashCode = object == <span style="color: #0000ff;">null</span> ? 1<span style="color: #000000;"> : ArrayUtil.hashCode(object);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 自增 count</span>
+        count++<span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 计算校验和</span>
+        checksum +=<span style="color: #000000;"> baseHashCode;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 更新 baseHashCode</span>
+        baseHashCode *=<span style="color: #000000;"> count;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 计算 hashCode</span>
+        hashcode = multiplier * hashcode +<span style="color: #000000;"> baseHashCode;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 保存影响因子</span>
+<span style="color: #000000;">        updateList.add(object);
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     *  CacheKey 最终要作为键存入 HashMap，因此它需要覆盖 equals 和 hashCode 方法
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> equals(Object object) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测是否为同一个对象</span>
+        <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span> ==<span style="color: #000000;"> object) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测 object 是否为 CacheKey</span>
+        <span style="color: #0000ff;">if</span> (!(object <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> CacheKey)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">final</span> CacheKey cacheKey =<span style="color: #000000;"> (CacheKey) object;
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测 hashCode 是否相等</span>
+        <span style="color: #0000ff;">if</span> (hashcode !=<span style="color: #000000;"> cacheKey.hashcode) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测校验和是否相同</span>
+        <span style="color: #0000ff;">if</span> (checksum !=<span style="color: #000000;"> cacheKey.checksum) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测 coutn 是否相同</span>
+        <span style="color: #0000ff;">if</span> (count !=<span style="color: #000000;"> cacheKey.count) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果上面的检测都通过了，下面分别对每个影响因子进行比较</span>
+        <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; updateList.size(); i++<span style="color: #000000;">) {
+            Object thisObject </span>=<span style="color: #000000;"> updateList.get(i);
+            Object thatObject </span>=<span style="color: #000000;"> cacheKey.updateList.get(i);
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">ArrayUtil.equals(thisObject, thatObject)) {
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> hashCode() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 返回 hashcode 变量</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> hashcode;
+    }
+}</span></code></pre>
+
+<p>当不断有新的影响因子参与计算时，hashcode 和 checksum 将会变得愈发复杂和随机。这样可降低冲突率，使 CacheKey 可在缓存中更均匀的分布。CacheKey 最终要作为键存入 HashMap，因此它需要覆盖 equals 和 hashCode 方法。</p>
+<h2>一级缓存源码解析</h2>
+<h3>一级缓存的测试</h3>
+<p><strong>同一个session查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Blog blog </span>= (Blog)<strong>session</strong>.selectOne("queryById",1<span style="color: #000000;">);
+        Blog blog2 </span>= (Blog)<strong>session</strong>.selectOne("queryById",1<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>结论：只有一个DB查询</p>
+<p><strong>两个session分别查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    SqlSession session1 </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Blog blog </span>= (Blog)<strong>session</strong>.selectOne("queryById",17<span style="color: #000000;">);
+        Blog blog2 </span>= (Blog)<strong>session1</strong>.selectOne("queryById",17<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>&nbsp;结论：进行了两次DB查询</p>
+<p><strong>同一个session，进行update之后再次查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Blog blog </span>= (Blog)<strong>session.selectOne</strong>("queryById",17<span style="color: #000000;">);
+        blog.setName(</span>"llll"<span style="color: #000000;">);
+      <strong>  session.update</strong>(</span>"updateBlog"<span style="color: #000000;">,blog);
+        
+        Blog blog2 </span>= (Blog)<strong>session.selectOne</strong>("queryById",17<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>结论：进行了两次DB查询</p>
+<p>总结：在一级缓存中，同一个SqlSession下，查询语句相同的SQL会被缓存，如果执行增删改操作之后，该缓存就会被删除</p>
+<h3>创建缓存对象<strong>PerpetualCache</strong></h3>
+<p>我们来回顾一下创建SqlSession的过程</p>
+<src class="cnblogs_code">
+<pre><code>SqlSession session =<span style="color: #000000;"> sessionFactory.openSession();
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSession openSession() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.openSessionFromDataSource(<span style="color: #0000ff;">this</span>.configuration.getDefaultExecutorType(), (TransactionIsolationLevel)<span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">private</span> SqlSession openSessionFromDataSource(ExecutorType execType, TransactionIsolationLevel level, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit) {
+    Transaction tx </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+    DefaultSqlSession var8;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Environment environment </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getEnvironment();
+        TransactionFactory transactionFactory </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getTransactionFactoryFromEnvironment(environment);
+        tx </span>=<span style="color: #000000;"> transactionFactory.newTransaction(environment.getDataSource(), level, autoCommit);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建SQL执行器</span>
+        Executor executor = <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.newExecutor(tx, execType);
+        var8 </span>= <span style="color: #0000ff;">new</span> DefaultSqlSession(<span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration, executor, autoCommit);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var12) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.closeTransaction(tx);
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error opening session.  Cause: " +<span style="color: #000000;"> var12, var12);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> var8;
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Executor newExecutor(Transaction transaction, ExecutorType executorType) {
+    executorType </span>= executorType == <span style="color: #0000ff;">null</span> ? <span style="color: #0000ff;">this</span><span style="color: #000000;">.defaultExecutorType : executorType;
+    executorType </span>= executorType == <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> ExecutorType.SIMPLE : executorType;
+    Object executor;
+    </span><span style="color: #0000ff;">if</span> (ExecutorType.BATCH ==<span style="color: #000000;"> executorType) {
+        executor </span>= <span style="color: #0000ff;">new</span> BatchExecutor(<span style="color: #0000ff;">this</span><span style="color: #000000;">, transaction);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (ExecutorType.REUSE ==<span style="color: #000000;"> executorType) {
+        executor </span>= <span style="color: #0000ff;">new</span> ReuseExecutor(<span style="color: #0000ff;">this</span><span style="color: #000000;">, transaction);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">默认创建SimpleExecutor</span>
+        executor = <span style="color: #0000ff;">new</span> SimpleExecutor(<span style="color: #0000ff;">this</span><span style="color: #000000;">, transaction);
+    }
+
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.cacheEnabled) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">开启二级缓存就会用CachingExecutor装饰SimpleExecutor</span>
+        executor = <span style="color: #0000ff;">new</span><span style="color: #000000;"> CachingExecutor((Executor)executor);
+    }
+
+    Executor executor </span>= (Executor)<span style="color: #0000ff;">this</span><span style="color: #000000;">.interceptorChain.pluginAll(executor);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> executor;
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SimpleExecutor(Configuration configuration, Transaction transaction) {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(configuration, transaction);
+}
+
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> BaseExecutor(Configuration configuration, Transaction transaction) {
+    </span><span style="color: #0000ff;">this</span>.transaction =<span style="color: #000000;"> transaction;
+    </span><span style="color: #0000ff;">this</span>.deferredLoads = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ConcurrentLinkedQueue();
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">创建一个缓存对象，PerpetualCache并不是线程安全的
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">但SqlSession和Executor对象在通常情况下只能有一个线程访问，而且访问完成之后马上销毁。也就是session.close();</span>
+    <span style="color: #0000ff;">this</span>.localCache = <span style="color: #0000ff;">new</span> PerpetualCache("LocalCache"<span style="color: #000000;">);
+    </span></strong><span style="color: #0000ff;">this</span>.localOutputParameterCache = <span style="color: #0000ff;">new</span> PerpetualCache("LocalOutputParameterCache"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">this</span>.closed = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">this</span>.configuration =<span style="color: #000000;"> configuration;
+    </span><span style="color: #0000ff;">this</span>.wrapper = <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>我只是简单的贴了代码，大家可以看我之前的博客，我们可以看到DefaultSqlSession中有SimpleExecutor对象，SimpleExecutor对象中有一个PerpetualCache，一级缓存的数据就是存储在PerpetualCache对象中，SqlSession关闭的时候会清空PerpetualCache</p>
+<h3>一级缓存实现</h3>
+<p>再来看BaseExecutor中的query方法是怎么实现一级缓存的，executor默认实现为CachingExecutor</p>
+<p><strong>CachingExecutor</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt; query(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    BoundSql boundSql </span>=<span style="color: #000000;"> ms.getBoundSql(parameter);
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">利用sql和执行的参数生成一个key，如果同一sql不同的执行参数的话，将会生成不同的key</span>
+    CacheKey key =<span style="color: #000000;"> createCacheKey(ms, parameter, rowBounds, boundSql);
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> query(ms, parameter, rowBounds, resultHandler, key, boundSql);
+}
+
+@Override
+</span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql)
+    </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里是二级缓存的查询，我们暂且不看</span>
+    Cache cache =<span style="color: #000000;"> ms.getCache();
+    </span><span style="color: #0000ff;">if</span> (cache != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        flushCacheIfRequired(ms);
+        </span><span style="color: #0000ff;">if</span> (ms.isUseCache() &amp;&amp; resultHandler == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            ensureNoOutParams(ms, parameterObject, boundSql);
+            @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+            List</span>&lt;E&gt; list = (List&lt;E&gt;<span style="color: #000000;">) tcm.getObject(cache, key);
+            </span><span style="color: #0000ff;">if</span> (list == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                list </span>= delegate.&lt;E&gt;<span style="color: #000000;"> query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+                tcm.putObject(cache, key, list); </span><span style="color: #008000;">//</span><span style="color: #008000;"> issue #578 and #116</span>
+<span style="color: #000000;">            }
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+        }
+    }
+    
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 直接来到这里
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 实现为BaseExecutor.query()</span>
+    <span style="color: #0000ff;">return</span> delegate.&lt;E&gt;</strong><span style="color: #000000;"><strong> query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);</strong>
+}</span></code></pre>
+
+<p>如上，在访问一级缓存之前，MyBatis 首先会调用 createCacheKey 方法创建 CacheKey。下面我们来看一下 createCacheKey 方法的逻辑：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> CacheKey createCacheKey(MappedStatement ms, Object parameterObject, RowBounds rowBounds, BoundSql boundSql) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (closed) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ExecutorException("Executor was closed."<span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 CacheKey 对象</span>
+    CacheKey cacheKey = <span style="color: #0000ff;">new</span><span style="color: #000000;"> CacheKey();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 MappedStatement 的 id 作为影响因子进行计算</span>
+<span style="color: #000000;">    cacheKey.update(ms.getId());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> RowBounds 用于分页查询，下面将它的两个字段作为影响因子进行计算</span>
+<span style="color: #000000;">    cacheKey.update(rowBounds.getOffset());
+    cacheKey.update(rowBounds.getLimit());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 sql 语句，并进行计算</span>
+<span style="color: #000000;">    cacheKey.update(boundSql.getSql());
+    List</span>&lt;ParameterMapping&gt; parameterMappings =<span style="color: #000000;"> boundSql.getParameterMappings();
+    TypeHandlerRegistry typeHandlerRegistry </span>=<span style="color: #000000;"> ms.getConfiguration().getTypeHandlerRegistry();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (ParameterMapping parameterMapping : parameterMappings) {
+        </span><span style="color: #0000ff;">if</span> (parameterMapping.getMode() !=<span style="color: #000000;"> ParameterMode.OUT) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 运行时参数</span>
+<span style="color: #000000;">            Object value;    
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当前大段代码用于获取 SQL 中的占位符 #{xxx} 对应的运行时参数，
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 前文有类似分析，这里忽略了</span>
+            String propertyName =<span style="color: #000000;"> parameterMapping.getProperty();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (boundSql.hasAdditionalParameter(propertyName)) {
+                value </span>=<span style="color: #000000;"> boundSql.getAdditionalParameter(propertyName);
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (parameterObject == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                value </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (typeHandlerRegistry.hasTypeHandler(parameterObject.getClass())) {
+                value </span>=<span style="color: #000000;"> parameterObject;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                MetaObject metaObject </span>=<span style="color: #000000;"> configuration.newMetaObject(parameterObject);
+                value </span>=<span style="color: #000000;"> metaObject.getValue(propertyName);
+            }
+            
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 让运行时参数参与计算</span>
+<span style="color: #000000;">            cacheKey.update(value);
+        }
+    }
+    </span><span style="color: #0000ff;">if</span> (configuration.getEnvironment() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 Environment id 遍历，并让其参与计算</span>
+<span style="color: #000000;">        cacheKey.update(configuration.getEnvironment().getId());
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheKey;
+}</span></code></pre>
+
+<p>如上，在计算 CacheKey 的过程中，有很多影响因子参与了计算。比如 MappedStatement 的 id 字段，SQL 语句，分页参数，运行时变量，Environment 的 id 字段等。通过让这些影响因子参与计算，可以很好的区分不同查询请求。所以，我们可以简单的把 CacheKey 看做是一个查询请求的 id。有了 CacheKey，我们就可以使用它读写缓存了。</p>
+<p><strong>SimpleExecutor(BaseExecutor)</strong></p>
+<src class="cnblogs_code">
+<pre><code>@SuppressWarnings("unchecked"<span style="color: #000000;">)
+@Override
+</span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt; query(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    ErrorContext.instance().resource(ms.getResource()).activity(</span>"executing a query"<span style="color: #000000;">).object(ms.getId());
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (closed) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ExecutorException("Executor was closed."<span style="color: #000000;">);
+    }
+    </span><span style="color: #0000ff;">if</span> (queryStack == 0 &amp;&amp;<span style="color: #000000;"> ms.isFlushCacheRequired()) {
+        clearLocalCache();
+    }
+    List</span>&lt;E&gt;<span style="color: #000000;"> list;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        queryStack</span>++<span style="color: #000000;">;
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 看这里，先从localCache中获取对应CacheKey的结果值</span>
+        list = resultHandler == <span style="color: #0000ff;">null</span> ? (List&lt;E&gt;) localCache.getObject(key) : <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span></strong><span style="color: #0000ff;">if</span> (list != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            handleLocallyCachedOutputParameters(ms, key, parameter, boundSql);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 如果缓存中没有值，则从DB中查询</span>
+            list =</strong><span style="color: #000000;"><strong> queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);</strong>
+        }
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        queryStack</span>--<span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">if</span> (queryStack == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (DeferredLoad deferredLoad : deferredLoads) {
+            deferredLoad.load();
+        }
+        deferredLoads.clear();
+        </span><span style="color: #0000ff;">if</span> (configuration.getLocalCacheScope() ==<span style="color: #000000;"> LocalCacheScope.STATEMENT) {
+            clearLocalCache();
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+}</span></code></pre>
+
+<p><strong>BaseExecutor.queryFromDatabase()</strong></p>
+<p>我们先来看下这种缓存中没有值的情况，看一下查询后的结果是如何被放置到缓存中的</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> &lt;E&gt; List&lt;E&gt; queryFromDatabase(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    List</span>&lt;E&gt;<span style="color: #000000;"> list;
+    localCache.putObject(key, EXECUTION_PLACEHOLDER);
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 1.执行查询，获取list</span>
+        list =</strong><span style="color: #000000;"><strong> doQuery(ms, parameter, rowBounds, resultHandler, boundSql);</strong>
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        localCache.removeObject(key);
+    }
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 2.将查询后的结果放置到localCache中，key就是我们刚才封装的CacheKey，value就是从DB中查询到的list</span>
+<span style="color: #000000;">    localCache.putObject(key, list);
+    </span></strong><span style="color: #0000ff;">if</span> (ms.getStatementType() ==<span style="color: #000000;"> StatementType.CALLABLE) {
+        localOutputParameterCache.putObject(key, parameter);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+}</span></code></pre>
+
+<p>我们来看看<strong>&nbsp;localCache.putObject(key, list);</strong></p>
+<h3>PerpetualCache</h3>
+<p>PerpetualCache 是一级缓存使用的缓存类，内部使用了 HashMap 实现缓存功能。它的源码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> PerpetualCache <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Cache {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> String id;
+
+    </span><strong><span style="color: #0000ff;">private</span> Map&lt;Object, Object&gt; cache = <span style="color: #0000ff;">new</span> HashMap&lt;Object, Object&gt;<span style="color: #000000;">();
+
+    </span></strong><span style="color: #0000ff;">public</span><span style="color: #000000;"> PerpetualCache(String id) {
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getId() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getSize() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cache.size();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> putObject(Object key, Object value) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 存储键值对到 HashMap</span>
+<span style="color: #000000;">        cache.put(key, value);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getObject(Object key) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 查找缓存项</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache.get(key);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object removeObject(Object key) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 移除缓存项</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache.remove(key);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear() {
+        cache.clear();
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 省略部分代码</span>
+}</code></pre>
+
+<p>总结：可以看到localCache本质上就是一个Map，key为我们的CacheKey，value为我们的结果值，是不是很简单，只是封装了一个<strong>Map而已。</strong></p>
+<h3>清除缓存</h3>
+<p><strong>SqlSession.update（）</strong></p>
+<p>当我们进行更新操作时，会执行如下代码</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> update(MappedStatement ms, Object parameter) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    ErrorContext.instance().resource(ms.getResource()).activity(</span>"executing an update"<span style="color: #000000;">).object(ms.getId());
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (closed) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ExecutorException("Executor was closed."<span style="color: #000000;">);
+    }
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">每次执行update/insert/delete语句时都会清除一级缓存。</span>
+<span style="color: #000000;">    clearLocalCache();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 然后再进行更新操作</span>
+    <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> doUpdate(ms, parameter);</strong>
+}
+ 
+@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clearLocalCache() {
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">closed) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 直接将Map清空</span>
+</strong><span style="color: #000000;"><strong>        localCache.clear();</strong>
+        localOutputParameterCache.clear();
+    }
+}</span></code></pre>
+
+<p><strong>session.close();</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">DefaultSqlSession</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> close() {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #0000ff;">this</span>.executor.close(<span style="color: #0000ff;">this</span>.isCommitOrRollbackRequired(<span style="color: #0000ff;">false</span><span style="color: #000000;">));
+        </span></strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.closeCursors();
+        </span><span style="color: #0000ff;">this</span>.dirty = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;">BaseExecutor</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> close(<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> forceRollback) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.rollback(forceRollback);</strong>
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.transaction != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.transaction.close();
+            }
+
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException var11) {
+        log.warn(</span>"Unexpected exception on closing transaction.  Cause: " +<span style="color: #000000;"> var11);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.transaction = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.deferredLoads = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.localCache = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.localOutputParameterCache = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.closed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> rollback(<span style="color: #0000ff;">boolean</span> required) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.closed) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.clearLocalCache();
+            </span></strong><span style="color: #0000ff;">this</span>.flushStatements(<span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (required) {
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.transaction.rollback();
+            }
+
+        }
+    }
+
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clearLocalCache() {
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.closed) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 直接将Map清空</span>
+        <span style="color: #0000ff;">this</span><span style="color: #000000;">.localCache.clear();
+        </span></strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.localOutputParameterCache.clear();
+    }
+}</span></code></pre>
+
+<p>当关闭SqlSession时，也会清楚SqlSession中的一级缓存</p>
+<h3><strong>总结</strong></h3>
+<ol>
+<li>一级缓存只在同一个SqlSession中共享数据</li>
+<li>在同一个SqlSession对象执行相同的sql并参数也要相同，缓存才有效。</li>
+<li>如果在SqlSession中执行update/insert/detete语句或者<strong>session.close();</strong>的话，SqlSession中的executor对象会将一级缓存清空。</li>
+</ol>
+<h2>二级缓存源码解析</h2>
+<p>二级缓存构建在一级缓存之上，在收到查询请求时，MyBatis 首先会查询二级缓存。若二级缓存未命中，再去查询一级缓存。与一级缓存不同，二级缓存和具体的命名空间绑定，一个Mapper中有一个Cache，相同Mapper中的MappedStatement公用一个Cache，一级缓存则是和 SqlSession 绑定。一级缓存不存在并发问题二级缓存可在多个命名空间间共享，这种情况下，会存在并发问题，比喻多个不同的SqlSession 会同时执行相同的SQL语句，参数也相同，那么CacheKey是相同的，就会造成多个线程并发访问相同CacheKey的值，下面首先来看一下访问二级缓存的逻辑。</p>
+<h3>二级缓存的测试</h3>
+<p>二级缓存需要在Mapper.xml中配置&lt;cache/&gt;标签</p>
+<src class="cnblogs_code">
+<pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd"&gt;
+ 
+&lt;mapper namespace="mybatis.BlogMapper"&gt;
+    &lt;select id="queryById" parameterType="int" resultType="jdbc.Blog"&gt;<span style="color: #000000;">
+        select </span>* from blog where id =<span style="color: #000000;"> #{id}
+    </span>&lt;/select&gt;
+    &lt;update id="updateBlog" parameterType="jdbc.Blog"&gt;<span style="color: #000000;">
+        update Blog set name </span>= #{name},url = #{url} where id=<span style="color: #000000;">#{id}
+    </span>&lt;/update&gt;
+ <strong>   &lt;!-- 开启BlogMapper二级缓存 --&gt;
+    &lt;cache/&gt;</strong>
+&lt;/mapper&gt;</code></pre>
+
+<p><strong>不同的session进行相同的查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    SqlSession session1 </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Blog blog </span>= (Blog)session.selectOne("queryById",17<span style="color: #000000;">);
+        Blog blog2 </span>= (Blog)session1.selectOne("queryById",17<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>结论：执行两次DB查询</p>
+<p><strong>第一个session查询完成之后，手动提交，在执行第二个session查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    SqlSession session1 </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+       <strong> Blog blog </strong></span><strong>= (Blog)session.selectOne("queryById",17</strong><span style="color: #000000;"><strong>);
+        session.commit();</strong>
+ 
+     <strong>   Blog blog2 </strong></span><strong>= (Blog)session1.selectOne("queryById",17</strong><span style="color: #000000;"><strong>);</strong>
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>结论：执行一次DB查询</p>
+<p><strong>第一个session查询完成之后，手动关闭，在执行第二个session查询</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+    SqlSession session </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    SqlSession session1 </span>=<span style="color: #000000;"> sqlSessionFactory.openSession();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+      <strong>  Blog blog </strong></span><strong>= (Blog)session.selectOne("queryById",17<span style="color: #000000;">);
+        session.close();
+ 
+        Blog blog2 </span>= (Blog)session1.selectOne("queryById",17</strong><span style="color: #000000;"><strong>);</strong>
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        session.close();
+    }
+}</span></code></pre>
+
+<p>结论：执行一次DB查询</p>
+<p><strong>总结：二级缓存的生效必须在session提交或关闭之后才会生效</strong></p>
+<h3>标签&lt;cache/&gt;的解析</h3>
+<p>按照之前的对Mybatis的分析，对blog.xml的解析工作主要交给XMLConfigBuilder.parse()方法来实现的</p>
+<src class="cnblogs_code" onclick="cnblogs_code_show('521a47c4-0f84-4b5a-925a-64704a33f199')"><img id="code_img_closed_521a47c4-0f84-4b5a-925a-64704a33f199" class="code_img_closed" src="./images/Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析1.png" alt="" /><img id="code_img_opened_521a47c4-0f84-4b5a-925a-64704a33f199" class="code_img_opened" style="display: none;" onclick="cnblogs_code_hide('521a47c4-0f84-4b5a-925a-64704a33f199',event)" src="./images/Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析2.png" alt="" />
+<src id="cnblogs_code_open_521a47c4-0f84-4b5a-925a-64704a33f199" class="cnblogs_code_hide">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> XMLConfigBuilder.parse()</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span><span style="color: #000000;"> Configuration parse() {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (parsed) {
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Each XMLConfigBuilder can only be used once."<span style="color: #000000;">);
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 6</span>     parsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span>     parseConfiguration(parser.evalNode("/configuration"));<span style="color: #008000;">//</span><span style="color: #008000;"> 在这里</span>
+<span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> configuration;
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">10</span>  
+<span style="color: #008080;">11</span> <span style="color: #008000;">//</span><span style="color: #008000;"> parseConfiguration()
+</span><span style="color: #008080;">12</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 既然是在blog.xml中添加的，那么我们就直接看关于mappers标签的解析</span>
+<span style="color: #008080;">13</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parseConfiguration(XNode root) {
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">15</span>         Properties settings = settingsAsPropertiess(root.evalNode("settings"<span style="color: #000000;">));
+</span><span style="color: #008080;">16</span>         propertiesElement(root.evalNode("properties"<span style="color: #000000;">));
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        loadCustomVfs(settings);
+</span><span style="color: #008080;">18</span>         typeAliasesElement(root.evalNode("typeAliases"<span style="color: #000000;">));
+</span><span style="color: #008080;">19</span>         pluginElement(root.evalNode("plugins"<span style="color: #000000;">));
+</span><span style="color: #008080;">20</span>         objectFactoryElement(root.evalNode("objectFactory"<span style="color: #000000;">));
+</span><span style="color: #008080;">21</span>         objectWrapperFactoryElement(root.evalNode("objectWrapperFactory"<span style="color: #000000;">));
+</span><span style="color: #008080;">22</span>         reflectionFactoryElement(root.evalNode("reflectionFactory"<span style="color: #000000;">));
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">        settingsElement(settings);
+</span><span style="color: #008080;">24</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> read it after objectFactory and objectWrapperFactory issue #631</span>
+<span style="color: #008080;">25</span>         environmentsElement(root.evalNode("environments"<span style="color: #000000;">));
+</span><span style="color: #008080;">26</span>         databaseIdProviderElement(root.evalNode("databaseIdProvider"<span style="color: #000000;">));
+</span><span style="color: #008080;">27</span>         typeHandlerElement(root.evalNode("typeHandlers"<span style="color: #000000;">));
+</span><span style="color: #008080;">28</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 就是这里</span>
+<span style="color: #008080;">29</span>         mapperElement(root.evalNode("mappers"<span style="color: #000000;">));
+</span><span style="color: #008080;">30</span>     } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;">31</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error parsing SQL Mapper Configuration. Cause: " +<span style="color: #000000;"> e, e);
+</span><span style="color: #008080;">32</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">33</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">34</span> 
+<span style="color: #008080;">35</span> 
+<span style="color: #008080;">36</span> <span style="color: #008000;">//</span><span style="color: #008000;"> mapperElement()</span>
+<span style="color: #008080;">37</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> mapperElement(XNode parent) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+</span><span style="color: #008080;">38</span>     <span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">39</span>         <span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+</span><span style="color: #008080;">40</span>             <span style="color: #0000ff;">if</span> ("package"<span style="color: #000000;">.equals(child.getName())) {
+</span><span style="color: #008080;">41</span>                 String mapperPackage = child.getStringAttribute("name"<span style="color: #000000;">);
+</span><span style="color: #008080;">42</span> <span style="color: #000000;">                configuration.addMappers(mapperPackage);
+</span><span style="color: #008080;">43</span>             } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">44</span>                 String resource = child.getStringAttribute("resource"<span style="color: #000000;">);
+</span><span style="color: #008080;">45</span>                 String url = child.getStringAttribute("url"<span style="color: #000000;">);
+</span><span style="color: #008080;">46</span>                 String mapperClass = child.getStringAttribute("class"<span style="color: #000000;">);
+</span><span style="color: #008080;">47</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> 按照我们本例的配置，则直接走该if判断</span>
+<span style="color: #008080;">48</span>                 <span style="color: #0000ff;">if</span> (resource != <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">49</span> <span style="color: #000000;">                    ErrorContext.instance().resource(resource);
+</span><span style="color: #008080;">50</span>                     InputStream inputStream =<span style="color: #000000;"> Resources.getResourceAsStream(resource);
+</span><span style="color: #008080;">51</span>                     XMLMapperBuilder mapperParser = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, resource, configuration.getSqlFragments());
+</span><span style="color: #008080;">52</span>                     <span style="color: #008000;">//</span><span style="color: #008000;"> 生成XMLMapperBuilder，并执行其parse方法</span>
+<span style="color: #008080;">53</span> <span style="color: #000000;">                    mapperParser.parse();
+</span><span style="color: #008080;">54</span>                 } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url != <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">55</span> <span style="color: #000000;">                    ErrorContext.instance().resource(url);
+</span><span style="color: #008080;">56</span>                     InputStream inputStream =<span style="color: #000000;"> Resources.getUrlAsStream(url);
+</span><span style="color: #008080;">57</span>                     XMLMapperBuilder mapperParser = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, url, configuration.getSqlFragments());
+</span><span style="color: #008080;">58</span> <span style="color: #000000;">                    mapperParser.parse();
+</span><span style="color: #008080;">59</span>                 } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">60</span>                     Class&lt;?&gt; mapperInterface =<span style="color: #000000;"> Resources.classForName(mapperClass);
+</span><span style="color: #008080;">61</span> <span style="color: #000000;">                    configuration.addMapper(mapperInterface);
+</span><span style="color: #008080;">62</span>                 } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">63</span>                     <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("A mapper element may only specify a url, resource or class, but not more than one."<span style="color: #000000;">);
+</span><span style="color: #008080;">64</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">65</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">66</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">67</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">68</span> }</code></pre>
+
+<span class="cnblogs_code_collapse">View Code</span>
+<p>我们来看看解析Mapper.xml</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> XMLMapperBuilder.parse()</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parse() {
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">configuration.isResourceLoaded(resource)) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析mapper属性</span>
+        configurationElement(parser.evalNode("/mapper"<span style="color: #000000;">));
+        configuration.addLoadedResource(resource);
+        bindMapperForNamespace();
+    }
+ 
+    parsePendingResultMaps();
+    parsePendingChacheRefs();
+    parsePendingStatements();
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> configurationElement()</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> configurationElement(XNode context) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        String namespace </span>= context.getStringAttribute("namespace"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (namespace == <span style="color: #0000ff;">null</span> || namespace.equals(""<span style="color: #000000;">)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Mapper's namespace cannot be empty"<span style="color: #000000;">);
+        }
+        builderAssistant.setCurrentNamespace(namespace);
+        cacheRefElement(context.evalNode(</span>"cache-ref"<span style="color: #000000;">));
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 最终在这里看到了关于cache属性的处理</span>
+        cacheElement(context.evalNode("cache"</strong><span style="color: #000000;"><strong>));</strong>
+        parameterMapElement(context.evalNodes(</span>"/mapper/parameterMap"<span style="color: #000000;">));
+        resultMapElements(context.evalNodes(</span>"/mapper/resultMap"<span style="color: #000000;">));
+        sqlElement(context.evalNodes(</span>"/mapper/sql"<span style="color: #000000;">));
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 这里会将生成的Cache包装到对应的MappedStatement</span>
+        buildStatementFromContext(context.evalNodes("select|insert|update|delete"</strong><span style="color: #000000;"><strong>));</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error parsing Mapper XML. Cause: " +<span style="color: #000000;"> e, e);
+    }
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> cacheElement()</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> cacheElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">解析&lt;cache/&gt;标签的type属性，这里我们可以自定义cache的实现类，比如redisCache，如果没有自定义，这里使用和一级缓存相同的PERPETUAL</span>
+        String type = context.getStringAttribute("type", "PERPETUAL"<span style="color: #000000;">);
+        Class</span>&lt;? <span style="color: #0000ff;">extends</span> Cache&gt; typeClass =</strong><span style="color: #000000;"><strong> typeAliasRegistry.resolveAlias(type);</strong>
+        String eviction </span>= context.getStringAttribute("eviction", "LRU"<span style="color: #000000;">);
+        Class</span>&lt;? <span style="color: #0000ff;">extends</span> Cache&gt; evictionClass =<span style="color: #000000;"> typeAliasRegistry.resolveAlias(eviction);
+        Long flushInterval </span>= context.getLongAttribute("flushInterval"<span style="color: #000000;">);
+        Integer size </span>= context.getIntAttribute("size"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">boolean</span> readWrite = !context.getBooleanAttribute("readOnly", <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">boolean</span> blocking = context.getBooleanAttribute("blocking", <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        Properties props </span>=<span style="color: #000000;"> context.getChildrenAsProperties();
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 构建Cache对象</span>
+</strong><span style="color: #000000;"><strong>        builderAssistant.useNewCache(typeClass, evictionClass, flushInterval, size, readWrite, blocking, props);</strong>
+    }
+}</span></code></pre>
+
+<p>先来看看是如何构建Cache对象的</p>
+<p><strong>MapperBuilderAssistant.useNewCache()</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> Cache useNewCache(Class&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> typeClass,
+                         Class</span>&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> evictionClass,
+                         Long flushInterval,
+                         Integer size,
+                         </span><span style="color: #0000ff;">boolean</span><span style="color: #000000;"> readWrite,
+                         </span><span style="color: #0000ff;">boolean</span><span style="color: #000000;"> blocking,
+                         Properties props) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1.生成Cache对象</span>
+    Cache cache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> CacheBuilder(currentNamespace)
+         </span><span style="color: #008000;">//</span><span style="color: #008000;">这里如果我们定义了&lt;cache/&gt;中的type，就使用自定义的Cache,否则使用和一级缓存相同的PerpetualCache</span>
+        .implementation(valueOrDefault(typeClass, PerpetualCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">))
+        .addDecorator(valueOrDefault(evictionClass, LruCache.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">))
+        .clearInterval(flushInterval)
+        .size(size)
+        .readWrite(readWrite)
+        .blocking(blocking)
+        .properties(props)
+        .build();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2.添加到Configuration中</span>
+<span style="color: #000000;">    configuration.addCache(cache);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3.并将cache赋值给MapperBuilderAssistant.currentCache</span>
+    currentCache =<span style="color: #000000;"> cache;
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cache;
+}</span></code></pre>
+
+<p>我们看到一个Mapper.xml只会解析一次&lt;cache/&gt;标签，也就是只创建一次Cache对象，放进configuration中，并将cache赋值给MapperBuilderAssistant.currentCache</p>
+<h3>buildStatementFromContext(context.evalNodes("select|insert|update|delete"));将Cache包装到MappedStatement</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> buildStatementFromContext()</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> buildStatementFromContext(List&lt;XNode&gt;<span style="color: #000000;"> list) {
+    </span><span style="color: #0000ff;">if</span> (configuration.getDatabaseId() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        buildStatementFromContext(list, configuration.getDatabaseId());
+    }
+    buildStatementFromContext(list, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;">buildStatementFromContext()</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> buildStatementFromContext(List&lt;XNode&gt;<span style="color: #000000;"> list, String requiredDatabaseId) {
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode context : list) {
+        </span><span style="color: #0000ff;">final</span> XMLStatementBuilder statementParser = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLStatementBuilder(configuration, builderAssistant, context, requiredDatabaseId);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 每一条执行语句转换成一个MappedStatement</span>
+<span style="color: #000000;">            statementParser.parseStatementNode();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IncompleteElementException e) {
+            configuration.addIncompleteStatement(statementParser);
+        }
+    }
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> XMLStatementBuilder.parseStatementNode();</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parseStatementNode() {
+    String id </span>= context.getStringAttribute("id"<span style="color: #000000;">);
+    String databaseId </span>= context.getStringAttribute("databaseId"<span style="color: #000000;">);
+    ...
+ 
+    Integer fetchSize </span>= context.getIntAttribute("fetchSize"<span style="color: #000000;">);
+    Integer timeout </span>= context.getIntAttribute("timeout"<span style="color: #000000;">);
+    String parameterMap </span>= context.getStringAttribute("parameterMap"<span style="color: #000000;">);
+    String parameterType </span>= context.getStringAttribute("parameterType"<span style="color: #000000;">);
+    Class</span>&lt;?&gt; parameterTypeClass =<span style="color: #000000;"> resolveClass(parameterType);
+    String resultMap </span>= context.getStringAttribute("resultMap"<span style="color: #000000;">);
+    String resultType </span>= context.getStringAttribute("resultType"<span style="color: #000000;">);
+    String lang </span>= context.getStringAttribute("lang"<span style="color: #000000;">);
+    LanguageDriver langDriver </span>=<span style="color: #000000;"> getLanguageDriver(lang);
+ 
+    ...
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建MappedStatement对象</span>
+<span style="color: #000000;">    builderAssistant.addMappedStatement(id, sqlSource, statementType, sqlCommandType,
+                                        fetchSize, timeout, parameterMap, parameterTypeClass, resultMap, resultTypeClass,
+                                        resultSetTypeEnum, flushCache, useCache, resultOrdered, 
+                                        keyGenerator, keyProperty, keyColumn, databaseId, langDriver, resultSets);
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> builderAssistant.addMappedStatement()</span>
+<span style="color: #0000ff;">public</span><span style="color: #000000;"> MappedStatement addMappedStatement(
+    String id,
+    ...) {
+ 
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (unresolvedCacheRef) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IncompleteElementException("Cache-ref not yet resolved"<span style="color: #000000;">);
+    }
+ 
+    id </span>= applyCurrentNamespace(id, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">boolean</span> isSelect = sqlCommandType ==<span style="color: #000000;"> SqlCommandType.SELECT;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建MappedStatement对象</span>
+    MappedStatement.Builder statementBuilder = <span style="color: #0000ff;">new</span><span style="color: #000000;"> MappedStatement.Builder(configuration, id, sqlSource, sqlCommandType)
+        ...
+        .flushCacheRequired(valueOrDefault(flushCache, </span>!<span style="color: #000000;">isSelect))
+        .useCache(valueOrDefault(useCache, isSelect))
+        .cache(currentCache);</span><span style="color: #008000;">//</span><span style="color: #008000;"> 在这里将之前生成的Cache封装到MappedStatement</span>
+<span style="color: #000000;"> 
+    ParameterMap statementParameterMap </span>=<span style="color: #000000;"> getStatementParameterMap(parameterMap, parameterType, id);
+    </span><span style="color: #0000ff;">if</span> (statementParameterMap != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        statementBuilder.parameterMap(statementParameterMap);
+    }
+ 
+    MappedStatement statement </span>=<span style="color: #000000;"> statementBuilder.build();
+    configuration.addMappedStatement(statement);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> statement;
+}</span></code></pre>
+
+<p>我们看到将Mapper中创建的Cache对象，加入到了每个MappedStatement对象中，也就是同一个Mapper中所有的MappedStatement 中的cache属性引用是同一个</p>
+<p>有关于&lt;cache/&gt;标签的解析就到这了。</p>
+<h3>查询源码分析</h3>
+<p><strong>CachingExecutor</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> CachingExecutor</span>
+<span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt; query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, ResultHandler resultHandler) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    BoundSql boundSql </span>=<span style="color: #000000;"> ms.getBoundSql(parameterObject);
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 CacheKey</span>
+    CacheKey key =<span style="color: #000000;"> createCacheKey(ms, parameterObject, rowBounds, boundSql);
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+}
+
+</span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql)
+    </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 从 MappedStatement 中获取 Cache，注意这里的 Cache 是从MappedStatement中获取的
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 也就是我们上面解析Mapper中&lt;cache/&gt;标签中创建的，它保存在Configration中
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 我们在上面解析blog.xml时分析过每一个MappedStatement都有一个Cache对象，就是这里</span>
+    Cache cache =<span style="color: #000000;"> ms.getCache();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果配置文件中没有配置 &lt;cache&gt;，则 cache 为空</span>
+    <span style="color: #0000ff;">if</span> (cache != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果需要刷新缓存的话就刷新：flushCache="true"</span>
+<span style="color: #000000;">        flushCacheIfRequired(ms);
+        </span></strong><span style="color: #0000ff;">if</span> (ms.isUseCache() &amp;&amp; resultHandler == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            ensureNoOutParams(ms, boundSql);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 访问二级缓存</span>
+            List&lt;E&gt; list = (List&lt;E&gt;<span style="color: #000000;">) tcm.getObject(cache, key);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 缓存未命中</span>
+            <span style="color: #0000ff;">if</span> (list == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 如果没有值，则执行查询，这个查询实际也是先走一级缓存查询，一级缓存也没有的话，则进行DB查询</span>
+                list = delegate.&lt;E&gt;<span style="color: #000000;">query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 缓存查询结果</span>
+</strong><span style="color: #000000;"><strong>                tcm.putObject(cache, key, list);</strong>
+            }
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span> delegate.&lt;E&gt;<span style="color: #000000;">query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+}</span></code></pre>
+
+<p>如果设置了<strong>flushCache="true"，则每次查询都会刷新缓存</strong></p>
+<src class="cnblogs_code">
+<pre><code>&lt;!-- 执行此语句清空缓存 --&gt;
+&lt;select id="getAll" resultType="entity.TDemo" useCache="true" <strong>flushCache="true"</strong> &gt;<span style="color: #000000;">
+    select </span>*<span style="color: #000000;"> from t_demo
+</span>&lt;/select&gt;</code></pre>
+
+<p>如上，注意二级缓存是从 MappedStatement 中获取的。由于 MappedStatement 存在于全局配置中，可以多个 CachingExecutor 获取到，这样就会出现线程安全问题。除此之外，若不加以控制，多个事务共用一个缓存实例，会导致脏读问题。至于脏读问题，需要借助其他类来处理，也就是上面代码中 tcm 变量对应的类型。下面分析一下。</p>
+<p><strong>TransactionalCacheManager</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;"> 事务缓存管理器 </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TransactionalCacheManager {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Cache 与 TransactionalCache 的映射关系表</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;Cache, TransactionalCache&gt; transactionalCaches = <span style="color: #0000ff;">new</span> HashMap&lt;Cache, TransactionalCache&gt;<span style="color: #000000;">();
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear(Cache cache) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 TransactionalCache 对象，并调用该对象的 clear 方法，下同</span>
+<span style="color: #000000;">        getTransactionalCache(cache).clear();
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getObject(Cache cache, CacheKey key) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 直接从TransactionalCache中获取缓存</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> getTransactionalCache(cache).getObject(key);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> putObject(Cache cache, CacheKey key, Object value) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 直接存入TransactionalCache的缓存中</span>
+<span style="color: #000000;">        getTransactionalCache(cache).putObject(key, value);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commit() {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (TransactionalCache txCache : transactionalCaches.values()) {
+            txCache.commit();
+        }
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rollback() {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (TransactionalCache txCache : transactionalCaches.values()) {
+            txCache.rollback();
+        }
+    }
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> TransactionalCache getTransactionalCache(Cache cache) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 从映射表中获取 TransactionalCache</span>
+        TransactionalCache txCache =<span style="color: #000000;"> transactionalCaches.get(cache);
+        </span><span style="color: #0000ff;">if</span> (txCache == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> TransactionalCache 也是一种装饰类，为 Cache 增加事务功能
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建一个新的TransactionalCache，并将真正的Cache对象存进去</span>
+            txCache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TransactionalCache(cache);
+            transactionalCaches.put(cache, txCache);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> txCache;
+    }
+}</span></code></pre>
+
+<p>TransactionalCacheManager 内部维护了 Cache 实例与 TransactionalCache 实例间的映射关系，该类也仅负责维护两者的映射关系，真正做事的还是 TransactionalCache。TransactionalCache 是一种缓存装饰器，可以为 Cache 实例增加事务功能。我在之前提到的脏读问题正是由该类进行处理的。下面分析一下该类的逻辑。</p>
+<p><strong>TransactionalCache</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> TransactionalCache <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Cache {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">真正的缓存对象，和上面的Map&lt;Cache, TransactionalCache&gt;中的Cache是同一个</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Cache delegate;
+    </span></strong><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> clearOnCommit;
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 在事务被提交前，所有从数据库中查询的结果将缓存在此集合中</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;Object, Object&gt;<span style="color: #000000;"> entriesToAddOnCommit;
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 在事务被提交前，当缓存未命中时，CacheKey 将会被存储在此集合中</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Set&lt;Object&gt;<span style="color: #000000;"> entriesMissedInCache;
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getObject(Object key) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 查询的时候是直接从delegate中去查询的，也就是从真正的缓存对象中查询</span>
+        Object object =<span style="color: #000000;"> delegate.getObject(key);
+        </span></strong><span style="color: #0000ff;">if</span> (object == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 缓存未命中，则将 key 存入到 entriesMissedInCache 中</span>
+<span style="color: #000000;">            entriesMissedInCache.add(key);
+        }
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (clearOnCommit) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> object;
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> putObject(Object key, Object object) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 将键值对存入到 entriesToAddOnCommit 这个Map中中，而非真实的缓存对象 delegate 中</span>
+</strong><span style="color: #000000;"><strong>        entriesToAddOnCommit.put(key, object);</strong>
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object removeObject(Object key) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear() {
+        clearOnCommit </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空 entriesToAddOnCommit，但不清空 delegate 缓存</span>
+<span style="color: #000000;">        entriesToAddOnCommit.clear();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commit() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据 clearOnCommit 的值决定是否清空 delegate</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (clearOnCommit) {
+            delegate.clear();
+        }
+        
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 刷新未缓存的结果到 delegate 缓存中</span>
+<span style="color: #000000;">        flushPendingEntries();
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 重置 entriesToAddOnCommit 和 entriesMissedInCache</span>
+<span style="color: #000000;">        reset();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rollback() {
+        unlockMissedEntries();
+        reset();
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> reset() {
+        clearOnCommit </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空集合</span>
+<span style="color: #000000;">        entriesToAddOnCommit.clear();
+        entriesMissedInCache.clear();
+    }
+
+    </span><strong><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> flushPendingEntries() {
+        </span><span style="color: #0000ff;">for</span> (Map.Entry&lt;Object, Object&gt;<span style="color: #000000;"> entry : entriesToAddOnCommit.entrySet()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 entriesToAddOnCommit 中的内容转存到 delegate 中</span>
+<span style="color: #000000;">            delegate.putObject(entry.getKey(), entry.getValue());
+        }
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Object entry : entriesMissedInCache) {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">entriesToAddOnCommit.containsKey(entry)) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 存入空值</span>
+                delegate.putObject(entry, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+            }
+        }
+    }
+
+    </span></strong><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> unlockMissedEntries() {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Object entry : entriesMissedInCache) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 removeObject 进行解锁</span>
+<span style="color: #000000;">                delegate.removeObject(entry);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+                log.warn(</span>"..."<span style="color: #000000;">);
+            }
+        }
+    }
+
+}</span></code></pre>
+
+<p>存储二级缓存对象的时候是放到了TransactionalCache.entriesToAddOnCommit这个map中，但是每次查询的时候是直接从TransactionalCache.delegate中去查询的，所以这个二级缓存查询数据库后，设置缓存值是没有立刻生效的，主要是因为直接存到 delegate 会导致脏数据问题。</p>
+<h3>为何只有SqlSession提交或关闭之后二级缓存才会生效？</h3>
+<p>那我们来看下SqlSession.commit()方法做了什么</p>
+<p><strong>SqlSession</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> commit(<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> force) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 主要是这句</span>
+<span style="color: #000000;">        executor.commit(isCommitOrRollbackRequired(force));
+        dirty </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error committing transaction.  Cause: " +<span style="color: #000000;"> e, e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> CachingExecutor.commit()</span>
+<span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> commit(<span style="color: #0000ff;">boolean</span> required) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    delegate.commit(required);
+  <strong>  tcm.commit();</strong></span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 在这里</span></strong>
+<span style="color: #000000;">}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> TransactionalCacheManager.commit()</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commit() {
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (TransactionalCache txCache : transactionalCaches.values()) {
+      <strong>  txCache.commit();</strong></span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 在这里</span></strong>
+<span style="color: #000000;">    }
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> TransactionalCache.commit()</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commit() {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (clearOnCommit) {
+        delegate.clear();
+    }
+   <strong> flushPendingEntries();</strong></span><strong><span style="color: #008000;">//</span><span style="color: #008000;">这一句</span></strong>
+<span style="color: #000000;">    reset();
+}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> TransactionalCache.flushPendingEntries()</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> flushPendingEntries() {
+    </span><span style="color: #0000ff;">for</span> (Map.Entry&lt;Object, Object&gt;<span style="color: #000000;"> entry : entriesToAddOnCommit.entrySet()) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 在这里真正的将entriesToAddOnCommit的对象逐个添加到delegate中，只有这时，二级缓存才真正的生效</span>
+</strong><span style="color: #000000;"><strong>        delegate.putObject(entry.getKey(), entry.getValue());</strong>
+    }
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Object entry : entriesMissedInCache) {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">entriesToAddOnCommit.containsKey(entry)) {
+            delegate.putObject(entry, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        }
+    }
+}</span></code></pre>
+
+<p>如果从数据库查询到的数据直接存到 delegate 会导致脏数据问题。下面通过一张图演示一下脏数据问题发生的过程，假设两个线程开启两个不同的事务，它们的执行过程如下：</p>
+<p><img src="./images/Mybaits 源码解析 （九）----- 一级缓存和二级缓存源码分析3.png" alt="" /></p>
+<p>如上图，时刻2，事务 A 对记录 A 进行了更新。时刻3，事务 A 从数据库查询记录 A，并将记录 A 写入缓存中。时刻4，事务 B 查询记录 A，由于缓存中存在记录 A，事务 B 直接从缓存中取数据。这个时候，脏数据问题就发生了。事务 B 在事务 A 未提交情况下，读取到了事务 A 所修改的记录。为了解决这个问题，我们可以为每个事务引入一个独立的缓存。查询数据时，仍从 delegate 缓存（以下统称为共享缓存）中查询。若缓存未命中，则查询数据库。存储查询结果时，并不直接存储查询结果到共享缓存中，而是先存储到事务缓存中，也就是 entriesToAddOnCommit 集合。当事务提交时，再将事务缓存中的缓存项转存到共享缓存中。这样，事务 B 只能在事务 A 提交后，才能读取到事务 A 所做的修改，解决了脏读问题。</p>
+<h3>二级缓存的刷新</h3>
+<p>我们来看看SqlSession的更新操作</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> update(String statement, Object parameter) {
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> var4;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.dirty = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        MappedStatement ms </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getMappedStatement(statement);
+        var4 </span>= <span style="color: #0000ff;">this</span>.executor.update(ms, <span style="color: #0000ff;">this</span><span style="color: #000000;">.wrapCollection(parameter));
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var8) {
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error updating database.  Cause: " +<span style="color: #000000;"> var8, var8);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> var4;
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> update(MappedStatement ms, Object parameterObject) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+    </span><strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.flushCacheIfRequired(ms);
+    </span></strong><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.delegate.update(ms, parameterObject);
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> flushCacheIfRequired(MappedStatement ms) {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">获取MappedStatement对应的Cache，进行清空</span>
+    Cache cache =<span style="color: #000000;"> ms.getCache();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">SQL需设置flushCache="true" 才会执行清空</span>
+    <span style="color: #0000ff;">if</span> (cache != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> ms.isFlushCacheRequired()) {
+  </span></strong><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.tcm.clear(cache);
+    }</strong>
+}</span></code></pre>
+
+<p>MyBatis二级缓存只适用于不常进行增、删、改的数据，比如国家行政区省市区街道数据。一但数据变更，MyBatis会清空缓存。因此二级缓存不适用于经常进行更新的数据。</p>
+<h2>使用redis存储二级缓存</h2>
+<p>通过上面代码分析，我们知道二级缓存默认和一级缓存都是使用的PerpetualCache存储结果，一级缓存只要SQLSession关闭就会清空，其内部使用HashMap实现，所以二级缓存无法实现分布式，并且服务器重启后就没有缓存了。此时就需要引入第三方缓存中间件，将缓存的值存到外部，如redis和ehcache</p>
+<p>修改mapper.xml中的配置。</p>
+<src class="cnblogs_code">
+<pre><code>&lt;?xml version="1.0" encoding="UTF-8" ?&gt;
+&lt;!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" &gt;
+&lt;mapper namespace="com.tyb.saas.common.dal.dao.AreaDefaultMapper"&gt;
+ 
+    &lt;!--<span style="color: #000000;">
+    flushInterval（清空缓存的时间间隔）: 单位毫秒，可以被设置为任意的正整数。
+        默认情况是不设置，也就是没有刷新间隔，缓存仅仅调用语句时刷新。
+    size（引用数目）: 可以被设置为任意正整数，要记住你缓存的对象数目和你运行环境的可用内存资源数目。默认值是1024。
+    readOnly（只读）:属性可以被设置为true或false。只读的缓存会给所有调用者返回缓存对象的相同实例。
+        因此这些对象不能被修改。这提供了很重要的性能优势。可读写的缓存会返回缓存对象的拷贝（通过序列化）。这会慢一些，但是安全，因此默认是false。
+    eviction（回收策略）: 默认的是 LRU:
+        </span>1<span style="color: #000000;">.LRU &ndash; 最近最少使用的:移除最长时间不被使用的对象。
+        </span>2<span style="color: #000000;">.FIFO &ndash; 先进先出:按对象进入缓存的顺序来移除它们。
+        </span>3<span style="color: #000000;">.SOFT &ndash; 软引用:移除基于垃圾回收器状态和软引用规则的对象。
+        </span>4<span style="color: #000000;">.WEAK &ndash; 弱引用:更积极地移除基于垃圾收集器状态和弱引用规则的对象。
+    blocking（是否使用阻塞缓存）: 默认为false，当指定为true时将采用BlockingCache进行封装，blocking，阻塞的意思，
+        使用BlockingCache会在查询缓存时锁住对应的Key，如果缓存命中了则会释放对应的锁，否则会在查询数据库以后再释放锁，
+        这样可以阻止并发情况下多个线程同时查询数据，详情可参考BlockingCache的源码。
+    type（缓存类）：可指定使用的缓存类，mybatis默认使用HashMap进行缓存,这里引用第三方中间件进行缓存
+    </span>--&gt;
+   <strong> &lt;cache type="org.mybatis.caches.redis.RedisCache" blocking="false"<span style="color: #000000;">
+           flushInterval</span>="0" readOnly="true" size="1024" eviction="FIFO"/&gt;</strong>
+ 
+    &lt;!--<span style="color: #000000;">
+        useCache（是否使用缓存）：默认true使用缓存
+    </span>--&gt;
+    &lt;select id="find" parameterType="map" resultType="com.chenhao.model.User" useCache="true"&gt;<span style="color: #000000;">
+        SELECT </span>*<span style="color: #000000;"> FROM user
+    </span>&lt;/select&gt;
+ 
+&lt;/mapper&gt;</code></pre>
+
+<p><strong>依然很简单， RedisCache 在保存缓存数据和获取缓存数据时，使用了Java的序列化和反序列化，因此需要保证被缓存的对象必须实现Serializable接口。</strong></p>
+<p>也可以自己实现cache</p>
+<h3>实现自己的cache</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.chenhao.mybatis.cache;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.cache.Cache;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.data.redis.core.RedisTemplate;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.data.redis.core.ValueOperations;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.TimeUnit;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.locks.ReadWriteLock;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.locks.ReentrantReadWriteLock;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> chenhao
+ * @date 2019/10/31.
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> RedisCache <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Cache {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> String id;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> ValueOperations&lt;String, Object&gt;<span style="color: #000000;"> valueOs;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> RedisTemplate&lt;String, String&gt;<span style="color: #000000;"> template;
+
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> setValueOs(ValueOperations&lt;String, Object&gt;<span style="color: #000000;"> valueOs) {
+        RedisCache.valueOs </span>=<span style="color: #000000;"> valueOs;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> setTemplate(RedisTemplate&lt;String, String&gt;<span style="color: #000000;"> template) {
+        RedisCache.template </span>=<span style="color: #000000;"> template;
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> ReadWriteLock readWriteLock = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ReentrantReadWriteLock();
+
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> RedisCache(String id) {
+        </span><span style="color: #0000ff;">if</span> (id == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Cache instances require an ID"<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getId() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.id;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> putObject(Object key, Object value) {
+        valueOs.set(key.toString(), value, </span>10<span style="color: #000000;">, TimeUnit.MINUTES);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getObject(Object key) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> valueOs.get(key.toString());
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object removeObject(Object key) {
+        valueOs.set(key.toString(), </span>"", 0<span style="color: #000000;">, TimeUnit.MINUTES);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> key;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear() {
+        template.getConnectionFactory().getConnection().flushDb();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getSize() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> template.getConnectionFactory().getConnection().dbSize().intValue();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ReadWriteLock getReadWriteLock() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.readWriteLock;
+    }
+}</span></code></pre>
+
+<p>Mapper中配置自己实现的Cache</p>
+<src class="cnblogs_code">
+<pre><code>&lt;cache type="com.chenhao.mybatis.cache.RedisCache"/&gt; </code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

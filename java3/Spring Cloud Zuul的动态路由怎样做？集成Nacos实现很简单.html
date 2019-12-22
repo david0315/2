@@ -1,0 +1,238 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单</center></div><div class='banquan'>原文出处:本文由博客园博主zlt2000提供。<br/>
+原文连接:https://www.cnblogs.com/zlt2000/p/11428272.html</div><br>
+    <h2 id="一说明">一、说明</h2>
+<p>网关的核心概念就是路由配置和路由规则，而作为所有请求流量的入口，在实际生产环境中为了保证高可靠和高可用，是尽量要避免重启的，所以实现动态路由是非常有必要的；本文主要介绍实现的思路，并且以<code>Nacos</code>为数据源来讲解</p>
+<p> </p>
+<h2 id="二实现要点">二、实现要点</h2>
+<p>要实现动态路由只需关注下面4个点</p>
+<ol>
+<li>网关启动时，<code>动态路由</code>的数据怎样加载进来</li>
+<li><code>静态路由</code>与<code>动态路由</code>以那个为准，ps：<code>静态路由</code>指的是配置文件里写死的路由配置</li>
+<li>监听<code>动态路由</code>的数据源变化</li>
+<li>数据有变化时怎样<code>通知zuul</code>刷新路由</li>
+</ol>
+<p> </p>
+<h2 id="三具体实现">三、具体实现</h2>
+<h3 id="实现动态路由的数据加载">3.1. 实现动态路由的数据加载</h3>
+<ul>
+<li>重写<code>SimpleRouteLocator</code>类的<code>locateRoutes</code>方法，此方法是加载路由配置的，父类中是获取properties中的路由配置，可以通过扩展此方法，达到动态获取配置的目的</li>
+<li>这里采用<code>静态路由</code>与<code>动态路由</code>共存，相同路由id以<code>动态路由</code>优先覆盖的实现方式</li>
+</ul>
+<p><strong>AbstractDynRouteLocator类</strong>可查看：<a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-gateway/zuul-gateway/src/main/java/com/central/gateway/route/AbstractDynRouteLocator.java">AbstractDynRouteLocator.java</a></p>
+<pre><code><code>public abstract class AbstractDynRouteLocator extends SimpleRouteLocator implements RefreshableRouteLocator {
+    private ZuulProperties properties;
+
+    public AbstractDynRouteLocator(String servletPath, ZuulProperties properties) {
+        super(servletPath, properties);
+        this.properties = properties;
+    }
+
+    /**
+     * 刷新路由
+     */
+    @Override
+    public void refresh() {
+        doRefresh();
+    }
+
+    @Override
+    protected Map&lt;String, ZuulRoute&gt; locateRoutes() {
+        LinkedHashMap&lt;String, ZuulRoute&gt; routesMap = new LinkedHashMap&lt;&gt;();
+        // 从application.properties中加载静态路由信息
+        routesMap.putAll(super.locateRoutes());
+        // 从数据源中加载动态路由信息
+        routesMap.putAll(loadDynamicRoute());
+        // 优化一下配置
+        LinkedHashMap&lt;String, ZuulRoute&gt; values = new LinkedHashMap&lt;&gt;();
+        for (Map.Entry&lt;String, ZuulRoute&gt; entry : routesMap.entrySet()) {
+            String path = entry.getKey();
+            // Prepend with slash if not already present.
+            if (!path.startsWith(&quot;/&quot;)) {
+                path = &quot;/&quot; + path;
+            }
+            if (StringUtils.hasText(this.properties.getPrefix())) {
+                path = this.properties.getPrefix() + path;
+                if (!path.startsWith(&quot;/&quot;)) {
+                    path = &quot;/&quot; + path;
+                }
+            }
+            values.put(path, entry.getValue());
+        }
+        return values;
+    }
+
+    /**
+     * 加载路由配置，由子类去实现
+     */
+    public abstract Map&lt;String, ZuulRoute&gt; loadDynamicRoute();
+}</code></code></pre>
+<blockquote>
+<p>由于动态路由的数据可以有很多种<strong>途径</strong>，如：Nacos、Redis、Zookeeper、DB等，所以这里定义一个抽象类，由具体的实现类去定义<code>loadDynamicRoute</code>方法</p>
+</blockquote>
+<p> </p>
+<h3 id="nacos路由实现类">3.2. Nacos路由实现类</h3>
+<p><strong>NacosDynRouteLocator类</strong>完整的代码实现可查看：<a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-gateway/zuul-gateway/src/main/java/com/central/gateway/route/nacos/NacosDynRouteLocator.java">NacosDynRouteLocator.java</a></p>
+<h3 id="实现loaddynamicroute方法获取动态数据">3.2.1. 实现<code>loadDynamicRoute</code>方法获取动态数据</h3>
+<pre><code><code>    @Override
+    public Map&lt;String, ZuulProperties.ZuulRoute&gt; loadDynamicRoute() {
+        Map&lt;String, ZuulRoute&gt; routes = new LinkedHashMap&lt;&gt;();
+        if (zuulRouteEntities == null) {
+            zuulRouteEntities = getNacosConfig();
+        }
+        for (ZuulRouteEntity result : zuulRouteEntities) {
+            if (StrUtil.isBlank(result.getPath()) || !result.isEnabled()) {
+                continue;
+            }
+            ZuulRoute zuulRoute = new ZuulRoute();
+            BeanUtil.copyProperties(result, zuulRoute);
+            routes.put(zuulRoute.getPath(), zuulRoute);
+        }
+        return routes;
+    }
+        
+    private List&lt;ZuulRouteEntity&gt; getNacosConfig() {
+        try {
+            String content = nacosConfigProperties.configServiceInstance().getConfig(ZUUL_DATA_ID, ZUUL_GROUP_ID,5000);
+            return getListByStr(content);
+        } catch (NacosException e) {
+            log.error(&quot;listenerNacos-error&quot;, e);
+        }
+        return new ArrayList&lt;&gt;(0);
+    }</code></code></pre>
+<h3 id="增加nacoslistener监听路由数据变化">3.2.2. 增加<code>NacosListener</code>监听路由数据变化</h3>
+<pre><code><code>    private void addListener() {
+        try {
+            nacosConfigProperties.configServiceInstance().addListener(ZUUL_DATA_ID, ZUUL_GROUP_ID, new Listener() {
+                @Override
+                public Executor getExecutor() {
+                    return null;
+                }
+
+                @Override
+                public void receiveConfigInfo(String configInfo) {
+                    //赋值路由信息
+                    locator.setZuulRouteEntities(getListByStr(configInfo));
+                    RoutesRefreshedEvent routesRefreshedEvent = new RoutesRefreshedEvent(locator);
+                    publisher.publishEvent(routesRefreshedEvent);
+                }
+            });
+        } catch (NacosException e) {
+            log.error(&quot;nacos-addListener-error&quot;, e);
+        }
+    }</code></code></pre>
+<blockquote>
+<p><strong>注意</strong>路由数据变化后不需要自己手动刷新路由，只需要给<code>zuul</code>发送一个<code>RoutesRefreshedEvent</code>事件即可，<code>zuul</code>自己有个<code>ZuulRefreshListener类</code>会监听事件帮我们刷新路由</p>
+</blockquote>
+<p> </p>
+<h3 id="配置类创建nacosdynroutelocator的bean">3.3. 配置类创建<code>NacosDynRouteLocator</code>的Bean</h3>
+<p><strong>DynamicZuulRouteConfig</strong>可查看：<a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-gateway/zuul-gateway/src/main/java/com/central/gateway/config/DynamicZuulRouteConfig.java">NacosDynRouteLocator.java</a></p>
+<pre><code><code>@Configuration
+@ConditionalOnProperty(prefix = &quot;zlt.gateway.dynamicRoute&quot;, name = &quot;enabled&quot;, havingValue = &quot;true&quot;)
+public class DynamicZuulRouteConfig {
+    @Autowired
+    private ZuulProperties zuulProperties;
+
+    @Autowired
+    private DispatcherServletPath dispatcherServletPath;
+
+    /**
+     * Nacos实现方式
+     */
+    @Configuration
+    @ConditionalOnProperty(prefix = &quot;zlt.gateway.dynamicRoute&quot;, name = &quot;dataType&quot;, havingValue = &quot;nacos&quot;, matchIfMissing = true)
+    public class NacosZuulRoute {
+        @Autowired
+        private NacosConfigProperties nacosConfigProperties;
+
+        @Autowired
+        private ApplicationEventPublisher publisher;
+
+        @Bean
+        public NacosDynRouteLocator nacosDynRouteLocator() {
+            return new NacosDynRouteLocator(nacosConfigProperties, publisher, dispatcherServletPath.getPrefix(), zuulProperties);
+        }
+    }
+}</code></code></pre>
+<blockquote>
+<p>这里通过自定义配置来控制是否开启<code>动态路由功能</code></p>
+</blockquote>
+<p> </p>
+<h3 id="添加nacos路由配置">3.4. 添加<code>Nacos</code>路由配置</h3>
+<p><img src="./images/Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单0.png" alt="file" /><br />
+新增配置项：</p>
+<ul>
+<li>Data Id：zuul-routes</li>
+<li>Group：ZUUL_GATEWAY</li>
+<li>配置内容：</li>
+</ul>
+<pre class="json"><code>[
+    {
+        &quot;enabled&quot;:true,
+        &quot;id&quot;:&quot;csdn&quot;,
+        &quot;path&quot;:&quot;/csdn/**&quot;,
+        &quot;retryable&quot;:false,
+        &quot;stripPrefix&quot;:true,
+        &quot;url&quot;:&quot;https://www.csdn.net/&quot;
+    }, {
+        &quot;enabled&quot;:true,
+        &quot;id&quot;:&quot;github&quot;,
+        &quot;path&quot;:&quot;/github/**&quot;,
+        &quot;retryable&quot;:false,
+        &quot;stripPrefix&quot;:true,
+        &quot;url&quot;:&quot;http://github.com/&quot;
+    }
+]</code></code></pre>
+<blockquote>
+<p>添加两条路由数据</p>
+</blockquote>
+<p> </p>
+<h2 id="四测试">四、测试</h2>
+<ul>
+<li><p><strong>启动网关通过<code>/actuator/routes</code>端点查看当前路由信息</strong><br />
+<img src="./images/Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单1.png" alt="file" /></p>
+<blockquote>
+<p>可以看到静态路由和<code>Nacos</code>里配置的两条路由信息并存显示</p>
+</blockquote></li>
+<li><strong>修改<code>Nacos</code>配置，关闭<code>csdn</code>路由</strong><br />
+<img src="./images/Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单2.png" alt="file" /></li>
+<li><p><strong>刷新查看网关的路由信息</strong><br />
+<img src="./images/Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单3.png" alt="file" /></p>
+<blockquote>
+<p><code>csdn</code>的路由已经看不到了，实现了动态改变路由配置</p>
+</blockquote></li>
+</ul>
+<p> <br />
+<strong>推荐阅读</strong></p>
+<ul>
+<li><a href="https://mp.weixin.qq.com/s?__biz=MjM5OTI2NDMwMg==&amp;mid=2247483653&amp;idx=1&amp;sn=df9bf5e428c6908e2fee3f4b32c2a918&amp;chksm=a73f68449048e152cffb68235f533ffddd84f4de19e553d217d645e7916cc103420bcc7d375a&amp;token=1742248355&amp;lang=zh_CN#rd">日志排查问题困难？分布式日志链路跟踪来帮你</a></li>
+<li><a href="https://mp.weixin.qq.com/s?__biz=MjM5OTI2NDMwMg==&amp;mid=2247483674&amp;idx=1&amp;sn=ca1148576652ac130501207a1898e1c2&amp;chksm=a73f685b9048e14d80f1b218c1cdcfce8233bba4440338a8ef52678341215f7b934ff0baad85&amp;token=1742248355&amp;lang=zh_CN#rd">zuul集成Sentinel最新的网关流控组件</a></li>
+<li><a href="https://mp.weixin.qq.com/s?__biz=MjM5OTI2NDMwMg==&amp;mid=2247483680&amp;idx=1&amp;sn=f9767a78827e5cc189e97c03054bdf15&amp;chksm=a73f68619048e1775d7eca5531b565ca36ed1d122ba07f8d33b4353918863470ba24be79daa5&amp;token=1742248355&amp;lang=zh_CN#rd">阿里注册中心Nacos生产部署方案</a></li>
+<li><a href="https://mp.weixin.qq.com/s?__biz=MjM5OTI2NDMwMg==&amp;mid=2247483678&amp;idx=1&amp;sn=39f02ea3617f2d46dd005568d9b7ed0d&amp;chksm=a73f685f9048e14951f626c415f5a7c8a8f1ee82c3d9411b52a44f8013d107c3001e4468c49d&amp;token=1742248355&amp;lang=zh_CN#rd">Spring Boot自定义配置项在IDE里面实现自动提示</a></li>
+</ul>
+<p> <br />
+<strong>请扫码关注我的公众号</strong><br />
+<img src="./images/Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单4.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

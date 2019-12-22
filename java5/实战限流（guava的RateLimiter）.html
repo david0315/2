@@ -1,0 +1,157 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修实战限流（guava的RateLimiter）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>实战限流（guava的RateLimiter）</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11559089.html</div><br>
+    <h3 id="关于限流">关于限流</h3>
+<p>常用的限流算法有漏桶算法和令牌桶算法，guava的RateLimiter使用的是令牌桶算法，也就是以固定的频率向桶中放入令牌，例如一秒钟10枚令牌，实际业务在每次响应请求之前都从桶中获取令牌，只有取到令牌的请求才会被成功响应，获取的方式有两种：阻塞等待令牌或者取不到立即返回失败，下图来自网上：</p>
+<p><img src="./images/实战限流（guava的RateLimiter）0.png" alt="这里写图片描述" /></p>
+<p>本次实战，我们用的是guava的RateLimiter，场景是spring mvc在处理请求时候，从桶中申请令牌，申请到了就成功响应，申请不到时直接返回失败；</p>
+<h3 id="源码下载">源码下载</h3>
+<p>对于的源码可以在我的git下载，地址是：https://github.com/zq2599/blog_demos ，里面有多个工程，本次实战的工程为guavalimitdemo，如下图红框所示：</p>
+<p><img src="./images/实战限流（guava的RateLimiter）1.png" alt="这里写图片描述" /></p>
+<h3 id="实战开发">实战开发</h3>
+<p>创建一个maven工程，在pom中把guava的依赖添加进来：</p>
+<pre><code><code>&lt;dependency&gt;
+      &lt;groupId&gt;com.google.guava&lt;/groupId&gt;
+      &lt;artifactId&gt;guava&lt;/artifactId&gt;
+      &lt;version&gt;18.0&lt;/version&gt;
+    &lt;/dependency&gt;</code></code></pre>
+<p>把限流服务封装到一个类中AccessLimitService，提供tryAcquire()方法，用来尝试获取令牌，返回true表示获取到，如下所示：</p>
+<pre class="java"><code>@Service
+public class AccessLimitService {
+
+    //每秒只发出5个令牌
+    RateLimiter rateLimiter = RateLimiter.create(5.0);
+
+    /**
+     * 尝试获取令牌
+     * @return
+     */
+    public boolean tryAcquire(){
+        return rateLimiter.tryAcquire();
+    }
+}</code></code></pre>
+<p>调用方是个普通的controller，每次收到请求的时候都尝试去获取令牌，获取成功和失败打印不同的信息，如下：</p>
+<pre class="java"><code>@Controller
+public class HelloController {
+
+    private static SimpleDateFormat sdf = new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;);
+
+    @Autowired
+    private AccessLimitService accessLimitService;
+
+    @RequestMapping(&quot;/access&quot;)
+    @ResponseBody
+    public String access(){
+        //尝试获取令牌
+        if(accessLimitService.tryAcquire()){
+            //模拟业务执行500毫秒
+            try {
+                Thread.sleep(500);
+            }catch (InterruptedException e){
+                e.printStackTrace();
+            }
+            return &quot;aceess success [&quot; + sdf.format(new Date()) + &quot;]&quot;;
+        }else{
+            return &quot;aceess limit [&quot; + sdf.format(new Date()) + &quot;]&quot;;
+        }
+    }
+}</code></code></pre>
+<p>以上就是服务端的代码了，打包部署在tomcat上即可，接下来我们写一个类，十个线程并发访问上面写的controller：</p>
+<pre class="java"><code>public class AccessClient {
+    ExecutorService fixedThreadPool = Executors.newFixedThreadPool(10);
+
+    /**
+     * get请求
+     * @param realUrl
+     * @return
+     */
+    public static String sendGet(URL realUrl) {
+        String result = &quot;&quot;;
+        BufferedReader in = null;
+        try {
+            // 打开和URL之间的连接
+            URLConnection connection = realUrl.openConnection();
+            // 设置通用的请求属性
+            connection.setRequestProperty(&quot;accept&quot;, &quot;*/*&quot;);
+            connection.setRequestProperty(&quot;connection&quot;, &quot;Keep-Alive&quot;);
+            connection.setRequestProperty(&quot;user-agent&quot;,
+                    &quot;Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1;SV1)&quot;);
+            // 建立实际的连接
+            connection.connect();
+
+            // 定义 BufferedReader输入流来读取URL的响应
+            in = new BufferedReader(new InputStreamReader(
+                    connection.getInputStream()));
+            String line;
+            while ((line = in.readLine()) != null) {
+                result += line;
+            }
+        } catch (Exception e) {
+            System.out.println(&quot;发送GET请求出现异常！&quot; + e);
+            e.printStackTrace();
+        }
+        // 使用finally块来关闭输入流
+        finally {
+            try {
+                if (in != null) {
+                    in.close();
+                }
+            } catch (Exception e2) {
+                e2.printStackTrace();
+            }
+        }
+        return result;
+    }
+
+
+
+    public void access() throws Exception{
+        final URL url = new URL(&quot;http://localhost:8080/guavalimitdemo/access&quot;);
+
+        for(int i=0;i&lt;10;i++) {
+            fixedThreadPool.submit(new Runnable() {
+                public void run() {
+                    System.out.println(sendGet(url));
+                }
+            });
+        }
+
+        fixedThreadPool.shutdown();
+        fixedThreadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+    }
+
+    public static void main(String[] args) throws Exception{
+        AccessClient accessClient = new AccessClient();
+        accessClient.access();
+    }
+}
+</code></code></pre>
+<p>直接执行AccessClient的main方法，可以看到结果如下：</p>
+<p><img src="./images/实战限流（guava的RateLimiter）2.png" alt="这里写图片描述" /></p>
+<p>部分请求由于获取的令牌可以成功执行，其余请求没有拿到令牌，我们可以根据实际业务来做区分处理。还有一点要注意，我们通过RateLimiter.create(5.0)配置的是每一秒5枚令牌，但是限流的时候发出的是6枚，改用其他值验证，也是实际的比配置的大1。</p>
+<p>以上就是快速实现限流的实战过程，此处仅是单进程服务的限流，而实际的分布式服务中会考虑更多因素，会复杂很多。</p>
+<h3 id="欢迎关注我的公众号程序员欣宸">欢迎关注我的公众号：程序员欣宸</h3>
+<p><img src="./images/实战限流（guava的RateLimiter）3.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

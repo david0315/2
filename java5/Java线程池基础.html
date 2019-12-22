@@ -1,0 +1,657 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java线程池基础' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java线程池基础</center></div><div class='banquan'>原文出处:本文由博客园博主峰的季节提供。<br/>
+原文连接:https://www.cnblogs.com/chdf/p/11572889.html</div><br>
+    <h3><span style="font-family: courier new, courier;">目录：</span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="https://www.cnblogs.com/chdf/p/11572889.html#label0" rel="lightbox">一、线程池概述</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="https://www.cnblogs.com/chdf/p/11572889.html#label1">二、线程池参数</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="https://www.cnblogs.com/chdf/p/11572889.html#label2">三、线程池的执行过程</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="https://www.cnblogs.com/chdf/p/11572889.html#label3">四、线程池的主要实现</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="https://www.cnblogs.com/chdf/p/11572889.html#label4">五、线程池的使用</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="#label5">六、线程池的正确关闭方式</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a href="#label6">七、线程池参数调优</a></span></h3>
+<h3><span style="font-family: courier new, courier;"><a name="label0"></a>一、线程池概述</span></h3>
+<h4><span style="font-family: courier new, courier;">　　1、线程池类</span></h4>
+<p><span style="font-family: courier new, courier;">　　<span style="font-size: 14px;">目前线程池类一般有两个，一个来自于Spring，一个来自于JDK</span>：</span></p>
+<ul>
+<li><span style="font-size: 14px; font-family: courier new, courier;">来自Spring的线程池：org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor</span></li>
+<li><span style="font-size: 14px; font-family: courier new, courier;">来自JDK的线程池：java.util.concurrent.ThreadPoolExecutor</span></li>
+</ul>
+<p><span style="font-family: courier new, courier;">　　<span style="font-size: 14px;">说明：两个线程池类中的参数【线程池最大线程数】写法不同，在Spring线程池中为maxPoolSize，在JDK线程池中为maximumPoolSize，等价</span>。</span></p>
+<p><span style="font-family: courier new, courier;">　　<strong><span style="font-size: 14px;">两个线程池类的配置差不多，Spring的做了一些配置参数的简化，最终调用JDK的API</span>。</strong></span></p>
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;"><strong>　　</strong><span style="font-size: 14px;">在执行并发任务时，我们可以把任务传递给一个线程池，来替代为每个并发执行的任务都启动一个新的线程，只要线程池里有空闲的线程，任务就会分配给一个线程执行。在线程池的内部，当线程数量达到线程池核心线程数时，后续的任务被插入一个阻塞队列(BlockingQueue)进行等待，线程池里的空闲线程会去取这个队列里的任务</span>。</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="font-size: 14px;">利用线程池的三个好处</span>：</span></p>
+<ul>
+<li><span style="font-size: 14px; font-family: courier new, courier;">降低资源消耗。通过重复利用已创建的线程降低线程创建和销毁造成的消耗</span></li>
+<li><span style="font-size: 14px; font-family: courier new, courier;">提高响应速度。当任务到达时，任务可以不需要等待线程创建就能立即执行</span></li>
+<li><span style="font-size: 14px; font-family: courier new, courier;">提高线程的可管理性。线程是稀缺资源，如果无限制的创建，不仅会消耗系统资源，还会降低系统的稳定性，使用线程池可以进行统一的分配、调优和监控</span></li>
+</ul>
+<h4><span style="font-family: courier new, courier;">　　2、相关概念比喻</span></h4>
+<ul>
+<li><span style="font-size: 14px; font-family: courier new, courier;">线程池(thread pool)　　工厂</span></li>
+<li><span style="font-size: 14px; font-family: courier new, courier;">线程(thread)　　&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 工人，属于某个工厂，被工厂所管理</span></li>
+<li><span style="font-size: 14px; font-family: courier new, courier;">任务(task)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 等待工人处理的事情，即实现Runnable或Callable的类</span></li>
+</ul>
+<h4><span style="font-family: courier new, courier;">　　3、线程池行为比喻</span></h4>
+<ul>
+<li><span style="font-family: courier new, courier;">小赵(<strong>任务</strong>)去银行(<strong>线程池</strong>)办理业务，银行刚开始营业，此时窗口工作人员还未就位(<strong>初始线程数为0</strong>)</span></li>
+<li><span style="font-family: courier new, courier;">于是经理(<strong>线程池管理者</strong>)催促1号正式员工到1号窗口接待小赵(<strong>创建线程</strong>)，于是小赵被安排到1号窗口办理业务(<strong>执行线程任务</strong>)</span></li>
+<li><span style="font-family: courier new, courier;">接着小钱(<strong>任务</strong>)也来到银行(<strong>线程池</strong>)办理业务，此时小赵还没有办理完业务，1号窗口轮不到小钱。该银行总共有2个窗口(<strong>corePoolSize为2</strong>)，于是经理又催促2号正式员工到2号窗口接待小钱(<strong>又创建线程</strong>)，小钱也开始办理业务(<strong>执行线程任务</strong>)</span></li>
+<li><span style="font-family: courier new, courier;">紧接着小孙(<strong>又一个任务</strong>)也来到银行办理业务，此时前面两人还未办理完业务。在银行等待区有一张座位(<strong>缓存队列size为1</strong>)空着，于是小孙被经理安排到座位上等待并被告知：当1、2号窗口有空闲时，小孙就可以去窗口办理业务。此时，窗口满了，等待区也满了。</span></li>
+<li><span style="font-family: courier new, courier;">这时小李也来到银行办理业务，于是经理安排临时工(<strong>corePoolSize之外的线程</strong>)在大堂手持移动设备为小李办理业务</span></li>
+<li><span style="font-family: courier new, courier;">银行业务很繁忙，窗口满了、等待区满了、临时工也用上了(<strong>线程数达到maxPoolSize</strong>)。此时小周来到银行办理业务，于是经理只能按照《超出银行最大接待能力处理办法》(<strong>拒绝策略</strong>)拒绝小周办理业务</span></li>
+<li><span style="font-family: courier new, courier;">随后，小赵、小钱、小孙、小李陆续办完业务离开银行。忙碌了大半天，来办理业务的人终于少了，此时临时工已经闲置了2个小时(<strong>keepAliveTime</strong>)，2个窗口可处理之后并不繁忙的业务，经理见临时工没事做就让他下班，以避免造成不必要的资源浪费</span></li>
+<li><span style="font-family: courier new, courier;">根据银行《正式员工空闲时处理办法》(<strong>是否清理corePoolSize线程开关</strong>)，即使正式员工闲着也不得提前下班。所以，1号、2号窗口的正式员工继续等待接待客户(<strong>线程池内保持corePoolSize个线程</strong>)</span></li>
+</ul>
+<h3><span style="font-family: courier new, courier;"><a name="label1"></a>二、线程池参数</span></h3>
+<p><span style="font-family: courier new, courier;">　　ThreadPoolExecutor类的构造函数如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> ThreadPoolExecutor(<span style="color: #0000ff;">int</span><span style="color: #000000;"> corePoolSize,
+</span><span style="color: #008080;"> 2</span>                               <span style="color: #0000ff;">int</span><span style="color: #000000;"> maximumPoolSize,
+</span><span style="color: #008080;"> 3</span>                               <span style="color: #0000ff;">long</span><span style="color: #000000;"> keepAliveTime,
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">                              TimeUnit unit,
+</span><span style="color: #008080;"> 5</span>                               BlockingQueue&lt;Runnable&gt;<span style="color: #000000;"> workQueue,
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">                              ThreadFactory threadFactory,
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">                              RejectedExecutionHandler handler) {
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">if</span> (corePoolSize &lt; 0 ||
+<span style="color: #008080;"> 9</span>             maximumPoolSize &lt;= 0 ||
+<span style="color: #008080;">10</span>             maximumPoolSize &lt; corePoolSize ||
+<span style="color: #008080;">11</span>             keepAliveTime &lt; 0<span style="color: #000000;">)
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IllegalArgumentException();
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">if</span> (workQueue == <span style="color: #0000ff;">null</span> || threadFactory == <span style="color: #0000ff;">null</span> || handler == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+</span><span style="color: #008080;">14</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NullPointerException();
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">this</span>.acc = System.getSecurityManager() == <span style="color: #0000ff;">null</span> ?
+<span style="color: #008080;">16</span>                 <span style="color: #0000ff;">null</span><span style="color: #000000;"> :
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                AccessController.getContext();
+</span><span style="color: #008080;">18</span>         <span style="color: #0000ff;">this</span>.corePoolSize =<span style="color: #000000;"> corePoolSize;
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">this</span>.maximumPoolSize =<span style="color: #000000;"> maximumPoolSize;
+</span><span style="color: #008080;">20</span>         <span style="color: #0000ff;">this</span>.workQueue =<span style="color: #000000;"> workQueue;
+</span><span style="color: #008080;">21</span>         <span style="color: #0000ff;">this</span>.keepAliveTime =<span style="color: #000000;"> unit.toNanos(keepAliveTime);
+</span><span style="color: #008080;">22</span>         <span style="color: #0000ff;">this</span>.threadFactory =<span style="color: #000000;"> threadFactory;
+</span><span style="color: #008080;">23</span>         <span style="color: #0000ff;">this</span>.handler =<span style="color: #000000;"> handler;
+</span><span style="color: #008080;">24</span>     }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　构造函数的参数含义如下：</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;"><strong>corePoolSize</strong>：指定了线程池中核心线程的大小。它的数量决定了添加的任务是开辟新的线程去执行，还是放到workQueue任务队列中去。当提交一个任务到线程池，线程池会创建一个线程来执行任务，即使其他空闲的基本线程能够执行新任务也会创建新的线程，等到需要执行的任务数大于corePoolSize时就不再创建。(1、在创建线程池后，默认情况下，线程池中并没有任何线程，而是等待有任务到来才创建线程去执行任务。除非调用了prestartAllCoreThreads()方法或prestartCoreThread()方法，在任务没有到来之前就预创建corePoolSize个线程或一个线程。2、在创建线程池后，默认情况下，线程池中的线程数为0，当有任务到来时线程池就会创建一个线程去执行任务，当线程池中的线程数目达到corePoolSize后，就会把后续到达的任务放到缓存任务队列当中。核心线程在allowCoreThreadTimeout被设置为true时会超时并被回收，默认情况下不会被回收)</span></li>
+<li><span style="font-family: courier new, courier;"><strong>maxPoolSize/maximumPoolSize</strong>：指定了线程池中最大线程数量，即线程池允许创建的最大线程数。这个参数会根据使用的workQueue任务队列的类型，决定线程池会开辟的最大线程数量。如果任务队列满了，并且已创建的线程数小于最大线程数，则线程池会再创建新的线程执行任务。(当线程数大于等于corePoolSize，且任务队列已满时，线程池会创建新的线程，直到线程数量达到maximumPoolSize。如果线程已等于maximumPoolSize，且任务队列已满，则已超出线程池的处理能力，线程池会按照一定的处理策略处理)</span></li>
+<li><span style="font-family: courier new, courier;"><strong>keepAliveTime</strong>：线程活动保持时间，线程池的工作线程空闲后，保持存活的时间。当线程池中空闲线程数量超过corePoolSize时，多余的线程会在多长时间之后被销毁。(1、当线程空闲时间达到keepAliveTime，该线程会退回，直到线程数量等于corePoolSize。如果allowCoreThreadTimeout设置为true，则所有线程均会陆续退出直到线程数量为0)</span></li>
+<li><span style="font-family: courier new, courier;"><strong>unit</strong>：线程活动保持时间的单位。常用取值如下：</span></li>
+</ul>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">TimeUnit.DAYS;              //天
+TimeUnit.HOURS;             //小时
+TimeUnit.MINUTES;           //分钟
+TimeUnit.SECONDS;           //秒
+TimeUnit.MILLISECONDS;      //毫秒
+TimeUnit.MICROSECONDS;      //微秒
+TimeUnit.NANOSECONDS;       //纳秒
+</span></code></pre>
+
+<ul>
+<li><span style="font-family: courier new, courier;"><strong>workQueue</strong>：阻塞队列，用来存储等待执行的任务。</span></li>
+</ul>
+<p><span style="font-family: courier new, courier;">　　　阻塞队列有以下几种选择：</span></p>
+<p><span style="font-family: courier new, courier;">　　　1、ArrayBlockingQueue：一个基于数组结构的有界阻塞队列，此队列按FIFO(先进先出)原则对元素进行排序</span></p>
+<p><span style="font-family: courier new, courier;">　　　2、LinkedBlockingQueue：一个基于链表结构的阻塞队列，此队列按FIFO(先进先出)排序元素，吞吐量通常要高于　　　　　　　　　　　　　 ArrayBlockingQueue。静态工厂方法Executors.newFixedThreadPool()使用了这个队列</span></p>
+<p><span style="font-family: courier new, courier;">　　　3、SynchronousQueue：一个不存储元素的阻塞队列。每个插入操作必须等到另一个线程调用移除操作，否则插入操作一直处于阻塞状　　　　&nbsp;&nbsp; 态，吞吐量通常要高于 LinkedBlockingQueue。静态工厂方法Executors.newCachedThreadPool使用了这个队列</span></p>
+<p><span style="font-family: courier new, courier;">　　　4、PriorityBlockingQueue：一个具有优先级的无限阻塞队列</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;"><strong>threadFactory</strong>：线程工厂，用于设置创建线程，可以通过线程工厂给每个创建出来的线程设置更有意义的名字</span></li>
+<li><span style="font-family: courier new, courier;"><strong>handler</strong>：饱和策略(拒绝策略)，当线程池和阻塞队列都满了，说明线程池处于饱和状态，必须采取一种策略处理提交的新任务。</span></li>
+</ul>
+<p><span style="font-family: courier new, courier;">　　　当线程数量达到maximumPoolSize时的处理策略有以下几种：</span></p>
+<p><span style="font-family: courier new, courier;">　　　1)ThreadPoolExecutor.AbortPolicy：丢弃任务，并抛出RejectedExecutionException异常</span></p>
+<p><span style="font-family: courier new, courier;">　　　2)ThreadPoolExecutor.DiscardPolicy：丢弃任务，但是不抛出异常</span></p>
+<p><span style="font-family: courier new, courier;">　　　3)ThreadPoolExecutor.DiscardOldestPolicy：丢弃队列最前面的等待时间最久的任务，然后重新尝试执行任务(重复此过程)</span></p>
+<p><span style="font-family: courier new, courier;">　　　4)ThreadPoolExecutor.CallerRunsPolicy：由调用线程处理该任务，谁调用返回给谁</span></p>
+<p><span style="font-family: courier new, courier;">　　　　<strong>注意：Spring的线程池和JDK线程池中的拒绝策略默认值都是ThreadPoolExecutor.AbortPolicy</strong></span></p>
+<h3><span style="font-family: courier new, courier;"><a name="label2"></a>三、线程池的执行过程</span></h3>
+<p><span style="font-family: courier new, courier;">　　执行流程图：</span></p>
+<p><span style="font-family: courier new, courier;">　　<img src="./images/Java线程池基础0.png" alt="" width="500" /></span></p>
+<p><span style="font-family: courier new, courier;">　　1、当线程池中线程数小于corePoolSize时，对于新提交的任务，线程池将创建一个新线程来执行任务，即使此时线程池中存在空闲线程</span></p>
+<p><span style="font-family: courier new, courier;">　　2、当线程池中线程数达到corePoolSize时，新提交的任务将会被线程池放入workQueue队列中，等待线程池中任务调度执行</span></p>
+<p><span style="font-family: courier new, courier;">　　3、当workQueue已满，且corePoolSize &lt; maximumPoolSize时，对于新提交的任务，线程池将创建新线程来执行任务<br /></span></p>
+<p><span style="font-family: courier new, courier;">　　4、当提交的任务数超过maximumPoolSize时，新提交任务由RejectedExecutionHandler处理</span></p>
+<p><span style="font-family: courier new, courier;">　　5、当线程池中线程数超过corePoolSize时，空闲线程的空闲时间达到keepAliveTime时，空闲线程会被关闭</span></p>
+<p><span style="font-family: courier new, courier;">　　6、当设置allowCoreThreadTimeOut(true)时，线程池中的核心线程空闲时间达到keepAliveTime时也将被关闭</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">线程池的工作顺序：corePoolSize -&gt; 任务队列 -&gt; maximumPoolsize -&gt; 拒绝策略</span><br /></span></p>
+<h3><span style="font-family: courier new, courier;"><a name="label3"></a>四、线程池的主要实现</span></h3>
+<p><span style="font-family: courier new, courier;">　　通过调用Executors类中的静态工厂方法可创建不同的线程池，这些线程池的内部实现原理都是相同的，仅仅是使用了不同的工作队列或线程池大小，如下：</span></p>
+<p><span style="font-family: courier new, courier;">　　1、newFixedThreadPool：创建一个固定大小的线程池，每次提交一个任务就创建一个线程，直到线程达到线程池的最大大小，线程池的大小一旦达到最大值就会保持不变。如果某个线程因为执行异常而结束，线程池会补充一个新的线程。</span></p>
+<p><span style="font-family: courier new, courier;">　　构造函数如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//第一个构造函数，参数只有线程数量，核心线程数与最大线程数一致</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> ExecutorService newFixedThreadPool(<span style="color: #0000ff;">int</span><span style="color: #000000;"> nThreads) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ThreadPoolExecutor(nThreads, nThreads,
+</span><span style="color: #008080;"> 4</span>                                       0L<span style="color: #000000;">, TimeUnit.MILLISECONDS,
+</span><span style="color: #008080;"> 5</span>                                       <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Runnable&gt;<span style="color: #000000;">());
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span> <span style="color: #008000;">//第二个构造函数，参数包含核心线程数和线程工厂，核心线程数与最大线程数一致</span>
+<span style="color: #008080;"> 9</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> ExecutorService newFixedThreadPool(<span style="color: #0000ff;">int</span><span style="color: #000000;"> nThreads, ThreadFactory threadFactory) {
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ThreadPoolExecutor(nThreads, nThreads,
+</span><span style="color: #008080;">11</span>                                       0L<span style="color: #000000;">, TimeUnit.MILLISECONDS,
+</span><span style="color: #008080;">12</span>                                       <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Runnable&gt;<span style="color: #000000;">(),
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">                                      threadFactory);
+</span><span style="color: #008080;">14</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　2、newSingleThreadExecutor：创建一个单线程的线程池，这个线程池只有一个线程在工作，也就是串行执行所有任务。如果这个唯一的线程因为异常结束，那么会有一个新的线程来替代它。此线程池保证所有任务的执行顺序按照任务的提交顺序执行。</span></p>
+<p><span style="font-family: courier new, courier;">　　构造函数如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;">1</span> <span style="color: #008000;">//</span><span style="color: #008000;">构造函数，默认核心线程数和最大线程数都是1</span>
+<span style="color: #008080;">2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> ExecutorService newSingleThreadExecutor() {
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> FinalizableDelegatedExecutorService
+</span><span style="color: #008080;">4</span>             (<span style="color: #0000ff;">new</span> ThreadPoolExecutor(1, 1<span style="color: #000000;">,
+</span><span style="color: #008080;">5</span>                                     0L<span style="color: #000000;">, TimeUnit.MILLISECONDS,
+</span><span style="color: #008080;">6</span>                                     <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Runnable&gt;<span style="color: #000000;">()));
+</span><span style="color: #008080;">7</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　3、newCachedThreadPool：创建一个可缓存的线程池，如果线程池的大小超过了处理任务所需要的线程数，那么就会回收部分空闲(60秒不执行任务)的线程；当任务数增加时，此线程池又可以智能的添加新线程来处理任务。此线程池不会对线程池大小做限制，线程池大小完全依赖于操作系统(或JVM)能够创建的最大线程大小。</span></p>
+<p><span style="font-family: courier new, courier;">　　构造函数如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;">1</span> <span style="color: #008000;">//</span><span style="color: #008000;">构造函数，核心线程数为0，最大线程数为Integer.MAX_VALUE，空闲线程超时时间为60秒</span>
+<span style="color: #008080;">2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> ExecutorService newCachedThreadPool() {
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> ThreadPoolExecutor(0<span style="color: #000000;">, Integer.MAX_VALUE,
+</span><span style="color: #008080;">4</span>                                       60L<span style="color: #000000;">, TimeUnit.SECONDS,
+</span><span style="color: #008080;">5</span>                                       <span style="color: #0000ff;">new</span> SynchronousQueue&lt;Runnable&gt;<span style="color: #000000;">());
+</span><span style="color: #008080;">6</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　4、newScheduledThreadPool：创建一个固定长度的线程池，支持定时的以及周期性的任务执行，类似于Timer</span></p>
+<p><span style="font-family: courier new, courier;">　　构造函数如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//第一个</span><span style="color: #008000;">构造函数，指定核心线程数大小</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> ScheduledExecutorService newScheduledThreadPool(<span style="color: #0000ff;">int</span><span style="color: #000000;"> corePoolSize) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ScheduledThreadPoolExecutor(corePoolSize);
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span> <span style="color: #008000;">//第二个</span><span style="color: #008000;">构造函数，指定核心线程数大小及线程工厂</span>
+<span style="color: #008080;"> 7</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> ScheduledExecutorService newScheduledThreadPool(
+</span><span style="color: #008080;"> 8</span>             <span style="color: #0000ff;">int</span><span style="color: #000000;"> corePoolSize, ThreadFactory threadFactory) {
+</span><span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ScheduledThreadPoolExecutor(corePoolSize, threadFactory);
+</span><span style="color: #008080;">10</span> }</span></code></pre>
+
+<h3><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">注意：线程池一般不允许使用Executors去创建，而要通过ThreadPoolExecutor方法创建，一方面是由于Executors框架虽然提供了如newFixedThreadPool()、newSingleThreadExecutor()、newCachedThreadPool()等创建线程池的方法，但都有其局限性，不够灵活。另外，由于前面几种方法内部都是通过ThreadPoolExecutor方式实现，使用ThreadPoolExecutor有助于明确线程池的运行规则，创建符合自己的业务场景需要的线程池，避免资源耗尽的风险。</span></span></h3>
+<h3><span style="font-family: courier new, courier;"><a name="label4"></a>五、线程池的使用</span></h3>
+<p><span style="font-family: courier new, courier;">　　1、向线程池提交任务方式</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;">使用execute向线程池提交任务</span></li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ExecuteTest {
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>         BlockingQueue&lt;Runnable&gt; workQueue = <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;"> 6</span>         ThreadPoolExecutor poolExecutor = <span style="color: #0000ff;">new</span> ThreadPoolExecutor(2, 3, 60<span style="color: #000000;">, TimeUnit.SECONDS, workQueue);
+</span><span style="color: #008080;"> 7</span>         poolExecutor.execute(<span style="color: #0000ff;">new</span><span style="color: #000000;"> TaskOne());
+</span><span style="color: #008080;"> 8</span>         poolExecutor.execute(<span style="color: #0000ff;">new</span><span style="color: #000000;"> TaskTwo());
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">        poolExecutor.shutdown();
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span> <span style="color: #0000ff;">class</span> TaskOne <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Runnable{
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">17</span>         System.out.println("正在执行任务1..."<span style="color: #000000;">);
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">20</span> 
+<span style="color: #008080;">21</span> <span style="color: #0000ff;">class</span> TaskTwo <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Runnable{
+</span><span style="color: #008080;">22</span> 
+<span style="color: #008080;">23</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">24</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">25</span>         System.out.println("正在执行任务2..."<span style="color: #000000;">);
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">27</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">正在执行任务1...
+正在执行任务2...
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;">使用submit方法向线程池提交任务,返回一个Future对象。可通过这个Future对象来判断任务是否执行成功，通过get()方法获取返回值，get()方法会阻塞直到任务完成</span></li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SubmitTest {
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ExecutionException, InterruptedException {
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>         ExecutorService executorService =<span style="color: #000000;"> Executors.newCachedThreadPool();
+</span><span style="color: #008080;"> 6</span>         List&lt;Future&lt;String&gt;&gt; resultList = <span style="color: #0000ff;">new</span> ArrayList&lt;Future&lt;String&gt;&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//创建10个任务并执行</span>
+<span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i = 0;i &lt; 10;i++<span style="color: #000000;">){
+</span><span style="color: #008080;"> 9</span>             <span style="color: #008000;">//</span><span style="color: #008000;">使用ExecutorService执行Callable类型的任务,并将结果保存在future变量中</span>
+<span style="color: #008080;">10</span>             Future&lt;String&gt; future = executorService.submit(<span style="color: #0000ff;">new</span><span style="color: #000000;"> TaskWithResult(i));
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">            resultList.add(future);
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">13</span>         <span style="color: #008000;">//</span><span style="color: #008000;">遍历结果集</span>
+<span style="color: #008080;">14</span>         <span style="color: #0000ff;">for</span>(Future&lt;String&gt;<span style="color: #000000;"> future : resultList){
+</span><span style="color: #008080;">15</span>             <span style="color: #008000;">//</span><span style="color: #008000;">Future返回如果没有完成,则一直循环等待,直到Future返回完成</span>
+<span style="color: #008080;">16</span>             <span style="color: #0000ff;">while</span>(!<span style="color: #000000;">future.isDone());{
+</span><span style="color: #008080;">17</span>                 <span style="color: #008000;">//</span><span style="color: #008000;">打印各个线程(任务)执行的结果</span>
+<span style="color: #008080;">18</span> <span style="color: #000000;">                System.out.println(future.get());
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">        executorService.shutdown();
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">24</span> 
+<span style="color: #008080;">25</span> <span style="color: #0000ff;">class</span> TaskWithResult <span style="color: #0000ff;">implements</span> Callable&lt;String&gt;<span style="color: #000000;">{
+</span><span style="color: #008080;">26</span> 
+<span style="color: #008080;">27</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> id;
+</span><span style="color: #008080;">28</span>     <span style="color: #0000ff;">public</span> TaskWithResult(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id){
+</span><span style="color: #008080;">29</span>         <span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">31</span>     
+<span style="color: #008080;">32</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">33</span>     <span style="color: #0000ff;">public</span> String call() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+</span><span style="color: #008080;">34</span>         <span style="color: #0000ff;">return</span> "执行结果" +<span style="color: #000000;"> id;
+</span><span style="color: #008080;">35</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">36</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">执行结果0
+执行结果1
+执行结果2
+执行结果3
+执行结果4
+执行结果5
+执行结果6
+执行结果7
+执行结果8
+执行结果9
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　2、执行定时及周期性任务</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;">Timer工具管理定时及周期性任务。示例代码如下：</span></li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TimerTest {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> SimpleDateFormat sdf = <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         TimerTask timerTaskOne = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">10</span>                 System.out.println("任务1执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date()));
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+</span><span style="color: #008080;">12</span>                     <span style="color: #008000;">//</span><span style="color: #008000;">模拟任务1执行时间3秒</span>
+<span style="color: #008080;">13</span>                     Thread.sleep(3000<span style="color: #000000;">);
+</span><span style="color: #008080;">14</span>                 }<span style="color: #0000ff;">catch</span><span style="color: #000000;">(InterruptedException ex){
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                    ex.printStackTrace();
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">19</span>         
+<span style="color: #008080;">20</span>         System.out.println(String.format("当前时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">21</span>         Timer timer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Timer();
+</span><span style="color: #008080;">22</span>         <span style="color: #008000;">//</span><span style="color: #008000;">间隔4秒钟周期性执行任务1</span>
+<span style="color: #008080;">23</span>         timer.schedule(timerTaskOne, <span style="color: #0000ff;">new</span> Date(), 4000<span style="color: #000000;">);
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">25</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">当前时间:2019-09-24 16:35:39
+任务1执行时间:2019-09-24 16:35:39
+任务1执行时间:2019-09-24 16:35:43
+任务1执行时间:2019-09-24 16:35:47
+任务1执行时间:2019-09-24 16:35:51
+任务1执行时间:2019-09-24 16:35:55
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;　　上述任务1以4秒为间隔周期性执行。但是Timer存在一些缺陷，主要是两方面的问题：</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">缺陷1：Timer只能创建一个唯一的线程来执行所有的TimerTask任务，如果一个TimerTask任务的执行很耗时，会导致其他的TimerTask的准确性出现问题。</span>代码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TimerDefectTestOne {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> SimpleDateFormat sdf = <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         TimerTask timerTaskOne = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">10</span>                 System.out.println(String.format("任务1执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+</span><span style="color: #008080;">12</span>                     Thread.sleep(10000<span style="color: #000000;">);
+</span><span style="color: #008080;">13</span>                 }<span style="color: #0000ff;">catch</span><span style="color: #000000;">(InterruptedException ex){
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                    ex.printStackTrace();
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">18</span>         
+<span style="color: #008080;">19</span>         TimerTask timerTaskTwo = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;">21</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">22</span>                 System.out.println(String.format("任务2执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">25</span>         
+<span style="color: #008080;">26</span>         System.out.println("当前时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date()));
+</span><span style="color: #008080;">27</span>         Timer timer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Timer();
+</span><span style="color: #008080;">28</span>         <span style="color: #008000;">//</span><span style="color: #008000;">间隔1秒周期性执行任务1</span>
+<span style="color: #008080;">29</span>         timer.schedule(timerTaskOne, <span style="color: #0000ff;">new</span> Date(), 1000<span style="color: #000000;">);
+</span><span style="color: #008080;">30</span>         <span style="color: #008000;">//</span><span style="color: #008000;">间隔4秒周期性执行任务2</span>
+<span style="color: #008080;">31</span>         timer.schedule(timerTaskTwo, <span style="color: #0000ff;">new</span> Date(), 4000<span style="color: #000000;">);
+</span><span style="color: #008080;">32</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">33</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">当前时间:2019-09-24 16:40:51
+任务1执行时间:2019-09-24 16:40:51
+任务2执行时间:2019-09-24 16:41:01
+任务1执行时间:2019-09-24 16:41:01
+任务1执行时间:2019-09-24 16:41:11
+任务2执行时间:2019-09-24 16:41:21
+任务1执行时间:2019-09-24 16:41:21
+任务1执行时间:2019-09-24 16:41:31
+任务2执行时间:2019-09-24 16:41:41
+任务1执行时间:2019-09-24 16:41:41
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;　　由执行结果可看出任务2的执行周期并不是4秒，与缺陷1内容描述符合。</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">缺陷2：如果TimerTask抛出未检查的异常，Timer将产生无法预料的行为。Timer线程并不捕获异常，所有TimerTask抛出的未检查的异常都会终止Timer线程。</span>代码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TimerDefectTestTwo {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> SimpleDateFormat sdf = <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         TimerTask timerTaskOne = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">10</span>                 System.out.println(String.format("任务1执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuntimeException();
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">14</span>         
+<span style="color: #008080;">15</span>         TimerTask timerTaskTwo = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;">17</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">18</span>                 System.out.println(String.format("任务2执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">21</span>         
+<span style="color: #008080;">22</span>         System.out.println("当前时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date()));
+</span><span style="color: #008080;">23</span>         Timer timer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Timer();
+</span><span style="color: #008080;">24</span>         <span style="color: #008000;">//</span><span style="color: #008000;">间隔1秒周期性执行任务1</span>
+<span style="color: #008080;">25</span>         timer.schedule(timerTaskOne, <span style="color: #0000ff;">new</span> Date(), 1000<span style="color: #000000;">);
+</span><span style="color: #008080;">26</span>         <span style="color: #008000;">//</span><span style="color: #008000;">间隔4秒周期性执行任务2</span>
+<span style="color: #008080;">27</span>         timer.schedule(timerTaskTwo, <span style="color: #0000ff;">new</span> Date(), 4000<span style="color: #000000;">);
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">29</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">当前时间:2019-09-24 16:48:27
+任务1执行时间:2019-09-24 16:48:27
+Exception in thread "Timer-0" java.lang.RuntimeException
+	at com.aisino.threadPool.TimerDefectTestTwo$1.run(TimerDefectTestTwo.java:22)
+	at java.util.TimerThread.mainLoop(Timer.java:555)
+	at java.util.TimerThread.run(Timer.java:505)
+</span></code></pre>
+
+<ul>
+<li><span style="font-family: courier new, courier; color: #ff0000;">Timer缺陷的解决方法：使用ScheduledThreadPoolExecutor替换Timer</span></li>
+</ul>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">针对缺陷1，使用ScheduledThreadPoolExecutor的替换Timer。</span>代码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ScheduledThreadPoolExecutorTestOne {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> SimpleDateFormat sdf = <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         TimerTask timerTaskOne = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">10</span>                 System.out.println(String.format("任务1执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+</span><span style="color: #008080;">12</span>                     Thread.sleep(10000<span style="color: #000000;">);
+</span><span style="color: #008080;">13</span>                 }<span style="color: #0000ff;">catch</span><span style="color: #000000;">(InterruptedException ex){
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                    ex.printStackTrace();
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">18</span> 
+<span style="color: #008080;">19</span>         TimerTask timerTaskTwo = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;">21</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">22</span>                 System.out.println(String.format("任务2执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">25</span> 
+<span style="color: #008080;">26</span>         System.out.println("当前时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date()));
+</span><span style="color: #008080;">27</span>         ScheduledThreadPoolExecutor poolExecutor = <span style="color: #0000ff;">new</span> ScheduledThreadPoolExecutor(2<span style="color: #000000;">);
+</span><span style="color: #008080;">28</span>         poolExecutor.scheduleAtFixedRate(timerTaskOne, 0, 1000<span style="color: #000000;">, TimeUnit.MILLISECONDS);
+</span><span style="color: #008080;">29</span>         poolExecutor.scheduleAtFixedRate(timerTaskTwo, 0, 4000<span style="color: #000000;">, TimeUnit.MILLISECONDS);
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">31</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">当前时间:2019-09-24 16:52:05
+任务1执行时间:2019-09-24 16:52:05
+任务2执行时间:2019-09-24 16:52:05
+任务2执行时间:2019-09-24 16:52:09
+任务2执行时间:2019-09-24 16:52:13
+任务1执行时间:2019-09-24 16:52:15
+任务2执行时间:2019-09-24 16:52:17
+任务2执行时间:2019-09-24 16:52:21
+任务1执行时间:2019-09-24 16:52:25
+任务2执行时间:2019-09-24 16:52:25
+任务2执行时间:2019-09-24 16:52:29
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;　　根据执行结果可看出，任务1以10秒为间隔执行，任务2以4秒为间隔周期性执行，解决缺陷1。</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">针对缺陷2，使用ScheduledThreadPoolExecutor的替换Timer。</span>代码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ScheduledThreadPoolExecutorTestTwo {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> SimpleDateFormat sdf = <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         TimerTask timerTaskOne = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">10</span>                 System.out.println(String.format("任务1执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> RuntimeException();
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>         TimerTask timerTaskTwo = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TimerTask() {
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;">17</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">18</span>                 System.out.println(String.format("任务2执行时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date())));
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">21</span> 
+<span style="color: #008080;">22</span>         System.out.println("当前时间:" + sdf.format(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Date()));
+</span><span style="color: #008080;">23</span>         ScheduledThreadPoolExecutor poolExecutor = <span style="color: #0000ff;">new</span> ScheduledThreadPoolExecutor(2<span style="color: #000000;">);
+</span><span style="color: #008080;">24</span>         poolExecutor.scheduleAtFixedRate(timerTaskOne, 0, 1000<span style="color: #000000;">, TimeUnit.MILLISECONDS);
+</span><span style="color: #008080;">25</span>         poolExecutor.scheduleAtFixedRate(timerTaskTwo, 0, 4000<span style="color: #000000;">, TimeUnit.MILLISECONDS);
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">27</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　执行结果：</span></p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;"><span style="font-family: courier new, courier;">当前时间:2019-09-24 16:56:42
+任务1执行时间:2019-09-24 16:56:42
+任务2执行时间:2019-09-24 16:56:42
+任务2执行时间:2019-09-24 16:56:46
+任务2执行时间:2019-09-24 16:56:50
+任务2执行时间:2019-09-24 16:56:54
+任务2执行时间:2019-09-24 16:56:58
+任务2执行时间:2019-09-24 16:57:02
+任务2执行时间:2019-09-24 16:57:06
+</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;　　<span style="color: #ff0000;">由执行结果可看出，当任务1因异常而停止时，任务2仍正常以4秒为间隔周期性执行，解决缺陷2。</span></span></p>
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　3、关闭线程池</span></p>
+<p><span style="font-family: courier new, courier;">&nbsp;　　关闭线程池可通过调用的shutdown()方法或shutdownNow()方法来实现，两个方法的实现原理不同。shutdown()方法的原理是将线程池的状态由RUNNING转变为SHUTDOWN状态，SHUTDOWN状态下线程池不再接受新任务，但是会将工作队列中的任务执行结束，然后中断空闲线程。shutdownNow()方法的原理是遍历线程池中的所有线程，然后逐个调用线程的interrupt方法来中断线程。shutdownNow()方法会首先将线程池的状态设置为STOP，然后尝试中断所有线程(包括工作线程和空闲线程)，并返回工作队列中所有未完成任务的列表。</span></p>
+<p><span style="font-family: courier new, courier;">　　只要调用了两个方法中的任意一个，isShutdown()方法就会返回true。当所有的任务都已关闭后，才表示线程池关闭成功，这时调用isTerminated()方法会返回true。至于应该调用哪一种方法来关闭线程池，应该由提交到线程池的任务特性决定，通常调用shutdown()来关闭线程池，如果任务不一定要执行完，则可以调用shutdownNow()方法。</span></p>
+<h3><span style="font-family: courier new, courier;"><a name="label5"></a>六、线程池的正确关闭方式</span></h3>
+<p><span style="font-family: courier new, courier;">　　应用停机时，需要释放资源，关闭连接。对于一些定时任务或者网络请求服务将会使用线程池，当应用停机时需要正确安全的关闭线程池，如果处理不当，可能造成数据丢失，业务请求结果不正确等问题。</span></p>
+<p><span style="font-family: courier new, courier;">　　关闭线程池我们可以选择什么都不做，JVM关闭时会自然的清除线程池对象。这么做存在很大的弊端，线程池中正在执行的线程以及队列中还未执行的任务将会变得不可控。所以我们需要想办法控制这些正在执行的线程以及未执行的任务。</span></p>
+<p><span style="font-family: courier new, courier;">　　ThreadPoolExecutor类中提供了两个主动关闭的方法：shutdown()和shutdownNow()，这两个方法都可以用于关闭线程池，但是具体效果不一样。</span></p>
+<p><span style="font-family: courier new, courier;">　　1、线程池的状态</span></p>
+<p><span style="font-family: courier new, courier;">　　线程池状态关系图如下：</span></p>
+<p><span style="font-family: courier new, courier;">　　<img style="vertical-align: baseline;" src="./images/Java线程池基础1.png" alt="" width="500" height="234" /></span></p>
+<p><span style="font-family: courier new, courier;">　　线程池总共存在5种状态，分别为：</span></p>
+<ul>
+<li><span style="font-family: courier new, courier;">RUNNING：线程创建之后的初始状态，这种状态下可以执行任务。</span></li>
+<li><span style="font-family: courier new, courier;">SHUTDOWN：该状态下的线程池不再接受新任务，但是会将工作队列中的任务执行结束。</span></li>
+<li><span style="font-family: courier new, courier;">STOP：该状态下线程池不再接受新任务，但是不会处理工作队列中的任务，并且将会中断线程。</span></li>
+<li><span style="font-family: courier new, courier;">TIDYING：该状态下所有任务都已终止，将会执行terminated()钩子方法。</span></li>
+<li><span style="font-family: courier new, courier;">TERMINATED：执行完terminated()钩子方法之后。</span></li>
+</ul>
+<p><span style="font-family: courier new, courier;">　　当执行shutdown()方法时将会使线程池状态从RUNNING转变为SHUTDOWN，而调用shutdownNow()方法之后线程池状态将会从RUNNING转变为STOP。从上图可看出，当线程池处于SHUTDOWN状态，还可以继续调用shutdownNow()方法，将其状态转变为STOP。</span></p>
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　2、shutdown()方法</span></p>
+<p><span style="font-family: courier new, courier;">　　shutdown()方法源码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> shutdown(){
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">final</span> ReentrantLock mainLock = <span style="color: #0000ff;">this</span><span style="color: #000000;">.mainLock;
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">    mainLock.lock();
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 5</span>         <span style="color: #008000;">//</span><span style="color: #008000;">检查权限</span>
+<span style="color: #008080;"> 6</span> <span style="color: #000000;">        checkShutdownAccess();
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;">设置线程池状态</span>
+<span style="color: #008080;"> 8</span> <span style="color: #000000;">        advanceRunState(SHUTDOWN);
+</span><span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;">中断空闲线程</span>
+<span style="color: #008080;">10</span> <span style="color: #000000;">        interruptIdleWorkers();
+</span><span style="color: #008080;">11</span>         <span style="color: #008000;">//</span><span style="color: #008000;">钩子函数,主要用于清理一些资源</span>
+<span style="color: #008080;">12</span> <span style="color: #000000;">        onShutdown();
+</span><span style="color: #008080;">13</span>     } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">        mainLock.unlock();
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">    tryTerminate();
+</span><span style="color: #008080;">17</span> }    </span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　shutdown()方法首先加锁，其次检查系统安装状态，接着将线程池状态转变为SHUTDOWN，在这之后线程池不再接收提交的新任务。此时如果继续向线程池提交任务，将会使用线程池拒绝策略响应，默认情况下将会使用ThreadPoolExecutor.AbortPolicy，抛出RejectedExecutionException异常。</span></p>
+<p><span style="font-family: courier new, courier;">　　interruptIdleWorkers()方法只会中断空闲的线程，不会中断正在执行任务的线程。空闲的线程将会阻塞在线程池的阻塞队列上。</span></p>
+<p><span style="font-family: courier new, courier;">　　</span></p>
+<p><span style="font-family: courier new, courier;">　　3、shutdownNow()方法</span></p>
+<p><span style="font-family: courier new, courier;">　　shutdownNow()方法源码如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> List&lt;Runnable&gt;<span style="color: #000000;"> shutdownNow(){
+</span><span style="color: #008080;"> 2</span>     List&lt;Runnable&gt;<span style="color: #000000;"> tasks;
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">final</span> ReentrantLock mainLock = <span style="color: #0000ff;">this</span><span style="color: #000000;">.mainLock;
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">    mainLock.lock();
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 6</span>         <span style="color: #008000;">//</span><span style="color: #008000;">检查状态</span>
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">        checkShutdownAccess();
+</span><span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;">将线程池状态转变为STOP</span>
+<span style="color: #008080;"> 9</span> <span style="color: #000000;">        advanceRunState(STOP);
+</span><span style="color: #008080;">10</span>         <span style="color: #008000;">//</span><span style="color: #008000;">中断所有线程,包括工作线程以及空闲线程</span>
+<span style="color: #008080;">11</span> <span style="color: #000000;">        interruptWorkers();
+</span><span style="color: #008080;">12</span>         <span style="color: #008000;">//</span><span style="color: #008000;">丢弃工作队列中的存量任务</span>
+<span style="color: #008080;">13</span>         tasks =<span style="color: #000000;"> drainQueue();
+</span><span style="color: #008080;">14</span>     } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        mainLock.unlock();
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">    tryTerminate();
+</span><span style="color: #008080;">18</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> tasks;
+</span><span style="color: #008080;">19</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　shutdownNow()方法将会把线程池状态设置为STOP，然后中断所有线程，最后取出工作队列中所有未完成的任务返回给调用者。</span></p>
+<p><span style="font-family: courier new, courier;">　　对比shutdown()方法，shutdownNow()方法比较粗暴，直接中断工作线程。不过需要注意：中断线程并不代表线程立刻结束。这里需要线程主动配合线程中断响应。</span></p>
+<p><span style="font-family: courier new, courier;">　　线程池的shutdown()方法与shutdownNow()方法都不会主动等待执行任务的结束，如果需要等到线程池任务执行结束，需要调用awaitTermination主动等待任务调用结束。</span></p>
+<p><span style="font-family: courier new, courier;">　　调用方法如下：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;">1</span> <span style="color: #000000;">poolExecutor.shutdown();
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">while</span>(!poolExecutor.awaitTermination(60<span style="color: #000000;">, TimeUnit.SECONDS)){
+</span><span style="color: #008080;">4</span>             System.out.println("线程池任务还未执行结束"<span style="color: #000000;">);
+</span><span style="color: #008080;">5</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">6</span>     }<span style="color: #0000ff;">catch</span><span style="color: #000000;">(InterruptedException ex){
+</span><span style="color: #008080;">7</span> <span style="color: #000000;">        ex.printStackTrace();
+</span><span style="color: #008080;">8</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">　　如果线程池任务执行结束，awaitTermination()方法将会返回true，否则当等待时间超过指定时间后将会返回false。如果需要使用这种机制，建议在上面的基础上增加一定重试次数。</span></p>
+<blockquote>
+<p style="text-align: left;"><span style="font-family: courier new, courier;">线程中断机制：线程中的interrupt()方法只是设置一个中断标志，不会立即中断正常的线程。如果想让中断立即生效，必须在线程内调用Thread.interrupted()判断线程的中断状态。对于阻塞的线程，调用中断时，线程将会立即退出阻塞状态并抛出InterruptedException异常。所以对于阻塞线程需要正确处理InterruptedException异常。</span></p>
+</blockquote>
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<p><span style="font-family: courier new, courier;">　　4、优雅关闭线程池</span></p>
+<p><span style="font-family: courier new, courier;">　　由线程池状态关系图可知，处于SHUTDOWN状态下的线程池依旧可以调用shtudownNow()方法，所以可以结合shutdown、shutdownNow、awaitTermination，更加优雅地关闭线程池。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-family: courier new, courier;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//调用shutdown()方法</span><span style="color: #008000;">关闭线程池        </span>
+<span style="color: #008080;"> 2</span> <span style="color: #000000;">poolExecutor.shutdown();
+</span><span style="color: #008080;"> 3</span> <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+</span><span style="color: #008080;"> 4</span>     <span style="color: #008000;">//</span><span style="color: #008000;">等待60秒</span>
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">if</span> (!poolExecutor.awaitTermination(60<span style="color: #000000;">, TimeUnit.SECONDS)){
+</span><span style="color: #008080;"> 6</span>         <span style="color: #008000;">//</span><span style="color: #008000;">调用shutdownNow取消正在执行的任务</span>
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">        poolExecutor.shutdownNow();
+</span><span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;">再次等待60秒，如果还未结束，可以再次尝试，或者直接放弃</span>
+<span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">if</span>(!poolExecutor.awaitTermination(60<span style="color: #000000;">, TimeUnit.SECONDS)){
+</span><span style="color: #008080;">10</span>             System.err.println("线程池任务未正常执行结束"<span style="color: #000000;">);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">13</span> }<span style="color: #0000ff;">catch</span><span style="color: #000000;">(InterruptedException ex){
+</span><span style="color: #008080;">14</span>     <span style="color: #008000;">//</span><span style="color: #008000;">重新调用shutdownNow</span>
+<span style="color: #008080;">15</span> <span style="color: #000000;">    poolExecutor.shutdownNow();
+</span><span style="color: #008080;">16</span> }</span></code></pre>
+
+<p><span style="font-family: courier new, courier;">&nbsp;</span></p>
+<h3><span style="font-family: courier new, courier;"><a name="label6"></a>七、线程池参数调优</span></h3>
+<p><span style="font-family: courier new, courier;">　　参数如何设置跟系统的负载有直接的关系，假设下面的参数表示目前的系统负载。</span></p>
+<p><span style="font-family: courier new, courier;">　　tasks：每秒需要处理的最大任务数量</span></p>
+<p><span style="font-family: courier new, courier;">　　tasktime：处理一个任务所需要的时间</span></p>
+<p><span style="font-family: courier new, courier;">　　responsetime：系统允许任务最大的响应时间，比如每个任务的响应时间不得超过2秒</span></p>
+<p><span style="font-family: courier new, courier;">　　<strong>1、corePoolSize</strong></span></p>
+<p><span style="font-family: courier new, courier;">　　每个任务需要tasktime秒处理，则每个线程每秒可以处理1/tasktime个任务。系统每秒有tasks个任务需要处理，则需要的线程数为：tasks/(1/tasktime)，即tasks*tasktime个线程。假设系统每秒任务数范围为100至1000，每个任务耗时0.1秒，则需要的线程数为100*0.1至1000*0.1，即10至100。那么corePoolSize应该设置为大于10，corePoolSize可设置为20。</span></p>
+<p><span style="font-family: courier new, courier;">　　<strong>2、workQueue</strong></span></p>
+<p><span style="font-family: courier new, courier;"><strong>　　</strong>任务队列的长度与核心线程数以及系统对任务响应时间的要求有关。队列长度可设置为(corePoolSize/tasktime)*responsetime,如(20/0.1)*2=400，即队列长度可设置为400。</span></p>
+<p><span style="font-family: courier new, courier;">　　<span style="color: #ff0000;">注意：队列长度设置过大，会导致任务响应时间过长，切忌使用new LinkedBlockingQueue()，队列LinkedBlockingQueue将队列长度设置为Integer.MAX_VALUE，将会导致线程数永远为corePoolSize，再也不会增加。当任务数量陡增时，任务响应时间也将随之陡增。</span><br /></span></p>
+<p><span style="font-family: courier new, courier;"><span style="color: #ff0000;">　　<strong><span style="color: #000000;">3、maximumPoolSize</span></strong></span></span></p>
+<p><span style="font-family: courier new, courier;"><span style="color: #ff0000;"><strong><span style="color: #000000;">　　</span></strong><span style="color: #000000;">当系统负载达到最大值时，核心线程数已无法按时处理完所有任务，这时就需要增加线程。每秒200个任务需要20个线程，那么当每秒任务达到1000个任务时，则需要(1000 - workQueue)*(20/200)，即60个线程，可将maximumPoolSize设置为60。</span></span></span></p>
+<p><span style="font-family: courier new, courier;"><span style="color: #ff0000;"><span style="color: #000000;">　　<strong>4、keepAliveTime</strong></span></span></span></p>
+<p><span style="font-family: courier new, courier;">　　线程数量不能只增加不减少。当负载降低时，可减少线程数量，如果一个线程空闲时间达到keepAliveTime，该线程就该退出，默认情况下线程池最少会保持corePoolSize个线程(allowCoreThreadTimeout设置为false)，keepAliveTime可设置为0。</span></p>
+<p><span style="font-family: courier new, courier;">　　<strong>5、allowCoreThreadTimeout</strong></span></p>
+<p><span style="font-family: courier new, courier;"><strong>　　</strong>默认情况下，核心线程不会退出。可将allowCoreThreadTimeout设置为true，让核心线程也退出。</span></p>
+<p><span style="font-family: courier new, courier;">　　以上关于线程数量的计算并没有考虑CPU的情况。若结合CPU的情况，比如，当线程数量达到50时，CPU达到100%，则将maxPoolSize设置为60也不合适，此时若系统负载长时间维持在每秒1000个任务，则超出线程池处理能力，应设法降低每个任务的处理时间(tasktime)。</span></p>
+<p><span style="font-family: courier new, courier;">　　</span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

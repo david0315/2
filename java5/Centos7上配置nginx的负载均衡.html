@@ -1,0 +1,179 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Centos7上配置nginx的负载均衡' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Centos7上配置nginx的负载均衡</center></div><div class='banquan'>原文出处:本文由博客园博主爱笑的Terry提供。<br/>
+原文连接:https://www.cnblogs.com/terry-love/p/11552262.html</div><br>
+    <h1 id="前言">前言</h1>
+<p>在配置nginx负载均衡前.我们需要明白几个名词的概念</p>
+<p><strong>注:</strong> 如果不小心忘了tomcat和nginx的启动,关闭命令,可参考写在文章最后的命令</p>
+<h1 id="一-重要的概念理解">一 重要的概念理解</h1>
+<p><strong>1 什么是nginx呢?</strong></p>
+<p>Nginx是一个web服务器和反向代理服务器，用于HTTP、HTTPS、SMTP、POP3和IMAP协议.</p>
+<p><strong>2 什么是反向代理呢?</strong></p>
+<p><strong>反向代理隐藏了真实的服务端</strong>，当我们请求 www.baidu.com 的时候，就像拨打10086一样，背后可能有成千上万台服务器为我们服务，但具体是哪一台，你不知道，也不需要知道，你只需要知道反向代理服务器是谁就好了，www.baidu.com 就是我们的反向代理服务器，反向代理服务器会帮我们把请求转发到真实的服务器那里去。Nginx就是性能非常好的反向代理服务器，用来做负载均衡。</p>
+<p><strong>3 什么是负载均衡呢?</strong></p>
+<p>负载均衡（Load Balancing）是一种<strong>将任务分派到多个服务端进程的方法</strong>。例如，将一个HTTP请求派发到实际的Web服务器中执行的过程就涉及负载均衡的实现。一个HTTP请求到达Web服务器，这中间涉及多个过程，也存在多种不同负载均衡的方法。</p>
+<p><strong>4 负载均衡有什么作用呢?</strong></p>
+<ol>
+<li>转发功能<br />
+按照一定的算法【权重、轮询】，将客户端请求转发到不同应用服务器上，减轻单个服务器压力，提高系统并发量。</li>
+<li>故障移除<br />
+通过心跳检测的方式，判断应用服务器当前是否可以正常工作，如果服务器期宕掉，自动将请求发送到其他应用服务器。</li>
+<li>恢复添加<br />
+如检测到发生故障的应用服务器恢复工作，自动将其添加到处理用户请求队伍中。</li>
+</ol>
+<p><strong>5 负载均衡的分发策略是什么呢?</strong></p>
+<p>Nginx 的 upstream目前支持的分配算法：<br />
+1)、轮询 ——1：1 轮流处理请求（默认）</p>
+<p>每个请求按时间顺序逐一分配到不同的应用服务器，如果应用服务器down掉，自动剔除，剩下的继续轮询。</p>
+<p>2)、权重 ——you can you up</p>
+<p>通过配置权重，指定轮询几率，权重和访问比率成正比，用于应用服务器性能不均的情况。</p>
+<p>3)、ip_哈希算法</p>
+<p>每个请求按访问ip的hash结果分配，这样每个访客固定访问一个应用服务器，可以解决session共享的问题。</p>
+<h1 id="二-配置负载均衡">二 配置负载均衡</h1>
+<p>此次模拟就不在多个机器上配了,我们把三个tomcat都装到一台机器上的不同目录下,分别给他们不同的端口,修改下<br />
+他们的首页,模拟一下负载均衡</p>
+<h2 id="first-准备工作">First: 准备工作</h2>
+<p>一个nginx服务器,三个tomcat服务器</p>
+<p>nginx的安装我前面有写过,同志们可参考<a href="https://blog.csdn.net/Terry_Ciel/article/details/100555502">这篇文章</a><br />
+tomcat就更简单了,直接上传解压,就可以在浏览器访问ip使用了,打不开,关闭下防火墙试试</p>
+<p>我的安装目录<br />
+nginx /opt/nginx/nginx-1.8.0<br />
+tomcat /opt/tomcat/apache-tomcat-7.0.57<br />
+test1号tomcat /opt/tomcattest1/apache-tomcat-7.0.57<br />
+test2号tomcat /opt/tomcattest2/apache-tomcat-7.0.57</p>
+<p>我们用tomcat来给test1号和test2号做负载均衡<br />
+<img src="./images/Centos7上配置nginx的负载均衡0.png" alt="在这里插入图片描述" /></p>
+<h2 id="second-修改1号2号tomcat的配置文件和首页">Second: 修改1号,2号tomcat的配置文件和首页</h2>
+<h3 id="一-1号tomcat">一 1号tomcat</h3>
+<p><strong>注意: 修改tomcat的配置文件前,如果启动了tomcat,就关了再修改</strong></p>
+<h4 id="先修改端口">1 先修改端口</h4>
+<pre><code><code>vi /opt/tomcattest1/apache-tomcat-7.0.57/conf/server.xml</code></code></pre>
+<p>改三个地方,把三个没加注释的端口全部加1</p>
+<p><strong>注意: 要改没加注释的,加了注释的改了也没用</strong><br />
+8005-&gt;8006<br />
+8080-&gt;8081<br />
+8009-&gt;8010<br />
+<img src="./images/Centos7上配置nginx的负载均衡1.png" alt="在这里插入图片描述" /></p>
+<p><img src="./images/Centos7上配置nginx的负载均衡2.png" alt="在这里插入图片描述" /><br />
+<img src="./images/Centos7上配置nginx的负载均衡3.png" alt="在这里插入图片描述" /></p>
+<h4 id="再修改一下首页主要为了做区分">2 再修改一下首页,主要为了做区分</h4>
+<pre><code><code>cd /opt/tomcattest1/apache-tomcat-7.0.57/webapps/ROOT
+vi index.jsp
+在&lt;body&gt;标签下加个h1标签作区分
+位置: 
+ &lt;body&gt;
+        &lt;h1&gt;111111111111111111111111111111&lt;/h1&gt;</code></code></pre>
+<h4 id="启动tomcat">3 启动tomcat</h4>
+<p>在浏览器访问</p>
+<pre><code><code>http://192.168.220.111/8081       用你自己的ip</code></code></pre>
+<h3 id="二-2号tomcat">二 2号tomcat</h3>
+<p>跟上面一样,把要修改的三个端口都加2 就行了</p>
+<p><strong>注意: 要改没加注释的,加了注释的改了也没用</strong><br />
+8005-&gt;8007<br />
+8080-&gt;8082<br />
+8009-&gt;8011</p>
+<p>浏览器访问</p>
+<pre><code><code>http://192.168.220.111/8082       用你自己的ip</code></code></pre>
+<h2 id="third-配置负载均衡">Third: 配置负载均衡</h2>
+<p><strong>注意: 修改nginx的配置文件前,如果启动了nginx,就关了再修改</strong></p>
+<p>修改nginx配置文件</p>
+<pre><code><code>vi /usr/local/nginx/conf/nginx.conf
+</code></code></pre>
+<p>shift+g 跳到最下边,在最后的 } 前加入</p>
+<pre><code><code>upstream tomcatserver1 {
+        server 192.168.220.111:8081 ;
+         server 192.168.220.111:8082 ;
+    }
+  server {
+        listen       80;
+        server_name  love.com;
+
+        #charset koi8-r;
+
+        #access_log  logs/host.access.log  main;
+
+        location / {
+            proxy_pass   http://tomcatserver1;
+            index  index.html index.htm;
+        }
+
+
+    }
+</code></code></pre>
+<p>解释一下<br />
+一个upstream 对应一个server<br />
+当我们在浏览器输入 love.com (自己随便写个喜欢的域名),会先找到location里的 proxy_pass 后面的 <a href="http://tomcatserver1" class="uri">http://tomcatserver1</a>,<br />
+再找到tomcatserver1对应的相同名字的upstream ,然后进去找代理的ip</p>
+<p>此时还需要在本地hosts里加上我们的ip就可以在浏览器访问了<br />
+在windows系统下,进入</p>
+<p>C:\Windows\System32\drivers\etc 目录下,打开hosts文件,在最下边加上</p>
+<pre><code><code>192.168.220.111 love.com
+
+你自己的ip   和你自己配置的域名</code></code></pre>
+<p>然后启动nginx</p>
+<p>在浏览器输入 <a href="http://192.168.220.111" class="uri">http://192.168.220.111</a><br />
+不停的刷新页面,会发现1号tomcat 和2 号tomcat近乎于交替出现,也就是最开始我们提到的负载均衡的三种分发策略中的轮询,<br />
+近乎1:1出现</p>
+<p><strong>扩展:</strong></p>
+<p>然而在现实开发中,假设我们的多台服务器的性能好坏不一样,我们希望性能较好的1 号服务器多代理点url,就可以进行<br />
+权重或hash配置</p>
+<h1 id="section">----------------------------</h1>
+<p>这里附上几条可能会用到的命令<br />
+<strong>Tomcat常用命令</strong></p>
+<pre><code><code>
+启动Tomcat：
+进入tomcat目录/bin，然后./startup.sh
+
+停止Tomcat:
+进入tomcat目录/bin，然后./shutdown.sh</code></code></pre>
+<p><strong>Nginx 常用命令</strong></p>
+<pre><code><code>
+注意nginx的配置端口的配置文件在  /usr/local/nginx/conf
+并不是在解压目录下
+
+启动nginx
+cd usr/local/nginx/sbin/
+./nginx
+
+
+重启nginx
+有两种方法
+1 先关闭再重启
+./nginx -s quit   或者 ./nginx -s stop
+./nginx
+
+2 直接重启
+./nginx -s reload
+
+
+检查是否已经安装有nginx及对应目录
+find /|grep nginx.conf
+
+查看nginx占用的的端口
+ps -ef| grep nginx
+
+需要杀掉的话
+kill -9 xx
+ </code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

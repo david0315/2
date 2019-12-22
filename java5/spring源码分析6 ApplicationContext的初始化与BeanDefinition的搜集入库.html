@@ -1,0 +1,150 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring源码分析6 ApplicationContext的初始化与BeanDefinition的搜集入库' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring源码分析6 ApplicationContext的初始化与BeanDefinition的搜集入库</center></div><div class='banquan'>原文出处:本文由博客园博主三人行{必有我师}提供。<br/>
+原文连接:https://www.cnblogs.com/smallstudent/p/11691361.html</div><br>
+    <p>先前几篇都是概念的讲解：回顾下</p>
+<ul>
+<li>BeanDefinition 是物料</li>
+<li>Bean是成品</li>
+<li>BeanFactory是仓库，存储物料与成品</li>
+<li>ApplicationContext初始化搜集物料入库，触发生产线，取出物料生产Bean</li>
+</ul>
+<p>本文研究springboot环境下,ApplicationContext的初始化, 多是处理注解形式的Bean.</p>
+<h3 id="重要组件">重要组件</h3>
+<p>1.<strong>PostProcessorRegistrationDelegate</strong>: 代理执行post processors的工具类</p>
+<p>postProcessor分为两种:</p>
+<ul>
+<li>BeanFactoryPostProcessor: 发生在BeanDefinition搜集入库阶段</li>
+<li>BeanPostProcessor: 发生在BeanDefintion生成Bean阶段</li>
+</ul>
+<p>BeanFactoryPostProcessor细分又分为两种：</p>
+<ul>
+<li>BeanDefinitionRegistryPostProcessor：继承BeanFactoryPostProcessor接口。其postProcessBeanDefinitionRegistry接口方法，具有注册更多Bean的语义。</li>
+<li>BeanFactoryPostProcessor：偏向于修改的语义。</li>
+</ul>
+<p>2.<strong>ConfigurationClass</strong>: 这个类要理解, 表示的是配置类,是对一个具有配置语义的BeanDefinition的封装. 怎么理解这个呢. 我认为可以理解为一个xml文件. 记得一开始使用spring的时候, 需要在xml中配置bean.</p>
+<p>ConfigurationClass语义:</p>
+<ul>
+<li>一个ConfigurationClass 可以看做一个xml文件. 代表注解: @Configuration</li>
+<li>一个ConfigurationClass 中可以定义Bean. 类似一个xml中可以定义Bean信息. 代表注解@Bean</li>
+<li>一个ConfigurationClass 可以引入其他ConfigurationClass, 类似xml文件中会引入其他xml文件. 代表注解:@Import,@ComponentScan等</li>
+</ul>
+<p>那么,怎么判断他是一个ConfigurationClass呢?看下面</p>
+<p>3.<strong>ConfigurationClassUtils</strong>: ConfigurationClass工具类</p>
+<p>checkConfigurationClassCandidate()方法: 先取出BeanDefinition的注解信息.</p>
+<ul>
+<li>判断是否是full ConfigurationClass . 判断依据是是否被@Configuration注解标识,如果是一定是ConfigurationClass</li>
+<li>判断是否是isLiteConfigurationCandidate, 判断依据是否被<strong>@Component,@ComponentScan,@Import,@ImportResource</strong>注解标识.<br />
+或者有@Bean标识的方法</li>
+</ul>
+<p>总的来说是看其是否可以输出Bean。判断其是否属于一个ConfigurationClass</p>
+<p>4.<strong>ConfigurationClassPostProcessor</strong>:属于一种post processor. 实现了BeanDefinitionRegistryPostProcessor,间接实现了BeanFactoryPostProcessor. 所以具有 注册,与修改的双重功能.主要工作就是处理ConfigurationClass</p>
+<p>5.<strong>ConfigurationClassParser</strong>: ConfigurationClass解析器.能够解析出项目中的ConfigurationClass. (类比能找到项目中所有的配置了Bean的xml)</p>
+<p>6.<strong>ConfigurationClassBeanDefinitionReader</strong>: BeanDefintion读取器, 从ConfigurationClass中读取里面的Bean定义(类比能够从XML中读出Bean)</p>
+<h2 id="搜集入库">搜集入库:</h2>
+<p><strong><code>建议配合源代码阅读</code></strong></p>
+<p>BeanDefintion的搜集发生在refresh()初始化方法中invokeBeanFactoryPostProcessors(beanFactory)阶段,执行BeanFactoryPostProcessor.</p>
+<p><img src="./images/spring源码分析6 ApplicationContext的初始化与BeanDefinition的搜集入库0.png" alt="file" /></p>
+<p>ApplicationContext委托PostProcessorRegistrationDelegate工具类执行post processors.<br />
+PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors()方法执行所有BeanFactoryPostProcessor</p>
+<p><img src="./images/spring源码分析6 ApplicationContext的初始化与BeanDefinition的搜集入库1.png" alt="file" /></p>
+<p>invokeBeanFactoryPostProcessors:大体分为两步</p>
+<ul>
+<li>首先执行<strong>BeanDefinitionRegistryPostProcessor</strong>. 调用其postProcessBeanDefinitionRegistry注册BeanDefinition</li>
+<li>然后执行<strong>BeanFactoryPostProcesso</strong>r 调用postProcessBeanFactory 提供修改BeanDefinition功能.</li>
+</ul>
+<p><strong>ConfigurationClassPostProcessor</strong>作为一个<strong>BeanDefinitionRegistryPostProcessor</strong>. 首先被执行.<br />
+其processConfigBeanDefinitions方法:是收集BeanDefinition的开始的地方.</p>
+<h3 id="configurationclasspostprocessor收集步骤">ConfigurationClassPostProcessor收集步骤:</h3>
+<ol>
+<li>从仓库中找出ConfigurationClass, 因为是初期, 所以库中只有springboot项目的启动文件这个ConfigurationClass. 此ConfigurationClass也可以看做是顶级ConfigurationClass ,就类型顶级xml文件, 去关联其他xml一样. 启动文件ConfigurationClass 作为一个入口存在.</li>
+<li>创建一个ConfigurationClassParser准备解析ConfigurationClass.</li>
+<li>调用<code>**ConfigurationClassParser.parse()**</code>解析刚找到的ConfigurationClass. 通过此入口.把所有需要ConfigurationClass找到. 就类似.通过一个xml文件把其关联的所有xml找到一样. 类比理解.</li>
+<li>创建一个<code>**ConfigurationClassBeanDefinitionReader.loadBeanDefinitions() **</code>从找到的所有ConfigurationClass中. 遍历读取每个ConfigurationClass中的Bean定义.</li>
+</ol>
+<p>分支解析:</p>
+<h4 id="第三步configurationclassparser.parse分支-目的找到所有需要的configurationclass.理解为找到xml文件"><strong>第三步ConfigurationClassParser.parse()分支</strong>: 目的找到所有需要的ConfigurationClass.(理解为找到xml文件)</h4>
+<p>此分支又大体分为2部分：</p>
+<ul>
+<li>parse():processConfigurationClass()--&gt;doProcessConfigurationClass()：</li>
+<li>processDeferredImportSelectors(): 处理需要延迟处理的ImportSelector . 这里的延迟加载最终还是会走processImports()逻辑.</li>
+</ul>
+<p>因为第二步最终还是走第一步，所以只研究第一步。</p>
+<p><strong>doProcessConfigurationClass </strong>: 解析ConfigurationClass:(解析的过程涉及到很多递归. 通过一个ArrayDeque双端栈来存储当前的ConfigurationClass)</p>
+<ol>
+<li>processMemberClasses 递归处理内部类. 检查当前ConfigurationClas的内部类是否是一个ConfigurationClass. 如果是递归processConfigurationClass()--&gt;doProcessConfigurationClass().</li>
+<li>处理@PropertySource注解</li>
+<li>处理 @ComponentScan注解: 这里也有一个递归操作. 检查扫描的定义集以获取任何进一步的配置类，并在需要时递归解析.这会用ComponentScanAnnotationParser解析器找到定义集中所有被@Component标注的类. 把其也当做一个ConfigurationClass. 然后递归解析ConfigurationClass</li>
+<li>processImports() 递归解析@Import注解引入的配置类. @Import导入的类会分成三种情况来处理.【<strong>具体看下面processImports()解析</strong>】</li>
+<li>处理@ImportResource 注解. 把引入的资源值添加当前ConfigurationClass的<strong>importedResources属性</strong>上.</li>
+<li>处理@Bean:查看当前ConfigurationClass是否有@Bean的方法. 有就添加到ConfigurationClass的<strong>beanMethods属性</strong>上.<br />
+</li>
+<li>如果父类superclass存在，并且不是<code>java</code>包中的类，并且尚未处理处理则返回它以便外层循环继续. 这也是为啥doProcessConfigurationClass会嵌套在一个do while的原因.</li>
+</ol>
+<p><strong>processImports()</strong>:@Import导入的类会分成三种情况来处理.</p>
+<p>(1)导入的是一个实现了ImportSelector接口的类.</p>
+<ul>
+<li>如果实现DeferredImportSelector则作为延迟处理对待.放到deferredImportSelectors 缓存中在processDeferredImportSelectors()分支中处理</li>
+<li>如果实现ImportSelector,执行selectImports方法递归处理可能被@Import注解的ConfigurationClass</li>
+</ul>
+<p>(2)导入的是一个实现了ImportBeanDefinitionRegistrar接口的类:</p>
+<ul>
+<li>表明有需要手动注册Bean到容器中操作. 把实现类添加到当前ConfigurationClass的<strong>importBeanDefinitionRegistrars</strong>属性中.</li>
+</ul>
+<p>(3)普通类,则把他当做一个ConfigurationClass处理走递归解析.</p>
+<ul>
+<li>当做一个ConfigurationClass递归处理.</li>
+</ul>
+<p><code>小结:经过一些系列递归,解析后.最终的结果:就是搜集到ConfigurationClass . ConfigurationClass 里携带这各种各样的Bean定义.</code></p>
+<p>从此处我们也可以看出一些东西<code>如果向容器中注册组件</code></p>
+<ul>
+<li>注解@Controller/@Service/@Repository/@Component</li>
+<li>@Bean 返回的Bean .</li>
+<li>@Import 快速导入一个组件到容器中 :普通类或者 ImportSelector接口实现类;或者ImportBeanDefinitionRegistrar实现类</li>
+<li>@ImportResource 导入一个xml文件。</li>
+</ul>
+<h4 id="configurationclassbeandefinitionreader.loadbeandefinitions分支-目的把configurationclass中配置的beandefinition解析出来.理解为解析xml文件中的bean定义"><strong>ConfigurationClassBeanDefinitionReader.loadBeanDefinitions()</strong>分支: 目的把ConfigurationClass中配置的BeanDefinition解析出来.(理解为解析xml文件中的Bean定义)</h4>
+<p>有了ConfigurationClass,下面就是解析. 就好比有了xml文件,就可以解析xml中的Bean定义一样.这部分讲讲ConfigurationClass中的BeanDefinition如何被解析出来.</p>
+<p>循环遍历所有的找到的ConfigurationClass</p>
+<ul>
+<li>configClass.isImported()：当前ConfigurationClass是否是通过别人通过@Import引入的，是,当做一个BeanDefinition注入到仓库中。</li>
+<li>configClass.getBeanMethods()： 将@Bean注解标致的方法的返回值解析成一个BeanDefinition注入到仓库中。</li>
+<li>loadBeanDefinitionsFromImportedResources(configClass.getImportedResources())：加载当前ConfigurationClass中@ImportResource引入的xml文件中的Bean定义。具体是使用XmlBeanDefinitionReader读取器读取XML中配置的Bean定义， 解析成BeanDefinition注入到仓库中。</li>
+<li>loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars())：取出实现了ImportBeanDefinitionRegistrar接口的类，执行其registerBeanDefinitions方法。注册相应的BeanDefinition到仓库中。</li>
+</ul>
+<p>小结：</p>
+<p>将ConfigurationClass中的BeanDefinition解析出来放入到仓库中即完成了 BeanDefinition的搜集工作。</p>
+<p>回看上面的<code>如果向容器中注册组件</code><br />
+除去注解@Controller/@Service/@Repository/@Component标致的类被解析ConfigurationClass本身也是一种BeanDefinition外。</p>
+<p>loadBeanDefinitions()解析的就是针对后三种方式的注册Bean方式：</p>
+<ul>
+<li>@Bean 标注</li>
+<li>@Import 引入的三种。</li>
+<li>@ImportResource 引入的xml文件。</li>
+</ul>
+<h2 id="总结">总结:</h2>
+<p>总结来看:BeanDefinition的搜集入库阶段,其实就是找Bean定义的配置文件(ConfigurationClass), 解析文件中Bean定义(BeaDefinition), 然后入库到仓库中的过程。</p>
+<p>欢迎大家关注我的公众号【源码行动】，最新个人理解及时奉送。<br />
+<img src="./images/spring源码分析6 ApplicationContext的初始化与BeanDefinition的搜集入库2.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

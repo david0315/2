@@ -1,0 +1,359 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud Config 配置中心实践过程中，你需要了解这些细节！' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud Config 配置中心实践过程中，你需要了解这些细节！</center></div><div class='banquan'>原文出处:本文由博客园博主Java爱好者社区提供。<br/>
+原文连接:https://www.cnblogs.com/ldws/p/11618992.html</div><br>
+    <h4 id="本文导读">本文导读：</h4>
+<ul>
+<li><strong>Spring Cloud Config 基本概念</strong></li>
+<li><strong>Spring Cloud Config 客户端加载流程</strong></li>
+<li><strong>Spring Cloud Config 基于消息总线配置</strong></li>
+<li><strong>Spring Cloud Config 中的占位符</strong></li>
+<li><strong>Spring Cloud Config 仓库最佳实践</strong></li>
+<li><strong>Spring Cloud Config 健康检查问题剖析</strong></li>
+</ul>
+<p>本文主要介绍 Spring Cloud Config 基本概念、实践过的配置及遇到的问题进行剖析。关于如何启动运行配置中心可以参考官方 Demo。</p>
+<p>本文使用的Spring Cloud 版本：Edgware.SR3</p>
+<h4 id="spring-cloud-config-基本概念"><strong>Spring Cloud Config 基本概念</strong></h4>
+<p>Spring Cloud Config 用来为分布式系统中的基础设施和微服务应用提供集中化的外部配置支持。</p>
+<ul>
+<li>服务端：分布式配置中心，独立的微服务应用，用来连接配置仓库（GIT）并为客户端提供获取配置信息、加密/解密等访问接口。、</li>
+<li>客户端：微服务架构中各个微服务应用和基础设施，通过指定配置中心管理应用资源与业务相关的配置内容，启动时从配置中心获取和加载配置信息</li>
+</ul>
+<p>SCC作用：</p>
+<blockquote>
+<p>实现了对服务端和客户端中环境变量和属性配置的抽象映射。</p>
+</blockquote>
+<p>SCC优势：</p>
+<blockquote>
+<p>默认采用 GIT 存储配置信息，天然支持对配置信息的版本管理。</p>
+</blockquote>
+<p>Spring Cloud Config架构图:<br />
+<img src="./images/Spring Cloud Config 配置中心实践过程中，你需要了解这些细节！0.png" alt="精简架构图" /></p>
+<p>基于消息总线的架构图:<br />
+<img src="./images/Spring Cloud Config 配置中心实践过程中，你需要了解这些细节！1.png" alt="基于消息总线的架构图" /></p>
+<p>如上图所示，架构图中的几个主要元素作用：<br />
+远程 GIT 仓库:</p>
+<blockquote>
+<p>用来存储配置文件的地方。</p>
+</blockquote>
+<p>Config Server:</p>
+<blockquote>
+<p>分布式配置中心，微服务中指定了连接仓库的位置以及账号密码等信息。</p>
+</blockquote>
+<p>本地 GIT 仓库：</p>
+<blockquote>
+<p>在 Config Server 文件系统中，客户单每次请求获取配置信息时，Config Server 从 GIT 仓库获取最新配置到本地，然后在本地 GIT 仓库读取并返回。当远程仓库无法获取时，直接将本地仓库内容返回。</p>
+</blockquote>
+<p>ServerA/B：</p>
+<blockquote>
+<p>具体的微服务应用，他们指定了 Config Server 地址，从而实现外部化获取应用自己想要的配置信息。应用启动时会向 Config Server 发起请求获取配置信息进行加载。</p>
+</blockquote>
+<p>消息中心：</p>
+<blockquote>
+<p>上述第二个架构图是基于消息总线的方式，依赖的外部的 MQ 组件，目前支持 Kafka、Rabbitmq。通过 Config Server 配置中心提供的 /bus/refresh endpoint 作为生产者发送消息，客户端接受到消息通过http接口形式从 Config Server 拉取配置。</p>
+</blockquote>
+<p>服务注册中心：</p>
+<blockquote>
+<p>可以将 Config Server 注册到服务注册中心上比如 Eureka，然后客户端通过服务注册中心发现Config Server 服务列表，选择其中一台 Config Server 来完成健康检查以及获取远端配置信息。</p>
+</blockquote>
+<h4 id="spring-cloud-config-客户端加载流程"><strong>Spring Cloud Config 客户端加载流程</strong></h4>
+<p>客户端应用从配置管理中获取配置执行流程：</p>
+<p>1）应用启动时，根据 bootstrap.yml 中配置的应用名 {application}、环境名 {profile}、分支名 {label}，向 Config Server 请求获取配置信息。</p>
+<p>2）Config Server 根据自己维护的 GIT 仓库信息与客户端传过来的配置定位去查找配置信息。</p>
+<p>3）通过 git clone 命令将找到的配置下载到 Config Server 的文件系统（本地GIT仓库）</p>
+<p>4）Config Server 创建 Spring 的 ApplicationContext 实例，并从 GIT 本地仓库中加载配置文件，最后读取这些配置内容返回给客户端应用。</p>
+<p>5）客户端应用在获取外部配置内容后加载到客户端的 ApplicationContext 实例，该配置内容优先级高于客户端 Jar 包内部的配置内容，所以在 Jar 包中重复的内容将不再被加载。</p>
+<h4 id="spring-cloud-config-基于消息总线配置"><strong>Spring Cloud Config 基于消息总线配置</strong></h4>
+<p>Config Server 作为配置中心 pom.xml 引入：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+   &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+       &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-bus-kafka&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+       &lt;artifactId&gt;spring-boot-starter-security&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>Config Server 配置文件（yml格式）：</p>
+<pre><code><code>server:
+  port: ${CONFIG_SERVER_PORT:8021}
+spring:
+  application:
+    name: letv-mas-config
+    # 配置了该项，访问/bus/refresh?destination=应用名:spring.application.index，如果未指定spring.application.index默认使用「应用名:server.port」
+    index: ${CONFIG_SERVER_IP:127.0.0.1}
+  cloud:
+    config:
+      server:
+        git:
+          # 基于 http 协议的单仓库，每一个应用创建一个目录，每个目录下创建配置文件
+          uri: ${GIT_URI:http://xxxx/config.git}
+          search-paths: &#39;{application}&#39;
+          # 配置的 Git 仓库基于 http 协议的，必须配置用户名和密码
+          username: ${GIT_USERNAME:config_server}
+          password: ${GIT_PASSWORD:config@123}
+          # 本地仓库目录设定
+          basedir: /letv/app/mas/config/repos
+          # 本地仓库如果有脏数据，则会强制拉取（默认是false）
+          force-pull: true
+          # 配置中心启动后从 GIT 仓库下载，如果uri配置中使用了 {application} 作为仓库名，这里要使用默认值false，否则启动报错.
+          clone-on-start: false
+
+management:
+  security:
+    enabled: false
+
+# 用户认证，客户端应用接入时加入安全认证配置
+security:
+  user:
+    name: config
+    password: config2018
+  basic:
+    enabled: true
+# 基于消息总线的 MQ 配置
+spring:
+  cloud:
+    stream:
+      kafka:
+        binder:
+          zk-nodes: ${ZK_NODES:localhost:2181}
+          brokers: ${KAFKA_BROKERS:localhost:9092}
+          requiredAcks: -1
+          configuration:
+            security:
+              protocol: SASL_PLAINTEXT
+            sasl:
+              mechanism: PLAIN
+          jaas:
+            loginModule: org.apache.kafka.common.security.plain.PlainLoginModule
+            options:
+              username: test
+              password: test-secret
+    # 开启跟踪事件消息（默认是false）
+    bus:
+      trace:
+        enabled: true
+      # 自定义 topic 主题
+      destination: test.springcloud.config</code></code></pre>
+<p>Config Client 作为客户端 pom.xml 引入：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+       &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-bus-kafka&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+       &lt;artifactId&gt;spring-boot-starter-security&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>Config Client 配置文件（yml格式）：</p>
+<pre><code><code>spring:
+  application:
+    name: letv-mas-client
+    index: ${CLIENT_SERVER_IP:127.0.0.1}:${server.port}
+  profiles:
+    active: ${CLIENT_PROFILE:default}
+    #include: busdev,streamdev
+  cloud:
+    config:
+      uri: ${CONFIG_SERVER_DOMAIN:http://config.xxx.cn/}
+      failFast: true #the client will halt with an Exception
+      enabled: true
+      # boostrap.yml 配置优先于启动参数变量 spring.profiles.active
+      profile: ${spring.profiles.active:${CLIENT_PROFILE:default}}
+      label: master
+      # 访问配置中心，用户安全认证
+      username: config
+      password: config2018
+      # 激活定时任务，当 GIT 版本发生变更后加载最新配置上下文
+      watcher:
+        enabled: true
+security:
+  user:
+    name: config
+    password: config2018
+
+# 基于消息总线的 MQ 配置( Kakfa 队列)，如果zipkin中也使用 Kafka 队列，那么需要通过binder 形式配置做隔离，否则会互相影响，无法下发配置消息。
+spring:
+  cloud:
+    stream:
+      # 自定义开关
+      enabled: true
+      # 指定中间件
+      default-binder: config-kafka
+      binders:
+        config-kafka:
+          type: kafka
+          environment:
+            spring:
+              cloud:
+                stream:
+                  kafka:
+                    binder:
+                      zkNodes: ${ZK_NODES:localhost:2181}
+                      brokers: ${KAFKA_BROKERS:localhost:9092}
+                      # 生产者确认，0、1、-1，默认为1。0为不确认，1为leader单确认，-1为同步副本确认。-1的情况下消息可靠性更高。
+                      required-acks: -1
+                      # 是否自动创建topic，默认为true。设为false的情况下，依赖手动配置broker相关topic&gt;配置，如果topic不存在binder则无法启动。
+                      auto-create-topics: true
+                      configuration:
+                        security:
+                          protocol: SASL_PLAINTEXT
+                        sasl:
+                          mechanism: PLAIN
+                      jaas:
+                        loginModule: org.apache.kafka.common.security.plain.PlainLoginModule
+                        options:
+                          username: test
+                          password: test-secret
+    bus:
+      # 是否启用bus
+      enabled: true
+      # Bus 使用的队列或 Topic，Kafka 中的 topic，Rabbitmq 中的 queue
+      destination: test.springcloud.config
+      trace:
+        # 是否启用 Bus 事件跟踪，可以通过 /trace 页面查看
+        enabled: true
+      refresh:
+        # 是否发送 refresh 事件，开启时支持基于 config 文件变更的动态配置
+        enabled: true
+      env:
+        # 是否开启 env 事件，开启时支持直接动态配置相应环境变量，如 /bus/env?arg1=value1&amp;arg2=value2
+        enabled: true</code></code></pre>
+<h4 id="spring-cloud-config-中的占位符"><strong>Spring Cloud Config 中的占位符</strong></h4>
+<p>占位符的使用：</p>
+<blockquote>
+<p>这里的 {application} 代表了应用名，当客户端向 Config Server 发起获取配置请求时，Config Server 会根据客户端的 spring.application.name 信息来填充 {application} 占位符以定位配置资源的存储位置。</p>
+</blockquote>
+<p>注意：{label} 参数很特别，如果 GIT 分支和标签包含 “/”，那么 {label} 参数在 HTTP 的 URL 中应用使用 “(_)” 替代，以避免改变了 URI 含义，指向到其他 URI 资源。</p>
+<p>为什么要有占位符?</p>
+<blockquote>
+<p>当使用 GIT 作为配置中心来存储各个微服务应用的配置文件时，URI 中的占位符的使用可以帮助我们规划和实现通用的仓库配置。</p>
+</blockquote>
+<h4 id="spring-cloud-config-仓库最佳实践"><strong>Spring Cloud Config 仓库最佳实践</strong></h4>
+<p><strong>本地仓库：</strong><br />
+Spring Cloud 的 D、E 版本中默认存储到 /var/folders/ml/9rww8x69519fwqlwlt5jrx700000gq/T/config-repo-2486127823875015066目录下。</p>
+<p>在 B 版本中，未实际测试过，存储到临时目录 /tmp/config-repo-随机数目录下。<br />
+为了避免一些不可预知的问题，我们设置一个固定的本地GIT仓库目录。</p>
+<p>通过 <code>spring.cloud.config.server.git.basedir=${user.home}/local-config-repo</code> 如果${user.home}目录下发现local-config-repo不存在，在Config Server启动后会自动创建，并从GIT远程仓库下载配置存储到这个位置。</p>
+<p><strong>远程仓库实践：</strong><br />
+单仓库目录：<br />
+每一个项目对应一个仓库<br />
+<code>spring.cloud.config.server.git.uri=https://gitee.com/ldwds/{application}</code></p>
+<p>多仓库目录：<br />
+同一个仓库下，每个项目一个目录<br />
+<code>spring.cloud.config.server.git.uri=https://gitee.com/ldwds/config-repo-demo.git</code><br />
+<code>spring.cloud.config.server.git.search-paths='{application}'</code></p>
+<p>1）单仓库目录注意事项：</p>
+<pre><code><code>spring.cloud.config.server.git.uri=[https://gitee.com/ldwds/config-repo-demo/](https://gitee.com/ldwds/config-repo-demo/)  
+spring.cloud.config.serversearch-paths:’{application}&#39;</code></code></pre>
+<p>客户端应用启动前，在 config-repo-demo 仓库下创建子目录，子目录名称就是配置中指定的spring.application.name 应用名。<br />
+否则，工程中引用的属性找不到，会报如下错误：<br />
+<code>Caused by: java.lang.IllegalArgumentException: Could not resolve placeholder 'from' in value &quot;${from}&quot;</code></p>
+<p>2）多仓库目录注意事项：<br />
+这种方式不能设置参数<br />
+<code>spring.cloud.config.server.git.force-pull=true</code> 和 <code>spring.cloud.config.server.git.clone-on-start=true </code><br />
+否则启动会报错，也很好理解因为使用了 {applicatoin} 作为占位符，没有指明具体的仓库名，所以无法强制拉取远程仓库配置。</p>
+<p>如果你设置了本地仓库目录比如 <code>spring.cloud.config.server.git.basedir=/data/config-repos/local-config-repo</code> Config Server 启动后会自动创建 /data/config-repos 目录，并创建 config-repo-随机数命名的仓库名录，这个仓库下的内容来自于健康检查的默认仓库app。</p>
+<p>客户端应用启动后，会根据 {application} 应用名去查找该仓库，Config Server 从匹配 Git 仓库并 clone 到 config-repo-随机数的目录下。</p>
+<p>如果 Config Server 重启了，客户端应用通过 /bus/refresh 刷新配置，因为并没有缓存之前的仓库名，所以会自动创建一个 config-repo-随机数 的仓库目录并从 Git clone 数据。<br />
+如果 Config Server 已有本地仓库，客户端重启或 /bus/refresh 刷新配置则 Config Server 不会重建新的仓库。</p>
+<p><strong>配置中心本地仓库执行原理：</strong><br />
+本地仓库是否存在根据 basedir 目录下是否包含.git 隐藏文件。如果本地仓库不存在，则从远端仓库 clone 数据到本地；如果本地仓库存在，则从远程仓库 fetch 最新数据到本地；然后 checkout 到指定 label，从远端仓库 merge 数据，并获取当前 label 分支最新的HEAD 版本，以及默认的应用名 app 作为环境信息返回。</p>
+<h4 id="spring-cloud-config健康检查问题剖析"><strong>Spring Cloud Config健康检查问题剖析</strong></h4>
+<p>健康检查 pom.xml 中引入：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-actuator&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>添加上述依赖后，默认开启健康检查。如果不需要健康检查，可以通过 <code>spring.cloud.config.server.health.enabled=false</code> 参数设定关闭。</p>
+<p>如果配置为: <code>spring.cloud.config.server.git.uri=[https://gitee.com/ldwds/config-repo-demo.git](https://gitee.com/ldwds/config-repo-demo.git)</code><br />
+默认开启了健康检查，我开始认为默认检查应用名称为 app，profiles 为 default，label 为 null进行监控（源码中看到的）。</p>
+<p>但是 GIT 配置仓库下并没有 app 应用，此时访问 /health，监控状态仍然是 UP？</p>
+<pre><code><code>{
+    &quot;status&quot;: &quot;UP&quot;
+}</code></code></pre>
+<p>上述理解是错误的，原因分析如下：</p>
+<blockquote>
+<p>这个主要跟配置中心指定的 GIT 仓库地址有关系，如果仓库地址指定的是 <a href="https://gitee.com/ldwds/config-repo-demo/">https://gitee.com/ldwds/</a>{application} ，检查监视器会将 {application} 替换为默认应用名 app 作为仓库地址，此时会在 {user.home} 目录下创建 config-repo-随机数作为 {application} 应用的本地仓库（如：/Users/liudewei1228/config-repo-7949870192520306956）。</p>
+<p>即使设置了 <code>spring.config.server.git.basedir=${user.home}/local-config-repo/</code> 也不会被使用到。<br />
+为什么？因为 {application} 作为仓库，是个动态的，可能会有多个 {application} 项目仓库，所以不会使用 basedir 特定目录作为本地仓库。</p>
+</blockquote>
+<p>如下参数设置健康检查的配置：</p>
+<pre><code><code>spring.cloud.config.server.health.repositories.config-repo-demo.name=应用名
+spring.cloud.config.server.health.repositories.config-repo-demo.label=分支
+spring.cloud.config.server.health.repositories.config-repo-demo.profiles=环境变量</code></code></pre>
+<p>找到环境信息即显示状态 UP，此过程出现任何异常（如找不到仓库 NoSuchRespositoryException）就会显示 DOWN 状态。</p>
+<p>在uri中包含 {application} 作为仓库情况下，客户端应用在启用前需提前创建好spring.application.name=config-client应用名作为仓库，否则会导致无法启用。（因为 {application} 被认为是一个项目仓库，并不是一个目录）。</p>
+<p>源码详见：ConfigServerHealthIndicator.java 的 doHealthCheck 方法。<br />
+配置正确仓库的 name、label、profiles，访问 /health 接口显示 sources，这个 sources 中的地址无法访问的，实际只是一个标识的作用。</p>
+<p>访问/health结果：</p>
+<pre><code><code>{
+        &quot;status&quot;: &quot;UP&quot;,
+        &quot;repositories&quot;: [
+                {
+                        &quot;sources&quot;: [
+                                &quot;https://gitee.com/ldwds/config-repo-demo/config-client/config-client.properties&quot;;            
+            ],
+                        &quot;name&quot;: &quot;config-client&quot;,
+                        &quot;profiles&quot;: [
+                                &quot;default&quot;            
+            ],
+                        &quot;label&quot;: &quot;master&quot;        
+        }    
+    ]
+}
+</code></code></pre>
+<p>否则，找不到指定仓库的信息，只会显示如下信息：</p>
+<pre><code><code>{
+        &quot;status&quot;: &quot;UP&quot;,
+        &quot;repositories&quot;: [
+                {
+                        &quot;name&quot;: &quot;config-client&quot;,
+                        &quot;profiles&quot;: [
+                                &quot;default&quot;            
+            ],
+                        &quot;label&quot;: &quot;master&quot;        
+        }    
+    ]
+}</code></code></pre>
+<p>最新 Spring Cloud Config 改进了很多问题，大家可以结合官网进一步学习了解。</p>
+<p>本文对 Spring Cloud Config （Spring Cloud E 版本）的基本概念、基于消息总线的配置使用、仓库目录实践、健康检查的实践以及实践中遇到的问题进行了剖析，希望有使用到这个配置中心的朋友们有所帮助。</p>
+<p>目前微服务架构中选型时，推荐使用国内开源的配置中心：Apollo配置中心（携程开源）、Nacos注册&amp;配置中心（阿里巴巴开源）。</p>
+<p>欢迎关注我的公众号，扫码关注，解锁更多精彩文章，与你一同成长~<br />
+<img src="./images/Spring Cloud Config 配置中心实践过程中，你需要了解这些细节！2.png" alt="Java爱好者社区" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

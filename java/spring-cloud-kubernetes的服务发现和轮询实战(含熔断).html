@@ -1,0 +1,826 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring-cloud-kubernetes的服务发现和轮询实战(含熔断)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring-cloud-kubernetes的服务发现和轮询实战(含熔断)</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11457074.html</div><br>
+    <p>本文是《spring-cloud-kubernetes实战系列》的第四篇，主要内容是在kubernetes上部署两个应用：Web-Service和Account-Service，通过spring-cloud-kubernetes提供的注册发现能力，实现Web-Service调用Account-Service提供的http服务；</p>
+<h3 id="系列文章列表">系列文章列表</h3>
+<ol>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/91346780">《spring-cloud-kubernetes官方demo运行实战》</a></li>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/91351411">《你好spring-cloud-kubernetes》</a></li>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/92069486">《spring-cloud-kubernetes背后的三个关键知识点》</a></li>
+<li><a href="https://xinchen.blog.csdn.net/article/details/92394559">《spring-cloud-kubernetes的服务发现和轮询实战(含熔断)》</a></li>
+<li><a href="https://xinchen.blog.csdn.net/article/details/95001691">《spring-cloud-kubernetes与SpringCloud Gateway》</a></li>
+<li><a href="https://xinchen.blog.csdn.net/article/details/95804909">《spring-cloud-kubernetes与k8s的configmap》</a></li>
+</ol>
+<h3 id="全文概览">全文概览</h3>
+<p>本文由以下段落组成：</p>
+<ol>
+<li>环境信息</li>
+<li>常见的SpringCloud注册发现服务一览</li>
+<li>分析kubernetes上如何实现服务注册发现</li>
+<li>本章实战源码下载链接</li>
+<li>实战开发Account-Service服务(服务提供方)</li>
+<li>实战开发Web-Service服务(服务消费方)</li>
+<li>扩容验证ribbon轮询能力</li>
+<li>验证熔断能力</li>
+</ol>
+<h3 id="环境信息">环境信息</h3>
+<p>本次实战的环境和版本信息如下：</p>
+<ol>
+<li>操作系统：CentOS Linux release 7.6.1810</li>
+<li>minikube：1.1.1</li>
+<li>Java：1.8.0_191</li>
+<li>Maven：3.6.0</li>
+<li>fabric8-maven-plugin插件：3.5.37</li>
+<li>spring-cloud-kubernetes：1.0.1.RELEASE</li>
+</ol>
+<p>上面的linux、minikube、java、maven，请确保已准备好，linux环境下minikube的安装和启动请参考<a href="https://blog.csdn.net/boling_cavalry/article/details/91304127">《Linux安装minikube指南 》</a>。</p>
+<h3 id="常见的springcloud注册发现服务一览">常见的SpringCloud注册发现服务一览</h3>
+<p>SpringCloud环境最重要的功能是注册发现服务，因此将SpringCloud应用迁移到kubernetes环境时，开发者最关心的问题是在kubernetes上如何将自身服务暴露出去，以及如何调用其他微服务。</p>
+<p>先看看普通SpringCloud环境下的注册发现，下图来自spring官方博客，地址是：https://spring.io/blog/2015/07/14/microservices-with-spring，<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)0.png" alt="在这里插入图片描述" /></p>
+<p>由上图可见，应用Account-Service将自己注册到Eureka，这样Web-Service用&quot;account-service&quot;就能在Eureka找到Account-Service服务的地址，然后顺利发送RestFul请求到Account-Service，用上其提供的服务。</p>
+<h3 id="分析kubernetes上如何实现服务注册发现">分析kubernetes上如何实现服务注册发现</h3>
+<p>如果将上面的Web-Service和Account-Service两个应用迁移到kubernetes上之后，注册发现机制变成了啥样呢？<br />
+第一种：沿用上图的方式，将Eureka也部署在kubernetes上，这样的架构和不用kubernetes时没有啥区别；<br />
+第二种，就是今天要实战的内容，使用spring-cloud-kubernetes框架，该框架可以调用kubernetes的原生能力来为现有SpringCloud应用提供服务，架构如下图所示：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)1.png" alt="在这里插入图片描述" /><br />
+上图表明，Web-Service应用在调用Account-Service应用的服务时，会用okhttp向API Server请求服务列表，API Server收到请求后会去etcd取数据返回给Web-Service应用，这样Web-Service就有了Account-Service的信息，可以向Account-Service的多个Pod轮询发起请求；</p>
+<p>上图有个细节请注意：WebService应用并不是直接将请求发送给Account-Service在kubernetes创建的service，而是直接发送到具体的Pod上了，之所以具有这个能力，是因为spring-cloud-kubernetes框架通过service拿到了Account-Service对应的所有Pod信息（endpoint），此逻辑可以参考源码KubernetesServerList.java，如下所示：</p>
+<pre><code><code>public List&lt;Server&gt; getUpdatedListOfServers() {
+        //用namespace和serviceId做条件，得到该服务对应的所有节点(endpoints)信息
+        Endpoints endpoints = this.namespace != null
+                ? this.client.endpoints().inNamespace(this.namespace)
+                        .withName(this.serviceId).get()
+                : this.client.endpoints().withName(this.serviceId).get();
+
+        List&lt;Server&gt; result = new ArrayList&lt;Server&gt;();
+        if (endpoints != null) {
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(&quot;Found [&quot; + endpoints.getSubsets().size()
+                        + &quot;] endpoints in namespace [&quot; + this.namespace + &quot;] for name [&quot;
+                        + this.serviceId + &quot;] and portName [&quot; + this.portName + &quot;]&quot;);
+            }
+            //遍历所有的endpoint，取出IP地址和端口，构建成Server实例，放入result集合中
+            for (EndpointSubset subset : endpoints.getSubsets()) {
+
+                if (subset.getPorts().size() == 1) {
+                    EndpointPort port = subset.getPorts().get(FIRST);
+                    for (EndpointAddress address : subset.getAddresses()) {
+                        result.add(new Server(address.getIp(), port.getPort()));
+                    }
+                }
+                else {
+                    for (EndpointPort port : subset.getPorts()) {
+                        if (Utils.isNullOrEmpty(this.portName)
+                                || this.portName.endsWith(port.getName())) {
+                            for (EndpointAddress address : subset.getAddresses()) {
+                                result.add(new Server(address.getIp(), port.getPort()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            LOG.warn(&quot;Did not find any endpoints in ribbon in namespace [&quot;
+                    + this.namespace + &quot;] for name [&quot; + this.serviceId
+                    + &quot;] and portName [&quot; + this.portName + &quot;]&quot;);
+        }
+        return result;
+    }</code></code></pre>
+<p>理论分析已经完成，接下来就开始实战吧</p>
+<h3 id="源码下载">源码下载</h3>
+<p>如果您不打算写代码，也可以从GitHub上下载本次实战的源码，地址和链接信息如下表所示：</p>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: left;">名称</th>
+<th style="text-align: left;">链接</th>
+<th style="text-align: left;">备注</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">项目主页</td>
+<td style="text-align: left;">https://github.com/zq2599/blog_demos</td>
+<td style="text-align: left;">该项目在GitHub上的主页</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">git仓库地址(https)</td>
+<td style="text-align: left;">https://github.com/zq2599/blog_demos.git</td>
+<td style="text-align: left;">该项目源码的仓库地址，https协议</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">git仓库地址(ssh)</td>
+<td style="text-align: left;">git@github.com:zq2599/blog_demos.git</td>
+<td style="text-align: left;">该项目源码的仓库地址，ssh协议</td>
+</tr>
+</tbody>
+</table>
+<p></br></p>
+<p>这个git项目中有多个文件夹，本章的Account-Service源码在spring-cloud-k8s-account-service文件夹下，Web-Service源码在spring-cloud-k8s-web-service文件夹下，如下图红框所示：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)2.png" alt="在这里插入图片描述" /><br />
+下面是详细的编码过程；</p>
+<h3 id="开发和部署account-service服务">开发和部署Account-Service服务</h3>
+<p>Account-Service服务是个很普通的springboot应用，和spring-cloud-kubernetes没有任何关系：</p>
+<ol>
+<li>通过maven创建一个springboot应用，artifactId是<font color="blue">account-service</font>，pom.xml内容如下：</li>
+</ol>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot;
+         xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+    &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+    &lt;parent&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-starter-parent&lt;/artifactId&gt;
+        &lt;version&gt;2.1.1.RELEASE&lt;/version&gt;
+        &lt;relativePath/&gt; &lt;!-- lookup parent from repository --&gt;
+    &lt;/parent&gt;
+    &lt;groupId&gt;com.bolingcavalry&lt;/groupId&gt;
+    &lt;artifactId&gt;account-service&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+    &lt;name&gt;account-service&lt;/name&gt;
+    &lt;description&gt;Demo project for Spring Cloud service provider run in kubernetes&lt;/description&gt;
+
+    &lt;properties&gt;
+        &lt;java.version&gt;1.8&lt;/java.version&gt;
+        &lt;spring-boot.version&gt;2.1.1.RELEASE&lt;/spring-boot.version&gt;
+        &lt;maven-checkstyle-plugin.failsOnError&gt;false&lt;/maven-checkstyle-plugin.failsOnError&gt;
+        &lt;maven-checkstyle-plugin.failsOnViolation&gt;false&lt;/maven-checkstyle-plugin.failsOnViolation&gt;
+        &lt;maven-checkstyle-plugin.includeTestSourceDirectory&gt;false&lt;/maven-checkstyle-plugin.includeTestSourceDirectory&gt;
+        &lt;maven-compiler-plugin.version&gt;3.5&lt;/maven-compiler-plugin.version&gt;
+        &lt;maven-deploy-plugin.version&gt;2.8.2&lt;/maven-deploy-plugin.version&gt;
+        &lt;maven-failsafe-plugin.version&gt;2.18.1&lt;/maven-failsafe-plugin.version&gt;
+        &lt;maven-surefire-plugin.version&gt;2.21.0&lt;/maven-surefire-plugin.version&gt;
+        &lt;fabric8.maven.plugin.version&gt;3.5.37&lt;/fabric8.maven.plugin.version&gt;
+        &lt;springcloud.version&gt;2.1.1.RELEASE&lt;/springcloud.version&gt;
+    &lt;/properties&gt;
+
+    &lt;dependencyManagement&gt;
+        &lt;dependencies&gt;
+            &lt;dependency&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+                &lt;type&gt;pom&lt;/type&gt;
+                &lt;scope&gt;import&lt;/scope&gt;
+                &lt;version&gt;${spring-boot.version}&lt;/version&gt;
+            &lt;/dependency&gt;
+        &lt;/dependencies&gt;
+    &lt;/dependencyManagement&gt;
+
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+
+    &lt;build&gt;
+        &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${spring-boot.version}&lt;/version&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;repackage&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+            &lt;/plugin&gt;
+
+            &lt;plugin&gt;
+                &lt;!--skip deploy --&gt;
+                &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+                &lt;artifactId&gt;maven-deploy-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${maven-deploy-plugin.version}&lt;/version&gt;
+                &lt;configuration&gt;
+                    &lt;skip&gt;true&lt;/skip&gt;
+                &lt;/configuration&gt;
+            &lt;/plugin&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+                &lt;artifactId&gt;maven-surefire-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${maven-surefire-plugin.version}&lt;/version&gt;
+                &lt;configuration&gt;
+                    &lt;skipTests&gt;true&lt;/skipTests&gt;
+                    &lt;!-- Workaround for https://issues.apache.org/jira/browse/SUREFIRE-1588 --&gt;
+                    &lt;useSystemClassLoader&gt;false&lt;/useSystemClassLoader&gt;
+                &lt;/configuration&gt;
+            &lt;/plugin&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;io.fabric8&lt;/groupId&gt;
+                &lt;artifactId&gt;fabric8-maven-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${fabric8.maven.plugin.version}&lt;/version&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;id&gt;fmp&lt;/id&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;resource&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+            &lt;/plugin&gt;
+        &lt;/plugins&gt;
+    &lt;/build&gt;
+
+    &lt;profiles&gt;
+        &lt;profile&gt;
+            &lt;id&gt;kubernetes&lt;/id&gt;
+            &lt;build&gt;
+                &lt;plugins&gt;
+                    &lt;plugin&gt;
+                        &lt;groupId&gt;io.fabric8&lt;/groupId&gt;
+                        &lt;artifactId&gt;fabric8-maven-plugin&lt;/artifactId&gt;
+                        &lt;version&gt;${fabric8.maven.plugin.version}&lt;/version&gt;
+                        &lt;executions&gt;
+                            &lt;execution&gt;
+                                &lt;id&gt;fmp&lt;/id&gt;
+                                &lt;goals&gt;
+                                    &lt;goal&gt;resource&lt;/goal&gt;
+                                    &lt;goal&gt;build&lt;/goal&gt;
+                                &lt;/goals&gt;
+                            &lt;/execution&gt;
+                        &lt;/executions&gt;
+                        &lt;configuration&gt;
+                            &lt;enricher&gt;
+                                &lt;config&gt;
+                                    &lt;fmp-service&gt;
+                                        &lt;type&gt;NodePort&lt;/type&gt;
+                                    &lt;/fmp-service&gt;
+                                &lt;/config&gt;
+                            &lt;/enricher&gt;
+                        &lt;/configuration&gt;
+                    &lt;/plugin&gt;
+                &lt;/plugins&gt;
+            &lt;/build&gt;
+        &lt;/profile&gt;
+    &lt;/profiles&gt;
+&lt;/project&gt;</code></code></pre>
+<p>由上面的pom.xml内容可见，account-service应用是个简单的web应用，和SpringCloud、spring-cloud-kubernetes都没有任何关系，和其他springboot唯一的不同就是用到了fabric8-maven-plugin插件，可以方便的将应用部署到kubernetes环境；</p>
+<ol>
+<li>application.yml内容如下，依旧很简单：</li>
+</ol>
+<pre class="yml"><code>spring:
+  application:
+    name: account-service
+
+server:
+  port: 8080</code></code></pre>
+<ol>
+<li>对外提供服务的是AccountController ，方法getName返回了当前容器的hostname，方法health用于响应kubernetes的两个探针，方法ribbonPing用于响应使用了ribbon服务的调用方，它们会调用这个接口来确定当前服务是否正常：</li>
+</ol>
+<pre><code><code>@RestController
+public class AccountController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AccountController.class);
+
+    private final String hostName = System.getenv(&quot;HOSTNAME&quot;);
+
+    /**
+     * 探针检查响应类
+     * @return
+     */
+    @RequestMapping(&quot;/health&quot;)
+    public String health() {
+        return &quot;OK&quot;;
+    }
+
+    @RequestMapping(&quot;/&quot;)
+    public String ribbonPing(){
+        LOG.info(&quot;ribbonPing of {}&quot;, hostName);
+        return hostName;
+    }
+
+    /**
+     * 返回hostname
+     * @return 当前应用所在容器的hostname.
+     */
+    @RequestMapping(&quot;/name&quot;)
+    public String getName() {
+        return this.hostName
+                + &quot;, &quot;
+                + new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;).format(new Date());
+    }
+}</code></code></pre>
+<ol>
+<li>将上述工程的源码放在minikube机器上，确保maven设置正常，然后在pom.xml文件所在目录执行以下命令，即可编译构建工程并部署到kubernetes上：</li>
+</ol>
+<pre class="shell"><code>mvn clean install fabric8:deploy -Dfabric8.generator.from=fabric8/java-jboss-openjdk8-jdk -Pkubernetes</code></code></pre>
+<p>执行成功后控制台输出如下：</p>
+<pre class="shell"><code>...
+[INFO] Installing /usr/local/work/k8s/ribbon/spring-cloud-k8s-account-service/target/classes/META-INF/fabric8/kubernetes.json to /root/.m2/repository/com/bolingcavalry/account-service/0.0.1-SNAPSHOT/account-service-0.0.1-SNAPSHOT-kubernetes.json
+[INFO] 
+[INFO] &lt;&lt;&lt; fabric8-maven-plugin:3.5.37:deploy (default-cli) &lt; install @ account-service &lt;&lt;&lt;
+[INFO] 
+[INFO] 
+[INFO] --- fabric8-maven-plugin:3.5.37:deploy (default-cli) @ account-service ---
+[INFO] F8: Using Kubernetes at https://192.168.121.133:8443/ in namespace default with manifest /usr/local/work/k8s/ribbon/spring-cloud-k8s-account-service/target/classes/META-INF/fabric8/kubernetes.yml 
+[INFO] Using namespace: default
+[INFO] Updating a Service from kubernetes.yml
+[INFO] Updated Service: target/fabric8/applyJson/default/service-account-service.json
+[INFO] Using namespace: default
+[INFO] Updating Deployment from kubernetes.yml
+[INFO] Updated Deployment: target/fabric8/applyJson/default/deployment-account-service.json
+[INFO] F8: HINT: Use the command `kubectl get pods -w` to watch your pods start up
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  11.941 s
+[INFO] Finished at: 2019-06-16T19:00:51+08:00
+[INFO] ------------------------------------------------------------------------</code></code></pre>
+<ol>
+<li>检查kubernetes上的部署和服务是否正常：</li>
+</ol>
+<pre class="shell"><code>[root@minikube spring-cloud-k8s-account-service]# kubectl get deployments
+NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+account-service   1/1     1            1           69m
+[root@minikube spring-cloud-k8s-account-service]# kubectl get services
+NAME              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+account-service   NodePort    10.105.157.201   &lt;none&gt;        8080:32596/TCP   69m
+kubernetes        ClusterIP   10.96.0.1        &lt;none&gt;        443/TCP          8d</code></code></pre>
+<ol>
+<li>minikube的service命令可以得到指定服务的访问地址：</li>
+</ol>
+<pre class="shell"><code>[root@minikube spring-cloud-k8s-account-service]# minikube service account-service --url
+http://192.168.121.133:32596</code></code></pre>
+<p>可见account-service的服务可以通过这个url访问：http://192.168.121.133:32596</p>
+<ol>
+<li><p>用浏览器访问地址：http://192.168.121.133:32596/name ，如下图所示，可以正常访问account-service提供的服务：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)3.png" alt="在这里插入图片描述" /><br />
+现在account-service服务已经就绪，接下来是开发和部署web-service应用。</p>
+<h3 id="开发和部署web-service服务">开发和部署Web-Service服务</h3>
+Web-Service服务是个springboot应用，用到了spring-cloud-kubernetes提供的注册发现能力，以轮询的方式访问指定服务的全部pod：</li>
+<li>通过maven创建一个springboot应用，artifactId是<font color="blue">web-service</font>，pom.xml内容如下，要重点关注的是<font color="blue">spring-cloud-starter-kubernetes-ribbon</font>的依赖：</li>
+</ol>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot;
+         xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+    &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+    &lt;parent&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-starter-parent&lt;/artifactId&gt;
+        &lt;version&gt;2.1.1.RELEASE&lt;/version&gt;
+        &lt;relativePath/&gt; &lt;!-- lookup parent from repository --&gt;
+    &lt;/parent&gt;
+    &lt;groupId&gt;com.bolingcavalry&lt;/groupId&gt;
+    &lt;artifactId&gt;web-service&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+    &lt;name&gt;web-service&lt;/name&gt;
+    &lt;description&gt;Demo project for Spring Cloud service consumer run in kubernetes&lt;/description&gt;
+
+    &lt;properties&gt;
+        &lt;java.version&gt;1.8&lt;/java.version&gt;
+        &lt;spring-boot.version&gt;2.1.1.RELEASE&lt;/spring-boot.version&gt;
+        &lt;maven-checkstyle-plugin.failsOnError&gt;false&lt;/maven-checkstyle-plugin.failsOnError&gt;
+        &lt;maven-checkstyle-plugin.failsOnViolation&gt;false&lt;/maven-checkstyle-plugin.failsOnViolation&gt;
+        &lt;maven-checkstyle-plugin.includeTestSourceDirectory&gt;false&lt;/maven-checkstyle-plugin.includeTestSourceDirectory&gt;
+        &lt;maven-compiler-plugin.version&gt;3.5&lt;/maven-compiler-plugin.version&gt;
+        &lt;maven-deploy-plugin.version&gt;2.8.2&lt;/maven-deploy-plugin.version&gt;
+        &lt;maven-failsafe-plugin.version&gt;2.18.1&lt;/maven-failsafe-plugin.version&gt;
+        &lt;maven-surefire-plugin.version&gt;2.21.0&lt;/maven-surefire-plugin.version&gt;
+        &lt;fabric8.maven.plugin.version&gt;3.5.37&lt;/fabric8.maven.plugin.version&gt;
+        &lt;springcloud.kubernetes.version&gt;1.0.1.RELEASE&lt;/springcloud.kubernetes.version&gt;
+        &lt;springcloud.version&gt;2.1.1.RELEASE&lt;/springcloud.version&gt;
+    &lt;/properties&gt;
+
+    &lt;dependencyManagement&gt;
+        &lt;dependencies&gt;
+            &lt;dependency&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+                &lt;type&gt;pom&lt;/type&gt;
+                &lt;scope&gt;import&lt;/scope&gt;
+                &lt;version&gt;${spring-boot.version}&lt;/version&gt;
+            &lt;/dependency&gt;
+        &lt;/dependencies&gt;
+    &lt;/dependencyManagement&gt;
+
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-kubernetes-core&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.kubernetes.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-kubernetes-discovery&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.kubernetes.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-kubernetes-ribbon&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.kubernetes.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-commons&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-netflix-ribbon&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-netflix-hystrix&lt;/artifactId&gt;
+            &lt;version&gt;${springcloud.version}&lt;/version&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+
+    &lt;build&gt;
+        &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${spring-boot.version}&lt;/version&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;repackage&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+            &lt;/plugin&gt;
+
+            &lt;plugin&gt;
+                &lt;!--skip deploy --&gt;
+                &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+                &lt;artifactId&gt;maven-deploy-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${maven-deploy-plugin.version}&lt;/version&gt;
+                &lt;configuration&gt;
+                    &lt;skip&gt;true&lt;/skip&gt;
+                &lt;/configuration&gt;
+            &lt;/plugin&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+                &lt;artifactId&gt;maven-surefire-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${maven-surefire-plugin.version}&lt;/version&gt;
+                &lt;configuration&gt;
+                    &lt;skipTests&gt;true&lt;/skipTests&gt;
+                    &lt;!-- Workaround for https://issues.apache.org/jira/browse/SUREFIRE-1588 --&gt;
+                    &lt;useSystemClassLoader&gt;false&lt;/useSystemClassLoader&gt;
+                &lt;/configuration&gt;
+            &lt;/plugin&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;io.fabric8&lt;/groupId&gt;
+                &lt;artifactId&gt;fabric8-maven-plugin&lt;/artifactId&gt;
+                &lt;version&gt;${fabric8.maven.plugin.version}&lt;/version&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;id&gt;fmp&lt;/id&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;resource&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+            &lt;/plugin&gt;
+        &lt;/plugins&gt;
+    &lt;/build&gt;
+
+    &lt;profiles&gt;
+        &lt;profile&gt;
+            &lt;id&gt;kubernetes&lt;/id&gt;
+            &lt;build&gt;
+                &lt;plugins&gt;
+                    &lt;plugin&gt;
+                        &lt;groupId&gt;io.fabric8&lt;/groupId&gt;
+                        &lt;artifactId&gt;fabric8-maven-plugin&lt;/artifactId&gt;
+                        &lt;version&gt;${fabric8.maven.plugin.version}&lt;/version&gt;
+                        &lt;executions&gt;
+                            &lt;execution&gt;
+                                &lt;id&gt;fmp&lt;/id&gt;
+                                &lt;goals&gt;
+                                    &lt;goal&gt;resource&lt;/goal&gt;
+                                    &lt;goal&gt;build&lt;/goal&gt;
+                                &lt;/goals&gt;
+                            &lt;/execution&gt;
+                        &lt;/executions&gt;
+                        &lt;configuration&gt;
+                            &lt;enricher&gt;
+                                &lt;config&gt;
+                                    &lt;fmp-service&gt;
+                                        &lt;type&gt;NodePort&lt;/type&gt;
+                                    &lt;/fmp-service&gt;
+                                &lt;/config&gt;
+                            &lt;/enricher&gt;
+                        &lt;/configuration&gt;
+                    &lt;/plugin&gt;
+                &lt;/plugins&gt;
+            &lt;/build&gt;
+        &lt;/profile&gt;
+    &lt;/profiles&gt;
+&lt;/project&gt;</code></code></pre>
+<ol>
+<li>application.yml的内容如下，增加了熔断的配置：</li>
+</ol>
+<pre class="yml"><code>spring:
+  application:
+    name: web-service
+
+server:
+  port: 8080
+
+backend:
+  ribbon:
+    eureka:
+      enabled: false
+    client:
+      enabled: true
+    ServerListRefreshInterval: 5000
+
+hystrix.command.BackendCall.execution.isolation.thread.timeoutInMilliseconds: 5000
+hystrix.threadpool.BackendCallThread.coreSize: 5</code></code></pre>
+<ol>
+<li>创建一个ribbon的配置类RibbonConfiguration：</li>
+</ol>
+<pre><code><code>package com.bolingcavalry.webservice;
+
+import com.netflix.client.config.IClientConfig;
+import com.netflix.loadbalancer.AvailabilityFilteringRule;
+import com.netflix.loadbalancer.IPing;
+import com.netflix.loadbalancer.IRule;
+import com.netflix.loadbalancer.PingUrl;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+
+/**
+ * @Description: ribbon配置类
+ * @author: willzhao E-mail: zq2599@gmail.com
+ * @date: 2019/6/16 11:52
+ */
+public class RibbonConfiguration {
+
+    @Autowired
+    IClientConfig ribbonClientConfig;
+
+    /**
+     * 检查服务是否可用的实例，
+     * 此地址返回的响应的返回码如果是200表示服务可用
+     * @param config
+     * @return
+     */
+    @Bean
+    public IPing ribbonPing(IClientConfig config){
+        return new PingUrl();
+    }
+
+    /**
+     * 轮询规则
+     * @param config
+     * @return
+     */
+    @Bean
+    public IRule ribbonRule(IClientConfig config){
+        return new AvailabilityFilteringRule();
+    }
+}</code></code></pre>
+<ol>
+<li>应用启动类如下，注意增加了服务发现、熔断、ribbon的配置，还定义了restTemplte实例，注意@LoadBalanced注解：</li>
+</ol>
+<pre><code><code>package com.bolingcavalry.webservice;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.cloud.netflix.ribbon.RibbonClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.web.client.RestTemplate;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+@EnableCircuitBreaker
+@RibbonClient(name=&quot;account-service&quot;, configuration = RibbonConfiguration.class)
+public class WebServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(WebServiceApplication.class, args);
+    }
+
+    @LoadBalanced
+    @Bean
+    RestTemplate restTemplate(){
+        return new RestTemplate();
+    }
+}</code></code></pre>
+<ol>
+<li>远程调用account-service的http接口的逻辑被放进服务类AccountService中，注意URL中用的是服务名<font color="blue">account-service</font>：</li>
+</ol>
+<pre><code><code>package com.bolingcavalry.webservice;
+
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+/**
+ * @Description: 这里面封装了远程调用account-service提供服务的逻辑
+ * @author: willzhao E-mail: zq2599@gmail.com
+ * @date: 2019/6/16 12:21
+ */
+@Service
+public class AccountService {
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @HystrixCommand(fallbackMethod = &quot;getFallbackName&quot; ,commandProperties = {
+            @HystrixProperty(name = &quot;execution.isolation.thread.timeoutInMilliseconds&quot;, value = &quot;1000&quot;) })
+    public String getDataFromSpringCloudK8SProvider(){
+        return this.restTemplate.getForObject(&quot;http://account-service/name&quot;, String.class);
+    }
+
+    /**
+     * 熔断时调用的方法
+     * @return
+     */
+    private String getFallbackName() {
+        return &quot;Fallback&quot;
+                + &quot;, &quot;
+                + new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;).format(new Date());
+    }
+}</code></code></pre>
+<ol>
+<li>最后是响应web请求的WebServiceController类，这里面调用了AccountService的服务，这样我们从web发起请求后，web-service就会远程调用account-service的服务：</li>
+</ol>
+<pre><code><code>package com.bolingcavalry.webservice;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * @Description: 测试用的controller，会远程调用account-service的服务
+ * @author: willzhao E-mail: zq2599@gmail.com
+ * @date: 2019/6/16 11:46
+ */
+@RestController
+public class WebServiceController {
+
+    @Autowired
+    private AccountService accountService;
+
+    /**
+     * 探针检查响应类
+     * @return
+     */
+    @RequestMapping(&quot;/health&quot;)
+    public String health() {
+        return &quot;OK&quot;;
+    }
+
+    /**
+     * 远程调用account-service提供的服务
+     * @return 多次远程调返回的所有结果.
+     */
+    @RequestMapping(&quot;/account&quot;)
+    public String account() {
+
+        StringBuilder sbud = new StringBuilder();
+
+        for(int i=0;i&lt;10;i++){
+            sbud.append(accountService.getDataFromSpringCloudK8SProvider())
+                .append(&quot;&lt;br&gt;&quot;);
+        }
+
+        return sbud.toString();
+    }
+}</code></code></pre>
+<ol>
+<li>将上述工程的源码放在minikube机器上，确保maven设置正常，然后在pom.xml文件所在目录执行以下命令，即可编译构建工程并部署到kubernetes上：</li>
+</ol>
+<pre class="shell"><code>mvn clean install fabric8:deploy -Dfabric8.generator.from=fabric8/java-jboss-openjdk8-jdk -Pkubernetes</code></code></pre>
+<p>执行成功后控制台输出如下：</p>
+<pre class="shell"><code>...
+[INFO] Installing /usr/local/work/k8s/ribbon/spring-cloud-k8s-web-service/target/classes/META-INF/fabric8/kubernetes.json to /root/.m2/repository/com/bolingcavalry/web-service/0.0.1-SNAPSHOT/web-service-0.0.1-SNAPSHOT-kubernetes.json
+[INFO] 
+[INFO] &lt;&lt;&lt; fabric8-maven-plugin:3.5.37:deploy (default-cli) &lt; install @ web-service &lt;&lt;&lt;
+[INFO] 
+[INFO] 
+[INFO] --- fabric8-maven-plugin:3.5.37:deploy (default-cli) @ web-service ---
+[INFO] F8: Using Kubernetes at https://192.168.121.133:8443/ in namespace default with manifest /usr/local/work/k8s/ribbon/spring-cloud-k8s-web-service/target/classes/META-INF/fabric8/kubernetes.yml 
+[INFO] Using namespace: default
+[INFO] Creating a Service from kubernetes.yml namespace default name web-service
+[INFO] Created Service: target/fabric8/applyJson/default/service-web-service.json
+[INFO] Using namespace: default
+[INFO] Creating a Deployment from kubernetes.yml namespace default name web-service
+[INFO] Created Deployment: target/fabric8/applyJson/default/deployment-web-service.json
+[INFO] F8: HINT: Use the command `kubectl get pods -w` to watch your pods start up
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  12.792 s
+[INFO] Finished at: 2019-06-16T19:24:21+08:00
+[INFO] ------------------------------------------------------------------------</code></code></pre>
+<ol>
+<li>检查kubernetes上的部署和服务是否正常：</li>
+</ol>
+<pre class="shell"><code>[root@minikube spring-cloud-k8s-web-service]# kubectl get deployments
+NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+account-service   1/1     1            1           109m
+web-service       1/1     1            1           18m
+[root@minikube spring-cloud-k8s-web-service]# kubectl get svc
+NAME              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+account-service   NodePort    10.105.157.201   &lt;none&gt;        8080:32596/TCP   109m
+kubernetes        ClusterIP   10.96.0.1        &lt;none&gt;        443/TCP          8d
+web-service       NodePort    10.99.211.179    &lt;none&gt;        8080:30519/TCP   18m</code></code></pre>
+<ol>
+<li>minikube的service命令可以得到指定服务的访问地址：</li>
+</ol>
+<pre class="shell"><code>[root@minikube spring-cloud-k8s-web-service]# minikube service web-service --url
+http://192.168.121.133:30519</code></code></pre>
+<p>可见web-service的服务可以通过这个url访问：http://192.168.121.133:30519</p>
+<ol>
+<li><p>用浏览器访问地址：http://192.168.121.133:30519/account ，如下图所示，页面上展示的内容都是web-service调用了account-service的接口返回的，证明kubernetes上的注册发现能力正常：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)4.png" alt="在这里插入图片描述" /></p>
+<h3 id="扩容验证ribbon轮询能力">扩容验证ribbon轮询能力</h3>
+虽然web-service可以正常调用account-service的服务，但始终访问的是一个pod，接下来我们就对account-service的pod进行扩容，将数量调整为2个，看看web-service是否可以轮询调用每个account-service的pod：</li>
+<li>执行以下命令即可将pod数量调整为2个：</li>
+</ol>
+<pre class="shell"><code>kubectl scale --replicas=2 deployment account-service</code></code></pre>
+<ol>
+<li>检查account-service的pod，发现已经有两个了(account-service-5554576647-m29xr和account-service-5554576647-zwwml)：</li>
+</ol>
+<pre class="shell"><code>[root@minikube spring-cloud-k8s-web-service]# kubectl get pods
+NAME                               READY   STATUS    RESTARTS   AGE
+account-service-5554576647-m29xr   1/1     Running   0          53m
+account-service-5554576647-zwwml   1/1     Running   0          20s
+web-service-6d775855c7-7lkvr       1/1     Running   0          29m</code></code></pre>
+<ol>
+<li><p>用浏览器访问地址：http://192.168.121.133:30519/account ，如下图所示，account-sercice返回的hostname已经变成了两种，和前面查到的pod的name一致，可见web-service的确是通过ribbon轮询访问了多个account-service的pod：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)5.png" alt="在这里插入图片描述" /></p>
+<h3 id="验证熔断能力">验证熔断能力</h3>
+接下来验证web-service配置的熔断服务是否可以生效：</li>
+<li>执行以下命令将account-service的deployment删除：</li>
+</ol>
+<pre class="shell"><code>kubectl delete deployment account-service</code></code></pre>
+<ol>
+<li>再浏览器访问地址：http://192.168.121.133:30519/account ，如下图所示，页面上的&quot;Fallback&quot;是配置的熔断方法返回的内容，可见熔断配置已经生效：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)6.png" alt="在这里插入图片描述" /></li>
+<li>再回到web-service的pom.xml所在位置执行以下命令，这样会重新构建部署一次web-service服务：</li>
+</ol>
+<pre class="shell"><code>mvn clean install fabric8:deploy -Dfabric8.generator.from=fabric8/java-jboss-openjdk8-jdk -Pkubernetes</code></code></pre>
+<ol>
+<li>再浏览器访问地址：http://192.168.121.133:30519/account ，如下图所示，服务成功恢复：<br />
+<img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)7.png" alt="在这里插入图片描述" /></li>
+</ol>
+<p>至此，spring-cloud-kubernetes的服务发现和轮询实战(含熔断)就全部完成了，利用API Server提供的信息，spring-cloud-kubernetes将原生的kubernetes服务带给了SpringCloud应用，帮助传统微服务更好的融合在kubernetes环境中，如果您也在考虑将应用迁移到kubernetes上，希望本文能给您一些参考。</p>
+<h3 id="欢迎关注我的公众号程序员欣宸">欢迎关注我的公众号：程序员欣宸</h3>
+<p><img src="./images/spring-cloud-kubernetes的服务发现和轮询实战(含熔断)8.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

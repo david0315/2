@@ -1,0 +1,206 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修五分钟后，你将学会在SpringBoot项目中如何集成CAT调用链' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>五分钟后，你将学会在SpringBoot项目中如何集成CAT调用链</center></div><div class='banquan'>原文出处:本文由博客园博主万猫学社提供。<br/>
+原文连接:https://www.cnblogs.com/heihaozi/p/11769427.html</div><br>
+    <h3 id="买买买结算系统">买买买结算系统</h3>
+<p><img src="./images/五分钟后，你将学会在SpringBoot项目中如何集成CAT调用链0.png" /></p>
+<p>一年一度的双十一购物狂欢节就要到了，又到剁手党们开始表演的时刻了。当我们把种草很久的商品放入购物车以后，点击“结算”按钮时，就来到了买买买必不可少的结算页面了。让我们虚拟一个<strong>买买买结算系统</strong>，为结算页面提供商品、促销、库存等结算信息，就此系统展开如何在SpringBoot项目中集成CAT调用链。<strong>买买买结算系统</strong>包含以下4个项目:</p>
+<ol>
+<li>结算UI：为前端页面提供结算的基础数据。</li>
+<li>购物车API：获取用户购物车中有哪些商品。</li>
+<li>商品API：获取商品详细信息</li>
+<li>商品促销API：获取商品的促销信息</li>
+<li>商品库存API：获取商品的库存信息</li>
+</ol>
+<p>时序图如下：<br />
+<img src="./images/五分钟后，你将学会在SpringBoot项目中如何集成CAT调用链1.png" /></p>
+<h3 id="通过maven添加依赖">通过Maven添加依赖</h3>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.dianping.cat&lt;/groupId&gt;
+    &lt;artifactId&gt;cat-client&lt;/artifactId&gt;
+    &lt;version&gt;3.0.0&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h3 id="配置client.xml">配置client.xml</h3>
+<p>创建<code>/data/appdatas/cat/</code>目录，并创建<code>client.xml</code>文件：</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;config xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema&quot; xsi:noNamespaceSchemaLocation=&quot;config.xsd&quot;&gt;
+    &lt;servers&gt;
+        &lt;server ip=&quot;127.0.0.1&quot; port=&quot;2280&quot; http-port=&quot;8080&quot; /&gt;
+    &lt;/servers&gt;
+&lt;/config&gt;</code></code></pre>
+<p><strong>注意</strong>：把127.0.0.1替换成CAT服务端的IP。</p>
+<h3 id="配置项目名称">配置项目名称</h3>
+<p><strong>买买买结算系统</strong>中一共有5个项目，每个项目都需要配置各自的项目名称。<br />
+首先，在每个项目中创建如下文件：<br />
+<code>src/main/resources/META-INF/app.properties</code><br />
+然后，在每个项目里添加如下内容：</p>
+<ol>
+<li>结算UI：<br />
+<code>app.name=buy-buy-buy-checkout</code></li>
+<li>购物车API：<br />
+<code>app.name=buy-buy-buy-cart</code></li>
+<li>商品API：<br />
+<code>app.name=buy-buy-buy-product</code></li>
+<li>商品促销API：<br />
+<code>app.name=buy-buy-buy-promotion</code></li>
+<li>商品库存API：<br />
+<code>app.name=buy-buy-buy-store</code></li>
+</ol>
+<p><strong>注意</strong>：项目名称只能包含英文字母 (a-z, A-Z)、数字 (0-9)、下划线 (_) 和中划线 (-)</p>
+<h3 id="准备埋点">准备埋点</h3>
+<p>在埋点之前，需要先写两个公共类，方便之后埋点时调用。</p>
+<ol>
+<li>第一个类实现Cat.Context接口，用于存放调用链上下文信息：</li>
+</ol>
+<pre class="java"><code>public class CatContext implements Cat.Context {
+
+    private Map&lt;String, String&gt; properties = new HashMap&lt;&gt;();
+
+    @Override
+    public void addProperty(String key, String value) {
+        properties.put(key, value);
+    }
+
+    @Override
+    public String getProperty(String key) {
+        return properties.get(key);
+    }
+
+    @Override
+    public String toString() {
+        return &quot;CatContext{&quot;
+                + &quot;properties=&quot; + properties + &#39;}&#39;;
+    }
+}</code></code></pre>
+<ol>
+<li>第二个类中定义一些常量，在调用API时作为header中的key。</li>
+</ol>
+<pre class="java"><code>public class CatHttpConstants {
+    public static final String CAT_HTTP_HEADER_CHILD_MESSAGE_ID = &quot;DD-CAT-CHILD-MESSAGE-ID&quot;;
+    public static final String CAT_HTTP_HEADER_PARENT_MESSAGE_ID = &quot;DD-CAT-PARENT-MESSAGE-ID&quot;;
+    public static final String CAT_HTTP_HEADER_ROOT_MESSAGE_ID = &quot;DD-CAT-ROOT-MESSAGE-ID&quot;;
+}</code></code></pre>
+<h3 id="开始埋点">开始埋点</h3>
+<p>使用CAT进行分布式调用链监控，需要修改项目中的代码进行埋点：</p>
+<ol>
+<li>在刚刚接收到请求时进行埋点。</li>
+<li>在准备调用API时进行埋点。</li>
+</ol>
+<p>那么在<strong>买买买结算系统</strong>中需要做哪些代码修改呢？看一下时序图的变化就明白了：<br />
+<img src="./images/五分钟后，你将学会在SpringBoot项目中如何集成CAT调用链2.png" /></p>
+<p>第一个埋点，在刚刚接收到请求时，这里使用Filter实现，代码如下：</p>
+<pre class="java"><code>public class CatServletFilter implements Filter {
+
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+
+    }
+
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+
+        HttpServletRequest request = (HttpServletRequest) servletRequest;
+
+        CatContext catContext = new CatContext();
+        catContext.addProperty(Cat.Context.ROOT, request.getHeader(CatHttpConstants.CAT_HTTP_HEADER_ROOT_MESSAGE_ID));
+        catContext.addProperty(Cat.Context.PARENT, request.getHeader(CatHttpConstants.CAT_HTTP_HEADER_PARENT_MESSAGE_ID));
+        catContext.addProperty(Cat.Context.CHILD, request.getHeader(CatHttpConstants.CAT_HTTP_HEADER_CHILD_MESSAGE_ID));
+        Cat.logRemoteCallServer(catContext);
+
+        Transaction t = Cat.newTransaction(CatConstants.TYPE_URL, request.getRequestURI());
+
+        try {
+            
+            Cat.logEvent(&quot;Service.method&quot;, request.getMethod(), Message.SUCCESS, request.getRequestURL().toString());
+            Cat.logEvent(&quot;Service.client&quot;, request.getRemoteHost());
+
+            filterChain.doFilter(servletRequest, servletResponse);
+
+            t.setStatus(Transaction.SUCCESS);
+        } catch (Exception ex) {
+            t.setStatus(ex);
+            Cat.logError(ex);
+            throw ex;
+        } finally {
+            t.complete();
+        }
+    }
+
+    @Override
+    public void destroy() {
+
+    }
+}</code></code></pre>
+<p>Filter已经写好了，接下来还需要把Filter注册到SpringBoot中：</p>
+<pre class="java"><code>@Configuration
+public class CatConfiguration {
+    @Bean
+    public FilterRegistrationBean catServletFilter() {
+        FilterRegistrationBean registration = new FilterRegistrationBean();
+        CatServletFilter filter = new CatServletFilter();
+        registration.setFilter(filter);
+        registration.addUrlPatterns(&quot;/*&quot;);
+        registration.setName(&quot;cat-servlet-filter&quot;);
+        registration.setOrder(1);
+        return registration;
+    }
+}</code></code></pre>
+<p>第两个埋点，在调用API的HttpClient工具类中统一增加代码，以GET方式为例：</p>
+<pre class="java"><code>public static String doGet(String url) throws IOException {
+    HttpGet httpGet = new HttpGet(url);
+    CloseableHttpResponse response = null;
+    CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+    String content = null;
+    Transaction t = Cat.newTransaction(CatConstants.TYPE_CALL, url);
+    try {
+        Context ctx = new CatContext();
+        Cat.logRemoteCallClient(ctx);
+        httpGet.setHeader(CatHttpConstants.CAT_HTTP_HEADER_ROOT_MESSAGE_ID, ctx.getProperty(Cat.Context.ROOT));
+        httpGet.setHeader(CatHttpConstants.CAT_HTTP_HEADER_PARENT_MESSAGE_ID, ctx.getProperty(Cat.Context.PARENT));
+        httpGet.setHeader(CatHttpConstants.CAT_HTTP_HEADER_CHILD_MESSAGE_ID, ctx.getProperty(Cat.Context.CHILD));
+
+        response = httpClient.execute(httpGet);
+        if (response.getStatusLine().getStatusCode() == 200) {
+            content = EntityUtils.toString(response.getEntity(), &quot;UTF-8&quot;);
+            t.setStatus(Transaction.SUCCESS);
+        }
+    } catch (Exception e) {
+        Cat.logError(e);
+        t.setStatus(e);
+        throw e;
+    } finally {
+        if (response != null) {
+            response.close();
+        }
+        if (httpClient != null) {
+            httpClient.close();
+        }
+        t.complete();
+    }
+    return content;
+}</code></code></pre>
+<h3 id="结语">结语</h3>
+<p>以上便是SpringBoot集成CAT调用链的整个实例了，可以灵活应用，更加优雅的集成到实际项目中。<br />
+另外，CAT还有很多丰富的功能，可参见<a href="https://github.com/dianping/cat/">官网</a>。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

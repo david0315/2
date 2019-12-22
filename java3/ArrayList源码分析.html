@@ -1,0 +1,246 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修ArrayList源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>ArrayList源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主MrHH提供。<br/>
+原文连接:https://www.cnblogs.com/HuiH/p/11822925.html</div><br>
+    <p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">首先来总结一下，ArrayList的一些特点：</span></strong></span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">　　<span style="color: #00ccff;">1.arraylist本质上就是一个elementData数组，它允许对元素进行快速随机访问，可以存放null值；</span></span></strong></span></p>
+<p><span style="color: #00ccff;"><strong><span style="font-size: 16px;">　　2.arraylist区别于数组的地方在于能够自动扩展大小，其中关键就是grow() 方法，每次扩充后数组为原来数组的1.5倍；</span></strong></span></p>
+<p><span style="color: #00ccff;"><strong><span style="font-size: 16px;">　　3.arraylist由于本质是数组，所以它在数据的查询方面会很快，而在插入删除方面，性能会下降很多，要移动很多数据才能达到应有的效果；</span></strong></span></p>
+<p><span style="color: #00ccff;"><strong><span style="font-size: 16px;">　　4.arraylist中的removeAll(collection c)和clear() 的区别就是removeAll可以删除批量指定的元素，而clear是全部删除集合中的元素；</span></strong></span></p>
+<p><span style="color: #00ccff;"><strong><span style="font-size: 16px;">　　5.arraylist实现了RandomAccess，所以在遍历时推荐使用for循环；</span></strong></span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">　　<span style="color: #00ccff;">6.arraylist是线程不安全的；</span></span></strong></span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">一、继承结构和层次关系</span></strong></span></p>
+<p>　　<img src="./images/ArrayList源码分析0.png" alt="" /></p>
+<p>　　<img src="./images/ArrayList源码分析1.png" alt="" width="1036" height="72" /></p>
+<p>　<span style="font-size: 16px;">　由图可以看出，ArrayList 继承于AbstractList；AbstractList 继承于AbstractCollection；所有类都继承于Object。</span></p>
+<p><strong><span style="font-size: 16px;">1.为什么要先继承AbstractList，让AbstractList先实现List&lt;E&gt;，而不是让ArrayList直接实现List&lt;E&gt;？</span></strong></p>
+<p><span style="font-size: 16px;">　　接口中全都是抽象的方法，而抽象类中可以有抽象方法，还可以有具体的实现方法，让AbstractList实现接口中一些通用的方法，而具体的类，如ArrayList就继承这个AbstractList类，拿到一些通用的方法，然后自己再实现一些自己特有的方法。</span></p>
+<p><strong><span style="font-size: 16px;">2.ArrayList实现了那些接口？</span></strong></p>
+<p><span style="font-size: 16px;">　　List&lt;E&gt;接口</span></p>
+<p><span style="font-size: 16px;">　　RandomAccedd接口：是一个标记性接口，作用是用来快速随机存取。若实现了该接口，使用普通的for循环来遍历，性能更高，例如arraylist。而没有实现该方法的接口，使用iterator来迭代，这样性能更高，例如LinkedList。</span></p>
+<p><span style="font-size: 16px;">　　Cloneable接口：实现了该接口，就可以使用Object.Clone()方法。</span></p>
+<p><span style="font-size: 16px;">　　Serializable接口：实现该序列化接口，表明该类可以被序列化。</span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">二、构造方法</span></strong></span></p>
+<p><span style="font-size: 16px;">　　<img src="./images/ArrayList源码分析2.png" alt="" width="441" height="72" /></span></p>
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">1.无参构造方法</span></strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #008000;">//</span><span style="color: #008000;">这里就说明了默认会给10的大小，所以说一开始arrayList的容量是10.
+</span><span style="color: #008080;">2</span> 　    <span style="color: #008000;">//</span><span style="color: #008000;">ArrayList中储存数据的其实就是一个数组，这个数组就是elementData，在123行定义的 private transient Object[] elementData;</span>
+<span style="color: #008080;">3</span> 　　 <span style="color: #0000ff;">public</span><span style="color: #000000;"> ArrayList() {　　
+</span><span style="color: #008080;">4</span>             <span style="color: #0000ff;">super</span>();        <span style="color: #008000;">//</span><span style="color: #008000;">调用父类中的无参构造方法，父类中的是个空的构造方法</span>
+<span style="color: #008080;">5</span>             <span style="color: #0000ff;">this</span>.elementData = EMPTY_ELEMENTDATA;    <span style="color: #008000;">//</span><span style="color: #008000;">EMPTY_ELEMENTDATA：是个空的Object[]， 将elementData初始化，elementData也是个Object[]类型。空的Object[]会给默认大小10。</span>
+<span style="color: #008080;">6</span>         }</span></code></pre>
+
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">2.有参构造方法1</span></strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span>   <span style="color: #0000ff;">public</span> ArrayList(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">super</span>(); <span style="color: #008000;">//</span><span style="color: #008000;">父类中空的构造方法</span>
+<span style="color: #008080;">3</span>         <span style="color: #0000ff;">if</span> (initialCapacity &lt; 0)    <span style="color: #008000;">//</span><span style="color: #008000;">判断如果自定义大小的容量小于0，则报非法数据异常</span>
+<span style="color: #008080;">4</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Illegal Capacity: "+<span style="color: #000000;">initialCapacity);
+</span><span style="color: #008080;">5</span>             <span style="color: #0000ff;">this</span>.elementData = <span style="color: #0000ff;">new</span> Object[initialCapacity]; <span style="color: #008000;">//</span><span style="color: #008000;">将自定义的容量大小当成初始化elementData的大小</span>
+<span style="color: #008080;">6</span>     }</span></code></pre>
+
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">3.有参构造方法2（不常用）</span></strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span>  <span style="color: #008000;">//</span><span style="color: #008000;">我还有一个Collection&lt;Student&gt;、由于这个Student继承了Person，那么根据这个构造方法，我就可以把这个Collection&lt;Student&gt;转换为ArrayList&lt;Sudent&gt;这就是这个构造方法的作用 </span>
+<span style="color: #008080;">2</span>      <span style="color: #0000ff;">public</span> ArrayList(Collection&lt;? <span style="color: #0000ff;">extends</span> E&gt;<span style="color: #000000;"> c) {
+</span><span style="color: #008080;">3</span>         elementData = c.toArray();    <span style="color: #008000;">//</span><span style="color: #008000;">转换为数组</span>
+<span style="color: #008080;">4</span>         size = elementData.length;   <span style="color: #008000;">//</span><span style="color: #008000;">数组中的数据个数</span>
+<span style="color: #008080;">5</span>         <span style="color: #0000ff;">if</span> (elementData.getClass() != Object[].<span style="color: #0000ff;">class</span>) <span style="color: #008000;">//</span><span style="color: #008000;">每个集合的toarray()的实现方法不一样，所以需要判断一下，如果不是Object[].class类型，那么就需要使用ArrayList中的方法去改造一下。</span>
+<span style="color: #008080;">6</span>             elementData = Arrays.copyOf(elementData, size, Object[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">7</span>     }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">三、常用方法</span></strong></span></p>
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">1.add方法</span></strong></span></p>
+<p>　　<img src="./images/ArrayList源码分析3.png" alt="" /></p>
+<p><strong><span style="font-size: 16px;">boolean add(E)；//默认直接在末尾添加元素</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> add(E e) {    
+</span><span style="color: #008080;">2</span>     <span style="color: #008000;">//</span><span style="color: #008000;">确定内部容量是否够了，size是数组中数据的个数，因为要添加一个元素，所以size+1，先判断size+1的这个数数组能否放得下，就在这个方法中去判断是否数组.length是否够用了。</span>
+<span style="color: #008080;">3</span>        <span style="color: #ff0000;"> ensureCapacityInternal(size + 1);  
+</span><span style="color: #008080;">4</span>         <span style="color: #008000;">//</span><span style="color: #008000;">在数据中正确的位置上放上元素e，并且size++</span>
+<span style="color: #008080;">5</span>         elementData[size++] =<span style="color: #000000;"> e;
+</span><span style="color: #008080;">6</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">7</span>     }</span></code></pre>
+
+<p><span style="font-size: 16px;">ensureCapacityInternal(xxx);</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> ensureCapacityInternal(<span style="color: #0000ff;">int</span><span style="color: #000000;"> minCapacity) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">if</span> (elementData == EMPTY_ELEMENTDATA) { <span style="color: #008000;">//</span><span style="color: #008000;">判断初始化的elementData是不是空的数组，也就是没有长度。因为如果是空的话，minCapacity=size+1；其实就是等于1，空的数组没有长度就存放不了，所以就将minCapacity变成10，也就是默认大小，但是在这里，还没有真正的初始化这个elementData的大小。</span>
+<span style="color: #008080;">3</span>             minCapacity =<span style="color: #000000;"> Math.max(DEFAULT_CAPACITY, minCapacity);
+</span><span style="color: #008080;">4</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">5</span>         <span style="color: #008000;">//</span><span style="color: #008000;">确认实际的容量，上面只是将minCapacity=10，这个方法就是真正的判断elementData是否够用</span>
+<span style="color: #008080;">6</span> <span style="color: #ff0000;">        ensureExplicitCapacity(minCapacity);
+</span><span style="color: #008080;">7</span>     }</span></code></pre>
+
+<p><span style="font-size: 16px;">ensureExplicitCapacity(xxx);</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> ensureExplicitCapacity(<span style="color: #0000ff;">int</span><span style="color: #000000;"> minCapacity) {
+</span><span style="color: #008080;">2</span>         modCount++<span style="color: #000000;">;
+</span><span style="color: #008080;">3</span> <span style="color: #008000;">//</span><span style="color: #008000;">minCapacity如果大于了实际elementData的长度，那么就说明elementData数组的长度不够用，不够用那么就要增加elementData的length。</span>
+<span style="color: #008080;">4</span> <span style="color: #008000;">/*</span><span style="color: #008000;">第一种情况：由于elementData初始化时是空的数组，那么第一次add的时候，minCapacity=size+1；也就minCapacity=1，在上一个方法(确定内部容量ensureCapacityInternal)就会判断出是空的数组，就会将minCapacity=10，到这一步为止，还没有改变elementData的大小，
+</span><span style="color: #008080;">5</span> <span style="color: #008000;">　第二种情况：elementData不是空的数组了，那么在add的时候，minCapacity=size+1；也就是minCapacity代表着elementData中增加之后的实际数据个数，拿着它判断elementData的length是否够用，如果length不够用，那么肯定要扩大容量，不然增加的这个元素就会溢出。
+</span><span style="color: #008080;">6</span> <span style="color: #008000;">*/</span>
+<span style="color: #008080;">7</span>         <span style="color: #0000ff;">if</span> (minCapacity - elementData.length &gt; 0<span style="color: #000000;">)
+</span><span style="color: #008080;">8</span>             <span style="color: #ff0000;">grow(minCapacity);</span> <span style="color: #008000;">//</span><span style="color: #008000;">arrayList能自动扩展大小的关键方法就在这里了</span>
+<span style="color: #008080;">9</span>     }</span></code></pre>
+
+<p><span style="font-size: 16px;">grow(xxx);　　//arraylist核心的方法，能扩展数组大小的关键。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> grow(<span style="color: #0000ff;">int</span><span style="color: #000000;"> minCapacity) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> oldCapacity = elementData.length;  <span style="color: #008000;">//</span><span style="color: #008000;">将扩充前的elementData大小给oldCapacity</span>
+<span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">int</span> newCapacity = oldCapacity + (oldCapacity &gt;&gt; 1);    <span style="color: #008000;">//</span><span style="color: #008000;">newCapacity就是1.5倍的oldCapacity</span>
+<span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">if</span> (newCapacity - minCapacity &lt; 0)<span style="color: #008000;">//</span><span style="color: #008000;">这句话就是适应于elementData为空数组的时候，length=0，那么oldCapacity=0，newCapacity=0，所以这个判断成立，在这里就是真正的初始化elementData的大小了，就是为10。</span>
+<span style="color: #008080;"> 5</span>             newCapacity =<span style="color: #000000;"> minCapacity;
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">if</span> (newCapacity - MAX_ARRAY_SIZE &gt; 0)<span style="color: #008000;">//</span><span style="color: #008000;">如果newCapacity超过了最大的容量限制，就调用hugeCapacity，也就是将能给的最大值给newCapacity</span>
+<span style="color: #008080;"> 7</span>             newCapacity =<span style="color: #ff0000;"> hugeCapacity(minCapacity);
+</span><span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;">新的容量大小已经确定好了，就copy数组，改变容量大小。</span>
+<span style="color: #008080;"> 9</span>         elementData =<span style="color: #000000;"> Arrays.copyOf(elementData, newCapacity);
+</span><span style="color: #008080;">10</span>     }</span></code></pre>
+
+<p><span style="font-size: 16px;">hugeCapacity();</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #008000;">//</span><span style="color: #008000;">这个就是上面用到的方法，就是用来赋最大值。</span>
+<span style="color: #008080;">2</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> hugeCapacity(<span style="color: #0000ff;">int</span><span style="color: #000000;"> minCapacity) {
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">if</span> (minCapacity &lt; 0<span style="color: #000000;">) 
+</span><span style="color: #008080;">4</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> OutOfMemoryError();
+</span><span style="color: #008080;">5</span> <span style="color: #008000;">//</span><span style="color: #008000;">如果minCapacity都大于MAX_ARRAY_SIZE，那么就Integer.MAX_VALUE返回，反之将MAX_ARRAY_SIZE返回。因为maxCapacity是三倍的minCapacity，可能扩充的太大了，就用minCapacity来判断了。
+</span><span style="color: #008080;">6</span> <span style="color: #008000;">//</span><span style="color: #008000;">Integer.MAX_VALUE:2147483647   MAX_ARRAY_SIZE：2147483639  也就是说最大也就能给到第一个数值。还是超过了这个限制，就要溢出了。相当于arraylist给了两层防护。</span>
+<span style="color: #008080;">7</span>         <span style="color: #0000ff;">return</span> (minCapacity &gt; MAX_ARRAY_SIZE) ?<span style="color: #000000;">Integer.MAX_VALUE : MAX_ARRAY_SIZE;
+</span><span style="color: #008080;">8</span>     }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><strong>void add(int ,E);　　//在特定的位置添加元素，也就是插入元素</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> add(<span style="color: #0000ff;">int</span><span style="color: #000000;"> index, E element) {
+</span><span style="color: #008080;"> 2</span>         rangeCheckForAdd(index);<span style="color: #008000;">//</span><span style="color: #008000;">检查index也就是插入的位置是否合理。
+</span><span style="color: #008080;"> 3</span> <span style="color: #008000;">//</span><span style="color: #008000;">跟上面的分析一样，具体看上面</span>
+<span style="color: #008080;"> 4</span>         ensureCapacityInternal(size + 1<span style="color: #000000;">); 
+</span><span style="color: #008080;"> 5</span> <span style="color: #008000;">//</span><span style="color: #008000;">这个方法就是用来在插入元素之后，要将index之后的元素都往后移一位，</span>
+<span style="color: #008080;"> 6</span>         System.arraycopy(elementData, index, elementData, index + 1,  size - index);  <span style="color: #008000;">//</span><span style="color: #008000;">　System.arraycopy(...)：就是将elementData在插入位置后的所有元素往后面移一位
+</span><span style="color: #008080;"> 7</span> <span style="color: #008000;">//</span><span style="color: #008000;">在目标位置上存放元素</span>
+<span style="color: #008080;"> 8</span>         elementData[index] =<span style="color: #000000;"> element;
+</span><span style="color: #008080;"> 9</span>         size++;    <span style="color: #008000;">//</span><span style="color: #008000;">size增加1</span>
+<span style="color: #008080;">10</span>     }</span></code></pre>
+
+<p><span style="font-size: 16px;">rangeCheckForAdd(index)</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span>   <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> rangeCheckForAdd(<span style="color: #0000ff;">int</span><span style="color: #000000;"> index) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">if</span> (index &gt; size || index &lt; 0)   <span style="color: #008000;">//</span><span style="color: #008000;">插入的位置肯定不能大于size 和小于0
+</span><span style="color: #008080;">3</span> 　　　　　<span style="color: #008000;">//</span><span style="color: #008000;">如果是，就报这个越界异常</span>
+<span style="color: #008080;">4</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IndexOutOfBoundsException(outOfBoundsMsg(index));
+</span><span style="color: #008080;">5</span>     }</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="color: #0000ff; font-size: 16px;"><strong>2.删除方法</strong></span></p>
+<p><span style="font-size: 16px;">　　<img src="./images/ArrayList源码分析4.png" alt="" width="440" height="98" /></span></p>
+<p><span style="font-size: 16px;">　　<img src="./images/ArrayList源码分析5.png" alt="" width="300" height="24" /></span></p>
+<p><span style="font-size: 16px;">　　<img src="./images/ArrayList源码分析6.png" alt="" /></span></p>
+<p><span style="font-size: 16px;"><strong>　</strong><strong>remove(int) 方法：通过删除指定位置上的元素</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> E remove(<span style="color: #0000ff;">int</span><span style="color: #000000;"> index) {
+</span><span style="color: #008080;"> 2</span>         rangeCheck(index);<span style="color: #008000;">//</span><span style="color: #008000;">检查index的合理性</span>
+<span style="color: #008080;"> 3</span>         modCount++;<span style="color: #008000;">//</span><span style="color: #008000;">这个作用很多，比如用来检测快速失败的一种标志。</span>
+<span style="color: #008080;"> 4</span>         E oldValue = elementData(index);<span style="color: #008000;">//</span><span style="color: #008000;">通过索引直接找到该元素</span>
+<span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">int</span> numMoved = size - index - 1;<span style="color: #008000;">//</span><span style="color: #008000;">计算要移动的位数。</span>
+<span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">if</span> (numMoved &gt; 0<span style="color: #000000;">)
+</span><span style="color: #008080;"> 7</span> <span style="color: #008000;">//</span><span style="color: #008000;">这个方法也已经解释过了，就是用来移动元素的。</span>
+<span style="color: #008080;"> 8</span>             System.arraycopy(elementData, index+1<span style="color: #000000;">, elementData, index, numMoved);
+</span><span style="color: #008080;"> 9</span> <span style="color: #008000;">//</span><span style="color: #008000;">将--size上的位置赋值为null，让gc(垃圾回收机制)更快的回收它。</span>
+<span style="color: #008080;">10</span>             elementData[--size] = <span style="color: #0000ff;">null</span><span style="color: #000000;">; 
+</span><span style="color: #008080;">11</span> <span style="color: #008000;">//</span><span style="color: #008000;">返回删除的元素。</span>
+<span style="color: #008080;">12</span> <span style="color: #0000ff;">return</span><span style="color: #000000;"> oldValue;
+</span><span style="color: #008080;">13</span>     }</span></code></pre>
+
+<p><strong><span style="font-size: 16px;">　remove(Object)：这个方法可以看出来，arraylist是可以存放null值的。</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;">就是通过元素来删除该元素，就依次遍历，如果有这个元素，就将该元素的索引传给fastRemobe(index)，使用这个方法来删除该元素，fastRemove(index)方法的内部跟remove(index)的实现几乎一样，这里最主要是知道arrayList可以存储null值。</span>
+<span style="color: #008080;"> 2</span>      <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> remove(Object o) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">if</span> (o == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> index = 0; index &lt; size; index++<span style="color: #000000;">)
+</span><span style="color: #008080;"> 5</span>                 <span style="color: #0000ff;">if</span> (elementData[index] == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">                    fastRemove(index);
+</span><span style="color: #008080;"> 7</span>                     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;"> 9</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">10</span>             <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> index = 0; index &lt; size; index++<span style="color: #000000;">)
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">if</span><span style="color: #000000;"> (o.equals(elementData[index])) {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">                    fastRemove(index);
+</span><span style="color: #008080;">13</span>                     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">17</span>     }</span></code></pre>
+
+<p><strong><span style="font-size: 16px;">clear()：将elementData中每个元素都赋值为null，等待垃圾回收将这个给回收掉，所以叫clear；</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clear() {
+</span><span style="color: #008080;">2</span>         modCount++<span style="color: #000000;">;
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; size; i++<span style="color: #000000;">)
+</span><span style="color: #008080;">4</span>             elementData[i] = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">5</span>         size = 0<span style="color: #000000;">;
+</span><span style="color: #008080;">6</span>     }</span></code></pre>
+
+<p><strong><span style="font-size: 16px;">removeAll(collection c)</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;">1</span>  <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> removeAll(Collection&lt;?&gt;<span style="color: #000000;"> c) {
+</span><span style="color: #008080;">2</span>          <span style="color: #0000ff;">return</span> batchRemove(c, <span style="color: #0000ff;">false</span>);<span style="color: #008000;">//</span><span style="color: #008000;">批量删除</span>
+<span style="color: #008080;">3</span>      }</span></code></pre>
+
+<p><span style="font-size: 16px;">　　其中的batchRemove(xx,xx)：用于两个方法，一个removeAll()：它只清楚指定集合中的元素，retainAll() 用来测试两个集合是否有交集。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;">这个方法，用于两处地方，如果complement为false，则用于removeAll；如果为true，则给retainAll()用</span>
+<span style="color: #008080;"> 2</span>    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span> batchRemove(Collection&lt;?&gt; c, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> complement) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">final</span> Object[] elementData = <span style="color: #0000ff;">this</span>.elementData; <span style="color: #008000;">//</span><span style="color: #008000;">将原集合，记名为A</span>
+<span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">int</span> r = 0, w = 0;   <span style="color: #008000;">//</span><span style="color: #008000;">r用来控制循环，w是记录有多少个交集</span>
+<span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">boolean</span> modified = <span style="color: #0000ff;">false</span><span style="color: #000000;">;  
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 7</span>             <span style="color: #0000ff;">for</span> (; r &lt; size; r++<span style="color: #000000;">)
+</span><span style="color: #008080;"> 8</span> <span style="color: #008000;">//</span><span style="color: #008000;">参数中的集合C一次检测集合A中的元素是否有，</span>
+<span style="color: #008080;"> 9</span>                 <span style="color: #0000ff;">if</span> (c.contains(elementData[r]) ==<span style="color: #000000;"> complement)
+</span><span style="color: #008080;">10</span> <span style="color: #008000;">//</span><span style="color: #008000;">有的话，就给集合A</span>
+<span style="color: #008080;">11</span>                     elementData[w++] =<span style="color: #000000;"> elementData[r];
+</span><span style="color: #008080;">12</span>         } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">13</span> <span style="color: #008000;">//</span><span style="color: #008000;">如果contains方法使用过程报异常</span>
+<span style="color: #008080;">14</span>             <span style="color: #0000ff;">if</span> (r !=<span style="color: #000000;"> size) {
+</span><span style="color: #008080;">15</span> <span style="color: #008000;">//</span><span style="color: #008000;">将剩下的元素都赋值给集合A，</span>
+<span style="color: #008080;">16</span>                 System.arraycopy(elementData, r, elementData, w, size -<span style="color: #000000;"> r);
+</span><span style="color: #008080;">17</span>                 w += size -<span style="color: #000000;"> r;
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">19</span>             <span style="color: #0000ff;">if</span> (w !=<span style="color: #000000;"> size) {
+</span><span style="color: #008080;">20</span> <span style="color: #008000;">//</span><span style="color: #008000;">这里有两个用途，在removeAll()时，w一直为0，就直接跟clear一样，全是为null。
+</span><span style="color: #008080;">21</span> <span style="color: #008000;">//</span><span style="color: #008000;">retainAll()：没有一个交集返回true，有交集但不全交也返回true，而两个集合相等的时候，返回false，所以不能根据返回值来确认两个集合是否有交集，而是通过原集合的大小是否发生改变来判断，如果原集合中还有元素，则代表有交集，而元集合没有元素了，说明两个集合没有交集。
+</span><span style="color: #008080;">22</span>           
+<span style="color: #008080;">23</span>                 <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = w; i &lt; size; i++<span style="color: #000000;">)
+</span><span style="color: #008080;">24</span>                     elementData[i] = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">25</span>                 modCount += size -<span style="color: #000000;"> w;
+</span><span style="color: #008080;">26</span>                 size =<span style="color: #000000;"> w;
+</span><span style="color: #008080;">27</span>                 modified = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">30</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> modified;
+</span><span style="color: #008080;">31</span>     }</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

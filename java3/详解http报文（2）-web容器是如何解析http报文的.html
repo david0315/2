@@ -1,0 +1,202 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修详解http报文（2）-web容器是如何解析http报文的' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>详解http报文（2）-web容器是如何解析http报文的</center></div><div class='banquan'>原文出处:本文由博客园博主stoneFang提供。<br/>
+原文连接:https://www.cnblogs.com/stoneFang/p/11644723.html</div><br>
+    <h1 id="摘要">摘要</h1>
+<p>在<a href="https://juejin.im/post/5d9205d5e51d4577ee4f4800">详解http报文</a>一文中，详细介绍了http报文的文本结构。那么作为服务端，web容器是如何解析http报文的呢？本文以jetty和undertow容器为例，来解析web容器是如何处理http报文的。</p>
+<p>在前文中我们从概览中可以了解到，http报文其实就是一定规则的字符串，那么解析它们，就是解析字符串，看看是否满足http协议约定的规则。</p>
+<pre><code><code>start-line: 起始行,描述请求或响应的基本信息
+
+*( header-field CRLF ): 头
+
+CRLF
+
+[message-body]: 消息body，实际传输的数据
+</code></code></pre>
+<h1 id="jetty">jetty</h1>
+<p>以下代码都是jetty9.4.12版本</p>
+<p>如何解析这么长的字符串呢，jetty是通过状态机来实现的。具体可以看下<code>org.eclipse.jetty.http.HttpParse</code>类</p>
+<pre><code><code> public enum State
+    {
+        START,
+        METHOD,
+        
+![](https://img2018.cnblogs.com/blog/1147363/201910/1147363-20191009220439773-204646534.png),
+        SPACE1,
+        STATUS,
+        URI,
+        SPACE2,
+        REQUEST_VERSION,
+        REASON,
+        PROXY,
+        HEADER,
+        CONTENT,
+        EOF_CONTENT,
+        CHUNKED_CONTENT,
+        CHUNK_SIZE,
+        CHUNK_PARAMS,
+        CHUNK,
+        TRAILER,
+        END,
+        CLOSE,  // The associated stream/endpoint should be closed
+        CLOSED  // The associated stream/endpoint is at EOF
+    }</code></code></pre>
+<p>总共分成了21种状态，然后进行状态间的流转。在<code>parseNext</code>方法中分别对起始行 -&gt; header -&gt; body content分别解析</p>
+<pre><code><code>public boolean parseNext(ByteBuffer buffer)
+    {
+        try
+        {
+            // Start a request/response
+            if (_state==State.START)
+            {
+                // 快速判断
+                if (quickStart(buffer))
+                    return true;
+            }
+
+            // Request/response line 转换
+            if (_state.ordinal()&gt;= State.START.ordinal() &amp;&amp; _state.ordinal()&lt;State.HEADER.ordinal())
+            {
+                if (parseLine(buffer))
+                    return true;
+            }
+
+            // headers转换
+            if (_state== State.HEADER)
+            {
+                if (parseFields(buffer))
+                    return true;
+            }
+
+            // content转换
+            if (_state.ordinal()&gt;= State.CONTENT.ordinal() &amp;&amp; _state.ordinal()&lt;State.TRAILER.ordinal())
+            {
+                // Handle HEAD response
+                if (_responseStatus&gt;0 &amp;&amp; _headResponse)
+                {
+                    setState(State.END);
+                    return handleContentMessage();
+                }
+                else
+                {
+                    if (parseContent(buffer))
+                        return true;
+                }
+            }
+         
+        return false;
+    }</code></code></pre>
+<h2 id="整体流程">整体流程</h2>
+<p>整体有三条路径</p>
+<ol>
+<li>开始 -&gt; start-line -&gt; header -&gt; 结束</li>
+<li>开始 -&gt; start-line -&gt; header -&gt; content -&gt; 结束</li>
+<li>开始 -&gt; start-line -&gt; header -&gt; chunk-content -&gt; 结束<br />
+<img src="./images/详解http报文（2）-web容器是如何解析http报文的0.png" /></li>
+</ol>
+<h3 id="起始行">起始行</h3>
+<p>start-line = request-line(请求起始行）/（响应起始行）status-line</p>
+<p><img src="./images/详解http报文（2）-web容器是如何解析http报文的1.png" /></p>
+<ol>
+<li><p>请求报文解析状态迁移<br />
+请求行：START -&gt; METHOD -&gt; SPACE1 -&gt; URI -&gt; SPACE2 -&gt; REQUEST_VERSION</p></li>
+<li><p>响应报文解析状态迁移<br />
+响应行：START -&gt; RESPONSE_VERSION -&gt; SPACE1 -&gt; STATUS -&gt; SPACE2 -&gt; REASON</p></li>
+</ol>
+<h3 id="header-头">header 头</h3>
+<p>HEADER 的状态只有一种了，在jetty的老版本中还区分了<code>HEADER_IN_NAM</code>, <code>HEADER_VALUE</code>, <code>HEADER_IN_VALUE</code>等，9.4中都去除了。为了提高匹配效率，jetty使用了Trie树快速匹配header头。</p>
+<pre><code><code>static
+    {
+        CACHE.put(new HttpField(HttpHeader.CONNECTION,HttpHeaderValue.CLOSE));
+        CACHE.put(new HttpField(HttpHeader.CONNECTION,HttpHeaderValue.KEEP_ALIVE));
+      // 以下省略了很多了通用header头</code></code></pre>
+<h3 id="content">content</h3>
+<p>请求体：</p>
+<ol>
+<li>CONTENT -&gt; END，这种是普通的带Content-Length头的报文，HttpParser一直运行CONTENT状态，直到最后ContentLength达到了指定的数量，则进入END状态</li>
+<li>chunked分块传输的数据<br />
+CHUNKED_CONTENT -&gt; CHUNK_SIZE -&gt; CHUNK -&gt; CHUNK_END -&gt; END</li>
+</ol>
+<h1 id="undertow">undertow</h1>
+<p>undertow是另一种web容器，它的处理方式与jetty有什么不同呢<br />
+状态机种类不一样了，<code>io.undertow.util.HttpString.ParseState</code></p>
+<pre><code><code>    public static final int VERB = 0;
+    public static final int PATH = 1;
+    public static final int PATH_PARAMETERS = 2;
+    public static final int QUERY_PARAMETERS = 3;
+    public static final int VERSION = 4;
+    public static final int AFTER_VERSION = 5;
+    public static final int HEADER = 6;
+    public static final int HEADER_VALUE = 7;
+    public static final int PARSE_COMPLETE = 8;</code></code></pre>
+<p>具体处理流程在<code>HttpRequestParser</code>抽象类中</p>
+<pre><code><code>public void handle(ByteBuffer buffer, final ParseState currentState, final HttpServerExchange builder) throws BadRequestException {
+        if (currentState.state == ParseState.VERB) {
+            //fast path, we assume that it will parse fully so we avoid all the if statements
+
+            // 快速处理GET
+            final int position = buffer.position();
+            if (buffer.remaining() &gt; 3
+                    &amp;&amp; buffer.get(position) == &#39;G&#39;
+                    &amp;&amp; buffer.get(position + 1) == &#39;E&#39;
+                    &amp;&amp; buffer.get(position + 2) == &#39;T&#39;
+                    &amp;&amp; buffer.get(position + 3) == &#39; &#39;) {
+                buffer.position(position + 4);
+                builder.setRequestMethod(Methods.GET);
+                currentState.state = ParseState.PATH;
+            } else {
+                try {
+                    handleHttpVerb(buffer, currentState, builder);
+                } catch (IllegalArgumentException e) {
+                    throw new BadRequestException(e);
+                }
+            }
+            // 处理path
+            handlePath(buffer, currentState, builder);
+           // 处理版本
+            if (failed) {
+                handleHttpVersion(buffer, currentState, builder);
+                handleAfterVersion(buffer, currentState);
+            }
+            // 处理header
+            while (currentState.state != ParseState.PARSE_COMPLETE &amp;&amp; buffer.hasRemaining()) {
+                handleHeader(buffer, currentState, builder);
+                if (currentState.state == ParseState.HEADER_VALUE) {
+                    handleHeaderValue(buffer, currentState, builder);
+                }
+            }
+            return;
+        }
+        handleStateful(buffer, currentState, builder);
+    }</code></code></pre>
+<p>与jetty不同的是对content的处理，在header处理完以后，将数据放到<code>io.undertow.server.HttpServerExchange</code>,然后根据类型，有不同的content读取方式，比如处理固定长度的，<code>FixedLengthStreamSourceConduit</code>。</p>
+<p><img src="./images/详解http报文（2）-web容器是如何解析http报文的2.png" /></p>
+<p><strong>关注公众号【方丈的寺院】，第一时间收到文章的更新，与方丈一起开始技术修行之路</strong><br />
+<img src="./images/详解http报文（2）-web容器是如何解析http报文的3.png" alt="在这里插入图片描述" /></p>
+<h1 id="参考">参考</h1>
+<p><a href="http://www.blogjava.net/DLevin/archive/2014/04/19/411673.html" class="uri">http://www.blogjava.net/DLevin/archive/2014/04/19/411673.html</a></p>
+<p><a href="https://www.ph0ly.com/2018/10/06/jetty/connection/http-parser/" class="uri">https://www.ph0ly.com/2018/10/06/jetty/connection/http-parser/</a></p>
+<p><a href="https://webtide.com/http-trailers-in-jetty/" class="uri">https://webtide.com/http-trailers-in-jetty/</a></p>
+<p><a href="http://undertow.io/undertow-docs/undertow-docs-2.0.0/" class="uri">http://undertow.io/undertow-docs/undertow-docs-2.0.0/</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

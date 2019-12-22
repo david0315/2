@@ -1,0 +1,89 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Consul集群Server+Client模式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Consul集群Server+Client模式</center></div><div class='banquan'>原文出处:本文由博客园博主维晟提供。<br/>
+原文连接:https://www.cnblogs.com/bluersw/p/11610711.html</div><br>
+    <h1 id="consul集群serverclient模式">Consul集群Server+Client模式</h1>
+<h2 id="架构示意图">架构示意图</h2>
+<p><img src="./images/Consul集群Server+Client模式0.png" alt="Alt text" /></p>
+<p>只使用Consul的Server模式有以下2个问题：</p>
+<ul>
+<li>因为Consul Server数量受到控制所以压力承载（扩展性）是个问题。</li>
+<li>Server很少导致一个Server下会注册很多微服务，当Server挂掉，这个Server节点下注册的微服务都会视为无效。</li>
+</ul>
+<p>基于上述问题我们在架构中加入Consul Client模式，Client因为加入了LAN gossip协议组成网络中（高速局域网），可以识别故障的Server节点并找到可用的Server节点继续工作，其实Server模式负责的是用WAN gossip协议组成的网络进行跨广域网的数据同步（多个数据中心），这点Client模式是做不到的，Client模式也提供服务的注册和查询，但Client模式不存储节点数据，Client将请求转发给Server进行处理，节点注册数据在Server端是持久化保存的，Client的数量可以无限多，Server的数量是受控制的。总之：Client模式+LAN gossip协议组成了一个数据中心中的各个节点，Server负责投票选出Leader进行数据中心内的数据同步，这个Leader还负责利用WAN gossip协议跨广域网的与其他数据中心进行数据同步。<br />
+PS：在Client注册的服务心跳监控检查由Client负责。</p>
+<h2 id="搭建环境">搭建环境</h2>
+<p>获得Docker镜像（bluersw/spring-cloud-consul-consumer 是服务消费者镜像里面运行的程序项目叫spring-cloud-consul-client，因为名字的起的不讲究导致了混乱，spring-cloud-consul-client不是Consul Client。）：</p>
+<pre><code><code>docker pull consul
+docker pull bluersw/spring-cloud-consul-consumer:cc
+docker pull bluersw/spring-cloud-provider:cc
+docker pull bluersw/spring-cloud-provider:cc
+docker pull bluersw/spring-cloud-provider-second:cc</code></code></pre>
+<p>启动Consul Server(Windows版本的Docker运行命令时参数的IP地址要用&quot;ip地址&quot;,比如：-client=&quot;0.0.0.0&quot;)：</p>
+<pre><code><code>docker run -i -t -p 8500:8500 --name=ConsulServer-C consul agent -server -ui -node=Server-C -bootstrap-expect=3 -client=0.0.0.0
+
+docker run -i -t -p 8501:8500 --name=ConsulServer-A consul agent -server -ui -node=Server-A -bootstrap-expect=3 -client=0.0.0.0 -join=172.17.0.2
+
+docker run -i -t -p 8502:8500 --name=ConsulServer-B consul agent -server -ui -node=Server-B -bootstrap-expect=3 -client=0.0.0.0 -join=172.17.0.2</code></code></pre>
+<p><img src="./images/Consul集群Server+Client模式1.png" alt="Alt text" /></p>
+<p>启动spring-cloud-provider：</p>
+<pre><code><code>docker run --name=spring-cloud-provider  -d  -p 9001:9001 bluersw/spring-cloud-provider:cc /opt/consul/./consul agent -data-dir=/opt/consul/data -config-dir=/opt/consul/config -node=privider-cc  -join 172.17.0.3</code></code></pre>
+<p>在启动此Docker的同时运行Consul Client模式，并加入Consul Server A（加入那个Consul Server都可以）,TAG为CC的镜像文件里已经包含了Consul程序。<br />
+<img src="./images/Consul集群Server+Client模式2.png" alt="Alt text" /></p>
+<p>spring-cloud-provider的配置文件内容：</p>
+<pre class="text"><code>spring.application.name=spring-cloud-provider-01
+server.port=9001
+spring.cloud.consul.host=127.0.0.1
+spring.cloud.consul.port=8500
+#注册到consul的服务名称
+spring.cloud.consul.discovery.serviceName=service-provider
+#以下两项如果不配置健康检查一定失败
+spring.cloud.consul.discovery.prefer-ip-address=true
+spring.cloud.consul.discovery.health-check-path=/actuator/health</code></code></pre>
+<p>配置中的注册服务地址已经改成了127.0.0.1，其他服务项目的配置文件都改成了在本机的Consul Client中注册。<br />
+启动服务：</p>
+<pre><code><code>docker exec  spring-cloud-provider /usr/local/java/bin/java -jar /opt/spring-cloud-provider-0.0.1-SNAPSHOT.jar</code></code></pre>
+<p>service-provider服务在privider-cc节点被注册成功。<br />
+<img src="./images/Consul集群Server+Client模式3.png" alt="Alt text" /><br />
+<img src="./images/Consul集群Server+Client模式4.png" alt="Alt text" /></p>
+<p>用同样的方法启动spring-cloud-provider-second和spring-cloud-consul-consumer。</p>
+<pre><code><code>docker run --name=spring-cloud-provider-second -d -p 9002:9002 bluersw/spring-cloud-provider-second:cc  /opt/consul/./consul agent -data-dir=/opt/consul/data -config-dir=/opt/consul/config -node=provider-second-cc  -join 172.17.0.4
+
+docker exec  spring-cloud-provider-second /usr/local/java/bin/java -jar /opt/spring-cloud-provider-second-0.0.1-SNAPSHOT.jar
+
+docker run --name=spring-cloud-consul-consumer -d -p 9003:9003 bluersw/spring-cloud-consul-consumer:cc /opt/consul/./consul agent -data-dir=/opt/consul/data -config-dir=/opt/consul/config -node=consumer-cc  -join 172.17.0.2
+
+docker exec  spring-cloud-consul-consumer /usr/local/java/bin/java -jar /opt/spring-cloud-consul-client-0.0.1-SNAPSHOT.jar
+</code></code></pre>
+<p><img src="./images/Consul集群Server+Client模式5.png" alt="Alt text" /><br />
+<img src="./images/Consul集群Server+Client模式6.png" alt="Alt text" /><br />
+<img src="./images/Consul集群Server+Client模式7.png" alt="Alt text" /></p>
+<h2 id="模拟服务器故障">模拟服务器故障</h2>
+<p>关闭Consul Server B：<br />
+<img src="./images/Consul集群Server+Client模式8.png" alt="Alt text" /><br />
+<img src="./images/Consul集群Server+Client模式9.png" alt="Alt text" /></p>
+<p>因为service-provider在本机的Consul Client中注册，并Client可以利用LAN gossip协议找到可用的Server，所以关闭Consul Server B丝毫造成不了影响,如果Client或者服务本身挂掉了，那么Server端会将此节点或服务标记故障并不再使用，请求者就请求不到这个故障的节点了,同样的修复故障节点后所有服务和功能恢复如初。</p>
+<h2 id="源码">源码</h2>
+<p><a href="https://github.com/sunweisheng/spring-cloud-example">Github仓库:https://github.com/sunweisheng/spring-cloud-example</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

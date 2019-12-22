@@ -1,0 +1,257 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java操作数据库——手动实现数据库连接池' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java操作数据库——手动实现数据库连接池</center></div><div class='banquan'>原文出处:本文由博客园博主鲨猫提供。<br/>
+原文连接:https://www.cnblogs.com/shamao/p/11937629.html</div><br>
+    <h1>Java操作数据库&mdash;&mdash;手动实现数据库连接池</h1>
+<p>摘要：本文主要学习了如何手动实现一个数据库连接池，以及在这基础上的一些改进。</p>
+<p>部分内容来自以下博客：</p>
+<p>https://blog.csdn.net/soonfly/article/details/72731144</p>
+<h2>一个简单的数据库连接池</h2>
+<h3>连接池工具类</h3>
+<p>连接池使用了线程安全的队列存储连接资源，保证了线程安全。</p>
+<p>提供了获取连接和释放连接的方法，实现了连接资源的循环使用。</p>
+<p>在对线程进行技术时，使用原子类，保证了线程计数在多线程环境下的安全。</p>
+<p>代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">  1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> DataPoolUtils {
+</span><span style="color: #008080;">  2</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 活动连接，使用线程安全的队列</span>
+<span style="color: #008080;">  3</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> LinkedBlockingQueue&lt;Connection&gt; busy = <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Connection&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">  4</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 空闲连接，使用线程安全的队列</span>
+<span style="color: #008080;">  5</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> LinkedBlockingQueue&lt;Connection&gt; idle = <span style="color: #0000ff;">new</span> LinkedBlockingQueue&lt;Connection&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">  6</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 已创建连接数，使用原子操作类实现线程安全</span>
+<span style="color: #008080;">  7</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> AtomicInteger createCount = <span style="color: #0000ff;">new</span> AtomicInteger(0<span style="color: #000000;">);
+</span><span style="color: #008080;">  8</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 最大连接数</span>
+<span style="color: #008080;">  9</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> maxConnection = 5<span style="color: #000000;">;
+</span><span style="color: #008080;"> 10</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 最大等待毫秒数</span>
+<span style="color: #008080;"> 11</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> maxWaitTimeout = 1000<span style="color: #000000;">;
+</span><span style="color: #008080;"> 12</span>     
+<span style="color: #008080;"> 13</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 14</span> <span style="color: #008000;">     * 创建连接
+</span><span style="color: #008080;"> 15</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@return</span>
+<span style="color: #008080;"> 16</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> Exception 
+</span><span style="color: #008080;"> 17</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 18</span>     <span style="color: #0000ff;">private</span> Connection createConnection() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+</span><span style="color: #008080;"> 19</span>         Properties pros = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+</span><span style="color: #008080;"> 20</span>         InputStream is = DataPoolUtils.<span style="color: #0000ff;">class</span>.getClassLoader().getResourceAsStream("jdbc.properties"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 21</span> <span style="color: #000000;">        pros.load(is);
+</span><span style="color: #008080;"> 22</span>         String driverClass = pros.getProperty("driverClass"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 23</span> <span style="color: #000000;">        Class.forName(driverClass);
+</span><span style="color: #008080;"> 24</span>         String url = pros.getProperty("url"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 25</span>         String user = pros.getProperty("user"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 26</span>         String password = pros.getProperty("password"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 27</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> DriverManager.getConnection(url, user, password);
+</span><span style="color: #008080;"> 28</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 29</span>     
+<span style="color: #008080;"> 30</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 31</span> <span style="color: #008000;">     * 关闭连接
+</span><span style="color: #008080;"> 32</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> connection
+</span><span style="color: #008080;"> 33</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 34</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> closeConnection(Connection connection) {
+</span><span style="color: #008080;"> 35</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 36</span>             <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">connection.isClosed()) {
+</span><span style="color: #008080;"> 37</span> <span style="color: #000000;">                connection.close();
+</span><span style="color: #008080;"> 38</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 39</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+</span><span style="color: #008080;"> 40</span> <span style="color: #000000;">            e.printStackTrace();
+</span><span style="color: #008080;"> 41</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 42</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 43</span>     
+<span style="color: #008080;"> 44</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 45</span> <span style="color: #008000;">     * 获取连接
+</span><span style="color: #008080;"> 46</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@return</span>
+<span style="color: #008080;"> 47</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> Exception 
+</span><span style="color: #008080;"> 48</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 49</span>     <span style="color: #0000ff;">public</span> Connection getConnection() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+</span><span style="color: #008080;"> 50</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 尝试获取空闲连接</span>
+<span style="color: #008080;"> 51</span>         Connection connection =<span style="color: #000000;"> idle.poll();
+</span><span style="color: #008080;"> 52</span>         <span style="color: #0000ff;">if</span> (connection == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 53</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 尝试创建连接，使用双重CAS检查现有连接数是否小于最大连接数</span>
+<span style="color: #008080;"> 54</span>             <span style="color: #0000ff;">if</span> (createCount.get() &lt;<span style="color: #000000;"> maxConnection) {
+</span><span style="color: #008080;"> 55</span>                 <span style="color: #0000ff;">if</span> (createCount.incrementAndGet() &lt;=<span style="color: #000000;"> maxConnection) {
+</span><span style="color: #008080;"> 56</span>                     connection =<span style="color: #000000;"> createConnection();
+</span><span style="color: #008080;"> 57</span>                 } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 58</span> <span style="color: #000000;">                    createCount.decrementAndGet();
+</span><span style="color: #008080;"> 59</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;"> 60</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 61</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 尝试等待获取空闲连接，实现超时等待机制</span>
+<span style="color: #008080;"> 62</span>             <span style="color: #0000ff;">if</span> (connection == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 63</span>                 connection =<span style="color: #000000;"> idle.poll(maxWaitTimeout, TimeUnit.MILLISECONDS);
+</span><span style="color: #008080;"> 64</span>                 <span style="color: #0000ff;">if</span> (connection == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 65</span>                     <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> Exception("获取连接超时"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 66</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;"> 67</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 68</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 69</span> <span style="color: #000000;">        busy.offer(connection);
+</span><span style="color: #008080;"> 70</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> connection;
+</span><span style="color: #008080;"> 71</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 72</span>     
+<span style="color: #008080;"> 73</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 74</span> <span style="color: #008000;">     * 归还连接
+</span><span style="color: #008080;"> 75</span> <span style="color: #008000;">     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> connection
+</span><span style="color: #008080;"> 76</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 77</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> releaseConnection(Connection connection) {
+</span><span style="color: #008080;"> 78</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 处理空连接</span>
+<span style="color: #008080;"> 79</span>         <span style="color: #0000ff;">if</span> (connection == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 80</span> <span style="color: #000000;">            createCount.decrementAndGet();
+</span><span style="color: #008080;"> 81</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 82</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 83</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 处理移除失败的连接</span>
+<span style="color: #008080;"> 84</span>         <span style="color: #0000ff;">boolean</span> removeResult =<span style="color: #000000;"> busy.remove(connection);
+</span><span style="color: #008080;"> 85</span>         <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">removeResult) {
+</span><span style="color: #008080;"> 86</span> <span style="color: #000000;">            closeConnection(connection);
+</span><span style="color: #008080;"> 87</span> <span style="color: #000000;">            createCount.decrementAndGet();
+</span><span style="color: #008080;"> 88</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 89</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 90</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 处理已经关闭的连接</span>
+<span style="color: #008080;"> 91</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 92</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (connection.isClosed()) {
+</span><span style="color: #008080;"> 93</span> <span style="color: #000000;">                createCount.decrementAndGet();
+</span><span style="color: #008080;"> 94</span>                 <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 95</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 96</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+</span><span style="color: #008080;"> 97</span> <span style="color: #000000;">            e.printStackTrace();
+</span><span style="color: #008080;"> 98</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 99</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 处理添加失败的连接</span>
+<span style="color: #008080;">100</span>         <span style="color: #0000ff;">boolean</span> offerResult =<span style="color: #000000;"> idle.offer(connection);
+</span><span style="color: #008080;">101</span>         <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">offerResult) {
+</span><span style="color: #008080;">102</span> <span style="color: #000000;">            closeConnection(connection);
+</span><span style="color: #008080;">103</span> <span style="color: #000000;">            createCount.decrementAndGet();
+</span><span style="color: #008080;">104</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+</span><span style="color: #008080;">105</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">106</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">107</span> }</code></pre>
+
+<h3>测试连接池的业务类</h3>
+<p>为了能够实现线程的循环使用，需要调用线程池的释放连接资源的方法，而不是将连接资源直接关闭。</p>
+<p>代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestPool {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 根据配置文件里的名称创建连接池</span>
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> DataPoolUtils pool = <span style="color: #0000ff;">new</span> DataPoolUtils(<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 6</span> <span style="color: #008000;">     * 主程序
+</span><span style="color: #008080;"> 7</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 模拟多次对数据库的查询操作</span>
+<span style="color: #008080;">10</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; 6; i++<span style="color: #000000;">) {
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">new</span> Thread(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">                @Override
+</span><span style="color: #008080;">13</span>                 <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                    select();
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">16</span>             }, "线程" +<span style="color: #000000;"> i).start();
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">19</span> 
+<span style="color: #008080;">20</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;">21</span> <span style="color: #008000;">     * 查询程序
+</span><span style="color: #008080;">22</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;">23</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> select() {
+</span><span style="color: #008080;">24</span>         Connection conn = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">25</span>         PreparedStatement pstmt = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">26</span>         ResultSet rs = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">27</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 获取连接并执行SQL</span>
+<span style="color: #008080;">28</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">29</span>             conn =<span style="color: #000000;"> pool.getConnection();
+</span><span style="color: #008080;">30</span>             pstmt = conn.prepareStatement("select * from student where id = 906"<span style="color: #000000;">);
+</span><span style="color: #008080;">31</span>             rs =<span style="color: #000000;"> pstmt.executeQuery();
+</span><span style="color: #008080;">32</span>             <span style="color: #0000ff;">while</span><span style="color: #000000;"> (rs.next()) {
+</span><span style="color: #008080;">33</span>                 System.out.println(Thread.currentThread().getName() + "\t" + rs.getString(1) + "\t" + rs.getString(2) + "\t" + rs.getString("address"<span style="color: #000000;">));
+</span><span style="color: #008080;">34</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">35</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;">36</span> <span style="color: #000000;">            e.printStackTrace();
+</span><span style="color: #008080;">37</span>         } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">38</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 释放资源</span>
+<span style="color: #008080;">39</span>             <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">40</span> <span style="color: #000000;">                rs.close();
+</span><span style="color: #008080;">41</span>             } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+</span><span style="color: #008080;">42</span> <span style="color: #000000;">                e.printStackTrace();
+</span><span style="color: #008080;">43</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">44</span>             <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">45</span> <span style="color: #000000;">                pstmt.close();
+</span><span style="color: #008080;">46</span>             } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+</span><span style="color: #008080;">47</span> <span style="color: #000000;">                e.printStackTrace();
+</span><span style="color: #008080;">48</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">49</span>             <span style="color: #008000;">/*</span>
+<span style="color: #008080;">50</span> <span style="color: #008000;">            try {
+</span><span style="color: #008080;">51</span> <span style="color: #008000;">                conn.close();
+</span><span style="color: #008080;">52</span> <span style="color: #008000;">            } catch (SQLException e) {
+</span><span style="color: #008080;">53</span> <span style="color: #008000;">                e.printStackTrace();
+</span><span style="color: #008080;">54</span> <span style="color: #008000;">            }
+</span><span style="color: #008080;">55</span>             <span style="color: #008000;">*/</span>
+<span style="color: #008080;">56</span> <span style="color: #000000;">            pool.releaseConnection(conn);
+</span><span style="color: #008080;">57</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">58</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">59</span> }</code></pre>
+
+<h2>使用动态代理修改原生连接的关闭方法</h2>
+<h3>改进说明</h3>
+<p>简单的数据库连接池已经有了，但是在使用的时候如果调用了原生的关闭方法，会导致连接不能重复使用。</p>
+<p>利用之前学过的动态代理进行改进，使调用关闭方法的时候执行的仍然是连接池里的释放资源的方法。</p>
+<p>在&nbsp;<span class="cnblogs_code">DataPoolUtils</span>&nbsp;工具类里添加动态代理的相关内部类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 2</span> <span style="color: #008000;"> * 代理处理类
+</span><span style="color: #008080;"> 3</span>  <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 4</span> <span style="color: #0000ff;">class</span> ConnectionInvocationHandler <span style="color: #0000ff;">implements</span><span style="color: #000000;"> InvocationHandler{
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> Connection connection;
+</span><span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> DataPoolUtils dpu;
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> ConnectionInvocationHandler(DataPoolUtils dpu, Connection connection) {
+</span><span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">this</span>.dpu =<span style="color: #000000;"> dpu;
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">this</span>.connection =<span style="color: #000000;"> connection;
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> Object invoke(Object proxy, Method method, Object[] args)
+</span><span style="color: #008080;">15</span>             <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+</span><span style="color: #008080;">16</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 对原生的关闭方法进行修改</span>
+<span style="color: #008080;">17</span>         <span style="color: #0000ff;">if</span>(method.getName().equals("close"<span style="color: #000000;">)){
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">            dpu.releaseConnection(connection);
+</span><span style="color: #008080;">19</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">20</span>         }<span style="color: #0000ff;">else</span><span style="color: #000000;">{
+</span><span style="color: #008080;">21</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> method.invoke(connection, args);
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">24</span> }</code></pre>
+
+<p>修改&nbsp;<span class="cnblogs_code">DataPoolUtils</span>&nbsp;工具类中&nbsp;<span class="cnblogs_code"><span style="color: #0000ff;">public</span> Connection getConnection()</span>&nbsp;方法的返回值，将返回值改为使用动态代理后的值：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">return</span><span style="color: #000000;"> (Connection) Proxy.newProxyInstance(
+</span><span style="color: #008080;">2</span>         Connection.<span style="color: #0000ff;">class</span><span style="color: #000000;">.getClassLoader(), 
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">new</span> Class[] { Connection.<span style="color: #0000ff;">class</span><span style="color: #000000;"> }, 
+</span><span style="color: #008080;">4</span>         <span style="color: #0000ff;">new</span> ConnectionInvocationHandler(<span style="color: #0000ff;">this</span>, connection));</code></pre>
+
+<p>修改&nbsp;<span class="cnblogs_code">TestPool</span>&nbsp;业务类中的&nbsp;<span class="cnblogs_code"><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> select()</span>&nbsp;方法，将释放连接改为关闭连接：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">2</span> <span style="color: #000000;">    conn.close();
+</span><span style="color: #008080;">3</span> } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+</span><span style="color: #008080;">4</span> <span style="color: #000000;">    e.printStackTrace();
+</span><span style="color: #008080;">5</span> }</code></pre>
+
+<h3>注意说明</h3>
+<p>在工具类的&nbsp;<span class="cnblogs_code">getConnection()</span>&nbsp;方法中返回代理类，而不是在工具类的&nbsp;<span class="cnblogs_code">createConnection()</span>&nbsp;方法中返回，是因为通过<span style="color: #ff0000;">后者得到的对象是要放到活动队列里</span>的，如果在后者中返回代理对象，那么就会导致<span style="color: #ff0000;">活动队列里的对象都是代理对象</span>。</p>
+<p>那么在执行代理对象的&nbsp;<span class="cnblogs_code">close()</span>&nbsp;方法时，经过动态代理后，实际上是执行的是被代理对象的&nbsp;<span class="cnblogs_code">releaseConnection()</span>&nbsp;方法，也就是<span style="color: #ff0000;">将被代理对象从活动队列放到空闲队列</span>，但因为活动队列里存放的都是代理对象，导致<span style="color: #ff0000;">无法通过被代理对象从活动队列将代理对象放到空闲队列</span>，进而导致连接资源并没有得到循环利用。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

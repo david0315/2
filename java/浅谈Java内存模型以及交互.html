@@ -1,0 +1,438 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修浅谈Java内存模型以及交互' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>浅谈Java内存模型以及交互</center></div><div class='banquan'>原文出处:本文由博客园博主张小云的博客提供。<br/>
+原文连接:https://www.cnblogs.com/zhangweicheng/p/11638841.html</div><br>
+    <blockquote>
+<p><strong>本文的内存模型只写虚拟机内存模型，物理机的不予描述。<br /></strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</blockquote>
+<p>&nbsp;</p>
+<h1>一、Java的运行时区域</h1>
+<p>　　在Java中，虚拟机将运行时区域分成6种，如图：</p>
+<p><strong>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;　　　　<img src="./images/浅谈Java内存模型以及交互0.png" alt="" width="648" height="380" /></strong></p>
+<ol>
+<li>&nbsp;<strong>程序计数器：</strong>用来记录当前线程执行到哪一步操作。在多线程轮换的模式中，当当前线程时间片用完的时候记录当前操作到哪一步，重新获得时间片时根据此记录来恢复之前的操作。</li>
+<li><strong>虚拟机栈：</strong>这就是我们平时所说的栈了，一般用来储存局部变量表、操作数表、动态链接等。</li>
+<li><strong>本地方法栈：</strong>这是另一个栈，用来提供虚拟机中用到的本地服务，像线程中的start方法，JUC包里经常使用的CAS等方法都是从这来的。</li>
+<li><strong>堆：</strong>主要的储存区域，平时所创建的对象都是放在这个区域。其内部还分为新生代、老年代和永久代（也就是方法区，在Java8之后删除了），新生代又分为两块Survivor和一块Eden，平时创建的对象其实都是在Eden区创建的，不过这些之后再跟垃圾回收器写在一篇文章。</li>
+<li><strong>方法区：</strong>储存符号引用、被JVM加载的类信息、静态变量的地方。在Java8之后方法区被移除，使用元空间来存放类信息，常量池和其他东西被移到堆中（其实在7的时候常量池和静态变量就已经被移到堆中），不再有永久代一说。删除的原因大致如下：</li>
+<ol>
+<li><em>容易造成内存溢出或内存泄漏，例如 web开发中JSP页面较多的情况。</em></li>
+<li>
+<p><em>由于类和方法的信息难以确定，不好设定大小，太大则影响年老代，太小容易内存溢出。</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</li>
+<li>
+<p><em>GC不好处理，回收效率低下，调优困难。</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ol>
+<li><strong>常量池：</strong>存放final修饰的成员变量、直接定义的字符串（如 Sring s = "test";这种）还有6种数据类型包装类型从-128~127对应的对象（这也解释了我们new两个在这区间的包装类型对象时，为什么他们是一样的，布尔类型存放的是true和false两种，浮点类型Double和Float因为精度问题不存入其中）等<em><br /></em></li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ol>
+<p>&nbsp;在上面的6种类型中，前三种是<strong>线程私有</strong>的，也就是说里面存放的值其他线程是看不到的，而后面三种（真正意义上讲只有堆一种）是<strong>线程之间共享</strong>的，这里面的变量对于各个线程都是可见的。如下图所示，前三种存放在线程内存中，大家都是相互独立的，而主内存可以理解为堆内存（实际上只是堆内存中的对象实例数据部分，其他例如对象头和对象的填充数据并不算入在内），为线程之间共享：</p>
+<p>　　　　　　　　　　　　　　　　　　　　　　<img style="display: block; margin-left: auto; margin-right: auto;" src="./images/浅谈Java内存模型以及交互1.png" alt="" width="657" height="367" /></p>
+<h1>二、Java内存之间的变量交互</h1>
+<p>　　这里的<strong>变量</strong>指的是<strong>可以放在堆中的变量</strong>，其他例如局部变量、方法参数这些并不算入在内。<strong>线程内存跟主内存</strong>变量之间的交互是非常重要的，Java虚拟机把这些交互规范为以下<strong>8种操作</strong>，每一种都是原子性的（非volatile修饰的Double和Long除外）操作。</p>
+<ol>
+<li><strong>Lock（锁）操作：</strong>操作对象为线程，作用对象为主内存的变量，当一个变量被锁住的时候，其他线程只有等当前线程解锁之后才能使用，其他线程不能对该变量进行解锁操作。</li>
+<li><strong>Unlock（解锁）操作：</strong>同上，线程操作，作用于主内存变量，令一个被锁住的变量解锁，使得其他线程可以对此变量进行操作，不能对未锁住的变量进行解锁操作。</li>
+<li><strong>Read（读）：</strong>线程从主内存读取变量值，load操作根据此读取的变量值为线程内存中的变量副本赋值。</li>
+<li><strong>Load（加载）：</strong>将Read读取到的变量值赋到线程内存的副本中，供线程使用。</li>
+<li><strong>Use（使用）：</strong>读取线程内存的作用值，用来执行我们定义的操作。</li>
+<li><strong>Assign（赋值）：</strong>在线程操作中变量的值进行了改变，使用此操作刷新<strong>线程内存</strong>的值。</li>
+<li><strong>Store（储存）：</strong>将当前线程内存的变量值同步到主内存中，与write操作一起作用。</li>
+<li><strong>Write（写）：</strong>将线程内存中store的值写入到主内存中，主内存中的变量值进行变更。</li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ol>
+<p>　　可能有人会不理解read和load、store和write的区别，觉得这两对的操作类似，可以把其当做一个是申请操作，另一个是审核通过（允许赋值）。例如：线程内存A向主内存提交了变更变量的申请（<strong>store</strong>操作），主内存通过之后修改变量的值（<strong>write</strong>操作）。如下图：</p>
+<p style="text-align: center;"><img src="./images/浅谈Java内存模型以及交互2.png" alt="" width="549" height="308" /></p>
+<p style="text-align: center;">参照《深入理解Java虚拟机》</p>
+<p style="text-align: center;"><img src="./images/浅谈Java内存模型以及交互3.png" alt="" width="789" height="369" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>　　对于普通的变量来说（非volatile修饰的变量），虚拟机要求read、load有<strong>相对顺序</strong>即可，例如从主内存读取i、j两个变量，可能的操作是read i=&gt;read j=&gt;load j=&gt; load i，并不一定是连续的。此外虚拟机还为这8种操作定制了操作的规则：</p>
+<ul>
+<li><strong>（read，load）、（store，write）不允许出现单独的操作。</strong>也就是说这两种操作一定是以组的形式出现的，有<strong>read</strong>就有<strong>load</strong>，有<strong>store</strong>就有<strong>write</strong>，不能读取了变量值而不加载到线程内存中，也不能储存了变量值而不写到主内存中。</li>
+<li><strong>不允许线程放弃最近的assign操作。</strong>也就是说当线程使用assign操作对私有内存的变量副本进行了变更的时候，其必须使用write操作将其同步到主内存当中去。</li>
+<li><strong>不允许一个线程无原因地（没有进行assign操作）将私有内存的变量同步到主内存中。</strong></li>
+<li><strong>变量必须从主内存产生，即不允许在私有内存中使用未初始化（未进行load或者assgin操作）的变量。</strong>也就是说，在use之前必须保证执行了load操作，在store之前必须保证执行了assign操作，例如有成员变量a和局部变量b，如果想进行a = b的操作，必须先初始化b。（一开始说了，变量指的是可以放在堆内存的变量）</li>
+<li><strong>一个变量一次只能同时允许一个线程对其进行lock操作。</strong>一个主内存的变量被一个线程使用lock操作之后，在这个线程执行unlock操作之前，其他线程不能对此变量进行操作。但是一个线程可以对一个变量进行多次锁，只要最后释放锁的次数和加锁的次数一致才能解锁。</li>
+<li><strong>当线程使用lock操作时，清除所有私有内存的变量副本。</strong></li>
+<li><strong>使用unlock操作时，必须在此操作之前将变量同步到主内存当中。</strong></li>
+<li><strong>不允许对没有进行lock操作的变量执行unlock操作，也不允许线程去unlock其他线程lock的变量。</strong></li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ul>
+<h1>三、改变规则的Volatile关键字</h1>
+<p>　　对于关键字<strong>volatile</strong>，大家都知道其一般作为并发的轻量级关键字，并且具有<strong>两个重要的语义</strong>：</p>
+<ol>
+<li><strong>保证内存的可见性：</strong>使用volatile修饰的变量在变量值发生改变的时候，会立刻同步到主内存，并使其他线程的变量副本失效。（此处取的是《深入理解JVM》的说法，而在《Java并发编程实战》中提到<strong>volatile</strong>修饰的变量<strong>不会缓存在寄存器或其他非线程共享的地方</strong>中，这个看个人理解吧，总之最终的作用都是每次使用都是从主内存读取最新的变量值）</li>
+<li><strong>禁止指令重排序：</strong>用volatile修饰的变量在硬件层面上会通过在指令前后加入内存屏障来实现（可以看看我另一篇<a href="https://www.cnblogs.com/zhangweicheng/p/11674660.html">关于指令重排序和内存屏障</a>的文章），编译器级别则是通过下面的规则实现。</li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ol>
+<p>　　这两个语义都是因为JMM对于<strong>volatile</strong>关键字修饰的变量会有特殊的规则：</p>
+<blockquote><ol>
+<li><strong>在对变量执行use操作之前，其前一步操作必须为对该变量的load操作；在对变量执行load操作之前，其后一步操作必须为该变量的use操作。</strong>也就是说，使用volatile修饰的变量其read、load、use都是连续出现的，所以每次使用变量的时候都要从主内存读取最新的变量值，替换私有内存的变量副本值（如果不同的话）。</li>
+<li><strong>在对变量执行assign操作之前，其后一步操作必须为store；在对变量执行store之前，其前一步必须为对相同变量的assign操作。</strong>也就是说，其对<strong>同一变量的</strong>assign、store、write操作都是连续出现的，所以每次对变量的改变都会立马同步到主内存中。</li>
+<li><strong>在主内存中有变量a、b，动作A为当前线程对变量a的use或者assign操作，动作B为与动作A对应load或store操作，动作C为与动作B对应的read或write操作；动作D为当前线程对变量b的use或assign操作，动作E为与D对应的load或store操作，动作F为与动作E对应的read或write操作；如果动作A先于动作D，那么动作C要先于动作F。</strong>也就是说，如果当前线程对变量a执行的use或assign操作在对变量buse或assign之前执行的话，那么当前线程对变量a的read或write操作肯定要在对变量b的read或write操作之前执行。</li>
+
+
+
+
+</ol></blockquote>
+<p>　　从上面<strong>volatile</strong>的特殊规则中，我们可以知道1、2条其实就是volatile<strong>内存可见性</strong>的语义，第三条就是<strong>禁止指令重排序</strong>的语义。另外还有其他的一些特殊规则，例如对于<strong>非volatile修饰</strong>的double或者long这两个64位的数据类型中，虚拟机<strong>允许对其当做两次32位的操作来进行</strong>，也就是说可以分解成<strong>非原子性</strong>的两个操作，但是这种可能性出现的情况也相当的小。因为Java内存模型虽然允许这样子做，但却<strong>&ldquo;强烈建议&rdquo;虚拟机选择实现这两种类型操作的原子性</strong>，所以平时不会出现读到&ldquo;半个变量&rdquo;的情况。<strong><br /></strong></p>
+<h2>&nbsp; &nbsp; volatile不具备原子性</h2>
+<p>　　虽然volatile修饰的变量可以<strong>强制刷新内存</strong>，但是其并不具备原子性，稍加思考就可以理解，虽然其要求对变量的（read、load、use）、（assign、store、write）必须是连续出现，即以组的形式出现，但是这两组操作还是分开的。比如说，两个线程同时完成了第一组操作（read、load、use），但是还没进行第二组操作（assign、store、write），此时是没错的，然后两个线程开始第二组操作，这样最终其中一个线程的操作会被覆盖掉，导致数据的不准确。如下面代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestForVolatile {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建四个线程，每个线程对i执行一定次数的自增操作</span>
+        <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">while</span> (k++ &lt; 10000<span style="color: #000000;">) {
+                i</span>++<span style="color: #000000;">;
+            }
+            System.err.println(</span>"线程" + Thread.currentThread().getName() + "执行完毕"<span style="color: #000000;">);
+        }).start();
+        </span><span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">while</span> (k++ &lt; 10000<span style="color: #000000;">) {
+                i</span>++<span style="color: #000000;">;
+            }
+            System.err.println(</span>"线程" + Thread.currentThread().getName() + "执行完毕"<span style="color: #000000;">);
+        }).start();
+        </span><span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">while</span> (k++ &lt; 10000<span style="color: #000000;">) {
+                i</span>++<span style="color: #000000;">;
+            }
+            System.err.println(</span>"线程" + Thread.currentThread().getName() + "执行完毕"<span style="color: #000000;">);
+        }).start();
+        </span><span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">while</span> (k++ &lt; 10000<span style="color: #000000;">) {
+                i</span>++<span style="color: #000000;">;
+            }
+            System.err.println(</span>"线程" + Thread.currentThread().getName() + "执行完毕"<span style="color: #000000;">);
+        }).start();
+　　　　　// 睡眠一定时间确保四个线程全部执行完毕
+        Thread.sleep(</span>1000<span style="color: #000000;">);<br />　　　　　　// 最终结果为33555，没有预期的4W
+        System.out.println(i);<br />　　　　　　
+    }
+
+}</span></code></pre>
+<p><span style="font-size: 16px;"><strong>&nbsp;结果图：</strong></span></p>
+<p><img src="./images/浅谈Java内存模型以及交互4.png" alt="" width="503" height="223" /></p>
+
+<p>&nbsp;</p>
+<p>　　解释一下：因为i++操作其实为i = i + 1，假设在主内存i = 99的时候同时有两个线程完成了第一组操作（read、load、use），也就是完成了<strong>等号后面变量i的读取操作</strong>，这时候是没问题的，然后进行运算，都得出i+1=100的结果，接着<strong>对变量i进行赋值操作，这就开始第二组操作（assign、store、write）</strong>，是不是同时赋值的无所谓，这样一来，两个线程都会以i = 100把值写到主内存中，也就是说，<strong>其中一个线程的操作结果会被覆盖</strong>，相当于无效操作，这就导致上面程序最终结果的不准确。</p>
+<p>　　如果要保证原子性的话可以使用synchronize关键字，其可以保证<strong>原子性</strong>和<strong>内存可见性</strong>（但是不具备有<strong>禁止指令重排序</strong>的语义，这也是为什么double-check的单例模式中，实例要用<strong>volatile</strong>修饰的原因）；当然你也可以使用JUC包的原子类AtomicInteger之类的。</p>
+<h1>四、先行发生原则（happens-before）</h1>
+<p>　　如果单靠<strong>volatile</strong>和<strong>synchronized</strong>来维持程序的有序性的话，那么难免会变得有些繁琐。然而大部分时候我们并不需要这样做，因为Java中有一个&ldquo;<strong>先行发生原则</strong>&rdquo;：<em>如果操作A先行发生于操作B，那么进行B操作之前A操作的变化都能被B操作观察到，也就是说B能看到A对变量进行的修改。&nbsp;</em>这里的先后指的是执行顺序的先后，与时间无关。例如在下面伪代码中：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 在线程A执行,定为A操作</span>
+i = 0<span style="color: #000000;">;
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 线程B执行，定义为B操作</span>
+j =<span style="color: #000000;"> i;
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 线程C执行，定义为C操作</span>
+i = 1;</code></pre>
+
+<p>　　<strong>假设</strong>A操作先于B操作发生，暂时忽略C操作，那么最终得到的结果必定是i = j = 1；但是如果此时加入C操作，并且跟A、B操作<strong>没有确定先行发生关系</strong>，那么最终的结果就变成了不确定，因为C可能在B之前执行也可能在B之后执行，所以此时就会出现数据不准确的情况。<strong>如果一开始没有A操作先行于B操作这个前提的话，那么就算没有C操作，结果也是不确定的。</strong></p>
+<p><strong>　　</strong>当然，符合先行发生原则的并不一定按照这个规则来执行，<strong>只有在操作之间会有依赖的时候（即下一个操作用到上个操作的变量），此时的先行发生原则才一定适用。</strong>例如在下面的伪代码中，虽然符合先行发生原则，但是也不保证能有序执行。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 同一线程执行以下操作
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> A操作</span>
+<span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> B操作</span>
+<span style="color: #0000ff;">int</span> j = 1;</code></pre>
+
+<p>　　这里完全符合<strong>程序次序规则</strong>（先行发生原则的一种），但是两个操作之间并没有依赖，所以虚拟机完全可以对其进行重排序，使得B操作在A操作之前执行，当然这对程序的正确性并没有影响。</p>
+<p>　　那么该<strong>如何判断是否符合先行发生原则</strong>呢？就连前面的例子都是通过假设来得出先行发生的。莫慌，Java内存模型为我们提供一些规则，只要符合这些规则之一，那就符合先行发生原则。可以类比为<strong>先行发生原则为接口，下面的规则则为实现此接口的实现类。</strong></p>
+<ul>
+<li><strong>程序次序规则：</strong>在同一个线程中，代码书写在前面的操作先行发生于书写在后面的操作。（以编译后的class文件为准）</li>
+<li><strong>管程锁定规则：</strong>对于同一把锁，unlock操作总是先行发生于后面对此锁的lock操作之前。<strong>&nbsp;</strong>后面指的是<em>时间上的顺序</em>。</li>
+<li><strong>volatile变量规则：</strong>对于volatile修饰的变量中，对此变量的写操作总是先行发生于后面对此变量的读操作。这里的后面同样指的是<em>时间上的顺序。</em></li>
+<li><strong>线程启动规则：</strong>一个线程的start()方法先行发生于该线程的每一个动作，也就是说线程的<strong>start()</strong>方法要先于该线程的<strong>run()</strong>方法中的任何操作。如下面例子，我在线程A中改变了共享变量i的值，然后在启动B线程，B线程中run方法是读取并打印i的值，执行1W次，最终的结果读取到的都为1：
+<src class="cnblogs_code">
+<pre><code>    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> i = <span style="color: #800080;">0</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> k = <span style="color: #800080;">0</span>; k &lt; <span style="color: #800080;">10000</span>; k++<span style="color: #000000;">) testThread();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testThread() {
+        Thread threadB </span>= <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            System.err.println(</span><span style="color: #800000;">"</span><span style="color: #800000;">线程B中i的值为：</span><span style="color: #800000;">"</span> +<span style="color: #000000;"> i);
+            System.err.println(</span><span style="color: #800000;">"</span><span style="color: #800000;">线程B执行结束</span><span style="color: #800000;">"</span><span style="color: #000000;">);
+        });
+        </span><span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            i </span>= <span style="color: #800080;">1</span><span style="color: #000000;">;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 在修改了共享变量i的值后，启动线程B</span>
+<span style="color: #000000;">            threadB.start();
+            System.err.println(</span><span style="color: #800000;">"</span><span style="color: #800000;">线程A中执行完之后i的值为：</span><span style="color: #800000;">"</span> +<span style="color: #000000;"> i);
+        }).start();
+    }    <br />结果图：<br /><img src="./images/浅谈Java内存模型以及交互5.png" alt="" width="370" height="315" /></span></code></pre>
+
+</li>
+<li><strong>线程中断规则：</strong>对线程interrupt()方法的调用先行发生于被中断线程的代码检测到代码中断时间的发生。</li>
+<li><strong>线程终止规则：</strong>线程的所有操作先行于该线程的终止检测，也就是先于join()方法执行。如下面代码中，我在A线程对共享变量i执行100W的自增，再执行100W-1的自减，执行1000次左右，最终join的所有结果都一定是1。
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行1000次</span>
+        <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> k = 0; k &lt; 1000; k++<span style="color: #000000;">) {
+            i </span>= 0<span style="color: #000000;">;
+            testThread();
+        }
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> testThread() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        Thread threadA </span>= <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">while</span> (k++ &lt; 100 * 100 * 100<span style="color: #000000;">) {
+                i</span>++<span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">while</span> (--k &gt; 1<span style="color: #000000;">) {
+                i</span>--<span style="color: #000000;">;
+            }
+            System.err.println(</span>"线程A中执行完之后i的值为：" +<span style="color: #000000;"> i);
+        });
+        threadA.start();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加上下面这段代码的话，join之前读到的i可能为0也可能大于0(不一定是1)，原因是变量i主内存的read和write操作没有固定顺序
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> TimeUnit.NANOSECONDS.sleep(1);</span>
+        System.out.println("主线程中开启线程A后i的值为：" +<span style="color: #000000;"> i);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 线程A终止</span>
+<span style="color: #000000;">        threadA.join();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> join之后的结果一定为1</span>
+        System.err.println("Join之后i的值为：" +<span style="color: #000000;"> i);
+    }<br />结果图：<br /><img src="./images/浅谈Java内存模型以及交互6.png" alt="" width="337" height="295" /></span></code></pre>
+
+</li>
+<li><strong>对象终结规则：</strong>一个对象的初始化完成（构造函数执行完毕）先行于其finalize()方法的开始。</li>
+<li><strong>传递性：</strong>如果A操作先行于B操作，B操作先行于C操作，那么A操作先行于C操作。</li>
+</ul>
+<p>　　这8种就是Java提供的不需要任何同步器的自然规则了，只要符合在8条之一，那么就符合先行发生原则；反之，则不然。可以通过下面的例子理解：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 对象中有一个变量i</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getI() {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> i;
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setI(<span style="color: #0000ff;">int</span><span style="color: #000000;"> i) {
+    </span><span style="color: #0000ff;">this</span>.i =<span style="color: #000000;"> i;
+}
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 在线程A执行set操作A </span>
+setI(1<span style="color: #000000;">);
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 在线程B执行相同对象的get操作B </span>
+<span style="color: #0000ff;">int</span> j = getI();</code></pre>
+
+<p>　　我们<strong>假设在时间上A操作先执行，然后再接着执行B操作，那么B得到的i是多少</strong>呢？</p>
+<p>　　我们将上面的规则一个个的往里套，不同线程，程序次序规则OUT；没有加锁和volatile关键字，管程锁定和volatile变量规则OUT；关于线程的三个规则和对象终止规则也不符合，OUT；最后一个更不用提，OUT；综上，这个操作并不符合先行发生原则，所以这个操作是没法保证的，也就是说B得到的变量i为1为0都有可能，即是<strong>线程不安全</strong>的。所以判断线程是否安全的依据是<strong>先行发生原则，</strong>跟时间顺序并没有太大的关系。</p>
+<p>　　像上面这种情况要修正的话，使其符合其中一条规则即可，例如加上<strong>volatile</strong>关键字或者加锁（同一把锁）都可以解决这个问题。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<blockquote>
+<p>　　如果文章有任何不对的地方望大家指出，感激不尽！</p>
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

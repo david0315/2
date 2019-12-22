@@ -1,0 +1,121 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot~mybatis枚举映射' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot~mybatis枚举映射</center></div><div class='banquan'>原文出处:本文由博客园博主张占岭提供。<br/>
+原文连接:https://www.cnblogs.com/lori/p/11468268.html</div><br>
+    <p>在mybatis和mybatis plus里，如果你的实体字段是一个枚举类型，而在数据表里是整型，这时在存储时需要进行处理，默认情况下，会把<code>枚举的元素名称</code>拼接到SQL语句里，而由于数据表是int类型，所以在插入等操作时，就会出现异常！</p>
+<h3 id="添加枚举处理器">添加枚举处理器</h3>
+<pre><code><code>MappedTypes(value = {YesOrNo.class})
+public class UniversalEnumHandler&lt;E extends Enum&lt;E&gt; &amp; BaseEnum&gt; extends BaseTypeHandler&lt;E&gt; {
+
+  private final Class&lt;E&gt; type;
+
+  /**
+   * construct with parameter.
+   */
+  public UniversalEnumHandler(Class&lt;E&gt; type) {
+    if (type == null) {
+      throw new IllegalArgumentException(&quot;Type argument cannot be null&quot;);
+    }
+    this.type = type;
+  }
+
+  @Override
+  public void setNonNullParameter(PreparedStatement ps, int i, E parameter, JdbcType jdbcType)
+      throws SQLException {
+    ps.setInt(i, parameter.getCode());
+  }
+
+  @Override
+  public E getNullableResult(ResultSet rs, String columnName) throws SQLException {
+    int code = rs.getInt(columnName);
+    return rs.wasNull() ? null : EnumUtils.codeOf(this.type, code);
+  }
+
+  @Override
+  public E getNullableResult(ResultSet rs, int columnIndex) throws SQLException {
+    int code = rs.getInt(columnIndex);
+    return rs.wasNull() ? null : EnumUtils.codeOf(this.type, code);
+  }
+
+  @Override
+  public E getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {
+    int code = cs.getInt(columnIndex);
+    return cs.wasNull() ? null : EnumUtils.codeOf(this.type, code);
+  }
+}
+</code></code></pre>
+<h3 id="在配置文件指定处理器">在配置文件指定处理器</h3>
+<pre><code><code>mybatis-plus:
+  typeHandlersPackage: cn.pilipa.account.cerebrum.client.enums #处理器所在包，我是把枚举处理器放在枚举包里</code></code></pre>
+<h3 id="定义代表枚举键值的接口">定义代表枚举键值的接口</h3>
+<pre><code><code>public interface BaseEnum&lt;E extends Enum&lt;?&gt;, T&gt; {
+
+  public Integer getCode();
+
+  public String getText();
+}</code></code></pre>
+<h3 id="定义一下枚举">定义一下枚举</h3>
+<pre><code><code>public enum YesOrNo implements BaseEnum {
+  Yes(1, &quot;是&quot;),
+  No(0, &quot;否&quot;);
+  private Integer code;
+  private String text;
+
+  YesOrNo(Integer code, String text) {
+    this.code = code;
+    this.text = text;
+  }
+
+  @JsonCreator
+  public static YesOrNo jsonCreate(Integer code) {
+    return EnumUtils.codeOf(YesOrNo.class, code);
+  }
+
+  @Override
+  public Integer getCode() {
+    return this.code;
+  }
+
+  @Override
+  public String getText() {
+    return this.text;
+  }
+
+  @JsonValue
+  public Integer getCodeStr() {
+    return this.code;
+  }
+
+}</code></code></pre>
+<h3 id="在实体中定义枚举类型字段">在实体中定义枚举类型字段</h3>
+<pre><code><code>  /**
+   * 是否为国民.
+   */
+  private YesOrNo naturalBorn;</code></code></pre>
+<h3 id="生成的sql语句">生成的SQL语句</h3>
+<pre><code><code> ==&gt;  Preparing: INSERT INTO employee_info ( id, name, credit_number, status, first_time, tax_code, natural_born ) VALUES ( ?, ?, ?, ?, ?, ?, ? ) 
+2019-09-05 16:56:38.991 DEBUG [accounting-client,,,] 92833 --- [           main] c.p.a.c.c.m.EmployeeInfoMapper.insert    : 
+==&gt; Parameters: 1169534796253630466(Long), 段会涛(String), 130523199011111219(String), 1(Integer), 2019-09-05(Date), 130523199011111219(String), 0(Integer)</code></code></pre>
+<p>从上面结果中看到，我们的natural_born对应的值已经是int类型了，表示处理器成功了！</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

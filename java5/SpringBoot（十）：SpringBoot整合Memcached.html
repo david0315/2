@@ -1,0 +1,149 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot（十）：SpringBoot整合Memcached' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot（十）：SpringBoot整合Memcached</center></div><div class='banquan'>原文出处:本文由博客园博主探歌提供。<br/>
+原文连接:https://www.cnblogs.com/lgg20/p/11714491.html</div><br>
+    <p>一、环境准备<br />memcached 1.4.5<br />SpringBoot 1.5.10.RELEASE<br />java_memcached-release_2.6.6.jar<br />memcached 1.4.5 windows 下载地址：http://www.runoob.com/memcached/window-install-memcached.html</p>
+<p>danga memcached java client 下载地址：https://github.com/gwhalin/Memcached-Java-Client/downloads</p>
+<p>pom依赖：</p>
+<p>        &lt;dependency&gt;<br />            &lt;groupId&gt;commons-pool&lt;/groupId&gt;<br />            &lt;artifactId&gt;commons-pool&lt;/artifactId&gt;<br />            &lt;version&gt;1.5.6&lt;/version&gt;<br />        &lt;/dependency&gt;</p>
+<p>        &lt;dependency&gt;<br />            &lt;groupId&gt;com.danga&lt;/groupId&gt;<br />            &lt;artifactId&gt;java_memcached-release&lt;/artifactId&gt;<br />            &lt;version&gt;2.6.6&lt;/version&gt;<br />            &lt;scope&gt;system&lt;/scope&gt;<br />            &lt;systemPath&gt;${project.basedir}/src/main/webapp/WEB-INF/lib/java_memcached-release_2.6.6.jar&lt;/systemPath&gt;<br />        &lt;/dependency&gt;<br /><br />二、项目结构</p>
+<p><img src="./images/SpringBoot（十）：SpringBoot整合Memcached0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br />三、代码详情<br />application.yml ：</p>
+<p>spring:<br />  datasource:<br />    driver-class-name: com.mysql.jdbc.Driver<br />    url: jdbc:mysql://192.168.1.20:3306/test?useSSL=false<br />    username: root<br />    password: root123<br />      <br />  rabbitmq:<br />    host: 192.168.1.123<br />    port: 5672<br />    username: admin<br />    password: 1234<br />#    virtual-host: /vhost_test<br />#    publisher-confirms: true</p>
+<p>## Memcache 配置 ##<br />memcache:<br />  servers: 127.0.0.1:11211<br />  failover: true<br />  initConn: 100<br />  minConn: 20<br />  maxConn: 1000<br />  maintSleep: 50<br />  nagel: false<br />  socketTO: 3000<br />  aliveCheck: true</p>
+<p>logging.level.com.demo.mapper: debug</p>
+<p><br />MemcacheConfiguration.java</p>
+<src class="cnblogs_Highlighter">
+<pre><code>import com.danga.MemCached.MemCachedClient;
+import com.danga.MemCached.SockIOPool;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+* @author zh
+* @ClassName cn.saytime.config.config.MemcacheConfiguration
+* @Description Memcache配置
+*/
+@Configuration
+public class MemcacheConfiguration {
+
+@Value("${memcache.servers}")
+private String[] servers;
+@Value("${memcache.failover}")
+private boolean failover;
+@Value("${memcache.initConn}")
+private int initConn;
+@Value("${memcache.minConn}")
+private int minConn;
+@Value("${memcache.maxConn}")
+private int maxConn;
+@Value("${memcache.maintSleep}")
+private int maintSleep;
+@Value("${memcache.nagel}")
+private boolean nagel;
+@Value("${memcache.socketTO}")
+private int socketTO;
+@Value("${memcache.aliveCheck}")
+private boolean aliveCheck;
+
+@Bean
+public SockIOPool sockIOPool () {
+SockIOPool pool = SockIOPool.getInstance();
+pool.setServers(servers);
+pool.setFailover(failover);
+pool.setInitConn(initConn);
+pool.setMinConn(minConn);
+pool.setMaxConn(maxConn);
+pool.setMaintSleep(maintSleep);
+pool.setNagle(nagel);
+pool.setSocketTO(socketTO);
+pool.setAliveCheck(aliveCheck);
+pool.initialize();
+return pool;
+}
+
+@Bean
+public MemCachedClient memCachedClient(){
+return new MemCachedClient();
+}
+
+}
+</code></pre>
+
+<p>　</p>
+<p>测试类 SpringbootMemcacheApplicationTests.java</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.danga.MemCached.MemCachedClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.Test;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.runner.RunWith;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.test.context.SpringBootTest;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.test.context.junit4.SpringRunner;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Date;
+
+@RunWith(SpringRunner.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">)
+@SpringBootTest
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SpringbootMemcacheApplicationTests {
+
+@Autowired
+</span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MemCachedClient memCachedClient;
+
+@Test
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> contextLoads() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 放入缓存</span>
+<span style="color: #0000ff;">boolean</span> flag = memCachedClient.set("a", 1<span style="color: #000000;">);
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 取出缓存</span>
+Object a = memCachedClient.get("a"<span style="color: #000000;">);
+System.out.println(a);
+
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 3s后过期</span>
+memCachedClient.set("b", "2", <span style="color: #0000ff;">new</span> Date(3000<span style="color: #000000;">));
+Object b </span>= memCachedClient.get("b"<span style="color: #000000;">);
+System.out.println(b);
+
+Thread.sleep(</span>3000<span style="color: #000000;">);
+b </span>= memCachedClient.get("b"<span style="color: #000000;">);
+System.out.println(b);
+
+}
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>先运行memcached，然后执行test，输出结果为：</p>
+<p>1<br />2<br />null<br />测试memcached存取以及失效时间成功。</p>
+<p>四、部分操作方法<br />set与add在key不存在时效果一致，add在key存在时不会成功。<br />set与replace在key存在时效果一致，replace在key不存在不会成功。<br />五、注意点<br />使用danga memcached设置失效时间有两种方式：</p>
+<p>第一种<br />memCachedClient.set("xx", "xx", new Date(3000));<br /><br />第二种<br />memCachedClient.set("xx", "xx", new Date(System.currentTimeMillis() + 3 * 1000));</p>
+<p><br />对比两种形式，第一种是指定key在3s后过期，第二种是指定key在xxxx-xx-xx xx:xx:xx 时间点失效，如果服务器时间跟客户端时间不一致，就会跟想要的结果不一样，比如客户端现在时间点为2018-01-01 00:00:00，服务端时间为2018-01-01 00:00:10，服务端时间快10s，那么如果客户端使用第二种方式设置30s后失效，也就是2018-01-01 00:00:30失效，实际上客户端想要的是30s后失效，而服务端20s就将key失效了。</p>
+<p>从上可以发现，最好是使用第一种形式，但是第一种形式在某些时间也会存在问题，比如如果设定的时间小于1s，会发现key会永久保存，不会在指定时间失效，原因可以通过源码得到。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>说明当时间小于1s的时候，使用第一种方式会造成指定时间不生效，key永久存在，这种时间如果客户端服务端时间没有误差的时候，使用第二种形式。</p>
+<p>关于memcached最大设置30天有效的情形暂时没有测试。<br /><br /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

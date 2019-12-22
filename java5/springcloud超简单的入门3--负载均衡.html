@@ -1,0 +1,133 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springcloud超简单的入门3--负载均衡' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springcloud超简单的入门3--负载均衡</center></div><div class='banquan'>原文出处:本文由博客园博主炉窑知码力提供。<br/>
+原文连接:https://www.cnblogs.com/justalittlecoder/p/11523844.html</div><br>
+    <p>上个文章的末尾说到，当有多个服务实例的时候，怎样来获取服务实例。但是，只是简单的通过get(0)来获取列表中的第一个实例来使用。<br />
+现实场景中，还需要写一个算法来实现负载均衡来决定每次使用的服务实例，而不是每次都只使用第一个。</p>
+<p>好消息！好消息！下面播送一个好消息！<br />
+现在不需要自己去写负载均衡算法了，spring cloud中已经集成了一个负载均衡工具包了 --- 它就是 Ribbon ！</p>
+<p>它的负载均衡实现时在客户端的，所以我们需要把它引入的服务消费者实例中。</p>
+<p>那么，就让我们一起用起来把。Let‘s go now !</p>
+<h2 id="ribbon负载均衡">Ribbon负载均衡</h2>
+<ul>
+<li>相关依赖</li>
+</ul>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-netflix-ribbon&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<ul>
+<li>Robin的简单使用，在RestTemplate上使用 <code>@LoadBalanced</code> 注解即可启用</li>
+</ul>
+<pre class="java"><code> @Bean
+ @LoadBalanced
+ public RestTemplate getRestTemplate(){
+     return new RestTemplate();
+ }</code></code></pre>
+<ul>
+<li>调用微服务</li>
+</ul>
+<pre class="java"><code>@RestController
+@RequestMapping(&quot;/&quot;)
+public class TestController {
+    @Resource
+    RestTemplate restTemplate;
+
+    @GetMapping(&quot;hi&quot;)
+    //此处使用的是服务提供者的service-id，即，服务提供者的 spring.application.name
+    //这是Ribbon的作用了，从Eureka注册中心，获取服务列表。缓存在本地，然后用户就可以直接使用serviceid来访问服务了
+    public String hi() {
+        return restTemplate.getForObject(&quot;http://MICROSERVICE-PROVIDER/hi/consumer&quot;, String.class);
+    }
+}</code></code></pre>
+<ul>
+<li>属性配置</li>
+</ul>
+<pre class="yml"><code>server:
+  port: 8090
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:9090/eureka/
+    register-with-eureka: false ##仅作为消费者不注册服务
+spring:
+  application:
+    name: microservice-consumer</code></code></pre>
+<p>现在将消费服务者多启动几个实例，看看是否实现了负载均衡呢。</p>
+<ul>
+<li>修改负载均衡策略<br />
+Ribbon默认的负载均衡策略是轮询，可以通过配置来改变均衡策略。</li>
+</ul>
+<pre class="java"><code>@Configuration
+public class RibbonConfig {
+    @Bean
+    //此处将负载均衡策略改为了随机。
+    public IRule useRule(){
+        return new RandomRule();
+    }
+}</code></code></pre>
+<p>当然，Ribbon还有其他更丰富的配置，那就留给读者们，自己发掘把。毕竟我只是介绍怎么入门的。</p>
+<p>那么接下来呢，再介绍一下一个更为简单的服务调用工具把。请客官移目下方</p>
+<h2 id="feign声明式服务调用">Feign声明式服务调用</h2>
+<p>Feign是一个基于接口的编程方式 ，只需要声明接口和配置注解，spring框架会根据配置来调用服务。可以让服务间调用变的更简单</p>
+<p>Feign底层是使用了Ribbon作为负载均衡的客户端，所以需要引入eureka-cient</p>
+<ul>
+<li><p>相关依赖</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre></li>
+<li><p>启动类配置，使用<code>@EnableFeignClients</code>注解启动Feign功能</p>
+<pre class="java"><code>@SpringBootApplication
+@EnableEurekaClient
+@EnableFeignClients
+public class FeignStarter {
+    public static void main(String[] args) {
+        SpringApplication.run(FeignStarter.class,args);
+    }
+}</code></code></pre></li>
+<li><p>使用<code>@FeignClinet</code>注解来声明服务接口</p>
+<pre class="java"><code>@FeignClient(&quot;microservice-provider&quot;)  //服务提供者服务名
+public interface ProviderService {
+    @GetMapping(&quot;hi/{name}&quot;)      //与服务接口
+    String hi(@PathVariable(value = &quot;name&quot;) String name); //需指定路径取值的绑定名称，否则报错
+}</code></code></pre></li>
+<li><p>调用Fegin声明的服务</p>
+<pre class="java"><code>@RestController
+public class TestController {
+    @Resource
+    ProviderService providerService ; //自动注入Feign
+
+    @GetMapping(&quot;hi&quot;)
+    public String hi() {
+        return providerService.hi(&quot;feign-consumer&quot;);
+    }
+}</code></code></pre></li>
+</ul>
+<p>怎么样，是不是感觉，Feign用起来比直接用RestTemplate更简单优雅呢？</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

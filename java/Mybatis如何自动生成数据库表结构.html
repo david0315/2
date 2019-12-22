@@ -1,0 +1,1032 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybatis如何自动生成数据库表结构' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybatis如何自动生成数据库表结构</center></div><div class='banquan'>原文出处:本文由博客园博主Dream Young提供。<br/>
+原文连接:https://www.cnblogs.com/dreamyoung/p/11776426.html</div><br>
+    <p><span style="font-size: 16px;">一般情况下，用Mybatis的时候是先设计表结构再进行实体类以及映射文件编写的，特别是用代码生成器的时候。</span></p>
+<p><span style="font-size: 16px;">但有时候不想用代码生成器，也不想定义表结构，那怎么办？</span></p>
+<p><span style="font-size: 16px;">这个时候就会想到<strong>Hibernate</strong>，然后想到它的<span style="color: #ff0000;">hibernate.hbm2ddl.auto</span>配置项。</span></p>
+<p><span style="font-size: 16px;">所以手工创表的问题可以很方便的迅速用Hibernate来解决。&nbsp;那有人问啦：就是不想用Hibernate才换的Mybatis，你这又兜回去了吗？</span></p>
+<p><span style="font-size: 16px;">其实不是的，我们需要的就是单单一个hbm2ddl功能。</span></p>
+<p><span style="font-size: 16px;">其实应该这么想：有一款工具能够自动根据注解的实体类来生成各种数据库相应的表结构，只需要加<span style="color: #ff0000;"><strong>几个jar包&nbsp; (经测试后只要7个）</strong></span>并且&nbsp;<span style="color: #ff0000;"><strong>少量配置(3个配置项）&nbsp;</strong></span>。</span></p>
+<p><span style="font-size: 16px;">这款工具就是Hibernate。为什么不能是它呢！！！</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;"><strong><span style="color: #ff0000;">原理说来也是超级的简单：&nbsp; &nbsp;<span style="color: #000000;">加入hibernate的包，<strong>&nbsp;</strong>注解实体类，程序开始时初始化一下hibernate的SessionFactory并清除它。</span></span></strong></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">示例：</span></p>
+<p><span style="font-size: 16px;"><strong>需要的Hibernate相关的JAR包 (本例基于Hibernate5.0.7，仅需要7个）：</strong></span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; hibernate-core-5.0.7.Final.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; hibernate-commons-annotations-5.0.1.Final.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; hibernate-jpa-2.1-api-1.0.0.Final.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; geronimo-jta_1.1_spec-1.1.1.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; jboss-logging-3.3.0.Final.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; dom4j-1.6.1.jar</span></p>
+<p><span style="font-size: 16px;">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; javassist-3.18.1-GA.jar</span></p>
+<p><span style="font-size: 16px;"><strong>Hibernate.cfg.xml文件：（去掉多余的，精简后的内容）</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">&lt;?</span><span style="color: #ff00ff;">xml version="1.0" encoding="UTF-8"</span><span style="color: #0000ff;">?&gt;</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">&lt;!</span><span style="color: #ff00ff;">DOCTYPE hibernate-configuration PUBLIC
+</span><span style="color: #008080;"> 3</span> <span style="color: #ff00ff;">    "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+</span><span style="color: #008080;"> 4</span> <span style="color: #ff00ff;">    "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd"</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 5</span> <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">hibernate-configuration</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">session-factory</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 7</span>         <span style="color: #008000;">&lt;!--</span><span style="color: #008000;">不采用InnoDB方式加快速度 </span><span style="color: #008000;">--&gt;</span>
+<span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">property </span><span style="color: #ff0000;">name</span><span style="color: #0000ff;">="hibernate.dialect"</span><span style="color: #0000ff;">&gt;</span>org.hibernate.dialect.MySQL5Dialect<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">property</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span>         <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 注意update方式时对于属性的删减并不会删除数据库字段 </span><span style="color: #008000;">--&gt;</span>
+<span style="color: #008080;">11</span>         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">property </span><span style="color: #ff0000;">name</span><span style="color: #0000ff;">="hibernate.hbm2ddl.auto"</span><span style="color: #0000ff;">&gt;</span>update<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">property</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span>         <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 注意注解的话，只能用class一个一个引用。除非与Spring整合才能扫描文件夹路径 </span><span style="color: #008000;">--&gt;</span>
+<span style="color: #008080;">14</span>         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">mapping </span><span style="color: #ff0000;">class</span><span style="color: #0000ff;">="com.sunwii.mybatis.bean.User"</span> <span style="color: #0000ff;">/&gt;</span>
+<span style="color: #008080;">15</span>     <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">session-factory</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">16</span> <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">hibernate-configuration</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>&nbsp;</p>
+<p><strong><span style="font-size: 16px;">注解的实体类：</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Entity
+@Table(name </span>= "t_user"<span style="color: #000000;">)
+@Data
+@NoArgsConstructor
+@ToString
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> User <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Serializable {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span> serialVersionUID = -4013951528313410972L<span style="color: #000000;">;
+
+    @Id
+    @GeneratedValue(strategy </span>=<span style="color: #000000;"> GenerationType.IDENTITY)
+    @Column(name </span>= "id"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Integer id;
+
+    @Column(length </span>= 30<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String name;
+
+    @Column
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Float height;
+
+    @Column
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Double salary;
+
+    @Column
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Integer vip;
+
+    @Column
+    @Temporal(TemporalType.DATE)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Date birthday;
+
+    @Column
+    @Temporal(TemporalType.TIMESTAMP)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Date lastlogin;
+
+    @Column
+    @Enumerated(EnumType.STRING)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> mybatis 默认会将枚举转化为字符串类型存储,此时数据库为varchar型</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> State state;
+    
+    @Column
+    @Enumerated(EnumType.ORDINAL)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 可以为mybatis设置枚举类型存储为其索引值存储，此时数据库为int型</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Level level;
+
+    @Column(length </span>= 10<span style="color: #000000;">)
+    @Enumerated(EnumType.ORDINAL)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> mybatis 自定义类型转换器将枚举转化为相应数字类型存储，此时数据库为int型</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Sex sex;
+    
+    @Column
+    @Type(type </span>= "string"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> mybatis 自定义类型转换器将列表转化为相应字符串类型存储，此时数据库为varchar型</span>
+    <span style="color: #0000ff;">private</span> List&lt;String&gt;<span style="color: #000000;"> tels;
+    
+
+    </span><span style="color: #0000ff;">public</span> User(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+    }
+
+    </span><span style="color: #0000ff;">public</span> User(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id, String name) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+        </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> User(String name) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+    }
+}</span></code></pre>
+
+<p><strong style="font-size: 16px;">注意：</strong><span style="font-size: 16px;">以上实体类用了Lombok插件来减少代码量（只要是为了不写setter/getter、toString等。Lombok插件的使用请参考其它地方。）</span></p>
+<pre><code><span style="font-size: 16px;">@Data
+@NoArgsConstructor
+@ToString</span><br /><span style="font-size: 16px;">三个注解属于Lombok插件注解，分别指示生成SETTER/GETTER、生成无参构造器、生成ToString<br /></span><br /><strong><span style="font-size: 16px; color: #ff0000;">其它注解都属于Hibernate（JPA规范）的注解，生成DDL就靠它们了。<br /><br /></span><span style="font-size: 16px;">注解-说明：</span></strong></code></pre>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Entity
+@Table(name </span>= "t_user"<span style="color: #000000;">)
+这里指实体类对应了t_user表
+
+@Id
+@GeneratedValue(strategy </span>=<span style="color: #000000;"> GenerationType.IDENTITY)
+@Column(name </span>= "id"<span style="color: #000000;">)
+这里指表主健自动增长
+
+@Column
+这里指表字段名称与属性同名,它可以另外指定长度，名称。
+@Temporal(TemporalType.DATE)
+这里指表字段采用Date类型存储
+@Enumerated(EnumType.STRING)
+这里指表字段采用varchar类型来存储枚举属性<br /><br /><br /><br /><strong>这个简短示例仅列出简单的类型的注解，并不涉及表关联之间的注解，幸好的是，注解并不多，更多注解可以参考Hibernate(JPA)注解相关内容。</strong></span></code></pre>
+
+<p>&nbsp;</p>
+<pre><code></code></pre>
+<p><span style="font-size: 16px;">至此，只需要在使用SqlSessionFactory（Mybatis）之前就构造SessionFactory（Hibernate）然后销毁它就可以了。至于如何初始化Hibernate的SessionFactory，应该都知道。如下：</span></p>
+<p>&nbsp;</p>
+<p><span style="color: #ff0000; font-size: 16px;">&nbsp;Mybatis</span><span style="font-size: 16px;"><span style="color: #ff0000;">与Spring整合时</span>：简单地配置一个hibernate的SessionFactory相关的BEAN了事。这里不谈。</span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><span style="color: #ff0000;">&nbsp;Mybatis不与Spring整合时</span>：</span></p>
+<p><span style="font-size: 16px;"><strong>Mybatis的工具类</strong>中添加新方法，用于自动构造DDL：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.IOException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.InputStream;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.io.Resources;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.session.SqlSessionFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.session.SqlSessionFactoryBuilder;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.constant.Constants;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SessionFactoryUtil {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> SqlSessionFactory creat(String configFile) {
+
+        SqlSessionFactory factory </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        InputStream inputStream;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            inputStream </span>=<span style="color: #000000;"> Resources.getResourceAsStream(configFile);
+            factory </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlSessionFactoryBuilder().build(inputStream);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated catch block</span>
+<span style="color: #000000;">            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+    }</span><span style="color: #000000;">
+<br />    <strong><span style="color: #ff0000;">//这里是新方法，通过判断标记决定是否要用于自动生成DDL
+    </span></strong></span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> SqlSessionFactory creat(String configFile, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hibernateAutoDdl) {
+        </span><span style="color: #0000ff;">if</span> (hibernateAutoDdl<span style="color: #000000;">) {
+            String hibernateConfigFile </span>=<strong><span style="color: #ff0000;"> Constants.Hibernate_LOCATION;
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 使用hibernate自动创建DDL</span>
+<span style="color: #000000;"><strong><span style="color: #ff0000;">            HibernateUtil</span></strong>.buildSessionFactory(hibernateConfigFile);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> creat(configFile);
+    }
+}</span></code></pre>
+
+<p><span style="font-size: 16px;">其中用到的<strong>Hibernate工具类</strong>为：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Properties;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.hibernate.SessionFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.hibernate.cfg.Configuration;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.constant.Constants;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> HibernateUtil {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> buildSessionFactory(String hibernateConfigFile) {
+        String jdbcPropertiesLocation </span>=<span style="color: #000000;"><strong><span style="color: #ff0000;"> Constants.JDBC_LOCATION</span><span style="color: #ff0000;">;</span></strong>
+        Properties jdbcProperties </span>=<span style="color: #000000;"><strong><span style="color: #ff0000;"> PropertiesUtil</span></strong>.loadFromClassPath(jdbcPropertiesLocation);
+
+        Properties hibernateJdbcProperties </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+        hibernateJdbcProperties.setProperty(</span>"hibernate.connection.driver_class", jdbcProperties.getProperty("driver"<span style="color: #000000;">));
+        hibernateJdbcProperties.setProperty(</span>"hibernate.connection.url", jdbcProperties.getProperty("url"<span style="color: #000000;">));
+        hibernateJdbcProperties.setProperty(</span>"hibernate.connection.username", jdbcProperties.getProperty("user"<span style="color: #000000;">));
+        hibernateJdbcProperties.setProperty(</span>"hibernate.connection.password", jdbcProperties.getProperty("password"<span style="color: #000000;">));
+
+        </span><span style="color: #0000ff;">final</span> Configuration cfg = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Configuration();
+        cfg.addProperties(hibernateJdbcProperties);
+        cfg.configure(hibernateConfigFile);
+        SessionFactory sessionFactory </span>=<span style="color: #000000;"> cfg.buildSessionFactory();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 启动后销毁</span>
+<span style="color: #000000;">        sessionFactory.close();
+        sessionFactory </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+    }
+
+}</span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>PropertiesUtil工具类</strong>：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.IOException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.InputStream;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Properties;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> PropertiesUtil {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Properties loadFromClassPath(String fileName) {
+        Properties props </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+        </span><span style="color: #0000ff;">while</span>(fileName!=<span style="color: #0000ff;">null</span> &amp;&amp; fileName.length()&gt;0 &amp;&amp; (fileName.startsWith("/") || fileName.startsWith("\\"<span style="color: #000000;">))) {
+            fileName </span>= fileName.substring(1<span style="color: #000000;">);
+        }
+        InputStream is </span>= Class.<span style="color: #0000ff;">class</span>.getResourceAsStream("/"+<span style="color: #000000;">fileName);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            props.load(is);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated catch block</span>
+<span style="color: #000000;">            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> props;
+    }
+}</span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>常量配置类Constant</strong>:</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.constant;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Constants {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> String JDBC_LOCATION = "jdbc.properties"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> String Hibernate_LOCATION = "hibernate.cfg.xml"<span style="color: #000000;">;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><strong>Mybatis配置文件</strong>：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;?</span><span style="color: #ff00ff;">xml version="1.0" encoding="UTF-8" </span><span style="color: #0000ff;">?&gt;</span>
+<span style="color: #0000ff;">&lt;!</span><span style="color: #ff00ff;">DOCTYPE configuration
+PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-config.dtd"</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">configuration</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 别名 </span><span style="color: #008000;">--&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">typeAliases</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 指定包下所有别名为类名的简名 </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">package </span><span style="color: #ff0000;">name</span><span style="color: #0000ff;">="com.sunwii.mybatis.bean"</span> <span style="color: #0000ff;">/&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">typeAliases</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 类型处理器 </span><span style="color: #008000;">--&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">typeHandlers</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 改变默认处理枚举(枚举转换为int) </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">typeHandler
+            </span><span style="color: #ff0000;">handler</span><span style="color: #0000ff;">="org.apache.ibatis.type.EnumOrdinalTypeHandler"</span><span style="color: #ff0000;">
+            javaType</span><span style="color: #0000ff;">="com.sunwii.mybatis.enums.Level"</span> <span style="color: #0000ff;">/&gt;</span>
+
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 自定义处理枚举(枚举转换为枚举键值对的数字值) </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">typeHandler
+            </span><span style="color: #ff0000;">handler</span><span style="color: #0000ff;">="com.sunwii.mybatis.typehandle.SexEnumTypeHandler"</span><span style="color: #ff0000;">
+            javaType</span><span style="color: #0000ff;">="com.sunwii.mybatis.enums.Sex"</span> <span style="color: #0000ff;">/&gt;</span>
+
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 自定义处理列表(列表转换为字符串连接) </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 注意，由于是非内置的转换类型，所以仅对select有效,insert/update/delete需要另行指定 </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 另行指定示例：${tels,typeHandler=com.sunwii.mybatis.typehandle.ListTypeHandler} </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">typeHandler
+            </span><span style="color: #ff0000;">handler</span><span style="color: #0000ff;">="com.sunwii.mybatis.typehandle.ListTypeHandler"</span><span style="color: #ff0000;">
+            javaType</span><span style="color: #0000ff;">="java.util.List"</span> <span style="color: #0000ff;">/&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">typeHandlers</span><span style="color: #0000ff;">&gt;</span>
+
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">environments </span><span style="color: #ff0000;">default</span><span style="color: #0000ff;">="development"</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">environment </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="development"</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">transactionManager </span><span style="color: #ff0000;">type</span><span style="color: #0000ff;">="JDBC"</span> <span style="color: #0000ff;">/&gt;</span>
+            <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> 自定义MyPoolDataSourceFactory简化配置 </span><span style="color: #008000;">--&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dataSource </span><span style="color: #ff0000;">type</span><span style="color: #0000ff;">="com.sunwii.mybatis.pool.MyPoolDataSourceFactory"</span> <span style="color: #0000ff;">/&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">environment</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">environments</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">mappers</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">package </span><span style="color: #ff0000;">name</span><span style="color: #0000ff;">="com/sunwii/mybatis/mapper"</span> <span style="color: #0000ff;">/&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">mappers</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">configuration</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>连接池装饰类</strong>（用于简化Mybatis配置并统一jdbc配置文件路径常量）：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.pool;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Properties;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.datasource.pooled.PooledDataSource;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.datasource.pooled.PooledDataSourceFactory;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.constant.Constants;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.util.PropertiesUtil;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MyPoolDataSourceFactory <span style="color: #0000ff;">extends</span><span style="color: #000000;"> PooledDataSourceFactory {
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MyPoolDataSourceFactory() {
+        PooledDataSource dataSource </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> PooledDataSource();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 更多属性可以通过&lt;property&gt;来设置。  </span>
+        String jdbcPropertiesFile =<span style="color: #000000;"><strong><span style="color: #ff0000;"> Constants.JDBC_LOCATION</span></strong>;
+        Properties prop </span>=<span style="color: #000000;"><strong><span style="color: #ff0000;"> PropertiesUtil</span></strong>.loadFromClassPath(jdbcPropertiesFile);
+
+        dataSource.setDriver(prop.getProperty(</span>"driver"<span style="color: #000000;">));
+        dataSource.setUrl(prop.getProperty(</span>"url"<span style="color: #000000;">));
+        dataSource.setUsername(prop.getProperty(</span>"user"<span style="color: #000000;">));
+        dataSource.setPassword(prop.getProperty(</span>"password"<span style="color: #000000;">)); </span>
+        <span style="color: #0000ff;">this</span>.dataSource =<span style="color: #000000;"> dataSource;
+    }
+
+}</span></code></pre>
+
+<p><span style="font-size: 16px;">用到的几个枚举类：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.enums;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"><strong><span style="color: #ff0000;"> Level</span></strong> {
+    LEVEL_0, 
+    LEVEL_1, 
+    LEVEL_2, 
+    LEVEL_3, 
+    LEVEL_4, 
+    LEVEL_5
+}
+
+
+</span><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.enums;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"><span style="color: #ff0000;"><strong> Sex</strong></span> {
+    MAN(</span>"男", 0), WOMAN("女", 1<span style="color: #000000;">);
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String key;
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getKey() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> key;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setKey(String key) {
+        </span><span style="color: #0000ff;">this</span>.key =<span style="color: #000000;"> key;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Integer getValue() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> value;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setValue(Integer value) {
+        </span><span style="color: #0000ff;">this</span>.value =<span style="color: #000000;"> value;
+    }
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Integer value;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> HashMap&lt;Integer, Sex&gt; valueMap = <span style="color: #0000ff;">new</span> HashMap&lt;Integer, Sex&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> HashMap&lt;String, Sex&gt; keyMap = <span style="color: #0000ff;">new</span> HashMap&lt;String, Sex&gt;<span style="color: #000000;">();
+
+    </span><span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Sex item : Sex.values()) {
+            valueMap.put(item.value, item);
+            keyMap.put(item.key, item);
+        }
+    }
+
+    Sex(String key, Integer value) {
+        </span><span style="color: #0000ff;">this</span>.key =<span style="color: #000000;"> key;
+        </span><span style="color: #0000ff;">this</span>.value =<span style="color: #000000;"> value;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Sex getByValue(<span style="color: #0000ff;">int</span><span style="color: #000000;"> value) {
+        Sex result </span>=<span style="color: #000000;"> valueMap.get(value);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Sex getByKey(String key) {
+        Sex result </span>=<span style="color: #000000;"> keyMap.get(key);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+}
+
+
+</span><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.enums;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"><strong><span style="color: #ff0000;"> State</span></strong> {
+    OK, ERROR, UNKNOWN
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">用到的类型转换器：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.typehandle;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.CallableStatement;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.PreparedStatement;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.ResultSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.SQLException;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.type.JdbcType;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.type.TypeHandler;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.enums.Sex;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * -必须实现所有方法，不然的话查询有可能查询到为null
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> Administrator
+ *
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> SexEnumTypeHandler <span style="color: #0000ff;">implements</span> TypeHandler&lt;Sex&gt;<span style="color: #000000;"> {
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 转换到数据库的值
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setParameter(PreparedStatement ps, <span style="color: #0000ff;">int</span> i, Sex parameter, JdbcType jdbcType) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        ps.setInt(i, parameter.getValue());
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 从数据库转换得到
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> Sex getResult(ResultSet rs, String columnName) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Sex.getByValue(rs.getInt(columnName));
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 从数据库转换得到
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> Sex getResult(ResultSet rs, <span style="color: #0000ff;">int</span> columnIndex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Sex.getByValue(rs.getInt(columnIndex));
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 从数据库转换得到
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> Sex getResult(CallableStatement cs, <span style="color: #0000ff;">int</span> columnIndex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Sex.getByValue(cs.getInt(columnIndex));
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.typehandle;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.CallableStatement;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.PreparedStatement;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.ResultSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.SQLException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Arrays;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.type.JdbcType;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.type.TypeHandler;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.util.ArrayUtil;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * -必须实现所有方法，不然的话查询有可能查询到为null
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> Administrator
+ *
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ListTypeHandler <span style="color: #0000ff;">implements</span> TypeHandler&lt;List&lt;?&gt;&gt;<span style="color: #000000;"> {
+
+    @SuppressWarnings({ </span>"unchecked", "rawtypes"<span style="color: #000000;"> })
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setParameter(PreparedStatement ps, <span style="color: #0000ff;">int</span> i, List parameter, JdbcType jdbcType) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        String[] strArr </span>= ArrayUtil.fromList((List&lt;String&gt;<span style="color: #000000;">) parameter);
+        String strs </span>= ArrayUtil.asString(","<span style="color: #000000;">, strArr);
+        ps.setString(i, strs);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;String&gt; getResult(ResultSet rs, String columnName) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        List</span>&lt;String&gt; list = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        String strs </span>=<span style="color: #000000;"> rs.getString(columnName);
+        </span><span style="color: #0000ff;">if</span> (strs != <span style="color: #0000ff;">null</span> &amp;&amp; strs.length() &gt; 0<span style="color: #000000;">) {
+            list </span>= Arrays.asList(strs.split(","<span style="color: #000000;">));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;String&gt; getResult(ResultSet rs, <span style="color: #0000ff;">int</span> columnIndex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        List</span>&lt;String&gt; list = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        String strs </span>=<span style="color: #000000;"> rs.getString(columnIndex);
+        </span><span style="color: #0000ff;">if</span> (strs != <span style="color: #0000ff;">null</span> &amp;&amp; strs.length() &gt; 0<span style="color: #000000;">) {
+            list </span>= Arrays.asList(strs.split(","<span style="color: #000000;">));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;String&gt; getResult(CallableStatement cs, <span style="color: #0000ff;">int</span> columnIndex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        List</span>&lt;String&gt; list = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        String strs </span>=<span style="color: #000000;"> cs.getString(columnIndex);
+        </span><span style="color: #0000ff;">if</span> (strs != <span style="color: #0000ff;">null</span> &amp;&amp; strs.length() &gt; 0<span style="color: #000000;">) {
+            list </span>= Arrays.asList(strs.split(","<span style="color: #000000;">));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+}</span></code></pre>
+
+<p><span style="font-size: 16px;">用到的<strong>数组集合转换工具类</strong>：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.lang.reflect.Array;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Arrays;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Collection;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Set;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ArrayUtil {
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; List&lt;T&gt;<span style="color: #000000;"> asList(T... args) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Arrays.asList(args);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; List&lt;T&gt; asListFromSet(Set&lt;T&gt;<span style="color: #000000;"> set) {
+        </span><span style="color: #0000ff;">if</span> (set == <span style="color: #0000ff;">null</span> || set.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        List</span>&lt;T&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;T&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : set) {
+            list.add(t);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; List&lt;T&gt;<span style="color: #000000;"> asListFromArray(T[] array) {
+        </span><span style="color: #0000ff;">if</span> (array == <span style="color: #0000ff;">null</span> || array.length &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        List</span>&lt;T&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;T&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : array) {
+            list.add(t);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; List&lt;T&gt; asListFromMapKey(Map&lt;T, ?&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ArrayUtil.asListFromSet(map.keySet());
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; List&lt;T&gt; asListFromMapValue(Map&lt;?, T&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        List</span>&lt;T&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;T&gt;<span style="color: #000000;">();
+        Collection</span>&lt;T&gt; values =<span style="color: #000000;"> map.values();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : values) {
+            list.add(t);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+    }
+
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt;<span style="color: #000000;"> T[] fromArray(T... args) {
+        </span><span style="color: #0000ff;">if</span> (args == <span style="color: #0000ff;">null</span> || args.length &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        T[] array </span>= (T[]) Array.newInstance(args[0<span style="color: #000000;">].getClass(), args.length);
+
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; args.length; i++<span style="color: #000000;">) {
+            array[i] </span>=<span style="color: #000000;"> args[i];
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> array;
+    }
+
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; T[] fromList(List&lt;T&gt;<span style="color: #000000;"> list) {
+        </span><span style="color: #0000ff;">if</span> (list == <span style="color: #0000ff;">null</span> || list.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        Class</span>&lt;T&gt; clz = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : list) {
+            clz </span>= (Class&lt;T&gt;<span style="color: #000000;">) t.getClass();
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+
+        T[] array </span>=<span style="color: #000000;"> (T[]) Array.newInstance(clz, list.size());
+
+        </span><span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : list) {
+            array[i] </span>=<span style="color: #000000;"> t;
+            i</span>++<span style="color: #000000;">;
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> array;
+    }
+
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; T[] fromSet(Set&lt;T&gt;<span style="color: #000000;"> set) {
+        </span><span style="color: #0000ff;">if</span> (set == <span style="color: #0000ff;">null</span> || set.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        Class</span>&lt;T&gt; clz = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : set) {
+            clz </span>= (Class&lt;T&gt;<span style="color: #000000;">) t.getClass();
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+
+        T[] array </span>=<span style="color: #000000;"> (T[]) Array.newInstance(clz, set.size());
+
+        </span><span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : set) {
+            array[i] </span>=<span style="color: #000000;"> t;
+            i</span>++<span style="color: #000000;">;
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> array;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; T[] fromMapKey(Map&lt;T, ?&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        Set</span>&lt;T&gt; set =<span style="color: #000000;"> map.keySet();
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ArrayUtil.fromSet(set);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; T[] fromMapValue(Map&lt;?, T&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        List</span>&lt;T&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;T&gt;<span style="color: #000000;">();
+        Collection</span>&lt;T&gt; values =<span style="color: #000000;"> map.values();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : values) {
+            list.add(t);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ArrayUtil.fromList(list);
+    }
+
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Set&lt;T&gt;<span style="color: #000000;"> asSet(T... args) {
+        </span><span style="color: #0000ff;">if</span> (args == <span style="color: #0000ff;">null</span> || args.length &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        Set</span>&lt;T&gt; set = <span style="color: #0000ff;">new</span> HashSet&lt;T&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; args.length; i++<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">set.contains(args[i])) {
+                set.add(args[i]);
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> set;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Set&lt;T&gt;<span style="color: #000000;"> asSetFromArray(T[] array) {
+        </span><span style="color: #0000ff;">if</span> (array == <span style="color: #0000ff;">null</span> || array.length &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        Set</span>&lt;T&gt; set = <span style="color: #0000ff;">new</span> HashSet&lt;T&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : array) {
+            set.add(t);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> set;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Set&lt;T&gt; asSetFromMapKey(Map&lt;T, ?&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> map.keySet();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Set&lt;T&gt; asSetFromMapValue(Map&lt;?, T&gt;<span style="color: #000000;"> map) {
+        </span><span style="color: #0000ff;">if</span> (map == <span style="color: #0000ff;">null</span> || map.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        Set</span>&lt;T&gt; set = <span style="color: #0000ff;">new</span> HashSet&lt;T&gt;<span style="color: #000000;">();
+        Collection</span>&lt;T&gt; values =<span style="color: #000000;"> map.values();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T t : values) {
+            set.add(t);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> set;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T1, T2&gt; Map&lt;T1, T2&gt; asMapFrom(Set&lt;T1&gt; keySet, Set&lt;T2&gt;<span style="color: #000000;"> valueSet) {
+        </span><span style="color: #0000ff;">if</span> (keySet == <span style="color: #0000ff;">null</span> || keySet.size() &lt; 1 || valueSet == <span style="color: #0000ff;">null</span> || valueSet.size() &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        Map</span>&lt;T1, T2&gt; map = <span style="color: #0000ff;">new</span> HashMap&lt;T1, T2&gt;<span style="color: #000000;">();
+        List</span>&lt;T2&gt; list =<span style="color: #000000;"> ArrayUtil.asListFromSet(valueSet);
+        </span><span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (T1 t : keySet) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                map.put(t, list.get(i</span>++<span style="color: #000000;">));
+            } </span><span style="color: #0000ff;">catch</span> (Exception e) {<span style="color: #008000;">//</span><span style="color: #008000;"> 超长</span>
+                map.put(t, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> map;
+    }
+
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt;<span style="color: #000000;"> String asString(String separator, T... args) {
+        </span><span style="color: #0000ff;">if</span> (args == <span style="color: #0000ff;">null</span> || args.length &lt; 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        StringBuilder sp </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringBuilder();
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; args.length; i++<span style="color: #000000;">) {
+
+            sp.append(args[i]);
+            </span><span style="color: #0000ff;">if</span> (i != args.length - 1<span style="color: #000000;">) {
+                sp.append(separator);
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> sp.toString();
+    }
+}</span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>Mapper接口：</strong>UserMapper.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.mapper;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.bean.User;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> UserMapper {
+    </span><span style="color: #0000ff;">public</span> User selectById(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id);
+
+    </span><span style="color: #0000ff;">public</span> List&lt;User&gt;<span style="color: #000000;"> selectByName(String name);
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> insert(User user);
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> update(User user);
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> delete(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id);
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><strong>映射文件</strong>：UserMapper.xml</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;?</span><span style="color: #ff00ff;">xml version="1.0" encoding="UTF-8" </span><span style="color: #0000ff;">?&gt;</span>
+<span style="color: #0000ff;">&lt;!</span><span style="color: #ff00ff;">DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd"</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">mapper </span><span style="color: #ff0000;">namespace</span><span style="color: #0000ff;">="com.sunwii.mybatis.mapper.UserMapper"</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">select </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="selectById"</span><span style="color: #ff0000;"> parameterType</span><span style="color: #0000ff;">="Integer"</span><span style="color: #ff0000;">
+        resultType</span><span style="color: #0000ff;">="User"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+        select * from t_user where id = #{id}
+    </span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">select</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">select </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="selectByName"</span><span style="color: #ff0000;"> parameterType</span><span style="color: #0000ff;">="String"</span><span style="color: #ff0000;">
+        resultType</span><span style="color: #0000ff;">="User"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+        select * from t_user where name like "%"#{name}"%"
+    </span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">select</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">insert </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="insert"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+        insert into
+        t_user(
+        name, birthday, vip, salary, height, lastlogin,level,state,sex,tels
+        )values(
+        #{name},
+        #{birthday},
+        #{vip},
+        #{salary},
+        #{height},
+        #{lastlogin},
+        #{level},
+        #{state},
+        #{sex},
+        #{tels,typeHandler=com.sunwii.mybatis.typehandle.ListTypeHandler}
+        )
+    </span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">insert</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">update </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="update"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+        update t_user set
+        name=#{name},
+        birthday=#{birthday},
+        vip=#{vip},
+        salary=#{salary},
+        height=#{height},
+        lastlogin=#{lastlogin},
+        level=#{level},
+        state=#{state},
+        sex=#{sex},
+        tels=#{tels,typeHandler=com.sunwii.mybatis.typehandle.ListTypeHandler}
+        where id=#{id}
+    </span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">update</span><span style="color: #0000ff;">&gt;</span>
+
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">delete </span><span style="color: #ff0000;">id</span><span style="color: #0000ff;">="delete"</span><span style="color: #ff0000;"> parameterType</span><span style="color: #0000ff;">="Integer"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+        delete from t_user where
+        id=#{id}
+    </span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">delete</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">mapper</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><strong>日期工具</strong>：CurrentUtil.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.Timestamp;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Date;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> CurrentUtil {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> currentTime() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> Date().getTime();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Date currentDate() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> Date();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> java.sql.Date currentSqlDate() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> java.sql.Date(currentTime());
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Timestamp currentTimestamp() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> java.sql.Timestamp(currentTime());
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;"><strong>测试示例：</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.sunwii.mybatis.test.mapper;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Arrays;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.commons.logging.Log;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.commons.logging.LogFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.session.SqlSession;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.ibatis.session.SqlSessionFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.Test;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.bean.User;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.enums.Level;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.enums.Sex;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.enums.State;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.mapper.UserMapper;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.test.insert.TestInsert;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.util.CurrentUtil;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.sunwii.mybatis.util.SessionFactoryUtil;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> testMapper {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> Log log = LogFactory.getLog(TestInsert.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> SqlSessionFactory sf = <strong><span style="color: #ff0000;">SessionFactoryUtil.creat</span></strong>("mybatis-config.xml", <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMapperInsert() {
+        User user </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> User();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">user.setId(50);</span>
+        user.setName("sunwii"<span style="color: #000000;">);
+        user.setVip(</span>1<span style="color: #000000;">);
+        user.setSalary(</span>3333.00<span style="color: #000000;">);
+        user.setHeight(</span>1.70f<span style="color: #000000;">);
+        user.setBirthday(CurrentUtil.currentDate());
+        user.setLastlogin(CurrentUtil.currentTimestamp());
+        user.setLevel(Level.LEVEL_3);
+        user.setState(State.OK);
+        user.setSex(Sex.WOMAN);
+        user.setTels(Arrays.asList(</span>"133xxxxxxx", "159xxxxxxxx"<span style="color: #000000;">));
+
+        </span><span style="color: #0000ff;">int</span> rs = 0<span style="color: #000000;">;
+        SqlSession session </span>=<span style="color: #000000;"> sf.openSession();
+        UserMapper userMapper </span>= session.getMapper(UserMapper.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            rs </span>=<span style="color: #000000;"> userMapper.insert(user);
+            session.commit();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            rs </span>= 0<span style="color: #000000;">;
+            session.rollback();
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            session.close();
+        }
+
+        log.info(</span>"操作结果：" +<span style="color: #000000;"> rs);
+
+    }
+
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMapperUpdate() {
+        User user </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> User();
+        user.setId(</span>1<span style="color: #000000;">);
+        user.setName(</span>"sunwii--55550"<span style="color: #000000;">);
+        user.setVip(</span>1<span style="color: #000000;">);
+        user.setSalary(</span>3333.00<span style="color: #000000;">);
+        user.setHeight(</span>1.70f<span style="color: #000000;">);
+        user.setBirthday(CurrentUtil.currentDate());
+        user.setLastlogin(CurrentUtil.currentTimestamp());
+        user.setLevel(Level.LEVEL_2);
+        user.setState(State.ERROR);
+        user.setSex(Sex.MAN);
+        user.setTels(Arrays.asList(</span>"136xxxxxx", "139xxxxxxx"<span style="color: #000000;">));
+
+        </span><span style="color: #0000ff;">int</span> rs = 0<span style="color: #000000;">;
+        SqlSession session </span>=<span style="color: #000000;"> sf.openSession();
+        UserMapper userMapper </span>= session.getMapper(UserMapper.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            rs </span>=<span style="color: #000000;"> userMapper.update(user);
+            session.commit();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            rs </span>= 0<span style="color: #000000;">;
+            session.rollback();
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            session.close();
+        }
+
+        log.info(</span>"操作结果：" +<span style="color: #000000;"> rs);
+
+    }
+
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMapperDelete() {
+        User user </span>= <span style="color: #0000ff;">new</span> User(50<span style="color: #000000;">);
+
+        </span><span style="color: #0000ff;">int</span> rs = 0<span style="color: #000000;">;
+        SqlSession session </span>=<span style="color: #000000;"> sf.openSession();
+        UserMapper userMapper </span>= session.getMapper(UserMapper.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            rs </span>=<span style="color: #000000;"> userMapper.delete(user.getId());
+            session.commit();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            rs </span>= 0<span style="color: #000000;">;
+            session.rollback();
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            session.close();
+        }
+
+        log.info(</span>"操作结果：" +<span style="color: #000000;"> rs);
+
+    }
+
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMapperGetOne() {
+        Integer id </span>= 50<span style="color: #000000;">;
+        User user </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        SqlSession session </span>=<span style="color: #000000;"> sf.openSession();
+        UserMapper userMapper </span>= session.getMapper(UserMapper.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        user </span>=<span style="color: #000000;"> userMapper.selectById(id);
+
+        log.info(user);
+
+    }
+
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMapperGetList() {
+        String userName </span>= "sunwii"<span style="color: #000000;">;
+
+        List</span>&lt;User&gt; users = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        SqlSession session </span>=<span style="color: #000000;"> sf.openSession();
+        UserMapper userMapper </span>= session.getMapper(UserMapper.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        users </span>=<span style="color: #000000;"> userMapper.selectByName(userName);
+
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (User user : users) {
+            log.info(user);
+        }
+
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="color: #ff0000; font-size: 16px;"><strong>&lt;&lt;Mybatis如何自动生成数据库表结构&gt;&gt;</strong></span></p>
+<p><strong><span style="font-size: 18px;">说明：&nbsp;</span></strong></p>
+<p><span style="font-size: 18px;">&nbsp; &nbsp; 这里多余的步骤仅仅是为了存档下代码（以及方便一些初学者不看代码不知道怎么回事的原因:里边涉及了各种常用类型的转换和映射）。</span></p>
+<p><span style="font-size: 18px;">&nbsp; &nbsp; 本文中最重要的就是Hibernate的几个包的选取，以及配置文件的精简，还有就是加载Hibernate的SessionFactory的方法。</span></p>
+<p><span style="font-size: 18px;">&nbsp; &nbsp; 这些说来说去都是Hibernate的东西。跟Mybatis原本是没有一点关系的。只不过需要用于，那纯属相当于复习一下Hibernate了。</span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

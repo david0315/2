@@ -1,0 +1,153 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修java：线上问题排查常用手段' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>java：线上问题排查常用手段</center></div><div class='banquan'>原文出处:本文由博客园博主彭阿三提供。<br/>
+原文连接:https://www.cnblogs.com/pengthrree/p/11855045.html</div><br>
+    <p><strong>一、jmap找出占用内存较大的实例</strong></p>
+<p>先给个示例代码：</p>
+<pre><code>import java.util.List;<br />import java.util.concurrent.CountDownLatch;<br /><br />/**<br /> * @Classname OOMTest<br /> * @Description TODO<br /> * @Date 2019/11/14 9:48 AM<br /> * @Author by lixin<br /> */<br />public class OOMTest {<br />    public static void main(String[] args) throws InterruptedException {<br />        CountDownLatch latch = new CountDownLatch(1);<br />        int max = 10000;<br />        List&lt;Person&gt; list = new ArrayList&lt;&gt;(max);<br />        for (int j = 0; j &lt; max; j++) {<br />            Person p = new Person();<br />            p.setAge(100);<br />            p.setName("彭阿三");<br />            list.add(p);<br />        }<br />        System.out.println("ready!");<br />        latch.await();<br />    }<br /><br /><br />    public static class Person {<br />        private String name;<br />        private int age;<br /><br />        public String getName() {<br />            return name;<br />        }<br /><br />        public void setName(String name) {<br />            this.name = name;<br />        }<br /><br />        public int getAge() {<br />            return age;<br />        }<br /><br />        public void setAge(int age) {<br />            this.age = age;<br />        }<br />    }<br />}<br /><br /><br /></code></pre>
+<p>List中放了1w个Person对象的实例，先把这段程序跑起来</p>
+<p>javac OOMTest.java</p>
+<p>java OOMTest</p>
+<p>然后再开一个窗口，jps -l &nbsp;找出该程序的pid</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;<img src="./images/java：线上问题排查常用手段0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;然后执行 jmap -histo:live 7320 （注：如果输出内容太多，只想看排名前10的，可以加 | head -10）</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<img src="./images/java：线上问题排查常用手段1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;输出结果，会按内存使用量，从大到小依次把对象的实际个数，占用内存数量(字节数)打印出来，最后还会输出汇总信息</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<img src="./images/java：线上问题排查常用手段2.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>以上面的示例来说，OOMTest$Person这个类的实例数为10000个，总共占用240000字节（注：即每个实例24字节），这个程序总占用内存数为725464字节，约：0.69M。</p>
+<p>另外还有一些[C,[B这类class name，大概意思为：</p>
+<p>[C is a char[]<br />[S is a short[]<br />[I is a int[]<br />[B is a byte[]<br />[[I is a int[][]</p>
+<p>[C对象往往跟String有关，String其内部使用final char[]数组来保存数据的</p>
+<p>constMethodKlass/ methodKlass/ constantPoolKlass/ constantPoolCacheKlass/ instanceKlassKlass/ methodDataKlass</p>
+<p>与Classloader相关，常驻与Perm区。</p>
+<p>&nbsp;</p>
+<p><strong>二、找出某个java应用打开的句柄数及线程数</strong></p>
+<p>ll /proc/{pid}/fd | wc -l 查看打开的句柄数</p>
+<p>ll /proc/{pid}/task | wc -l 查看线程数</p>
+<p><strong>三、jmap 查看堆内存的各项配置</strong></p>
+<p>jmap -heap pid 可以看到类似下面的输出：</p>
+<p>&nbsp;</p>
+<p><span><span>using&nbsp;thread-local object allocation.<br />Parallel GC with&nbsp;<span>4&nbsp;thread(s)&nbsp;<span>//当前使用的GC方式(并行GC)<br />&nbsp;<br />Heap Configuration:&nbsp;<span>//堆内存配置<br />&nbsp;&nbsp;&nbsp;MinHeapFreeRatio =&nbsp;<span>0&nbsp;&nbsp;&nbsp;<span>//对应jvm启动参数-XX:MinHeapFreeRatio设置JVM堆最小空闲比率(java8默认0)<br />&nbsp;&nbsp;&nbsp;MaxHeapFreeRatio =&nbsp;<span>100&nbsp;<span>//对应jvm启动参数-XX:MaxHeapFreeRatio设置JVM堆最大空闲比率<br />&nbsp;&nbsp;&nbsp;MaxHeapSize =&nbsp;<span>8388608&nbsp;(<span>8.0MB)&nbsp;<span>//对应jvm启动参数-XX:MaxHeapSize=设置JVM堆的最大大小(或-Xmx参数)<br />&nbsp;&nbsp;&nbsp;NewSize =&nbsp;<span>5242880&nbsp;(<span>5.0MB)&nbsp;<span>//对应jvm启动参数-XX:NewSize=设置JVM堆的&lsquo;新生代&rsquo;的默认<br />&nbsp;&nbsp;&nbsp;MaxNewSize =&nbsp;<span>5242880&nbsp;(<span>5.0MB)&nbsp;<span>//对应jvm启动参数-XX:MaxNewSize=设置JVM堆的&lsquo;新生代&rsquo;的最大大小<br />&nbsp;&nbsp;&nbsp;OldSize =&nbsp;<span>3145728&nbsp;(<span>3.0MB)&nbsp;<span>//对应jvm启动参数-XX:OldSize=设置JVM堆的&lsquo;老生代&rsquo;的大小<br />&nbsp;&nbsp;&nbsp;NewRatio =&nbsp;<span>2&nbsp;<span>//对应jvm启动参数-XX:NewRatio=:&lsquo;新生代&rsquo;和&lsquo;老生代&rsquo;的大小比率<br />&nbsp;&nbsp;&nbsp;SurvivorRatio =&nbsp;<span>8&nbsp;<span>//对应jvm启动参数-XX:SurvivorRatio=设置年轻代中Eden区与Survivor区的大小比值<br />&nbsp;&nbsp;&nbsp;MetaspaceSize =&nbsp;<span>21807104&nbsp;(<span>20.796875MB)<br />&nbsp;&nbsp;&nbsp;CompressedClassSpaceSize =&nbsp;<span>1073741824&nbsp;(<span>1024.0MB)<br />&nbsp;&nbsp;&nbsp;MaxMetaspaceSize =&nbsp;<span>17592186044415&nbsp;MB<br />&nbsp;&nbsp;&nbsp;G1HeapRegionSize =&nbsp;<span>0&nbsp;(<span>0.0MB)<br />&nbsp;<br />Heap Usage:&nbsp;<span>//堆内存使用情况<br />PS Young Generation<br />Eden Space:&nbsp;<span>//Eden区分布<br />&nbsp;&nbsp;&nbsp;capacity =&nbsp;<span>2621440&nbsp;(<span>2.5MB)&nbsp;<span>//Eden区总容量<br />&nbsp;&nbsp;&nbsp;used =&nbsp;<span>2328088&nbsp;(<span>2.2202377319335938MB)&nbsp;<span>//Eden区已使用<br />&nbsp;&nbsp;&nbsp;<span>free&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=&nbsp;<span>293352&nbsp;(<span>0.27976226806640625MB)&nbsp;<span>//Eden区剩余容量<br />&nbsp;&nbsp;&nbsp;<span>88.80950927734375% used<br />From Space:&nbsp;<span>//其中一个Survivor区的内存分布<br />&nbsp;&nbsp;&nbsp;capacity =&nbsp;<span>1572864&nbsp;(<span>1.5MB)<br />&nbsp;&nbsp;&nbsp;used =&nbsp;<span>360448&nbsp;(<span>0.34375MB)<br />&nbsp;&nbsp;&nbsp;<span>free&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=&nbsp;<span>1212416&nbsp;(<span>1.15625MB)<br />&nbsp;&nbsp;&nbsp;<span>22.916666666666668% used<br />To Space:&nbsp;<span>//另一个Survivor区的内存分布<br />&nbsp;&nbsp;&nbsp;capacity =&nbsp;<span>1048576&nbsp;(<span>1.0MB)<br />&nbsp;&nbsp;&nbsp;used =&nbsp;<span>0&nbsp;(<span>0.0MB)<br />&nbsp;&nbsp;&nbsp;<span>free&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=&nbsp;<span>1048576&nbsp;(<span>1.0MB)<br />&nbsp;&nbsp;&nbsp;<span>0.0% used<br />PS Old Generation&nbsp;<span>//当前的Old区内存分布<br />&nbsp;&nbsp;&nbsp;capacity =&nbsp;<span>3145728&nbsp;(<span>3.0MB)<br />&nbsp;&nbsp;&nbsp;used =&nbsp;<span>1458968&nbsp;(<span>1.3913803100585938MB)<br />&nbsp;&nbsp;&nbsp;<span>free&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=&nbsp;<span>1686760&nbsp;(<span>1.6086196899414062MB)<br />&nbsp;&nbsp;&nbsp;<span>46.37934366861979% used<br />&nbsp;<br /><span>3759&nbsp;interned Strings occupying&nbsp;<span>298824&nbsp;bytes.</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>注：5-16行是堆内存的主要配置，这些参数都可以通过 java -XX:参数名=参数值 来调整其大小，比如：</p>
+<p>java -XX:MinHeapFreeRatio=20 -XX:MaxHeapFreeRatio=80 -Xmx100m -XX:MetaspaceSize=50M -XX:NewRatio=3 将影响MinHeapFreeRatio、MaxHeapFreeRatio、MaxHeapSize、MetaspaceSize、NewRatio的值</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;<img src="./images/java：线上问题排查常用手段3.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>注意下NewRatio，这个值指的 老年代(Old Generation): 新生代(Young Generation)的比值，上面设置成3，所以OldSize为75m，而NewSize为25m，参考下图:</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<img src="./images/java：线上问题排查常用手段4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>注:这是jdk7的示意图，jdk8中Permanent Generation被去掉了，新加入了Metaspace区，但这个区别不影响对 新生代、老生代的理解。</p>
+<p>新生代(Young Generation）又可以细分为eden、s0、s1 三大块。</p>
+<p>&nbsp;</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;<img src="./images/java：线上问题排查常用手段5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>java7与java8的内存变化，大致如上图。</p>
+<p>SurvirorRatio这个要难算一点，按Oracle官网的解释：https://docs.oracle.com/cd/E19159-01/819-3681/abeil/index.html ，默认值是8，即：每块survivor：eden区的大小为1:8，换句话说 s0 = s1 = 1 / (1+1+8) = 1/10</p>
+<p>注：虽然官网这么解释，但是我实际算了下，好象并不是严格按这个比例来算的，只能大概说是这个分配比例。(结论就是：SurvirorRatio设置越大，eden区就越大)</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>四、找出占用CPU最高的线程</strong></p>
+<p>先来一段演示代码：</p>
+<pre><code><code>import java.util.concurrent.CountDownLatch;<br />&nbsp;<br /><span>/**<br />&nbsp;* Created by 菩提树下的杨过 on 05/09/2017.<br />&nbsp;*/<br /><span>public&nbsp;<span>class&nbsp;<span>OOMTest&nbsp;{<br />&nbsp;<br />&nbsp;&nbsp;&nbsp;&nbsp;<span><span>public&nbsp;<span>static&nbsp;<span>void&nbsp;<span>main(<span>String[] args) throws InterruptedException&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CountDownLatch latch =&nbsp;<span>new&nbsp;CountDownLatch(<span>1);<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>int&nbsp;max =&nbsp;<span>100;<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>for&nbsp;(<span>int&nbsp;i =&nbsp;<span>0; i &lt; max; i++) {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Thread t =&nbsp;<span>new&nbsp;Thread() {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span><span>public&nbsp;<span>void&nbsp;<span>run()&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>try&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Thread.sleep(<span>50);<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}&nbsp;<span>catch&nbsp;(InterruptedException e) {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Thread.currentThread().interrupt();<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;};<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.setName(<span>"thread-"&nbsp;+ i);<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.start();<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Thread t =&nbsp;<span>new&nbsp;Thread() {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span><span>public&nbsp;<span>void&nbsp;<span>run()&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>int&nbsp;i =&nbsp;<span>0;<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>while&nbsp;(<span>true) {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;i = (i++) /&nbsp;<span>10;<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;};<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.setName(<span>"BUSY THREAD");<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;t.start();<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;System.<span>out.println(<span>"ready");<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;latch.<span>await();<br />&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;<br />}</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>这里面有100个线程是空转的，另外还有一个线程BUSY THREAD在狂跑CPU。</p>
+<p>javac OOMTest.java</p>
+<p>java OOMTest</p>
+<p>把程序跑起来，jps -l 找出pid，然后 &nbsp;top -Hp pid</p>
+<p>&nbsp;</p>
+<p><img src="./images/java：线上问题排查常用手段6.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>可以看到pid 16813这个对应的线程，把CPU快跑满了，达到了98.5%</p>
+<p>接下来，将16813转换成16进制 ，即41ad (tips: printf "%x"&nbsp;16813 ) ，然后</p>
+<p>jstack pid | grep '41ad'</p>
+<p><img src="./images/java：线上问题排查常用手段7.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>我们就把最忙的这个线程BUSY THREAD给找出来了（注：这个技巧再次说明了，给线程取个好名字相当重要!)</p>
+<p>tips：如果使用spring-boot的话，直接在浏览器里查看/dump端点，也可以达到类似jstack的效果。</p>
+<p>&nbsp;</p>
+<p><strong>五、jvisualvm 查看运行情况</strong></p>
+<p>JDK_HOME/bin下有一个自带的jvisualvm工具，可以图形化的查看GC情况（注：要安装插件)</p>
+<p>java.net这个网站已经被oracle关了，所以安装插件这里，有点小麻烦，先到https://visualvm.github.io/pluginscenters.html 这里找到jvisualvm对应的jdk版本号，以jdk8为例，地址就是 https://visualvm.github.io/uc/8u131/updates.xml.gz</p>
+<p>然后，把这个地址在Plugins里的Settings里改一下，然后Available Plugin这里，就能看到可用插件了，选择GC插件并安装。</p>
+<p>&nbsp;</p>
+<p><img src="./images/java：线上问题排查常用手段8.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>可以来一段代码，然后用jvisualvm来看下GC情况</p>
+<pre><code><code><span>import&nbsp;java.util.ArrayList;<br /><span>import&nbsp;java.util.List;<br />&nbsp;<br /><span>/**<br />&nbsp;* Created by 彭阿三 on 05/09/2019.<br />&nbsp;*/<br /><span>public&nbsp;<span><span>class&nbsp;<span>OOMTest&nbsp;{<br />&nbsp;<br />&nbsp;&nbsp;&nbsp;&nbsp;<span><span>public&nbsp;<span>static&nbsp;<span>void&nbsp;<span>main<span>(String[] args)&nbsp;throws InterruptedException&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;List&lt;String&gt;&nbsp;<span>list&nbsp;=&nbsp;<span>new&nbsp;ArrayList&lt;&gt;();<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>while&nbsp;(<span>true) {<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Thread.sleep(<span>10);<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span>list.add(<span>"菩提树下的杨过"&nbsp;+ System.currentTimeMillis());<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br />&nbsp;&nbsp;&nbsp;&nbsp;}<br />}</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code><br /><br /></code></pre>
+<p><img src="./images/java：线上问题排查常用手段9.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>可以直观的看到Old区，Eden区，S0，S1以及Metaspace区的内存变化情况，以上图为例：Old Gen区占用内存一直在增加，表示可能有内存一直未被释放，值得关注。</p>
+<p>此外，还可以看到占用内存最多的类（即：本文最开始提到的）</p>
+<p>&nbsp;</p>
+<p><img src="./images/java：线上问题排查常用手段10.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;还可以更进一步点击看详情，比如下面的图，就能发现Metaspace已经OOM了</p>
+<p><img src="./images/java：线上问题排查常用手段11.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;也可以查看哪些线程最忙</p>
+<p><img src="./images/java：线上问题排查常用手段12.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>六、使用jstat 查看GC</strong></p>
+<p>虽然jvisualvm很好用，但是通常服务器是用终端连上的，无法运行图形化界面，而且也并非所有应用都开启了jmx，所以掌握jstat以命令行方式查看GC情况也是蛮重要的</p>
+<p>用法：jstat -gc pid 采样间隔毫秒数，比如: jstat -gc 8544 5000，将每隔5s采样一次pid为8544的gc情况</p>
+<p><img src="./images/java：线上问题排查常用手段13.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>以上图为例：红剪头的地方，S0区的已用量降到0，而S1区的已用量上涨，即说明发生了Young GC，对象从S0区被迁移到了S1区。</p>
+<p>title栏的含义如下：</p>
+<p>S0C - 新生代中第1块survivor 的容量(Survivor 0 Capacity)，KB单位<br />S1C - &nbsp;新生代中第2块survivor 的容量(Survivor 1 Capacity)，KB单位 &nbsp; &nbsp; &nbsp;<br />S0U - &nbsp;新生代中第1块survivor 已使用空间数(Survivor 0 Used)，KB单位 &nbsp; &nbsp;<br />S1U - &nbsp;新生代中第2块survivor 已使用空间数(Survivor 0 Used)，KB单位 &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<br />EC - Eden区的容量(KB) &nbsp; &nbsp; &nbsp;<br />EU - Eden区已使用(KB数) &nbsp; &nbsp; &nbsp;<br />OC - Old区的容量(KB) &nbsp; &nbsp; &nbsp; &nbsp;<br />OU - Old区已使用(KB数) &nbsp; &nbsp; &nbsp;<br />MC - Metaspace容量(KB) &nbsp; &nbsp;<br />MU - Metaspace已使用KB &nbsp;<br />CCSC - 压缩类的内存容量(KB)<br />CCSU - 压缩类的已用容量(KB) &nbsp;<br />YGC - (从应用启动算起，到采样时的) Young GC次数 &nbsp; &nbsp;<br />YGCT - (从应用启动算起，到采样时的) Young GC所用时间(秒) &nbsp; &nbsp; &nbsp;<br />FGC - (从应用启动算起，到采样时的) Full GC次数 &nbsp; &nbsp;<br />FGCT - (从应用启动算起，到采样时的) Full GC所用时间(秒)&nbsp;<br />GCT - (从应用启动算起，到采样时的) Yong GC + Full GC的总时间</p>
+<p>值得一提的是G1垃圾回收器，在大堆(&gt;4G)时，用G1可能效果会更好，G1的开启方法：</p>
+<p>-XX:+UseG1GC -XX:MaxGCPauseMillis=200&nbsp;</p>
+<p>开启后，再使用jmap -heap pid&nbsp;</p>
+<p><img src="./images/java：线上问题排查常用手段14.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>可以看到从默认的并发GC变成了G1.</p>
+<p>jstat -gc pid 5000</p>
+<p><img src="./images/java：线上问题排查常用手段15.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>看到S0全是0，这也是G1的一个特点，将新生代与老年代的划分取消掉了，而是用region的新概念，把整个堆内存划分成一个个region，详情见本文最后的参考文章。</p>
+<p><strong>七、导出整个jvm的dump（慎重使用，可能导致应用停顿）</strong></p>
+<p>jmap -dump:format=b,file=文件名 [pid]</p>
+<p>最后这个算是放大招了，把整个jvm都导出来分析，通常是其它手段都搞不定的时候，才找运维去搞这个，导出的文件体积大，而且导出时会使应用停顿。把这个文件弄到本地后，可以用eclipse的一个插件MAT来分析，下载地址：http://www.eclipse.org/mat/downloads.php</p>
+<p><em>参考文章：</em><em>Java GC系列 http://www.importnew.com/13504.html</em><em>深入理解 Java G1 垃圾收集器 http://blog.jobbole.com/109170/</em><em>jstat Oracle官方介绍&nbsp;http://docs.oracle.com/javase/8/docs/technotes/tools/unix/jstat.html&nbsp;</em></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span><br />&nbsp;<span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><span><br />&nbsp;</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

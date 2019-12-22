@@ -1,0 +1,206 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修微项目：一步一步带你使用SpringBoot入门（二）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>微项目：一步一步带你使用SpringBoot入门（二）</center></div><div class='banquan'>原文出处:本文由博客园博主秃桔子提供。<br/>
+原文连接:https://www.cnblogs.com/godoforange/p/11615740.html</div><br>
+    <h2 id="今天我们来使用jpa做分页项目并且做讲解">今天我们来使用JPA做分页项目并且做讲解</h2>
+<p>如果是新来的朋友请回上一篇<br />
+<a href="https://www.cnblogs.com/godoforange/p/11613521.html">上一篇:微项目(一)</a></p>
+<h2 id="maven整合">maven整合</h2>
+<p>在pom文件的<code>dependencies</code>依赖中导入以下依赖</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>然后重启项目<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）0.png" /><br />
+我们可以看到项目跑起来后运行出来一个tomcat<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）1.png" /></p>
+<p>我们可以看到这里出现了404错误。虽然是错误但是出来这个就对了。</p>
+<p>下面我们来配置对项目的增和查</p>
+<p>在做增查之前，我们需要新建俩个包。</p>
+<p><img src="./images/微项目：一步一步带你使用SpringBoot入门（二）2.png" /></p>
+<p>下面我们逐一填东西。</p>
+<h2 id="service">service</h2>
+<p>service是逻辑层，包括数据处理的方向，和过程。</p>
+<p>这里第一个方法好理解，就是向数据库内添加文章。</p>
+<p>第二个方法查代表的含义是将数据库分页，</p>
+<p>为什么这么做呢？很简单，如果数据过多无法展示我们只能这么做。按照ID倒序排列。</p>
+<pre><code><code>package cn.baldorange.anonymous.service;
+
+import cn.baldorange.anonymous.entity.Wall;
+import cn.baldorange.anonymous.repository.WallRepo;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import java.util.Date;
+
+@Service
+public class WallService {
+    @Autowired
+    WallRepo wallRepo;
+
+    /**
+     * 增加吐槽
+     * @param title
+     * @param content
+     * @return
+     */
+    public Boolean saveNewWall(String title,String content){
+        try {
+            String summary = &quot;&quot;;
+            if (content.length() &gt; 100)
+                summary = content.substring(0, 99);
+            else summary = content;
+            Wall wall = new Wall(title, content, new Date(), summary, &quot;0&quot;);
+            wallRepo.save(wall);
+            return true;
+        }catch (Exception e){
+            return false;
+        }
+    }
+
+
+
+    /**
+     * 获得匿名墙的所有文章
+     * @return
+     */
+    public Page&lt;Wall&gt; findAllWalls(Integer page,Integer size){
+        if(page == null) page = 0;
+        if(size == null) size =10;
+        PageRequest pageable = PageRequest.of(page, size, Sort.Direction.DESC, &quot;id&quot;);
+        return wallRepo.findAll(pageable);
+    }
+}
+</code></code></pre>
+<h2 id="controller">controller</h2>
+<p>至于Controller层就比较简单了，</p>
+<p>但是从servlet过来的同学要注意了，<code>@PutMapping</code>这里可能会给你们带来疑惑，实际上现在http请求常用的不仅仅是get和post 还有 put delete 等等我们没见过的，规定是人定的，人也能改。</p>
+<pre><code><code>package cn.baldorange.anonymous.controller;
+
+import cn.baldorange.anonymous.entity.Wall;
+import cn.baldorange.anonymous.service.WallService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/walls&quot;)
+public class Controller {
+    @Autowired
+    WallService wallService;
+
+    @PutMapping(&quot;/saveNewWall&quot;)
+    public Boolean saveNewWall(@RequestParam String title,@RequestParam String content){
+        return wallService.saveNewWall(title,content);
+    }
+
+
+    @GetMapping(&quot;/findAllWalls&quot;)
+    public Page&lt;Wall&gt; findAllWalls(Integer page, Integer size){
+        return wallService.findAllWalls(page,size);
+    }
+
+}
+</code></code></pre>
+<p>配置好后我们启动后访问这里：<br />
+<a href="http://127.0.0.1:8080/walls/findAllWalls">http://127.0.0.1:8080/walls/findAllWalls</a></p>
+<p>这就是我们所见到的json数据<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）3.png" /></p>
+<p>虽然很乱，但是我们不难发现这里面有我们数据库中的内容。还有一些其他的东西。</p>
+<p>我们下面就需要配置接口文件了。</p>
+<h2 id="swagger">swagger</h2>
+<blockquote>
+<p>相信无论是前端还是后端开发，都或多或少地被接口文档折磨过。前端经常抱怨后端给的接口文档与实际情况不一致。后端又觉得编写及维护接口文档会耗费不少精力，经常来不及更新。其实无论是前端调用后端，还是后端调用后端，都期望有一个好的接口文档。但是这个接口文档对于程序员来说，就跟注释一样，经常会抱怨别人写的代码没有写注释，然而自己写起代码起来，最讨厌的，也是写注释。所以仅仅只通过强制来规范大家是不够的，随着时间推移，版本迭代，接口文档往往很容易就跟不上代码了。</p>
+</blockquote>
+<p>首先将maven中引入swagger</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;io.springfox&lt;/groupId&gt;
+            &lt;artifactId&gt;springfox-swagger2&lt;/artifactId&gt;
+            &lt;version&gt;2.9.2&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;io.springfox&lt;/groupId&gt;
+            &lt;artifactId&gt;springfox-swagger-ui&lt;/artifactId&gt;
+            &lt;version&gt;2.9.2&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>然后我们新建个包最终目录如下：<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）4.png" /><br />
+swaggerConfig配置文件如下：</p>
+<pre><code><code>package cn.baldorange.anonymous.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import springfox.documentation.builders.ApiInfoBuilder;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+@Configuration
+@EnableSwagger2
+public class swaggerConfig {
+    @Bean
+    Docket docket(){
+        return new Docket(DocumentationType.SWAGGER_2)
+                .select()
+                .apis(RequestHandlerSelectors.any())
+                .paths(PathSelectors.any())
+                .build()
+                .apiInfo(new ApiInfoBuilder().description(&quot;项目&quot;).build());
+    }
+}</code></code></pre>
+<p>OK我们现在重启项目：<br />
+并访问<a href="http://127.0.0.1:8080/swagger-ui.html">这里</a><br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）5.png" /><br />
+OK我们现在可以使用swagger进行接口测试了，炒鸡棒。</p>
+<h2 id="分页技术">分页技术</h2>
+<p>数据库分页也是在数据库里写查询语句，不同的是查询的都是指定条数到指定条数的数据，不是一次性把数据全查出来。</p>
+<p>当size=2时，返回如下<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）6.png" /><br />
+当size=2,page=2时，返回如下<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）7.png" /><br />
+当size或者page越界时，返回如下<br />
+<img src="./images/微项目：一步一步带你使用SpringBoot入门（二）8.png" /></p>
+<p>这里的分页后的字段描述如下：</p>
+<pre><code><code>{
+    &quot;content&quot;: [{}], // 数据列表
+    &quot;last&quot;: true, // 是否最后一页
+    &quot;totalPages&quot;: 1, // 总页数
+    &quot;totalElements&quot;: 1, // 数据总数
+    &quot;sort&quot;: null, // 排序
+    &quot;first&quot;: true, // 是否首页
+    &quot;numberOfElements&quot;: 1, // 本页数据条数
+    &quot;size&quot;: 10, // 每页长度
+    &quot;number&quot;: 0 // 当前页序号
+}</code></code></pre>
+<p>不难看出，JPA的分页机制特别好用，简直不要太爽。</p>
+<h2 id="git推上去">git推上去</h2>
+<p><img src="./images/微项目：一步一步带你使用SpringBoot入门（二）9.png" /></p>
+<p><img src="./images/微项目：一步一步带你使用SpringBoot入门（二）10.png" /></p>
+<p>OK今天的活就完工了。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

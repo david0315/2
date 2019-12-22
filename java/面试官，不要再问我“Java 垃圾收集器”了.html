@@ -1,0 +1,109 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修面试官，不要再问我“Java 垃圾收集器”了' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>面试官，不要再问我“Java 垃圾收集器”了</center></div><div class='banquan'>原文出处:本文由博客园博主程序新视界提供。<br/>
+原文连接:https://www.cnblogs.com/secbro/p/11738063.html</div><br>
+    <p>如果Java虚拟机中标记清除算法、标记整理算法、复制算法、分代算法这些属于GC收集算法中的方法论，那么“GC收集器”则是这些方法论的具体实现。</p>
+<p>在面试过程中这个深度的问题涉及的比较少，但对于理解上面的这些算法有很好的帮助。如果能够如数家珍，也是面试中的加分项，还是那句话，毕竟面试官的时间也不多了。</p>
+<h2 id="概念准备">概念准备</h2>
+<p>在学习Java GC收集器之前，需要先了解一些内容和概念，首先如果没有学习《<a href="http://www.choupangxia.com/2019/10/20/interview-jvm-gc-01/">面试官，不要再问我“Java GC垃圾回收机制”了</a>》的可先学习该篇文章，了解基本算法方法论。</p>
+<p>下面了解几个概念以帮助后面的学习：线程暂停（Stop The World）、安全点（Safepoint）、安全区（Safe region）。</p>
+<p>在执行可达性分析的时候会出现在分析的过程中对象关系引用等发生了变化，为了保证分析的准确性，就必须在分析的过程中暂停所有Java线程，Sun将这一事件称作“Stop The World”。</p>
+<p>那么，什么时候暂停合适呢？并不是所有的时刻都可以暂停所有线程进行GC的，只有到达某些点才可以进行GC操作，这些点就称作安全点（Safepoint）。</p>
+<p>安全点的设置不能太少，那样GC等待的时间就会太长，但也不能太多否则会增加运行时的负担。</p>
+<p>所以，安全点的选定基本上是以程序“是否具有让程序长时间执行的特征”为标准进行选定的。比如，循环的末尾、方法临返回前/调用方法的call指令后、可能抛异常的位置等。</p>
+<p>HotSpot采用主动中断的方式，让执行线程在运行期轮询是否需要暂停的（GC设置的）标志，若需要则中断挂起。</p>
+<p>对于正在运行的线程，可以主动运行到安全点并暂停执行，但是对于那些正在Sleep或阻塞的线程，当它们重新执行时可能已经过了安全点，但此时GC可能还没完成垃圾回收，这种情况该怎么办呢？</p>
+<p>于是就有了安全区（Safe region）的概念，安全区是一块区域，在该区域中引用都不会被修改。比如，线程进入到安全区的时候先标识自己进入了安全区，等它被唤醒准备离开时，先检查GC是否完成，如果完成则可以离开，否则就在安全区等待。</p>
+<p>了解了上面的基本概念之后，下面正式进入垃圾收集器的讲解。</p>
+<h2 id="垃圾收集器分类">垃圾收集器分类</h2>
+<p>先通过下图了解一下Hotspot的8种垃圾收集器及其应用。<br />
+<img src="./images/面试官，不要再问我“Java 垃圾收集器”了0.png" alt="image" /></p>
+<p>两个收集器之间的连线，表示它们可以搭配使用。收集器所处的区域表示它是属于新生代收集器还是老年代收集器。其中ZGC为Java11引入的新的垃圾收集器。</p>
+<h2 id="默认垃圾收集器">默认垃圾收集器</h2>
+<p>不同Java版本采用的默认收集器如下。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了1.png" alt="image" /></p>
+<h2 id="serial收集器">Serial收集器</h2>
+<p>Serial收集器是最基本、发展历史最悠久的收集器，是一个单线程的收集器。在进行垃圾收集时，必须暂停其他所有的工作线程，直到它收集结束。就是所谓的“Stop The World。”</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了2.png" alt="image" /></p>
+<h2 id="parnew收集器">ParNew收集器</h2>
+<p>ParNew收集器其实就是Serial收集器的多线程版本。除了使用多线程进行垃圾收集外，其余行为包括Serial收集器可用的所有控制参数、收集算法（复制算法）、Stop The World、对象分配规则、回收策略等与Serial收集器完全相同，两者共用了相当多的代码。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了3.png" alt="image" /></p>
+<h2 id="parallel-scavenge收集器">Parallel Scavenge收集器</h2>
+<p>Parallel Scavenge收集器是一个新生代搜集器，主要采用复制算法，与ParNew类似。但关注点与其他搜集器不同，目标是达到一个可控的吞吐量。</p>
+<h2 id="serial-old收集器">Serial Old收集器</h2>
+<p>Serial Old是Serial收集器的老年代版本，同样是一个单线程收集器，使用标记－整理算法。运作图同Serial搜集器。</p>
+<h2 id="parallel-old收集器">Parallel Old收集器</h2>
+<p>Parallel Old是Parallel Scavenge收集器的老年代版本，使用多线程和“标记－整理”算法。在JDK 1.6中才开始提供。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了4.png" alt="image" /></p>
+<h2 id="cms收集器">CMS收集器</h2>
+<p>CMS（Concurrent Mark and Sweep 并发-标记-清除），是一种以获取最短回收停顿时间为目标的收集器。基于并发、使用标记清除算法，只针对老年代进行垃圾回收。</p>
+<p>CMS收集器工作时，尽可能让GC线程和用户线程并发执行，以达到降低STW时间的目的。</p>
+<p>整个操作步骤分为四步：初始标记（CMS initial mark）、并发标记（CMS concurrent mark）、重新标记（CMS remark）、并发清除（CMS concurrent sweep）。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了5.png" alt="image" /></p>
+<p>在上图过程中，初始标记和重新标记都会触发“Stop The World”。</p>
+<p>初始标记仅仅只是标记一下GC Roots能直接关联到的对象，速度很快，在Java7中是单线程，在Java8以后可采用多线程。</p>
+<p>发标记阶段GC线程和应用线程并发执行，初始标记出来的存活对象，然后继续递归标记这些对象可达的对象。</p>
+<p>重新标记阶段则是为了修正并发标记期间，因用户程序继续运作而导致标记产生变动的那一部分对象的标记记录，这个阶段的停顿时间一般会比初始标记阶段稍长一些，但远比并发标记的时间短。</p>
+<p>优点：并发收集、低停顿。</p>
+<p>缺点：对CPU资源非常敏感、无法处理浮动垃圾、标记-清除算法导致的空间碎片。</p>
+<h2 id="g1收集器">G1收集器</h2>
+<p>G1（Garbage-First）是一款面向服务端应用的垃圾收集器。支持新生代和老年代空间的垃圾收集。</p>
+<p>该收集器可充分利用CPU和硬件缩短STW的时间，还具有“整合空间”、“可预测停顿”等特点。比如，可建立可预测的停顿时间模型，能让使用者明确指定在一个长度为N毫秒的时间片段内，消耗在垃圾收集上的时间不得超过N毫秒。</p>
+<p>使用G1收集器时，Java堆的内存布局与其他收集器有很大差别，它将整个Java堆划分为多个大小相等的独立区域（Region），虽然还保留有新生代和老年代的概念，但新生代和老年代不再是物理隔阂了，它们都是一部分（可以不连续）Region的集合。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了6.png" alt="image" /></p>
+<p>G1会跟踪各个Region里面的垃圾堆积的价值大小（回收所获得的空间大小以及回收所需时间的经验值），在后台维护一个优先列表，每次根据允许的收集时间，优先回收价值最大的Region（这也就是Garbage-First名称的来由）。</p>
+<p>G1收集器的运作大致可划分为以下几个步骤：初始标记（Initial Marking）、并发标记（Concurrent Marking）、最终标记（Final Marking）、筛选回收（Live Data Counting and Evacuation）。</p>
+<p>整个流程来看，前几个步骤与CMS的流程很相似。同样的在初始标记和最终标记的过程中都会触发“Stop The World”。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了7.png" alt="image" /></p>
+<p>其中，筛选回收阶段其实也可以做到与用户程序一起并发执行，但是因为只回收一部分Region，时间是用户可控制的，而且停顿用户线程将大幅度提高收集效率。</p>
+<h2 id="zgc收集器">ZGC收集器</h2>
+<p>ZGC（Z Garbage Collector），是一款可伸缩、低延迟、并发垃圾回收器。在Java11中引入，应用Linux64位系统。</p>
+<p>其旨在实现以下几个目标：停顿时间不超过10ms、停顿时间不随heap大小或存活对象大小增大而增大、可以处理从几百兆到几T的内存大小。</p>
+<p>ZGC将内存划分为多个区域，也称为ZPage。ZPages可以动态创建和销毁。它们也可以动态调整大小（与G1 GC不同），是2 MB的倍数。以下是堆区域的大小组：Small (2 MB)、Medium (32 MB)、Large (N * 2 MB)。</p>
+<p>ZGC堆可以多次出现这些堆区域。中型和大型区域是连续分配的，如下图所示：</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了8.png" alt="image" /></p>
+<p>与其他GC不同，ZGC的物理堆区域可以映射到更大的堆地址空间（其中可以包括虚拟内存）。</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了9.png" alt="image" /></p>
+<p>ZGC的执行过程包括：标记（初始标记、并发标记、边缘情况处理）、重新定位（查找重新定位块、根引用重新定位并更新、并发定位其他对象并存储新旧地址映射）、重新映射。</p>
+<p>其中标记中的初始标记和边缘情况处理会引发“Stop The World”，重新定位中的“根引用重新定位并更新”也会引发“Stop The World”。</p>
+<p>其中重新映射流程图如下：</p>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了10.png" alt="image" /></p>
+<p>ZGC打算以较短的应用程序暂停时间来支持大堆大小。为了实现此目标，它使用了包括彩色64位指针，负载屏障，重定位和重新映射的技术。</p>
+<h2 id="小结">小结</h2>
+<p>本文介绍了场景的垃圾收集器以及相关的概念，属于较深层次的内容，针对这些内容还可以进一步进行横向或纵向拓展。</p>
+<p>有朋友在评论区问，学这些有底层什么用？当然我们不仅仅是为了面试，就拿关于JVM结构及Java8 JVM内存结构变动来说吧。</p>
+<p>昨天在部署一个比较大的项目时就出现“java.lang.OutOfMemoryError: Metaspace”异常，如果学习了之前的相关内容可以很轻易的定位到是因为JVM设置了Metaspace的上限参数，并且参数值设置小导致的。</p>
+<p>最后，《面试官系列》正在持续更新，欢迎关注公众号“程序新视界”，获得最新内容。</p>
+<p>原文链接：《<a href="https://www.choupangxia.com/2019/10/25/interview-jvm-gc-03/">面试官，不要再问我“Java 垃圾收集器”了</a>》</p>
+<p>《面试官》系列文章：</p>
+<ul>
+<li>《<a href="http://www.choupangxia.com/2019/10/18/jvm%e4%b9%8b%e5%86%85%e5%ad%98%e7%bb%93%e6%9e%84%e8%af%a6%e8%a7%a3/">JVM之内存结构详解</a>》</li>
+<li>《<a href="https://www.choupangxia.com/2019/10/20/interview-jvm-gc-01/">面试官，不要再问我“Java GC垃圾回收机制”了</a>》</li>
+<li>《<a href="https://www.choupangxia.com/2019/10/22/interview-jvm-gc-02/">面试官，Java8 JVM内存结构变了，永久代到元空间</a>》</li>
+<li>《<a href="https://www.choupangxia.com/2019/10/25/interview-jvm-gc-03/">面试官，不要再问我“Java 垃圾收集器”了</a>》</li>
+</ul>
+<h2 id="section"><br></h2>
+<center><b>程序新视界</b>：精彩和成长都不容错过</center>
+<p><img src="./images/面试官，不要再问我“Java 垃圾收集器”了11.png" alt="程序新视界-微信公众号" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

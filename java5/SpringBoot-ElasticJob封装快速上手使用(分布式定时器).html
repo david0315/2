@@ -1,0 +1,251 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot-ElasticJob封装快速上手使用(分布式定时器)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot-ElasticJob封装快速上手使用(分布式定时器)</center></div><div class='banquan'>原文出处:本文由博客园博主Purgeyao提供。<br/>
+原文连接:https://www.cnblogs.com/Purgeyao/p/11660660.html</div><br>
+    <h1 id="elastic-job-spring-boot">elastic-job-spring-boot</h1>
+<p><strong>qq交流群:</strong><code>812321371</code></p>
+<h2 id="简介">1 简介</h2>
+<p><code>Elastic-Job</code>是一个分布式调度解决方案，由两个相互独立的子项目<code>Elastic-Job-Lite</code>和<code>Elastic-Job-Cloud</code>组成。<code>Elastic-Job-Lite</code>定位为轻量级无中心化解决方案，使用jar包的形式提供分布式任务的协调服务。<br />
+基于<code>quartz</code>定时任务框架为基础的，因此具备<code>quartz</code>的大部分功能<br />
+使用<code>zookeeper</code>做协调，调度中心，更加轻量级<br />
+支持任务的分片<br />
+支持弹性扩容,可以水平扩展, 当任务再次运行时，会检查当前的服务器数量，重新分片，分片结束之后才会继续执行任务<br />
+失效转移，容错处理，当一台调度服务器宕机或者跟<code>zookeeper</code>断开连接之后，会立即停止作业，然后再去寻找其他空闲的调度服务器，来运行剩余的任务<br />
+提供运维界面，可以管理作业和注册中心。</p>
+<h3 id="使用场景">1.1 使用场景</h3>
+<p>由于项目为微服务，单模块可能在两个实例以上的数量，定时器就会出现多实例同时执行的情况。<br />
+一般定时器缺少管理界面，无法监控定时器是否执行成功。<br />
+市面上常见的解决方案为定时器加锁的操作，或者采用第3方分布式定时器。<br />
+分布式定时器有多种方案，比如阿里内部的<code>ScheduledX</code>，当当网的<code>Elastic job</code>，个人开源的<code>xxl-job</code>等。</p>
+<h3 id="功能列表">1.2 功能列表</h3>
+<ul>
+<li>分布式调度协调</li>
+<li>弹性扩容缩容</li>
+<li>失效转移</li>
+<li>错过执行作业重触发</li>
+<li>作业分片一致性，保证同一分片在分布式环境中仅一个执行实例</li>
+<li>自诊断并修复分布式不稳定造成的问题</li>
+<li>支持并行调度</li>
+<li>支持作业生命周期操作</li>
+<li>丰富的作业类型</li>
+<li>Spring整合以及命名空间提供</li>
+<li>运维平台</li>
+</ul>
+<h3 id="概念">1.3 概念</h3>
+<p>分片：任务的分布式执行，需要将一个任务拆分为多个独立的任务项，然后由分布式的服务器分别执行某一个或几个分片项。<br />
+例如：有一个遍历数据库某张表的作业，现有2台服务器。为了快速的执行作业，那么每台服务器应执行作业的<code>50%</code>。 为满足此需求，可将作业分成2片，每台服务器执行1片。作业遍历数据的逻辑应为：服务器A遍历ID以奇数结尾的数据；服务器B遍历ID以偶数结尾的数据。 如果分成10片，则作业遍历数据的逻辑应为：每片分到的分片项应为ID%10，而服务器A被分配到分片项<code>0,1,2,3,4</code>；服务器B被分配到分片项<code>5,6,7,8,9</code>，直接的结果就是服务器A遍历<code>ID</code>以<code>0-4</code>结尾的数据；服务器B遍历<code>ID</code>以<code>5-9</code>结尾的数据。</p>
+<p>历史轨迹：<code>Elastic-Job</code>提供了事件追踪功能，可通过事件订阅的方式处理调度过程的重要事件，用于查询、统计和监控。</p>
+<h3 id="封装elasticjob">1.4 封装<code>elasticjob</code></h3>
+<p>由于当当网<code>Elastic job</code>处于1年间未更新阶段，相关jar处于可以使用阶段功能不全。考虑到使用场景为多项目使用，将<code>elastic-job-lite-spring</code>简单封装便于使用。</p>
+<h2 id="使用说明">2.使用说明:</h2>
+<h3 id="添加依赖">2.1 添加依赖</h3>
+<p>ps:<code>实际version版本请使用最新版</code></p>
+<pre><code><code>&lt;dependency&gt;
+  &lt;groupId&gt;com.purgeteam&lt;/groupId&gt;
+  &lt;artifactId&gt;elasticjob-spring-boot-starter&lt;/artifactId&gt;
+  &lt;version&gt;0.1.1.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h3 id="配置">2.2 配置</h3>
+<p>ps: 需要<code>mysql</code>,<code>zookeeper</code>支持，请提前搭建好。</p>
+<p>配置<code>bootstrap.yml</code>或者<code>application.yml</code>。</p>
+<p>加入以下配置：</p>
+<pre><code><code>spring:
+  elasticjob:
+    datasource: # job需要的记录数据源
+      url: jdbc:mysql://127.0.0.1:3306/batch_log?useUnicode=true&amp;characterEncoding=utf-8&amp;verifyServerCertificate=false&amp;useSSL=false&amp;requireSSL=false
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      username: root
+      password: Rtqw123OpnmER
+    regCenter: # 注册中心
+      serverList: 127.0.0.1:2181
+      namespace: elasticJobDemo</code></code></pre>
+<h3 id="定时器实现方法编写">2.3 定时器实现方法编写</h3>
+<p>创建定时器类（唯一不同的地方在于将<code>@Scheduled</code>改为实现<code>SimpleJob</code>接口即可）<br />
+定时器实现方法编写在<code>execute</code>方法里。</p>
+<pre class="java"><code>@Slf4j
+@Component
+public class MySimpleJob implements SimpleJob {
+
+    //  @Scheduled(cron = &quot;0 0/1 * * * ?&quot;)
+    @Override
+    public void execute(ShardingContext shardingContext) {
+        log.info(String.format(&quot;Thread ID: %s, 作业分片总数: %s, &quot; +
+                        &quot;当前分片项: %s.当前参数: %s,&quot; +
+                        &quot;作业名称: %s.作业自定义参数: %s&quot;,
+                Thread.currentThread().getId(),
+                shardingContext.getShardingTotalCount(),
+                shardingContext.getShardingItem(),
+                shardingContext.getShardingParameter(),
+                shardingContext.getJobName(),
+                shardingContext.getJobParameter()
+        ));
+        // 分片大致如下：根据配置的分片参数执行相应的逻辑
+        switch (context.getShardingItem()) {
+            case 0: 
+                // do something by sharding item 0
+                break;
+            case 1: 
+                // do something by sharding item 1
+                break;
+            case 2: 
+                // do something by sharding item 2
+                break;
+            // case n: ...
+        }
+    }
+}</code></code></pre>
+<pre><code><code>log：Thread ID: 66, 作业分片总数: 1, 当前分片项: 0.当前参数: Beijing,作业名称: PropertiesSimpleJob.作业自定义参数: test</code></code></pre>
+<h3 id="配置定时器">2.4 配置定时器</h3>
+<h4 id="创建configuration类">2.4.1 创建Configuration类</h4>
+<p>将<code>ZookeeperRegistryCenter</code>和<code>JobEventConfiguration</code>注入。<br />
+创建<code>JobScheduler</code> <code>@Bean(initMethod = &quot;init&quot;)</code>。<br />
+在<code>mySimpleJobScheduler</code>方法里先通过<code>ElasticJobUtils#getLiteJobConfiguration</code>获取<code>LiteJobConfiguration</code>对象。<br />
+创建<code>SpringJobScheduler</code>对象返回即可。</p>
+<pre class="java"><code>@Configuration
+public class MyJobConfig {
+
+    // job 名称
+    private static final String JOB_NAME = &quot;MySimpleJob&quot;;
+
+    // 定时器cron参数
+    private static final String CRON = &quot;0 0/1 * * * ?&quot;;
+
+    // 定时器分片
+    private static final int SHARDING_TOTAL_COUNT = 1;
+
+    // 分片参数
+    private static final String SHARDING_ITEM_PARAMETERS = &quot;0=Beijing,1=Shanghai,2=Guangzhou&quot;;
+
+    // 自定义参数
+    private static final String JOB_PARAMETERS = &quot;parameter&quot;;
+
+    @Resource
+    private ZookeeperRegistryCenter regCenter;
+
+    @Resource
+    private JobEventConfiguration jobEventConfiguration;
+
+
+    @Bean(initMethod = &quot;init&quot;)
+    public JobScheduler mySimpleJobScheduler(final MySimpleJob mySimpleJob) {
+
+        LiteJobConfiguration liteJobConfiguration = ElasticJobUtils
+                .getLiteJobConfiguration(mySimpleJob.getClass(), JOB_NAME, CRON,
+                        SHARDING_TOTAL_COUNT, SHARDING_ITEM_PARAMETERS, JOB_PARAMETERS);
+        // 参数：1.定时器实例，2.注册中心类，3.LiteJobConfiguration，
+        //     3.历史轨迹（不需要可以省略）
+        return new SpringJobScheduler(mySimpleJob, regCenter, liteJobConfiguration, jobEventConfiguration);
+    }
+
+}</code></code></pre>
+<p><code>ElasticJobUtils#getLiteJobConfiguration</code>参数简介：</p>
+<pre class="java"><code>/**
+     * 获取 {@link LiteJobConfiguration} 对象
+     *
+     * @param jobClass               定时器实现类
+     * @param jobName                定时器名称
+     * @param cron                   定时参数
+     * @param shardingTotalCount     作业分片总数
+     * @param shardingItemParameters 当前参数 可以为null
+     * @param jobParameters          作业自定义参数 可以为null
+     * @return {@link LiteJobConfiguration}
+     */
+  public static LiteJobConfiguration getLiteJobConfiguration(
+      final Class&lt;? extends SimpleJob&gt; jobClass,
+      final String jobName,
+      final String cron,
+      final int shardingTotalCount,
+      final String shardingItemParameters,
+      final String jobParameters) {
+  ...
+    return ...;
+  }</code></code></pre>
+<h4 id="简化configuration类">2.4.2 简化Configuration类</h4>
+<p>当然也可以用下面的<code>@Configuration</code>实现简化,配置<code>bootstrap.yml</code>或者<code>application.yml</code>。</p>
+<pre class="yaml"><code>spring:
+  elasticjob:
+    scheduled:
+      jobConfigMap: // 为map集合
+        PropertiesSimpleJob: // 定时器key名称
+          jobName: PropertiesSimpleJob // job名称
+          cron: 0 0/1 * * * ? // cron表达式
+          shardingTotalCount: 2 // 分片数量
+          shardingItemParameters: 0=123,1=332 // 分片参数
+          jobParameters: test // 自定义参数</code></code></pre>
+<p>注入<code>SpringJobSchedulerFactory</code>，在<code>propertiesSimpleJobScheduler</code>方法里调用<code>gerSpringJobScheduler</code>方法即可。</p>
+<pre class="java"><code>@Configuration
+public class PropertiesSimpleJobConfig {
+
+    @Resource
+    private SpringJobSchedulerFactory springJobSchedulerFactory;
+
+    @Bean(initMethod = &quot;init&quot;)
+    public JobScheduler propertiesSimpleJobScheduler(final PropertiesSimpleJob job) {
+        // 参数：1.定时器实例，2.配置名称，3.是否开启历史轨迹
+        return springJobSchedulerFactory.getSpringJobScheduler(job,&quot;PropertiesSimpleJob&quot;, true);
+    }
+
+}</code></code></pre>
+<h4 id="注解方式配置推荐方式">2.4.3 注解方式配置(推荐方式)</h4>
+<p>ps:这个注解包含了上述方式，简化定时器注入。</p>
+<p>继承<code>SimpleJob</code>实现方法<code>execute</code>。</p>
+<p>在<code>AnnotationSimpleJob</code>类上加入注解<code>@ElasticJobScheduler</code>即可。<br />
+下面为完整注解。</p>
+<pre class="java"><code>@Slf4j
+@ElasticJobScheduler(
+        name = &quot;AnnotationSimpleJob&quot;, // 定时器名称
+        cron = &quot;0/8 * * * * ?&quot;, // 定时器表达式
+        shardingTotalCount = 1, // 作业分片总数 默认为1
+        shardingItemParameters = &quot;0=Beijing,1=Shanghai,2=Guangzhou&quot;,  // 分片序列号和参数用等号分隔 不需要参数可以不加
+        jobParameters = &quot;123&quot;, // 作业自定义参数 不需要参数可以不加
+        isEvent = true // 是否开启数据记录 默认为true
+)
+public class AnnotationSimpleJob implements SimpleJob {
+
+    @Override
+    public void execute(ShardingContext shardingContext) {
+        log.info(String.format(&quot;Thread ID: %s, 作业分片总数: %s, &quot; +
+                        &quot;当前分片项: %s.当前参数: %s,&quot; +
+                        &quot;作业名称: %s.作业自定义参数: %s&quot;,
+                Thread.currentThread().getId(),
+                shardingContext.getShardingTotalCount(),
+                shardingContext.getShardingItem(),
+                shardingContext.getShardingParameter(),
+                shardingContext.getJobName(),
+                shardingContext.getJobParameter()
+        ));
+    }
+}</code></code></pre>
+<h2 id="总结">总结</h2>
+<p>分布式job可以解决多个项目同一个定时器都执行的问题，配合elastic-job控制台可以直观监控定时器执行情况等。</p>
+<p><img src="./images/SpringBoot-ElasticJob封装快速上手使用(分布式定时器)0.png" alt="img" /></p>
+<blockquote>
+<p>示例代码地址:<a href="https://github.com/purgeteam/elastic-job-spring-boot">elastic-job-spring-boot</a></p>
+</blockquote>
+<blockquote>
+<p>作者GitHub:<br />
+<a href="https://github.com/purgeyao">Purgeyao</a> 欢迎关注<br />
+本文由博客一文多发平台 <a href="https://openwrite.cn">OpenWrite</a> 发布！</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

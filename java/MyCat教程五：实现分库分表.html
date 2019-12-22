@@ -1,0 +1,124 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修MyCat教程五：实现分库分表' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>MyCat教程五：实现分库分表</center></div><div class='banquan'>原文出处:本文由博客园博主HG-93提供。<br/>
+原文连接:https://www.cnblogs.com/cxydmx/p/11740721.html</div><br>
+    <p><br><p> 本文我们来介绍下MyCat的分库分表操作</p><br />
+<h1><a name="t0"></a><a id="_1"></a>分库分表</h1><br />
+<h2><a name="t1"></a><a id="_2"></a>一、分片规则介绍</h2><br />
+<p>  在<code>rule.xml</code>中定义了各种myCat支持的分片规则。</p><br />
+<ol><br />
+<li>取模mod-long</li><br />
+<li>自然月分片 sharding-by-month</li><br />
+<li>按日期(天)分片sharding-by-date</li><br />
+<li>按单月小时拆分sharding-by-hour</li><br />
+<li>范围约定，提前规划好分片字段某个范围属于哪个分片，auto-sharding-long</li><br />
+<li>范围求模分片</li><br />
+<li>取模范围约束sharding-by-pattern</li><br />
+<li>分片枚举sharding-by-intfile</li><br />
+<li>固定分片hash算法</li><br />
+<li>截取数字hash解析sharding-by-stringhash</li><br />
+<li>一致性hash</li><br />
+<li>日期范围hash分片rangeDateHash</li><br />
+<li>截取数字做hash求模范围约束sharding-by-prefixpattern</li><br />
+<li>应用指定，在运行阶段有应用自主决定路由到那个分片。sharding-by-substring</li><br />
+<li>冷热数据分片 sharding-by-date</li><br />
+<li>有状态分片算法</li><br />
+<li>crc32slot分片算法</li><br />
+</ol><br />
+<p><code>注意</code>:</p><br />
+<ol><br />
+<li>id中推荐配置主键列</li><br />
+<li>所有的 tableRule 只能使用一次。如果需要为多个表配置相同的分片规则，那么需要在此重新定义该规则。</li><br />
+<li>在 crc32Slot 算法中的分片数量一旦给定，MyCat 会将该分片数量和 slor 的取值范围保存到文件中。在次修改分片数量时是不会生效的，需要将该文件删除。文件位置位于 conf目录中的 ruledata 目录中。</li><br />
+</ol><br />
+<h2><a name="t2"></a><a id="_31"></a>二、分库配置</h2><br />
+<h3><a name="t3"></a><a id="21_3_32"></a>2.1 创建3个数据库</h3><br />
+<p>  在<code>master</code>中分别创建3个数据库<code>demo1</code>,<code>demo2</code>,<code>demo3</code>,因为主从的关系会同步到从库中。</p><br />
+<pre><code><code class="prism language-sql has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;"><span class="token keyword">create</span> <span class="token keyword">database</span> demo1 <span class="token keyword">default</span> <span class="token keyword">character</span> <span class="token keyword">set</span> utf8<span class="token punctuation">;</span><br />
+<span class="token keyword">create</span> <span class="token keyword">database</span> demo2 <span class="token keyword">default</span> <span class="token keyword">character</span> <span class="token keyword">set</span> utf8<span class="token punctuation">;</span><br />
+<span class="token keyword">create</span> <span class="token keyword">database</span> demo3 <span class="token keyword">default</span> <span class="token keyword">character</span> <span class="token keyword">set</span> utf8<span class="token punctuation">;</span><br />
+<src class="hljs-button {2}" data-title="复制"></code></code></pre><br />
+<p><img src="./images/MyCat教程五：实现分库分表0.png" alt="在这里插入图片描述"></p><br />
+<h3><a name="t4"></a><a id="22_schemaxml_42"></a>2.2 schema.xml配置</h3><br />
+<p>  修改schema.xml文件中的信息，如下：</p><br />
+<pre><code><code class="prism language-xml has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;"><span class="token prolog">&lt;?xml version=&quot;1.0&quot;?&gt;</span><br />
+<span class="token doctype">&lt;!DOCTYPE mycat:schema SYSTEM &quot;schema.dtd&quot;&gt;</span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span><span class="token namespace">mycat:</span>schema</span> <span class="token attr-name"><span class="token namespace">xmlns:</span>mycat</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span><a href="http://io.mycat/" class="uri">http://io.mycat/</a><span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>schema</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>TESTDB<span class="token punctuation">&quot;</span></span> <span class="token attr-name">checkSQLschema</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>false<span class="token punctuation">&quot;</span></span> <span class="token attr-name">sqlMaxLimit</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>100<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>table</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>t_user<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataNode</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn1,dn2,dn3<span class="token punctuation">&quot;</span></span> <span class="token attr-name">rule</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>crc32slot<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>schema</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataNode</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataHost</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">database</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>demo1<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataNode</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn2<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataHost</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">database</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>demo2<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataNode</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn3<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataHost</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">database</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>demo3<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataHost</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">maxCon</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1000<span class="token punctuation">&quot;</span></span> <span class="token attr-name">minCon</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>10<span class="token punctuation">&quot;</span></span> <span class="token attr-name">balance</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1<span class="token punctuation">&quot;</span></span><br />
+<span class="token attr-name">writeType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>0<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dbType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>mysql<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dbDriver</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>native<span class="token punctuation">&quot;</span></span> <span class="token attr-name">switchType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">slaveThreshold</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>100<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>heartbeat</span><span class="token punctuation">&gt;</span></span>select user()<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>heartbeat</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token comment">&lt;!-- can have multi write hosts --&gt;</span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>writeHost</span> <span class="token attr-name">host</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>hostM1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">url</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>192.168.88.180:3306<span class="token punctuation">&quot;</span></span> <span class="token attr-name">user</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>root<span class="token punctuation">&quot;</span></span><br />
+<span class="token attr-name">password</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>123456<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token comment">&lt;!-- can have multi read hosts --&gt;</span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>readHost</span> <span class="token attr-name">host</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>hostS2<span class="token punctuation">&quot;</span></span> <span class="token attr-name">url</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>192.168.88.181:3306<span class="token punctuation">&quot;</span></span> <span class="token attr-name">user</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>root<span class="token punctuation">&quot;</span></span> <span class="token attr-name">password</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>123456<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>writeHost</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>dataHost</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span><span class="token namespace">mycat:</span>schema</span><span class="token punctuation">&gt;</span></span><br />
+<src class="hljs-button {2}" data-title="复制"></code></code></pre><br />
+<p><code>注意</code>:</p><br />
+<ol><br />
+<li>因为有三个库，所以添加了三个<code>dataNode</code></li><br />
+<li>使用的分配规则是<code>crc32slot</code></li><br />
+<li>主从和读写分离设置没有动，所以<code>writeHost</code>和<code>readHost</code>的配置没变</li><br />
+</ol><br />
+<h3><a name="t5"></a><a id="23_rulexml_73"></a>2.3 修改rule.xml文件</h3><br />
+<p>  因为使用的是<code>crc32slot</code>算法，且有3个数据库，所以需要修改rule.xml中的配置</p><br />
+<p><img src="./images/MyCat教程五：实现分库分表1.png" alt="在这里插入图片描述"><br><br />
+同时我们需要删除掉<code>ruledata</code>目录中的规则文件，不然修改的<code>3</code>不会起作用</p><br />
+<p><img src="./images/MyCat教程五：实现分库分表2.png" alt="在这里插入图片描述"></p><br />
+<p>重启mycat服务</p><br />
+<p><img src="./images/MyCat教程五：实现分库分表3.png" alt="在这里插入图片描述"></p><br />
+<p>查看分配规则</p><br />
+<p><img src="./images/MyCat教程五：实现分库分表4.png" alt="在这里插入图片描述"></p><br />
+<h3><a name="t6"></a><a id="23_mycatt_user_93"></a>2.3 在mycat中创建t_user表</h3></p>
+<p> 先删除原来创建的<code>t_user</code>表，然后通过mycat创建<code>t_user</code>表示，通过mycat创建会多出来一个<code>_slot</code>字段。</p>
+<pre><code><code class="prism language-sql has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;"><span class="tokenkeyword">CREATE</span> <span class="token keyword">TABLE</span> t_user <span class="token punctuation">(</span>
+<span class="token punctuation">`</span>id<span class="token punctuation">`</span> <span class="token keyword">INT</span><span class="token punctuation">,</span>
+<span class="token punctuation">`</span>name<span class="token punctuation">`</span> <span class="token keyword">VARCHAR</span> <span class="token punctuation">(</span><span class="token number">30</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+<span class="token punctuation">`</span>age<span class="token punctuation">`</span> <span class="token keyword">INT</span><span class="token punctuation">,</span><span class="token keyword">PRIMARY</span> <span class="token keyword">KEY</span> <span class="token punctuation">(</span><spanclass="tokenpunctuation">`</span>id<span class="token punctuation">`</span><span class="token punctuation">)</span>
+<span class="token punctuation">)</span> <span class="token keyword">ENGINE</span> <span class="token operator">=</span> <span class="tokenkeyword">INNODB</span> <span class="token keyword">DEFAULT</span> <span class="token keyword">CHARSET</span> <span class="token operator">=</span> utf8<span class="token punctuation">;</span>
+</code></code></pre>
+<p><img src="./images/MyCat教程五：实现分库分表5.png" alt="在这里插入图片描述"></p>
+<h2><a name="t7"></a><a id="_109"></a>三、分库测试</h2>
+<p>  在mycat客户端插入数据，然后去对应的物理库中查询具体的情况</p>
+<pre><code><code class="prism language-sql has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;"><span class="token keyword">insert</span> <span class="token keyword">into</span> t_user<span class="token punctuation">(</span>id<span class="token punctuation">,</span>name<span class="token punctuation">,</span>age<span class="token punctuation">)</span><span class="token keyword">values</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">,</span><span class="token string">'HG-93'</span><span class="token punctuation">,</span><span class="token number">14</span><span class="token punctuation">)</span>
+<src class="hljs-button {2}" data-title="复制"></code></code></pre>
+<p><code>注意</code>:插入语句的语法要完整，不要偷懒省略字段，尤其是<code>id</code>自增长！！！</p>
+<p><img src="./images/MyCat教程五：实现分库分表6.png" alt="在这里插入图片描述"></p>
+<p>数据按照我们设置的规则分别存储到了各自数据的表结构中了。</p>
+<p>然后我们来看下查询操作，通过mycat看能否将所有的数据都查询出来，</p>
+<p><img src="./images/MyCat教程五：实现分库分表7.png" alt="在这里插入图片描述"></p>
+
+<p><br></p>
+<hr>
+<p><font color="Darkorange" size="4px"><b>关注微信公众号【<a style="text-decoration:none" href="http://mp.weixin.qq.com/s?__biz=MzU0OTg3ODQxNA==&mid=100000173&idx=1&sn=1af862786cc9126634f630a5d4d37d17&chksm=7ba86e4c4cdfe75aa0ce43095cbc2babff63affb0a5e18b5e8ff6a8f6fdc4b4bc129d6e7af10#rd">程序员的梦想</a>】，专注于Java，SpringBoot，SpringCloud，微服务，Docker以及前后端分离等全栈技术。</b></font></p>
+<p><img src="./images/MyCat教程五：实现分库分表8.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

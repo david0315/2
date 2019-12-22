@@ -1,0 +1,738 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring5 源码深度解析----- 创建AOP代理之获取增强器' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring5 源码深度解析----- 创建AOP代理之获取增强器</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11589856.html</div><br>
+    <p>在上一篇的博文中我们讲解了通过自定义配置完成了对AnnotationAwareAspectJAutoProxyCreator类型的自动注册，那么这个类到底做了什么工作来完成AOP的操作呢？首先我们看看AnnotationAwareAspectJAutoProxyCreator的层次结构，如下图所示：&nbsp;</p>
+<p><img src="./images/spring5 源码深度解析----- 创建AOP代理之获取增强器0.png" alt="" /></p>
+<p>从上图的类层次结构图中我们看到这个类实现了BeanPostProcessor接口，而实现BeanPostProcessor后，当Spring加载这个Bean时会在实例化前调用其postProcesssAfterIntialization方法，而我们对于AOP逻辑的分析也由此开始。 <br />首先看下其父类AbstractAutoProxyCreator中的postProcessAfterInitialization方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> Object postProcessAfterInitialization(@Nullable Object bean, String beanName) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">if</span> (bean != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">根据给定的bean的class和name构建出个key，格式：beanClassName_beanName  </span>
+        Object cacheKey =<span style="color: #000000;"> getCacheKey(bean.getClass(), beanName);
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.earlyProxyReferences.contains(cacheKey)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果它适合被代理，则需要封装指定bean  </span>
+            <span style="color: #0000ff;">return</span><span style="color: #000000;"> wrapIfNecessary(bean, beanName, cacheKey);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+}</span></code></pre>
+
+<p>在上面的代码中用到了方法wrapIfNecessary，继续跟踪到方法内部：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果已经处理过</span>
+    <span style="color: #0000ff;">if</span> (StringUtils.hasLength(beanName) &amp;&amp; <span style="color: #0000ff;">this</span><span style="color: #000000;">.targetSourcedBeans.contains(beanName)) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 无需增强</span>
+    <span style="color: #0000ff;">if</span> (Boolean.FALSE.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.get(cacheKey))) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 给定的bean类是否代表一个基础设施类，基础设施类不应代理，或者配置了指定bean不需要自动代理</span>
+    <span style="color: #0000ff;">if</span> (isInfrastructureClass(bean.getClass()) ||<span style="color: #000000;"> shouldSkip(bean.getClass(), beanName)) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create proxy if we have advice.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果存在增强方法则创建代理</span>
+ <strong>   Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 如果获取到了增强则需要针对增强创建代理</span>
+    <span style="color: #0000ff;">if</span> (specificInterceptors !=<span style="color: #000000;"> DO_NOT_PROXY) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.TRUE);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建代理</span>
+      <strong>  Object proxy =<span style="color: #000000;"> createProxy(
+                bean.getClass(), beanName, specificInterceptors, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SingletonTargetSource(bean));
+        </span></strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.proxyTypes.put(cacheKey, proxy.getClass());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> proxy;
+    }
+
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+}</span></code></pre>
+
+<p>函数中我们已经看到了代理创建的雏形。当然，真正开始之前还需要经过一些判断，比如是否已经处理过或者是否是需要跳过的bean，而真正创建代理的代码是从getAdvicesAndAdvisorsForBean开始的。 <br />创建代理主要包含了两个步骤： <br />（1）获取增强方法或者增强器； <br />（2）根据获取的增强进行代理。&nbsp;</p>
+<p>其中逻辑复杂，我们首先来看看获取增强方法的实现逻辑。是在AbstractAdvisorAutoProxyCreator中实现的，代码如下：</p>
+<p><strong>AbstractAdvisorAutoProxyCreator</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object[] getAdvicesAndAdvisorsForBean(
+        Class</span>&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName, @Nullable TargetSource targetSource) {
+
+    List</span>&lt;Advisor&gt; advisors =<strong><span style="color: #000000;"> findEligibleAdvisors(beanClass, beanName);
+    </span></strong><span style="color: #0000ff;">if</span><span style="color: #000000;"> (advisors.isEmpty()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> DO_NOT_PROXY;
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors.toArray();
+}
+</span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt; findEligibleAdvisors(Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName) {
+    List</span>&lt;Advisor&gt; candidateAdvisors =<span style="color: #000000;"><strong> findCandidateAdvisors();</strong>
+    List</span>&lt;Advisor&gt; eligibleAdvisors =<span style="color: #000000;"><strong> findAdvisorsThatCanApply</strong>(candidateAdvisors, beanClass, beanName);
+    extendAdvisors(eligibleAdvisors);
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">eligibleAdvisors.isEmpty()) {
+        eligibleAdvisors </span>=<span style="color: #000000;"> sortAdvisors(eligibleAdvisors);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+}</span></code></pre>
+
+<p>对于指定bean的增强方法的获取一定是包含两个步骤的，获取所有的增强以及寻找所有增强中使用于bean的增强并应用，那么<strong>findCandidateAdvisors</strong>与<strong>findAdvisorsThatCanApply</strong>便是做了这两件事情。当然，如果无法找到对应的增强器便返回DO_NOT_PROXY，其中DO_NOT_PROXY=null。</p>
+<h2 id="1-获取增强器">获取增强器</h2>
+<p>由于我们分析的是使用注解进行的AOP，所以对于findCandidateAdvisors的实现其实是由AnnotationAwareAspectJAutoProxyCreator类完成的，我们继续跟踪AnnotationAwareAspectJAutoProxyCreator的findCandidateAdvisors方法。代码如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findCandidateAdvisors() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Add all the Spring advisors found according to superclass rules.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当使用注解方式配置AOP的时候并不是丢弃了对XML配置的支持，
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 在这里调用父类方法加载配置文件中的AOP声明</span>
+    List&lt;Advisor&gt; advisors = <span style="color: #0000ff;">super</span><span style="color: #000000;">.findCandidateAdvisors();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Build Advisors for all AspectJ aspects in the bean factory.</span>
+    <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.aspectJAdvisorsBuilder != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+      <strong>  advisors.addAll(</strong></span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.aspectJAdvisorsBuilder.buildAspectJAdvisors());</strong>
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+}</span></code></pre>
+
+<p>AnnotationAwareAspectJAutoProxyCreator间接继承了AbstractAdvisorAutoProxyCreator，在实现获取增强的方法中除了保留父类的获取配置文件中定义的增强外，同时添加了获取Bean的注解增强的功能，那么其实现正是由this.aspectJAdvisorsBuilder.buildAspectJAdvisors()来实现的。 <br />在真正研究代码之前读者可以尝试着自己去想象一下解析思路，看看自己的实现与Spring是否有差别呢？</p>
+<p>（1）获取所有beanName，这一步骤中所有在beanFactory中注册的Bean都会被提取出来。 <br />（2）遍历所有beanName，并找出声明AspectJ注解的类，进行进一步的处理。 <br />（3）对标记为AspectJ注解的类进行增强器的提取。 <br />（4）将提取结果加入缓存。&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> buildAspectJAdvisors() {
+    List</span>&lt;String&gt; aspectNames = <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectBeanNames;
+
+    </span><span style="color: #0000ff;">if</span> (aspectNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">) {
+            aspectNames </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectBeanNames;
+            </span><span style="color: #0000ff;">if</span> (aspectNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+                aspectNames </span>= <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 获取所有的beanName</span></strong>
+                String[] beanNames =<span style="color: #000000;"> BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+                        </span><span style="color: #0000ff;">this</span>.beanFactory, Object.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 循环所有的beanName找出对应的增强方法</span></strong>
+                <span style="color: #0000ff;">for</span><span style="color: #000000;"> (String beanName : beanNames) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 不合法的bean则略过，由子类定义规则，默认返回true</span>
+                    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isEligibleBean(beanName)) {
+                        </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                    }
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> We must be careful not to instantiate beans eagerly as in this case they
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> would be cached by the Spring container but would not have been weaved.
+                    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 获取对应的bean的Class类型</span>
+                    Class&lt;?&gt; beanType = <span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.getType(beanName);
+                    </span></strong><span style="color: #0000ff;">if</span> (beanType == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                        </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                    }
+                    </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 如果存在Aspect注解</span></strong>
+                    <span style="color: #0000ff;">if</span> (<strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.advisorFactory.isAspect(beanType)</strong>) {
+                        aspectNames.add(beanName);
+                        AspectMetadata amd </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectMetadata(beanType, beanName);
+                        </span><span style="color: #0000ff;">if</span> (amd.getAjType().getPerClause().getKind() ==<span style="color: #000000;"> PerClauseKind.SINGLETON) {
+                            MetadataAwareAspectInstanceFactory factory </span>=
+                                    <span style="color: #0000ff;">new</span> BeanFactoryAspectInstanceFactory(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory, beanName);
+                            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析标记Aspect注解中的增强方法</span>
+                            List&lt;Advisor&gt; classAdvisors = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory);
+                            </span></strong><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isSingleton(beanName)) {
+                                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">将增强器存入缓存中，下次可以直接取</span>
+                                <span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.advisorsCache.put(beanName, classAdvisors);</strong>
+                            }
+                            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.put(beanName, factory);
+                            }
+                            advisors.addAll(classAdvisors);
+                        }
+                        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Per target or per this.</span>
+                            <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isSingleton(beanName)) {
+                                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Bean with name '" + beanName +
+                                        "' is a singleton, but aspect instantiation model is not singleton"<span style="color: #000000;">);
+                            }
+                            MetadataAwareAspectInstanceFactory factory </span>=
+                                    <span style="color: #0000ff;">new</span> PrototypeAspectInstanceFactory(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory, beanName);
+                            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.put(beanName, factory);
+                            advisors.addAll(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory));
+                        }
+                    }
+                }
+                </span><span style="color: #0000ff;">this</span>.aspectBeanNames =<span style="color: #000000;"> aspectNames;
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+            }
+        }
+    }
+
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (aspectNames.isEmpty()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Collections.emptyList();
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 记录在缓存中</span>
+    List&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String aspectName : aspectNames) {
+        List</span>&lt;Advisor&gt; cachedAdvisors = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorsCache.get(aspectName);
+        </span><span style="color: #0000ff;">if</span> (cachedAdvisors != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            advisors.addAll(cachedAdvisors);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            MetadataAwareAspectInstanceFactory factory </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.get(aspectName);
+            advisors.addAll(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory));
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+}</span></code></pre>
+
+<p>至此，我们已经完成了Advisor的提取，在上面的步骤中最为重要也最为繁杂的就是增强器的获取，而这一切功能委托给了getAdvisors方法去实现（this.advisorFactory.getAdvisors(factory)）。</p>
+<p>我们先来看看&nbsp;<strong>this</strong><strong>.advisorFactory.isAspect(beanType)</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> isAspect(Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+    </span><span style="color: #0000ff;">return</span> (hasAspectAnnotation(clazz) &amp;&amp; !<span style="color: #000000;">compiledByAjc(clazz));
+}
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span> hasAspectAnnotation(Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+    </span><span style="color: #0000ff;">return</span> (AnnotationUtils.findAnnotation(clazz, Aspect.<span style="color: #0000ff;">class</span>) != <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+@Nullable
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> &lt;A <span style="color: #0000ff;">extends</span> Annotation&gt; A findAnnotation(Class&lt;?&gt; clazz, Class&lt;A&gt; annotationType, Set&lt;Annotation&gt;<span style="color: #000000;"> visited) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">判断此Class 是否存在Aspect.class注解</span>
+      <strong>  A annotation =<span style="color: #000000;"> clazz.getDeclaredAnnotation(annotationType);
+        </span></strong><span style="color: #0000ff;">if</span> (annotation != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> annotation;
+        }
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Annotation declaredAnn : getDeclaredAnnotations(clazz)) {
+            Class</span>&lt;? <span style="color: #0000ff;">extends</span> Annotation&gt; declaredType =<span style="color: #000000;"> declaredAnn.annotationType();
+            </span><span style="color: #0000ff;">if</span> (!isInJavaLangAnnotationPackage(declaredType) &amp;&amp;<span style="color: #000000;"> visited.add(declaredAnn)) {
+                annotation </span>=<span style="color: #000000;"> findAnnotation(declaredType, annotationType, visited);
+                </span><span style="color: #0000ff;">if</span> (annotation != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> annotation;
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>如果&nbsp;bean 存在<strong>&nbsp;Aspect.class</strong>注解，就可以获取此bean中的增强器了，接着我们来看看<strong>&nbsp;List&lt;Advisor&gt; classAdvisors = this.advisorFactory.getAdvisors(factory);</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> getAdvisors(MetadataAwareAspectInstanceFactory aspectInstanceFactory) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取标记为AspectJ的类</span>
+    Class&lt;?&gt; aspectClass =<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectClass();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取标记为AspectJ的name</span>
+    String aspectName =<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectName();
+    validate(aspectClass);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> We need to wrap the MetadataAwareAspectInstanceFactory with a decorator
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> so that it will only instantiate once.</span>
+    MetadataAwareAspectInstanceFactory lazySingletonAspectInstanceFactory =
+            <span style="color: #0000ff;">new</span><span style="color: #000000;"> LazySingletonAspectInstanceFactoryDecorator(aspectInstanceFactory);
+
+    List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 对aspectClass的每一个带有注解的方法进行循环（带有PointCut注解的方法除外），取得Advisor，并添加到集合里。
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> (这是里应该是取得Advice，然后取得我们自己定义的切面类中PointCut，组合成Advisor)</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method :<strong> getAdvisorMethods(aspectClass)</strong>) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">将类中的方法封装成Advisor</span>
+        Advisor advisor =<span style="color: #000000;"><strong> getAdvisor</strong>(method, lazySingletonAspectInstanceFactory, advisors.size(), aspectName);
+        </span><span style="color: #0000ff;">if</span> (advisor != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            advisors.add(advisor);
+        }
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> If it's a per target aspect, emit the dummy instantiating aspect.</span>
+    <span style="color: #0000ff;">if</span> (!advisors.isEmpty() &amp;&amp;<span style="color: #000000;"> lazySingletonAspectInstanceFactory.getAspectMetadata().isLazilyInstantiated()) {
+        Advisor instantiationAdvisor </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> SyntheticInstantiationAdvisor(lazySingletonAspectInstanceFactory);
+        advisors.add(</span>0<span style="color: #000000;">, instantiationAdvisor);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Find introduction fields.</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Field field : aspectClass.getDeclaredFields()) {
+        Advisor advisor </span>=<span style="color: #000000;"> getDeclareParentsAdvisor(field);
+        </span><span style="color: #0000ff;">if</span> (advisor != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            advisors.add(advisor);
+        }
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+}</span></code></pre>
+
+<h3>普通增强器的获取</h3>
+<p>普通增强器的获取逻辑通过<strong>getAdvisor</strong>方法实现，实现步骤包括对切点的注解的获取以及根据注解信息生成增强。我们先来看看&nbsp;<strong>getAdvisorMethods(aspectClass)，这个方法，通过很巧妙的使用接口，定义一个匿名回调，把带有注解的Method都取得出来，放到集合里</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> List&lt;Method&gt; getAdvisorMethods(Class&lt;?&gt;<span style="color: #000000;"> aspectClass) {
+    </span><span style="color: #0000ff;">final</span> List&lt;Method&gt; methods = <span style="color: #0000ff;">new</span> LinkedList&lt;Method&gt;<span style="color: #000000;">();
+    ReflectionUtils.doWithMethods(aspectClass, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ReflectionUtils.MethodCallback() {
+        @Override
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> doWith(Method method) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IllegalArgumentException {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Exclude pointcuts
+            </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 将没有使用Pointcut.class注解的方法加入到集合中</span></strong>
+            <span style="color: #0000ff;">if</span> (AnnotationUtils.getAnnotation(method,<strong> Pointcut.<span style="color: #0000ff;">class</span></strong>) == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+               <strong> methods.add(method);</strong>
+            }
+        }
+    });
+    Collections.sort(methods, METHOD_COMPARATOR);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> methods;
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> doWithMethods(Class&lt;?&gt;<span style="color: #000000;"> clazz, MethodCallback mc, @Nullable MethodFilter mf) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Keep backing up the inheritance hierarchy.
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 通过反射获取类中所有的方法</span>
+    Method[] methods =<span style="color: #000000;"> getDeclaredMethods(clazz);
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">遍历所有的方法</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method : methods) {
+        </span><span style="color: #0000ff;">if</span> (mf != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #000000;">mf.matches(method)) {
+            </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">调用函数体</span>
+<span style="color: #000000;"><strong>            mc.doWith(method);</strong>
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IllegalAccessException ex) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalStateException("Not allowed to access method '" + method.getName() + "': " +<span style="color: #000000;"> ex);
+        }
+    }
+    </span><span style="color: #0000ff;">if</span> (clazz.getSuperclass() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        doWithMethods(clazz.getSuperclass(), mc, mf);
+    }
+    </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (clazz.isInterface()) {
+        </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> superIfc : clazz.getInterfaces()) {
+            doWithMethods(superIfc, mc, mf);
+        }
+    }
+}</span></code></pre>
+
+<p>普通增强器的获取逻辑通过 <strong>getAdvisor</strong> 方法来实现，实现步骤包括对切点的注解以及根据注解信息生成增强。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Advisor getAdvisor(Method candidateAdviceMethod, MetadataAwareAspectInstanceFactory aif,
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrderInAspect, String aspectName) {
+
+    validate(aif.getAspectMetadata().getAspectClass());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取PointCut信息（主要是PointCut里的表达式）
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 把Method对象也传进去的目的是，比较Method对象上的注解，是不是下面注解其中一个
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果不是，返回null；如果是，就把取得PointCut内容包装返回
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 被比较注解：Before.class, Around.class, After.class, AfterReturning.class, AfterThrowing.class, Pointcut.class</span>
+    AspectJExpressionPointcut ajexp =<span style="color: #000000;"><strong>
+            getPointcut</strong>(candidateAdviceMethod, aif.getAspectMetadata().getAspectClass());
+    </span><span style="color: #0000ff;">if</span> (ajexp == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 根据PointCut信息生成增强器</span></strong>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> InstantiationModelAwarePointcutAdvisorImpl</strong>(
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">, <strong>ajexp</strong>, aif, <strong>candidateAdviceMethod</strong>, declarationOrderInAspect, aspectName);
+}</span></code></pre>
+
+<p><strong>（1）切点信息的获取&nbsp;</strong></p>
+<p>所谓获取切点信息就是指定注解的表达式信息的获取，如@Before("test()")。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> AspectJExpressionPointcut getPointcut(Method candidateAdviceMethod, Class&lt;?&gt;<span style="color: #000000;"> candidateAspectClass) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取方法上的注解
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 比较Method对象上的注解，是不是下面注解其中一个，如果不是返回null
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 被比较注解：Before.class, Around.class, After.class, AfterReturning.class, AfterThrowing.class, Pointcut.class</span>
+    AspectJAnnotation&lt;?&gt; aspectJAnnotation = <span style="color: #000000;">AbstractAspectJAdvisorFactory.<strong>findAspectJAnnotationOnMethod</strong>(candidateAdviceMethod);
+    </span><span style="color: #0000ff;">if</span> (aspectJAnnotation == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 使用AspectJExpressionPointcut 实例封装获取的信息</span>
+    AspectJExpressionPointcut ajexp = <span style="color: #0000ff;">new</span> AspectJExpressionPointcut(candidateAspectClass, <span style="color: #0000ff;">new</span> String[0], <span style="color: #0000ff;">new</span> Class&lt;?&gt;[0<span style="color: #000000;">]);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 提取得到的注解中的表达式如：
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> @Pointcut（"execution（* test.TestBean.*(..)）"）</span>
+<strong><span style="color: #000000;">    ajexp.setExpression(aspectJAnnotation.getPointcutExpression());
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> ajexp;
+}</span></code></pre>
+
+<p>详细看下上面方法中使用到的方法findAspectJAnnotationOnMethod</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> AspectJAnnotation&lt;?&gt;<span style="color: #000000;"> findAspectJAnnotationOnMethod(Method method) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置要查找的注解类，看看方法的上注解是不是这些注解其中之一</span>
+    Class&lt;?&gt;[] classesToLookFor = <span style="color: #0000ff;">new</span> Class&lt;?&gt;<span style="color: #000000;">[] {
+          <strong>  Before.</strong></span><strong><span style="color: #0000ff;">class</span>, Around.<span style="color: #0000ff;">class</span>, After.<span style="color: #0000ff;">class</span>, AfterReturning.<span style="color: #0000ff;">class</span>, AfterThrowing.<span style="color: #0000ff;">class</span>, Pointcut.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;">};
+    </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> c : classesToLookFor) {
+        AspectJAnnotation</span>&lt;?&gt; foundAnnotation = <strong>findAnnotation</strong>(method, (Class&lt;Annotation&gt;<span style="color: #000000;">) c);
+        </span><span style="color: #0000ff;">if</span> (foundAnnotation != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> foundAnnotation;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>在上面方法中又用到了方法findAnnotation，继续跟踪代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 获取指定方法上的注解并使用 AspectJAnnotation 封装</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> &lt;A <span style="color: #0000ff;">extends</span> Annotation&gt; AspectJAnnotation&lt;A&gt; findAnnotation(Method method, Class&lt;A&gt;<span style="color: #000000;"> toLookFor) {
+    A result </span>=<span style="color: #000000;"> AnnotationUtils.findAnnotation(method, toLookFor);
+    </span><span style="color: #0000ff;">if</span> (result != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> <strong>AspectJAnnotation</strong>&lt;A&gt;<span style="color: #000000;">(result);
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>此方法的功能是获取指定方法上的注解并使用AspectJAnnotation封装。&nbsp;</p>
+<p><strong>（2）根据切点信息生成增强类&nbsp;</strong></p>
+<p>所有的增强都有Advisor实现类InstantiationModelAwarePontcutAdvisorImpl进行统一封装的。我们看下其构造函数：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> InstantiationModelAwarePointcutAdvisorImpl(AspectJAdvisorFactory af, AspectJExpressionPointcut ajexp,
+        MetadataAwareAspectInstanceFactory aif, Method method, </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrderInAspect, String aspectName) {
+
+    </span><span style="color: #0000ff;">this</span>.declaredPointcut =<span style="color: #000000;"> ajexp;
+    </span><span style="color: #0000ff;">this</span>.method =<span style="color: #000000;"> method;
+    </span><span style="color: #0000ff;">this</span>.atAspectJAdvisorFactory =<span style="color: #000000;"> af;
+    </span><span style="color: #0000ff;">this</span>.aspectInstanceFactory =<span style="color: #000000;"> aif;
+    </span><span style="color: #0000ff;">this</span>.declarationOrder =<span style="color: #000000;"> declarationOrderInAspect;
+    </span><span style="color: #0000ff;">this</span>.aspectName =<span style="color: #000000;"> aspectName;
+
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (aif.getAspectMetadata().isLazilyInstantiated()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Static part of the pointcut is a lazy type.</span>
+        Pointcut preInstantiationPointcut =<span style="color: #000000;">
+                Pointcuts.union(aif.getAspectMetadata().getPerClausePointcut(), </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Make it dynamic: must mutate from pre-instantiation to post-instantiation state.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> If it's not a dynamic pointcut, it may be optimized out
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> by the Spring AOP infrastructure after the first evaluation.</span>
+        <span style="color: #0000ff;">this</span>.pointcut = <span style="color: #0000ff;">new</span> PerTargetInstantiationModelPointcut(<span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut, preInstantiationPointcut, aif);
+        </span><span style="color: #0000ff;">this</span>.lazy = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> A singleton aspect.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 初始化Advice</span>
+       <strong> <span style="color: #0000ff;">this</span>.instantiatedAdvice = instantiateAdvice(<span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut);
+        </span></strong><span style="color: #0000ff;">this</span>.pointcut =<span style="color: #000000;"> declaredPointcut;
+        </span><span style="color: #0000ff;">this</span>.lazy = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>通过对上面构造函数的分析，发现封装过程只是简单地将信息封装在类的实例中，所有的额信息单纯地复制。在实例初始化的过程中还完成了对于增强器的初始化。因为不同的增强所体现的逻辑是不同的，比如@Before（&ldquo;test（）&rdquo;）与After（&ldquo;test（）&rdquo;）标签的不同就是增强器增强的位置不同，所以就需要不同的增强器来完成不同的逻辑，而根据注解中的信息初始化对应的额增强器就是在instantiateAdvice函数中实现的，继续跟踪代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> Advice instantiateAdvice(AspectJExpressionPointcut pointcut) {
+    Advice advice </span>= <span style="color: #0000ff;">this</span>.aspectJAdvisorFactory.<strong>getAdvice</strong>(<span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectJAdviceMethod, pointcut,
+            </span><span style="color: #0000ff;">this</span>.aspectInstanceFactory, <span style="color: #0000ff;">this</span>.declarationOrder, <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectName);
+    </span><span style="color: #0000ff;">return</span> (advice != <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> advice : EMPTY_ADVICE);
+}
+
+    @Override
+@Nullable
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Advice getAdvice(Method candidateAdviceMethod, AspectJExpressionPointcut expressionPointcut,
+        MetadataAwareAspectInstanceFactory aspectInstanceFactory, </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrder, String aspectName) {
+
+    Class</span>&lt;?&gt; candidateAspectClass =<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectClass();
+    validate(candidateAspectClass);
+
+    AspectJAnnotation</span>&lt;?&gt; aspectJAnnotation =<span style="color: #000000;">
+            AbstractAspectJAdvisorFactory.findAspectJAnnotationOnMethod(candidateAdviceMethod);
+    </span><span style="color: #0000ff;">if</span> (aspectJAnnotation == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> If we get here, we know we have an AspectJ method.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Check that it's an AspectJ-annotated class</span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isAspect(candidateAspectClass)) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> AopConfigException("Advice must be declared inside an aspect type: " +
+                "Offending method '" + candidateAdviceMethod + "' in class [" +<span style="color: #000000;">
+                candidateAspectClass.getName() </span>+ "]"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+        logger.debug(</span>"Found AspectJ method: " +<span style="color: #000000;"> candidateAdviceMethod);
+    }
+
+    AbstractAspectJAdvice springAdvice;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据不同的注解类型封装不同的增强器</span>
+    <span style="color: #0000ff;">switch</span><span style="color: #000000;"> (<strong>aspectJAnnotation.getAnnotationType()</strong>) {
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtBefore:
+            springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> AspectJMethodBeforeAdvice</strong>(
+                    candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfter:
+            springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> AspectJAfterAdvice</strong>(
+                    candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfterReturning:
+            springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> AspectJAfterReturningAdvice</strong>(
+                    candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+            AfterReturning afterReturningAnnotation </span>=<span style="color: #000000;"> (AfterReturning) aspectJAnnotation.getAnnotation();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(afterReturningAnnotation.returning())) {
+                springAdvice.setReturningName(afterReturningAnnotation.returning());
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfterThrowing:
+            springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> AspectJAfterThrowingAdvice</strong>(
+                    candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+            AfterThrowing afterThrowingAnnotation </span>=<span style="color: #000000;"> (AfterThrowing) aspectJAnnotation.getAnnotation();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(afterThrowingAnnotation.throwing())) {
+                springAdvice.setThrowingName(afterThrowingAnnotation.throwing());
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAround:
+            springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> AspectJAroundAdvice</strong>(
+                    candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtPointcut:
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                logger.debug(</span>"Processing pointcut '" + candidateAdviceMethod.getName() + "'"<span style="color: #000000;">);
+            }
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnsupportedOperationException(
+                    </span>"Unsupported advice type on method: " +<span style="color: #000000;"> candidateAdviceMethod);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Now to configure the advice...</span>
+<span style="color: #000000;">    springAdvice.setAspectName(aspectName);
+    springAdvice.setDeclarationOrder(declarationOrder);
+    String[] argNames </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.parameterNameDiscoverer.getParameterNames(candidateAdviceMethod);
+    </span><span style="color: #0000ff;">if</span> (argNames != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        springAdvice.setArgumentNamesFromStringArray(argNames);
+    }
+    springAdvice.calculateArgumentBindings();
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> springAdvice;
+}</span></code></pre>
+
+<p>从上述函数代码中可以看到，Spring会根据不同的注解生成不同的增强器，正如代码switch (aspectJAnnotation.getAnnotationType())，根据不同的类型来生成。例如AtBefore会对应AspectJMethodBeforeAdvice。在AspectJMethodBeforeAdvice中完成了增强逻辑，这里的&nbsp;<strong>AspectJMethodBeforeAdvice 最后会被适配器封装成<strong>MethodBeforeAdviceInterceptor，</strong></strong>下一篇文章中我们具体分析，具体看下其代码：</p>
+<p><strong>MethodBeforeAdviceInterceptor</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MethodBeforeAdviceInterceptor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> MethodInterceptor, Serializable {
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MethodBeforeAdvice advice;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MethodBeforeAdviceInterceptor(MethodBeforeAdvice advice) {
+        Assert.notNull(advice, </span>"Advice must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.advice =<span style="color: #000000;"> advice;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Object invoke(MethodInvocation mi) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advice.before(mi.getMethod(), mi.getArguments(), mi.getThis());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> mi.proceed();
+    }
+
+}</span></code></pre>
+
+<p>其中的MethodBeforeAdvice代表着前置增强的AspectJMethodBeforeAdvice，跟踪before方法：</p>
+<p><strong>AspectJMethodBeforeAdvice.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AspectJMethodBeforeAdvice <span style="color: #0000ff;">extends</span> AbstractAspectJAdvice <span style="color: #0000ff;">implements</span><span style="color: #000000;"> MethodBeforeAdvice, Serializable {
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> AspectJMethodBeforeAdvice(
+            Method aspectJBeforeAdviceMethod, AspectJExpressionPointcut pointcut, AspectInstanceFactory aif) {
+
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(aspectJBeforeAdviceMethod, pointcut, aif);
+    }
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> before(Method method, Object[] args, @Nullable Object target) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">直接调用增强方法</span>
+        invokeAdviceMethod(getJoinPointMatch(), <span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    }
+
+}
+
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object invokeAdviceMethod(
+        @Nullable JoinPointMatch jpMatch, @Nullable Object returnValue, @Nullable Throwable ex)
+        </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"><strong> invokeAdviceMethodWithGivenArgs</strong>(argBinding(getJoinPoint(), jpMatch, returnValue, ex));
+}
+
+</span><span style="color: #0000ff;">protected</span> Object invokeAdviceMethodWithGivenArgs(Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+    Object[] actualArgs </span>=<span style="color: #000000;"> args;
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.aspectJAdviceMethod.getParameterCount() == 0<span style="color: #000000;">) {
+        actualArgs </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ReflectionUtils.makeAccessible(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectJAdviceMethod);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO AopUtils.invokeJoinpointUsingReflection
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过反射调用AspectJ注解类中的增强方法</span>
+     <strong>   <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.aspectJAdviceMethod.invoke(<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.aspectInstanceFactory.getAspectInstance(), actualArgs);</strong>
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IllegalArgumentException ex) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> AopInvocationException("Mismatch on arguments to advice method [" +
+                <span style="color: #0000ff;">this</span>.aspectJAdviceMethod + "]; pointcut expression [" +
+                <span style="color: #0000ff;">this</span>.pointcut.getPointcutExpression() + "]"<span style="color: #000000;">, ex);
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InvocationTargetException ex) {
+        </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex.getTargetException();
+    }
+}</span></code></pre>
+
+<p>invokeAdviceMethodWithGivenArgs方法中的aspectJAdviceMethod正是对与前置增强的方法，在这里实现了调用。</p>
+<p>后置增强与前置增强有稍许不一致的地方。回顾之前讲过的前置增强，大致的结构是在拦截器链中放置MethodBeforeAdviceInterceptor，而在MethodBeforeAdviceInterceptor中又放置了AspectJMethodBeforeAdvice，并在调用invoke时首先串联调用。但是在后置增强的时候却不一样，没有提供中间的类，而是直接在拦截器中使用了中间的AspectJAfterAdvice，也就是直接实现了<strong>MethodInterceptor</strong>。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AspectJAfterAdvice <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractAspectJAdvice
+        </span><span style="color: #0000ff;">implements</span><span style="color: #000000;"><strong> MethodInterceptor</strong>, AfterAdvice, Serializable {
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> AspectJAfterAdvice(
+            Method aspectJBeforeAdviceMethod, AspectJExpressionPointcut pointcut, AspectInstanceFactory aif) {
+
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(aspectJBeforeAdviceMethod, pointcut, aif);
+    }
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Object <strong>invoke</strong>(MethodInvocation mi) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> mi.proceed();</strong>
+        }
+        </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 激活增强方法</span>
+          <strong>  invokeAdviceMethod(getJoinPointMatch(), <span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">null</span></strong><span style="color: #000000;"><strong>);</strong>
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isBeforeAdvice() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isAfterAdvice() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+}</span></code></pre>
+
+<p>其他的几个增强器，留在下一篇文章中具体来看</p>
+<h2>寻找匹配的增强器</h2>
+<p>前面的函数中已经完成了所有增强器的解析，但是对于所有增强器来讲，并不一定都适用于当前的bean，还要挑取出适合的增强器，也就是满足我们配置的通配符的增强器。具体实现在findAdvisorsThatCanApply中。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findAdvisorsThatCanApply(
+        List</span>&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName) {
+
+    ProxyCreationContext.setCurrentProxiedBeanName(beanName);
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 过滤已经得到的advisors</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> AopUtils.findAdvisorsThatCanApply(candidateAdvisors, beanClass);
+    }
+    </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ProxyCreationContext.setCurrentProxiedBeanName(</span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>继续看findAdvisorsThatCanApply：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;Advisor&gt; findAdvisorsThatCanApply(List&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (candidateAdvisors.isEmpty()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> candidateAdvisors;
+    }
+    List</span>&lt;Advisor&gt; eligibleAdvisors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先处理引介增强</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+        </span><span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span> IntroductionAdvisor &amp;&amp;<span style="color: #000000;"> canApply(candidate, clazz)) {
+            eligibleAdvisors.add(candidate);
+        }
+    }
+    </span><span style="color: #0000ff;">boolean</span> hasIntroductions = !<span style="color: #000000;">eligibleAdvisors.isEmpty();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+        </span><span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> already processed</span>
+            <span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 对于普通bean的处理</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (canApply(candidate, clazz, hasIntroductions)) {
+            eligibleAdvisors.add(candidate);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+}</span></code></pre>
+
+<p>findAdvisorsThatCanApply函数的主要功能是寻找增强器中适用于当前class的增强器。引介增强与普通的增强的处理是不一样的，所以分开处理。而对于真正的匹配在canApply中实现。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Advisor advisor, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+    </span><span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ((IntroductionAdvisor) advisor).getClassFilter().matches(targetClass);
+    }
+    </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PointcutAdvisor) {
+        PointcutAdvisor pca </span>=<span style="color: #000000;"> (PointcutAdvisor) advisor;
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> canApply(pca.getPointcut(), targetClass, hasIntroductions);
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> It doesn't have a pointcut so we assume it applies.</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Pointcut pc, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+    Assert.notNull(pc, </span>"Pointcut must not be null"<span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">通过Pointcut的条件判断此类是否能匹配</span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">pc.getClassFilter().matches(targetClass)) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+    MethodMatcher methodMatcher </span>=<span style="color: #000000;"> pc.getMethodMatcher();
+    </span><span style="color: #0000ff;">if</span> (methodMatcher ==<span style="color: #000000;"> MethodMatcher.TRUE) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> No need to iterate the methods if we're matching any method anyway...</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    IntroductionAwareMethodMatcher introductionAwareMethodMatcher </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">if</span> (methodMatcher <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAwareMethodMatcher) {
+        introductionAwareMethodMatcher </span>=<span style="color: #000000;"> (IntroductionAwareMethodMatcher) methodMatcher;
+    }
+
+    Set</span>&lt;Class&lt;?&gt;&gt; classes = <span style="color: #0000ff;">new</span> LinkedHashSet&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">Proxy.isProxyClass(targetClass)) {
+        classes.add(ClassUtils.getUserClass(targetClass));
+    }
+    classes.addAll(ClassUtils.getAllInterfacesForClassAsSet(targetClass));
+
+    </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> clazz : classes) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">反射获取类中所有的方法</span>
+        Method[] methods =<span style="color: #000000;"> ReflectionUtils.getAllDeclaredMethods(clazz);
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method : methods) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">根据匹配原则判断该方法是否能匹配Pointcut中的规则，如果有一个方法能匹配，则返回true</span>
+            <span style="color: #0000ff;">if</span> (introductionAwareMethodMatcher != <span style="color: #0000ff;">null</span> ?<span style="color: #000000;">
+                    introductionAwareMethodMatcher.matches(method, targetClass, hasIntroductions) :
+                  <strong>  methodMatcher.matches(method, targetClass)) {
+                </strong></span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            }
+        }
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>首先判断bean是否满足切点的规则，如果能满足，则获取bean的所有方法，判断是否有方法能匹配规则，有方法匹配规则，就代表此&nbsp;Advisor 能作用于该bean,然后将该Advisor加入&nbsp;eligibleAdvisors 集合中。</p>
+<p>我们以注解的规则来看看bean中的method是怎样匹配&nbsp;Pointcut中的规则</p>
+<p><strong>AnnotationMethodMatcher</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> matches(Method method, Class&lt;?&gt;<span style="color: #000000;"> targetClass) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (matchesMethod(method)) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Proxy classes never have annotations on their redeclared methods.</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (Proxy.isProxyClass(targetClass)) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> The method may be on an interface, so let's check on the target class as well.</span>
+    Method specificMethod =<span style="color: #000000;"> AopUtils.getMostSpecificMethod(method, targetClass);
+    </span><span style="color: #0000ff;">return</span> (specificMethod != method &amp;&amp;<span style="color: #000000;"> matchesMethod(specificMethod));
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> matchesMethod(Method method) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">可以看出判断该Advisor是否使用于bean中的method，只需看method上是否有Advisor的注解</span>
+    <span style="color: #0000ff;">return</span> (<span style="color: #0000ff;">this</span>.checkInherited ? AnnotatedElementUtils.<strong>hasAnnotation(method, <span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.annotationType)</strong> :
+            method.isAnnotationPresent(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.annotationType));
+}</span></code></pre>
+
+<p>至此，我们在后置处理器中找到了所有匹配Bean中的增强器，下一章讲解如何使用找到切面，来创建代理。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

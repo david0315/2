@@ -1,0 +1,73 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java开发笔记（一百五十）C3P0连接池的用法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java开发笔记（一百五十）C3P0连接池的用法</center></div><div class='banquan'>原文出处:本文由博客园博主pinlantu提供。<br/>
+原文连接:https://www.cnblogs.com/pinlantu/p/11525758.html</div><br>
+    <p>JDBC既制定统一标准兼容了多种数据库，又利用预报告堵上了SQL注入漏洞，照理说已经很完善了，可是人算不如天算，它在性能方面不尽如人意。问题出在数据库连接的管理上，按照正常流程，每次操作完数据库，都要关闭连接，无论是代码里手工关闭，还是由try语句自动关闭。如果没有及时关闭数据库连接，就会长时间占用有限的数据库内存，致使无谓的系统资源浪费。然而频繁开关数据库连接也有毛病，因为每次获取操作都要CPU处理，经常连接数据库会加重CPU的负担。看来内存与CPU像是一对难兄难弟，不管怎么做都会影响其中一个，正所谓鱼与熊掌不可兼得。<br />其实连接跟线程的情况相似，线程也很头疼频繁创建导致的资源开销，为此Java早早就设计了线程池机制，事先在一个池子中容纳若干线程，需要使用线程时便从中挑一根线程执行任务，任务做完再归还线程，如此实现了线程资源的循环利用，有效提高了系统的整体运行效率。既然线程们组建了线程池这个大家庭，那么连接们能否也组成连接池的大家庭呢？Java固然自带了线程池工具，却未能推出类似的连接池工具，于是各种第三方的连接池蜂拥而起，例如DBCP、C3P0、Proxool等等，其中应用广泛的当数C3P0。<br />C3P0是一个开源的数据库连接池，它支持JDBC3规范和JDBC2的标准扩展。若要在Java工程中运用C3P0，得先导入它的jar包，比如c3p0-0.9.5.4.jar，同时还要导入该jar包依赖的mchange-commons-java-0.2.16.jar，也就是一共导入两个jar文件。使用C3P0很简单，掌握ComboPooledDataSource类的用法就够了，该类的常见方法说明如下：<br />setDriverClass：设置连接池的数据库驱动。<br />setJdbcUrl：设置数据库的连接地址。<br />setUser：设置数据库的用户名。<br />setPassword：设置数据库的密码。<br />setMaxPoolSize：设置连接池大小的上限。<br />setMinPoolSize：设置连接池大小的下限。<br />setInitialPoolSize：设置连接池的初始大小。<br />setMaxStatements：设置报告的最大个数。<br />setCheckoutTimeout：设置获取连接的等待时间，单位毫秒。当连接池中的所有连接都被占用的时候，新请求想获取连接就必须等待，等待现有连接被释放后才能获取空闲连接。默认为0表示一直等待下去。<br />setMaxIdleTime：设置最大空闲时间，单位秒。如果某个连接超过该时间仍未使用，则会被自动回收。默认为0表示不判断是否超时，也就是永不回收。<br />getConnection：从连接池中获取一个连接。<br />close：关闭连接池。<br />引入连接池之后，完整的数据库操作流程分解成了两大步骤：初始化连接池、从连接池中取出一个连接处理，下面分别予以介绍。<br /><strong><span style="font-size: 18px;">1、初始化连接池</span></strong><br />该步骤首先创建C3P0连接池的对象，再依次调用相关方法设置详细的参数信息，包括数据库驱动、连接地址、用户名、密码，以及与连接池有关的规格参数。下面是初始化C3P0连接池的代码例子：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	private static ComboPooledDataSource dataSource; // 声明C3P0连接池的对象
+	// 初始化连接池
+	private static void initDataSource() {
+		dataSource = new ComboPooledDataSource(); // 创建C3P0连接池
+		try {
+			dataSource.setDriverClass(driver_class); // 设置连接池的数据库驱动
+		} catch (PropertyVetoException e) {
+			e.printStackTrace();
+		}
+		dataSource.setJdbcUrl(dbUrl); // 设置数据库的连接地址
+		dataSource.setUser(dbUserName); // 设置数据库的用户名
+		dataSource.setPassword(dbPassword); // 设置数据库的密码
+		dataSource.setMaxPoolSize(10); // 设置连接池大小的上限
+		dataSource.setMinPoolSize(1); // 设置连接池大小的下限
+		dataSource.setInitialPoolSize(3); // 设置连接池的初始大小
+	}
+</code></pre>
+
+<p>　　</p>
+<p><strong><span style="font-size: 18px;">2、从连接池中取出一个连接处理</span></strong><br />除了一开始调用连接池的getConnection获取连接之外，该步骤剩余的操作过程与JDBC原有流程保持一致，即获得数据库连接之后，同样要创建连接的报告，然后命令报告执行SQL语句。下面是通过连接池操作数据库的代码例子：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	// 显示性别分组
+	private static void showRecordGroupBySex() {
+		String sql = "select sex,count(1) count from teacher group by sex order by sex asc";
+		// 从连接池中获取连接、创建连接的报告、命令报告执行指定的SQL语句
+		try (Connection conn = dataSource.getConnection();
+				Statement stmt = conn.createStatement();
+				ResultSet rs = stmt.executeQuery(sql)) {
+			while (rs.next()) { // 循环遍历结果集里面的所有记录
+				int sex = rs.getInt("sex"); // 获取指定字段的整型值
+				int count = rs.getInt("count"); // 获取指定字段的整型值
+				String desc = String.format("%s老师有%d位；", sex==0 ? "男" : "女", count);
+				System.out.print(desc);
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>整合连接池的初始化和具体操作的代码，运行包含整合代码之内的测试程序，观察如下日志可知C3P0连接池正常工作。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>男老师有2位；女老师有3位；　　</code></pre>
+
+<p><br /><em id="__mceDel"><br /></em>更多Java技术文章参见《<a href="https://www.cnblogs.com/pinlantu/p/9941789.html" target="_blank">Java开发笔记（序）章节目录</a>》</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

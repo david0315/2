@@ -1,0 +1,425 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修内容协商在视图View上的应用【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>内容协商在视图View上的应用【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11420824.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>人生很有意思：首先就得活得长。活得长才能够见自己，再长就可以见众生</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p>在经过 <a href="https://blog.csdn.net/f641385712/article/details/100060445">前两篇</a> 文章了解了<code>Spring MVC</code>的内容协商机制之后，相信你已经能够熟练的运用<code>Spring MVC</code>提供的这项能力，配合<code>RESTful</code>发挥它的功效了。这其实也就达到了我们目的的<code>80%</code>，也达到了我书写这块知识点的目的。</p>
+<p>为何说是<code>80%</code>呢？因为我认为在前后端完全分离的今天，绝大部分使用场景都是这种情况，完成了覆盖。<br />
+为何还有<code>20%</code>呢？因为内容协商不仅仅可以使用在<code>HttpMessage</code>上，还可以使用在<code>View</code>视图上，这也就是本文想重点补充的内容。</p>
+<h2 id="内容协商在httpmessage上的应用">内容协商在<code>HttpMessage</code>上的应用</h2>
+<p>前两篇文章的示例都是基于此。在讲解原理的时候提到：处理的入口在<code>AbstractMessageConverterMethodProcessor.writeWithMessageConverters()</code>方法上，看此抽象类的子类也能看出端倪：<br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+从子类实现中你也能够明白：它和<code>HttpMessage</code>是强相关的，都是经过了<code>HttpMessageConverter</code>处理的消息来做内容协商。</p>
+<blockquote>
+<p>这两个实现类处理的也就是我们当下最为常用的注解：<code>@ResponseBody</code>。或者返回值直接是<code>HttpEntity/ResponseEntity类型（也就是不能是RequestEntity就成）</code></p>
+</blockquote>
+<p>毫无疑问，基于<code>@ResponseBody</code>的Rest接口方式在前后端完全分离的今天已然是主流方式，因此我说前两篇文章覆盖了<code>80%</code>的场景应该不为过吧~</p>
+<hr />
+<p>我搜索到<code>ContentNegotiationManager.resolveMediaTypes()</code>方法在<code>ContentNegotiatingViewResolver</code>里也使用到了，因此我自然而然的联想到了内容协商也能结合视图解析器一起使用~</p>
+<h2 id="内容协商在视图view上的应用">内容协商在视图<code>View</code>上的应用</h2>
+<p>由于前面我给的示例都是基于<code>Http消息</code>的，没有视图可言。本文此处需要讲解的是内容协商在视图解析方面的应用：<strong>同一个URL，以不同的视图作为展示方式</strong>。</p>
+<p>我们已经知道了：<code>RequestMappingInfoHandlerMapping（@RequestMapping）</code>它在对带有后缀的<code>http</code>请求进行匹配的时候，如果找不到精确的pattern， 那么就会<code>pattern+.*</code>后再匹配 url，它会处理多个不同形式是 url，<strong>但是返回的是同一个View</strong>。本文就教你用一个<code>@RequestMapping</code>也能返回多个<code>View</code>~</p>
+<blockquote>
+<p>注意：我这里指的是返回的是View视图，对于消息体的这种返回方式，不是本处讨论的范畴，它属于case 1。</p>
+</blockquote>
+<h5 id="视图解析器viewresolver">视图解析器ViewResolver</h5>
+<p>关于视图的内容，可参见这里：<a href="https://blog.csdn.net/f641385712/article/details/90599404">View</a><br />
+关于视图解析器的内容，可参见这里：<a href="https://blog.csdn.net/f641385712/article/details/90577418">ViewResolver</a></p>
+<p>本文简单的再“复习”一下<code>Spring MVC</code>对视图解析器的使用流程：</p>
+<p><strong>使用处：<code>DispatcherServlet.resolveViewName()</code></strong><br />
+得到逻辑视图后，通过已经注册好的视图解析器<code>ViewResolver</code>把逻辑视图解析为真正的视图<code>View</code></p>
+<pre><code><code>DispatcherServlet：
+    @Nullable
+    protected View resolveViewName(String viewName, @Nullable Map&lt;String, Object&gt; model, Locale locale, HttpServletRequest request) throws Exception {
+        if (this.viewResolvers != null) {
+            // 按照顺序：一个一个执行。第一个最先解析到不返回null的  就是最终返回的view视图
+            for (ViewResolver viewResolver : this.viewResolvers) {
+                View view = viewResolver.resolveViewName(viewName, locale);
+                if (view != null) {
+                    return view;
+                }
+            }
+        }
+        return null;
+    }</code></code></pre>
+<p><strong>加载处：<code>DispatcherServlet.initViewResolvers()</code></strong><br />
+这个在讲解<code>Spring MVC</code>九大组件加载时详细说过</p>
+<pre><code><code>DispatcherServlet：
+    private void initViewResolvers(ApplicationContext context) {
+        // 1、若detectAllViewResolvers=true，去容器中找到所有的ViewResolver Bean们。排序后返回
+        // 2、若不是探测全部。就只找BeanName=viewResolver它的这一个Bean
+        // 2、若一个都没有找到，就走默认策略：从DispatcherServlet.properties里配置的读取默认的配置
+    }</code></code></pre>
+<p>这个查找策略，对我们合理注册、管理视图解析器都是很有用的，可以稍加留意</p>
+<p><strong>声明处：<code>WebMvcConfigurationSupport.mvcViewResolver()</code></strong></p>
+<pre><code><code>WebMvcConfigurationSupport：
+
+    // @since 4.1 向容器注册一个ViewResolver Bean  
+    // 使用的是容器管理方式：ViewResolverComposite 
+    @Bean
+    public ViewResolver mvcViewResolver() {
+        
+        // mvcContentNegotiationManager：内容协商管理器（本文重点之一）
+        ViewResolverRegistry registry = new ViewResolverRegistry(mvcContentNegotiationManager(), this.applicationContext);
+        // protected方法，回调给我们调用者，允许自定义ViewResolverRegistry 
+        configureViewResolvers(registry);
+
+        // 它的意思是：如果你没有自定义（或者自定义了但一个解析器都木有）
+        // 那就主动去容器里找。如果仅仅仅仅只知道一个：那它就是InternalResourceViewResolver（注意此处是new的）
+        // 注意此处的处理方式哦~~~~
+        if (registry.getViewResolvers().isEmpty() &amp;&amp; this.applicationContext != null) {
+            String[] names = BeanFactoryUtils.beanNamesForTypeIncludingAncestors(this.applicationContext, ViewResolver.class, true, false);
+            if (names.length == 1) {
+                registry.getViewResolvers().add(new InternalResourceViewResolver());
+            }
+        }
+
+        // 最终使用ViewResolverComposite把这些（多个）装起来，便于管理~
+        ViewResolverComposite composite = new ViewResolverComposite();
+        composite.setOrder(registry.getOrder());
+        composite.setViewResolvers(registry.getViewResolvers());
+        if (this.applicationContext != null) {
+            composite.setApplicationContext(this.applicationContext);
+        }
+        if (this.servletContext != null) {
+            composite.setServletContext(this.servletContext);
+        }
+        return composite;
+    }</code></code></pre>
+<p>这里我们能发现，它默认情况下使用的是我们上文说的默认的<code>ContentNegotiationManager</code>来处理内容协商的。因此下面重点要来到今天的主角<code>ContentNegotiatingViewResolver</code>身上</p>
+<h4 id="contentnegotiatingviewresolver内容协商视图解析器">ContentNegotiatingViewResolver：内容协商视图解析器</h4>
+<p><code>ContentNagotiatingViewResolver</code>自己并不解析视图，而是委派给其他的视图处理器。</p>
+<blockquote>
+<p>为了使这个解析器正常工作，order序号需要设置成比其他的视图处理器高的优先级（默认就是最高的）</p>
+</blockquote>
+<pre><code><code>// @since 3.0
+public class ContentNegotiatingViewResolver extends WebApplicationObjectSupport implements ViewResolver, Ordered, InitializingBean {
+    // 用于内容协商的管理器
+    @Nullable
+    private ContentNegotiationManager contentNegotiationManager;
+    private final ContentNegotiationManagerFactoryBean cnmFactoryBean = new ContentNegotiationManagerFactoryBean();
+
+    // 如果没有合适的view的时候，是否使用406这个状态码（HttpServletResponse#SC_NOT_ACCEPTABLE）
+    // 默认值是false：表示没有找到就返回null，而不是406
+    private boolean useNotAcceptableStatusCode = false;
+    // 当无法获取到具体的视图时，会走defaultViews
+    @Nullable
+    private List&lt;View&gt; defaultViews;
+    
+    @Nullable
+    private List&lt;ViewResolver&gt; viewResolvers;
+    private int order = Ordered.HIGHEST_PRECEDENCE; // 默认，优先级就是最高的
+
+    // 复写：WebApplicationObjectSupport的方法
+    // 它在setServletContext和initApplicationContext会调用（也就是容器启动时候会调用）
+    @Override
+    protected void initServletContext(ServletContext servletContext) {
+        Collection&lt;ViewResolver&gt; matchingBeans = BeanFactoryUtils.beansOfTypeIncludingAncestors(obtainApplicationContext(), ViewResolver.class).values();
+        //容器内找到了  就以容器内所有已经配置好的视图解析器都拿出来（包含父容器）
+        if (this.viewResolvers == null) {
+            this.viewResolvers = new ArrayList&lt;&gt;(matchingBeans.size());
+            for (ViewResolver viewResolver : matchingBeans) {
+                if (this != viewResolver) { // 排除自己
+                    this.viewResolvers.add(viewResolver);
+                }
+            }
+        } else { // 进入这里证明是调用者自己set进来的
+            for (int i = 0; i &lt; this.viewResolvers.size(); i++) {
+                ViewResolver vr = this.viewResolvers.get(i);
+                if (matchingBeans.contains(vr)) {
+                    continue;
+                }
+                String name = vr.getClass().getName() + i;
+                // 对视图解析器完成初始化工作~~~~~
+                // 关于AutowireCapableBeanFactory的使用，参见：https://blog.csdn.net/f641385712/article/details/88651128
+                obtainApplicationContext().getAutowireCapableBeanFactory().initializeBean(vr, name);
+            }
+
+        }
+
+        // 找到所有的ViewResolvers排序后，放进ContentNegotiationManagerFactoryBean里
+        AnnotationAwareOrderComparator.sort(this.viewResolvers);
+        this.cnmFactoryBean.setServletContext(servletContext);
+    }
+
+    // 从这一步骤可以知道：contentNegotiationManager 可以自己set
+    // 也可以通过工厂来生成  两种方式均可
+    @Override
+    public void afterPropertiesSet() {
+        if (this.contentNegotiationManager == null) {
+            this.contentNegotiationManager = this.cnmFactoryBean.build();
+        }
+        if (this.viewResolvers == null || this.viewResolvers.isEmpty()) {
+            logger.warn(&quot;No ViewResolvers configured&quot;);
+        }
+    }
+
+    // 处理逻辑视图到View 在此处会进行内容协商
+    @Override
+    @Nullable
+    public View resolveViewName(String viewName, Locale locale) throws Exception {
+        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+        Assert.state(attrs instanceof ServletRequestAttributes, &quot;No current ServletRequestAttributes&quot;);
+
+        // getMediaTypes()这个方法完成了
+        // 1、通过contentNegotiationManager.resolveMediaTypes(webRequest)得到请求的MediaTypes
+        // 2、拿到服务端能够提供的MediaTypes  producibleMediaTypes
+        // (请注意因为没有消息转换器，所以它的值的唯一来源是：request.getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE))
+        // (若没有指定producers的值，那就是ALL)
+        // 3、按照优先级，协商出`selectedMediaTypes`（是个List）
+        List&lt;MediaType&gt; requestedMediaTypes = getMediaTypes(((ServletRequestAttributes) attrs).getRequest());
+
+        // 进入此处：说明协商出了有可用的MediaTypes（至少有一个嘛）
+        if (requestedMediaTypes != null) {
+
+            // getCandidateViews()这个很重要的方法，见下文
+            List&lt;View&gt; candidateViews = getCandidateViews(viewName, locale, requestedMediaTypes);
+
+            // 上面一步骤解析出了多个符合条件的views，这里就是通过MediaType、attrs等等一起决定出一个，一个，一个最佳的
+            // getBestView()方法描述如下：
+            // 第一大步：遍历所有的candidateViews，只要是smartView.isRedirectView()，就直接return
+            // 第二大步：遍历所有的requestedMediaTypes，针对每一种MediaType下再遍历所有的candidateViews
+            // 1、针对每一种MediaType，拿出View.getContentType()，只会看这个值不为null的
+            // 2、view的contentType!=null，继续看看mediaType.isCompatibleWith(candidateContentType) 若不匹配这个视图就略过
+            // 3、若匹配：attrs.setAttribute(View.SELECTED_CONTENT_TYPE, mediaType, RequestAttributes.SCOPE_REQUEST)  然后return掉此视图作为best最佳的
+            View bestView = getBestView(candidateViews, requestedMediaTypes, attrs);
+            if (bestView != null) { // 很显然，找到了最佳的就返回渲染吧
+                return bestView;
+            }
+        }
+        
+        ... 
+        // useNotAcceptableStatusCode=true没找到视图就返回406
+        // NOT_ACCEPTABLE_VIEW是个private内部静态类View，它的render方法只有一句话:
+        // response.setStatus(HttpServletResponse.SC_NOT_ACCEPTABLE);
+        if (this.useNotAcceptableStatusCode) {
+            return NOT_ACCEPTABLE_VIEW;
+        } else {
+            return null;
+        }
+    }
+
+    // 根据viewName、requestedMediaTypes等等去得到所有的备选的Views~~
+    // 这这里会调用所有的viewResolvers.resolveViewName()来分别处理~~~所以可能生成多多个viewo ~
+    private List&lt;View&gt; getCandidateViews(String viewName, Locale locale, List&lt;MediaType&gt; requestedMediaTypes) throws Exception {
+        List&lt;View&gt; candidateViews = new ArrayList&lt;&gt;();
+        if (this.viewResolvers != null) {
+            Assert.state(this.contentNegotiationManager != null, &quot;No ContentNegotiationManager set&quot;);
+
+            // 遍历所有的viewResolvers，多逻辑视图一个一个的处理
+            for (ViewResolver viewResolver : this.viewResolvers) {
+                View view = viewResolver.resolveViewName(viewName, locale);
+                if (view != null) {
+                    candidateViews.add(view); // 处理好的就装进来
+                }
+
+
+                // 另外还没有完：遍历所有支持的MediaType，拿到它对应的扩展名们（一个MediaType可以对应多个扩展名）
+                // 如果viewName + &#39;.&#39; + extension能被处理成一个视图，也是ok的
+                // 也就是说index和index.jsp都能被解析成view视图~~~
+                for (MediaType requestedMediaType : requestedMediaTypes) {
+                    // resolveFileExtensions()方法可以说这里是唯一调用的地方
+                    List&lt;String&gt; extensions = this.contentNegotiationManager.resolveFileExtensions(requestedMediaType);
+                    for (String extension : extensions) {
+                        String viewNameWithExtension = viewName + &#39;.&#39; + extension;
+                        view = viewResolver.resolveViewName(viewNameWithExtension, locale);
+                        if (view != null) {
+                            candidateViews.add(view); // 带上后缀名也能够处理的  这种视图也ok
+                        }
+                    }
+                }
+            }
+        }
+        // 若指定了默认视图，把视图也得加上（在最后面哦~）
+        if (!CollectionUtils.isEmpty(this.defaultViews)) {
+            candidateViews.addAll(this.defaultViews);
+        }
+        return candidateViews;
+    }
+}</code></code></pre>
+<p>关于<code>ContentNegotiatingViewResolver</code>我总结出如下细节要点：</p>
+<ol>
+<li><code>ContentNegotiationManager</code>用于内容协商的策略可以手动set指定，也可以通过<code>FactoryBean</code>自动生成</li>
+<li><code>viewResolvers</code>默认是去容器内找到所有的，当然你也可以手动set进来的~</li>
+<li>使用request的媒体类型,根据扩展名选择不同的view输出不同的格式</li>
+<li>不是自己处理view,而是代理给不同的ViewResolver来处理不同的view;</li>
+<li>默认是支持<code>Accept</code>和后缀的协商方式的。并且还支持 <code>逻辑视图名.后缀</code>的视图解析方式~</li>
+<li>依据<code>View.getContentType</code>匹配<code>MediaType</code>来完成的<strong>最佳匹配</strong></li>
+</ol>
+<h4 id="如何使用">如何使用？</h4>
+<p>我们已经知道，默认情况下<code>Spring MVC</code>可没有使用此内容协商视图解析器，因此若有同一资源，多视图展示的需求，我们是需要手动配置（开启）支持的。</p>
+<p>通过检索可以看到<code>ViewResolverRegistry</code>它为我们提供了便捷使用的方式：</p>
+<blockquote>
+<p>当然你也可以通过单独配置一个<code>ContentNegotiatingViewResolver</code> @Bean的方式来做，原理也很简单很好解释。本文我就给个最佳实践作为参考示例</p>
+</blockquote>
+<pre><code><code>public class ViewResolverRegistry {
+    ...
+    public void enableContentNegotiation(View... defaultViews) {
+        initContentNegotiatingViewResolver(defaultViews);
+    }
+    public void enableContentNegotiation(boolean useNotAcceptableStatus, View... defaultViews) {
+        ContentNegotiatingViewResolver vr = initContentNegotiatingViewResolver(defaultViews);
+        vr.setUseNotAcceptableStatusCode(useNotAcceptableStatus);
+    }
+    // 初始化一个内容协商视图解析器
+    private ContentNegotiatingViewResolver initContentNegotiatingViewResolver(View[] defaultViews) {
+        // ContentNegotiatingResolver in the registry: elevate its precedence!
+        // 请保证它是最高优先级的：在所有视图解析器之前执行
+        // 这样即使你配置了其它的视图解析器  也会先执行这个（后面的被短路掉）
+        this.order = (this.order != null ? this.order : Ordered.HIGHEST_PRECEDENCE);
+
+        // 调用者自己已经配置好了一个contentNegotiatingResolver，那就用他的
+        if (this.contentNegotiatingResolver != null) {
+            // 若存在defaultViews，那就处理一下把它放进contentNegotiatingResolver里面
+            if (!ObjectUtils.isEmpty(defaultViews) &amp;&amp; !CollectionUtils.isEmpty(this.contentNegotiatingResolver.getDefaultViews())) {
+                List&lt;View&gt; views = new ArrayList&lt;&gt;(this.contentNegotiatingResolver.getDefaultViews());
+                views.addAll(Arrays.asList(defaultViews));
+                this.contentNegotiatingResolver.setDefaultViews(views);
+            }
+        } else { // 若没配置就自己new一个 并且设置好viewResolvers
+            this.contentNegotiatingResolver = new ContentNegotiatingViewResolver();
+            this.contentNegotiatingResolver.setDefaultViews(Arrays.asList(defaultViews));
+            // 注意：这个viewResolvers是通过此ViewResolverRegistry配置进来的
+            // 若仅仅是容器内的Bean，这里可捕获不到。所以如果你有特殊需求建议你自己set
+            // 若仅仅是jsp()/tiles()/freeMarker()/groovy()/beanName()这些，内置的支持即可满足要求儿聊
+            // ViewResolverRegistry.viewResolver()可调用多次，因此可以多次指定  若有需要个性化，可以调用此方法
+            this.contentNegotiatingResolver.setViewResolvers(this.viewResolvers);
+            if (this.contentNegotiationManager != null) {
+                this.contentNegotiatingResolver.setContentNegotiationManager(this.contentNegotiationManager);
+            }
+        }
+        return this.contentNegotiatingResolver;
+    }
+}</code></code></pre>
+<p>说明一点：虽然这里有些视图解析器是new出来的，但不用担心最后都会执行<code>InitializingBean</code>、<code>ApplicationContextAware</code>...等等的一些接口方法的。因为这些都是交给<code>ViewResolverComposite</code>统一代劳的~（因此并不需要放进Spring容器里亦可，减少容器的负担也是一种优化）</p>
+<p>上面&quot;复习&quot;的时候提到了，<code>Spring MVC</code>准备好<code>ViewResolverRegistry</code>后会回调我们，因此实际使用中可以通过此入口进行配置（最佳实践）：</p>
+<pre><code><code>@Configuration
+@EnableWebMvc
+public class WebMvcConfig extends WebMvcConfigurerAdapter {
+
+    @Override
+    public void configureViewResolvers(ViewResolverRegistry registry) {
+        registry.enableContentNegotiation(); // 开启内容协商视图解析器
+    }
+}</code></code></pre>
+<p>在我准备介绍案例时，==为了便于对小伙伴对整个内容协商流程的把控和理解==，我提供如下这张执行原理流程图作为辅助理解（若图有错误可留言指出，多谢）：</p>
+<p><img src="./images/内容协商在视图View上的应用【享学Spring MVC】1.png" alt="在这里插入图片描述" /></p>
+<h2 id="section">---</h2>
+<h2 id="使用示例">使用示例</h2>
+<p>是骡子是马，总归还是要拉出来溜溜。下面我用一个工作中非常具象的案例，来演示一下它的用法。</p>
+<p><strong>需求：同一个<code>RESTful</code>的URL，我希望得到一个PDF视图、JSON视图、Html视图？？？</strong></p>
+<h5 id="实现代码">实现代码</h5>
+<p>因为是同一个<code>URL</code>，并且还要求是有不同视图的，因此这里用<code>ContentNegotiatingViewResolver</code>来做内容协商就非常得心应手了。</p>
+<p><strong>1、准备针对于处理这三种视图的<code>ViewResolver</code>实现类：</strong></p>
+<pre><code><code>    // 自定义三个视图分别用于处理对应的视图需求
+    private final ViewResolver pdf_viewresolver= (viewName, locale) -&gt; new View() {
+        @Override
+        public String getContentType() {
+            return MediaType.APPLICATION_PDF_VALUE;
+        }
+        @Override
+        public void render(Map&lt;String, ?&gt; model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+            response.getWriter().write(&quot;&lt;html&gt;&lt;body style=&#39;color:red&#39;&gt;this is pdf view&lt;/body&gt;&lt;/html&gt;&quot;);
+        }
+    };
+    private final ViewResolver excel_viewresolver= (viewName, locale) -&gt; new View() {
+        @Override
+        public String getContentType() {
+            return MediaType.APPLICATION_JSON_UTF8_VALUE;
+        }
+        @Override
+        public void render(Map&lt;String, ?&gt; model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+            response.getWriter().write(&quot;&lt;html&gt;&lt;body style=&#39;color:yellow&#39;&gt;this is json view&lt;/body&gt;&lt;/html&gt;&quot;);
+        }
+    };
+    private final ViewResolver html_viewresolver= (viewName, locale) -&gt; new View() {
+        @Override
+        public String getContentType() {
+            return MediaType.TEXT_HTML_VALUE;
+        }
+        @Override
+        public void render(Map&lt;String, ?&gt; model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+            response.getWriter().write(&quot;&lt;html&gt;&lt;body style=&#39;color:green&#39;&gt;this is html view&lt;/body&gt;&lt;/html&gt;&quot;);
+        }
+    };</code></code></pre>
+<blockquote>
+<p>请注意：三者的getContentType()、渲染内容、颜色都是不一样的</p>
+</blockquote>
+<p>说明：因为此处我只是模拟，所以我全部以匿名类来实现，各位小伙伴理解起来理论上应该都没有啥障碍吧（有问题可给我留言~）</p>
+<p><strong>2、开启<code>Spring MVC</code>在视图上对<code>ContentNegotiation</code>内容协商的支持：</strong></p>
+<pre><code><code>@Configuration
+@EnableWebMvc
+public class WebMvcConfig extends WebMvcConfigurerAdapter {
+
+    @Override
+    public void configureViewResolvers(ViewResolverRegistry registry) {
+        registry.viewResolver(pdf_viewresolver);
+        registry.viewResolver(excel_viewresolver);
+        registry.viewResolver(html_viewresolver);
+
+        // 上面三个注册方法必须在此方法之上执行
+        registry.enableContentNegotiation(false);
+    }
+}</code></code></pre>
+<p><strong>3、测试代码</strong></p>
+<pre><code><code>@Controller
+@RequestMapping
+public class HelloController {
+
+    @GetMapping(&quot;/test/{type}&quot;)
+    public String testContentNegotiation() {
+        return &quot;test ContentNegotiation&quot;;
+    }
+}</code></code></pre>
+<p>顺序请求：<code>/test/a.pdf</code>、<code>/test/a.json</code>、<code>/test/a.html</code>、<code>/test/a（无后缀）</code>分别得到的页面截图如下（一一对应）<br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】2.png" alt="在这里插入图片描述" /><br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】3.png" alt="在这里插入图片描述" /><br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】4.png" alt="在这里插入图片描述" /><br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】5.png" alt="在这里插入图片描述" /><br />
+使用<code>Accept</code>方式演示如下：<br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】6.png" alt="在这里插入图片描述" /><br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】7.png" alt="在这里插入图片描述" /><br />
+<img src="./images/内容协商在视图View上的应用【享学Spring MVC】8.png" alt="在这里插入图片描述" /><br />
+<strong>后缀的优先级高于<code>Accept</code>，符合我们前面的理论知识。若没有指定后缀，<code>Accept</code>就会生效。</strong></p>
+<blockquote>
+<p>说明：因为我这里<code>resolveViewName()</code>是很定的返回了一个view，相当于可以解析任何扩展名。so即使你的扩展名不存在也会被解析，最终以html形式展示出来。在真实场景中是不会这么搞的</p>
+</blockquote>
+<p><strong>另外：这种case还有一种更为简便的测试方案--&gt;无需提供视图解析器，只需提供默认视图即可，有兴趣的小伙伴可以自行尝试，加深理解。</strong></p>
+<h4 id="总结">总结</h4>
+<p>本文借助实例，讲解了<code>ContentNegotiatingViewResolver</code>内容协商在视图解析方面的应用，填补所谓的剩余的<code>20%</code>的内容。<br />
+虽然说现在视图技术对于后端来说使用相对较少了，但毕竟<code>thymeleaf</code>还是很优秀的，作为全栈工程师，你也有理由掌握一门模版引擎语言（熟练<code>Vue、React</code>的当我没说）</p>
+<h4 id="相关阅读">相关阅读</h4>
+<p><a href="https://blog.csdn.net/f641385712/article/details/100020664">ContentNegotiation内容协商机制(一)---Spring MVC内置支持的4种内容协商方式【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100060445">ContentNegotiation内容协商机制(二)---Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100079806">ContentNegotiation内容协商机制(三)---在视图View上的应用：ContentNegotiatingViewResolver深度解析【享学Spring MVC】</a></p>
+<h4 id="知识交流">知识交流</h4>
+<p>==The last：如果觉得本文对你有帮助，不妨点个赞呗。当然分享到你的朋友圈让更多小伙伴看到也是被<code>作者本人许可的~</code>==</p>
+<p><strong>若对技术内容感兴趣可以加入wx群交流：<code>Java高工、架构师3群</code>。<br />
+若群二维码失效，请加wx号：<code>fsx641385712</code>（或者扫描下方wx二维码）。并且备注：<code>&quot;java入群&quot;</code> 字样，会手动邀请入群</strong><br />
+==若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞==</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

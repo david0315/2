@@ -1,0 +1,211 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Scala调用Kafka的生产者和消费者Demo，以及一些配置参数整理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Scala调用Kafka的生产者和消费者Demo，以及一些配置参数整理</center></div><div class='banquan'>原文出处:本文由博客园博主013提供。<br/>
+原文连接:https://www.cnblogs.com/lys_013/p/11957479.html</div><br>
+    <h3 class="md-end-block md-heading md-focus"><span class="md-plain md-expand">kafka简介<span class="md-plain md-expand"><span class="md-plain md-expand"><br /></span></span></span></h3>
+<p>Kafka是apache开源的一款用Scala编写的消息队列中间件，具有高吞吐量，低延时等特性。</p>
+<p class="md-end-block md-p"><span class="md-plain">Kafka对消息保存时根据Topic进行归类，发送消息者称为Producer,消息接受者称为Consumer,此外kafka集群有多个kafka实例组成，每个实例(server)称为broker。</span></p>
+<p class="md-end-block md-p md-focus"><span class="md-plain">无论是kafka集群，还是producer和consumer都依赖于<span><strong>zookeeper</strong><span class="md-plain">集群保存一些meta信息，来保证系统可用性。</span></span></span></p>
+<h3 class="md-end-block md-heading md-focus"><span class="md-plain md-expand">kafka</span><span class="md-plain md-expand">主要</span><span class="md-plain md-expand">的组件介绍</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">Producer：消息生产者，就是向kafka broker发消息的客户端。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Consumer：消息消费者，向kafka broker取消息的客户端</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Topic ：我们可以理解为一个队列，消息根据Topic进行归类。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Consumer Group （CG）：这是kafka用来实现一个topic消息的广播（发给所有的consumer）和单播（发给任意一个consumer）的手段。一个topic可以对应多个CG。topic的消息会复制（不是真的复制，是概念上的）到所有的CG，但每个partion只会把消息发给该CG中的一个consumer。如果需要实现广播，只要每个consumer有一个独立的CG就可以了。用CG还可以将consumer进行自由的分组而不需要多次发送消息到不同的topic。</span></p>
+<p class="md-end-block md-p md-focus"><span class="md-plain">Broker ：一台kafka服务器就是一个broker。一个集群由多个broker组成。一个broker可以容纳多个topic。</span></p>
+<h3 class="md-end-block md-heading md-focus"><span class="md-plain md-expand">kafka文件存储机制</span></h3>
+<ol class="ol-list" start="">
+<li class="md-list-item md-focus-container">
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">topic中partition存储分布</span></p>
+
+
+
+
+
+
+
+
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">partiton中文件存储方式</span></p>
+
+
+
+
+
+
+
+
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">partiton中segment文件存储结构</span></p>
+
+
+
+
+
+
+
+
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p md-focus"><span class="md-plain">在partition中通过offset查找message</span></p>
+
+</li>
+
+
+
+
+
+
+
+
+</ol>
+<h3 class="md-end-block md-heading md-focus"><span class="md-plain md-expand">代码模拟生产者消费者案例</span></h3>
+<p>pom.xml添加依赖</p>
+<src class="cnblogs_code">
+<pre><code>        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.apache.kafka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>kafka_2.11<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.1.0<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.apache.kafka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>kafka-clients<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.1.0<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>生产者：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.linys.scala.KAFKA_producer
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Properties
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+  * 实现producer
+  </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+object KafkaProducerDemo {
+  def main(args: Array[String]): Unit </span>=<span style="color: #000000;"> {
+    val prop </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定请求的kafka集群列表</span>
+    prop.put("bootstrap.servers", "essum:9092"<span style="color: #000000;">)</span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定响应方式
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">prop.put("acks", "0")</span>
+    prop.put("acks", "all"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 请求失败重试次数
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">prop.put("retries", "3")
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定key的序列化方式, key是用于存放数据对应的offset</span>
+    prop.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定value的序列化方式</span>
+    prop.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 配置超时时间</span>
+    prop.put("request.timeout.ms", "60000"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">prop.put("batch.size", "16384")
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">prop.put("linger.ms", "1")
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">prop.put("buffer.memory", "33554432")
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到生产者的实例</span>
+    val producer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> KafkaProducer[String, String](prop)
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 模拟一些数据并发送给kafka</span>
+    <span style="color: #0000ff;">for</span> (i &lt;- 1 to 100<span style="color: #000000;">) {
+      val msg </span>= s"${i}: this is a linys ${i} kafka data"<span style="color: #000000;">
+      println(</span>"send --&gt;" +<span style="color: #000000;"> msg)
+      </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到返回值</span>
+      val rmd: RecordMetadata = producer.send(<span style="color: #0000ff;">new</span> ProducerRecord[String, String]("linys"<span style="color: #000000;">, msg)).get()
+      println(rmd.toString)
+      Thread.sleep(</span>500<span style="color: #000000;">)
+    }
+
+    producer.close()
+  }
+}</span></code></pre>
+
+<p>消费者：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.linys.scala.KAFKA_consumer
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.{Collections, Properties}
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.kafka.clients.consumer.{ConsumerRecords, KafkaConsumer}
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+  * 实现consumer
+  </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+object KafkaConsumerDemo {
+  def main(args: Array[String]): Unit </span>=<span style="color: #000000;"> {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 配置信息</span>
+    val prop = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties
+    prop.put(</span>"bootstrap.servers", "essum:9092"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定消费者组</span>
+    prop.put("group.id", "group01"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定消费位置: earliest/latest/none</span>
+    prop.put("auto.offset.reset", "earliest"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定消费的key的反序列化方式</span>
+    prop.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 指定消费的value的反序列化方式</span>
+    prop.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer"<span style="color: #000000;">)
+    prop.put(</span>"enable.auto.commit", "true"<span style="color: #000000;">)
+    prop.put(</span>"session.timeout.ms", "30000"<span style="color: #000000;">)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到Consumer实例</span>
+    val kafkaConsumer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> KafkaConsumer[String, String](prop)
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先需要订阅topic</span>
+    kafkaConsumer.subscribe(Collections.singletonList("linys"<span style="color: #000000;">))
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 开始消费数据</span>
+    <span style="color: #0000ff;">while</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+      </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果Kafak中没有消息，会隔timeout这个值读一次。比如上面代码设置了2秒，也是就2秒后会查一次。
+      </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果Kafka中还有消息没有消费的话，会马上去读，而不需要等待。</span>
+      val msgs: ConsumerRecords[String, String] = kafkaConsumer.poll(2000<span style="color: #000000;">)
+      </span><span style="color: #008000;">//</span><span style="color: #008000;"> println(msgs.count())</span>
+      val it =<span style="color: #000000;"> msgs.iterator()
+      </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (it.hasNext) {
+        val msg </span>=<span style="color: #000000;"> it.next()
+        println(s</span>"partition: ${msg.partition()}, offset: ${msg.offset()}, key: ${msg.key()}, value: ${msg.value()}"<span style="color: #000000;">)
+      }
+    }
+  }
+}</span></code></pre>
+
+<p>执行输出：</p>
+<p><img src="./images/Scala调用Kafka的生产者和消费者Demo，以及一些配置参数整理0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;<img src="./images/Scala调用Kafka的生产者和消费者Demo，以及一些配置参数整理1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>生产者配置参数解释：</p>
+<p><span style="text-decoration: underline;"><strong>bootstrap.servers：</strong></span>&nbsp;kafka集群broker的地址<br /><span style="text-decoration: underline;"><strong>key.serializer：</strong></span>关键字的序列化方式<br /><span style="text-decoration: underline;"><strong>value.serializer：</strong></span>消息值的序列化方式<br /><strong><span style="text-decoration: underline;">acks：</span></strong>指定必须要有多少个分区的副本接收到该消息，服务端才会向生产者发送响应，可选值为：0,1,2，&hellip;，all，如果设置为0，producter就只管发出不管kafka server有没有确认收到。设置all则表示kafka所有的分区副本全部确认接收到才返回。<br /><span style="text-decoration: underline;"><strong>buffer.memory：</strong></span>生产者的内存缓冲区大小。如果生产者发送消息的速度 &gt; 消息发送到kafka的速度，那么消息就会在缓冲区堆积，导致缓冲区不足。这个时候，send()方法要么阻塞，要么抛出异常。<br /><span style="text-decoration: underline;"><strong>max.block.ms：</strong></span>表示send()方法在抛出异常之前可以阻塞多久的时间，默认是60s<br /><span style="text-decoration: underline;"><strong>compression.type：</strong></span>消息在发往kafka之前可以进行压缩处理，以此来降低存储开销和网络带宽。默认值是null，可选的压缩算法有snappy、gzip和lz4<br /><span style="text-decoration: underline;"><strong>retries：</strong></span>生产者向kafka发送消息可能会发生错误，有的是临时性的错误，比如网络突然阻塞了一会儿，有的不是临时的错误，比如&ldquo;消息太大了&rdquo;，对于出现的临时错误，可以通过重试机制来重新发送<br /><span style="text-decoration: underline;"><strong>retry.backoff.ms：</strong></span>每次重试之间间隔的时间，第一次失败了，那么休息一会再重试，休息多久，可以通过这个参数来调节<br /><span style="text-decoration: underline;"><strong>batch.size：</strong></span>生产者在发送消息时，可以将即将发往同一个分区的消息放在一个批次里，然后将这个批次整体进行发送，这样可以节约网络带宽，提升性能。该参数就是用来规约一个批次的大小的。但是生产者并不是说要等到一个批次装满之后，才会发送，不是这样的，有时候半满，甚至只有一个消息的时候，也可能会发送，具体怎么选择，我们不知道，但是不是说非要等装满才发。因此，如果把该参数调的比较大的话，是不会造成消息发送延迟的，但是会占用比较大的内存。但是如果设置的太小，会造成消息发送次数增加，会有额外的IO开销<br /><span style="text-decoration: underline;"><strong>linger.ms：</strong></span>生产者在发送一个批次之前，可以适当的等一小会，这样可以让更多的消息加入到该批次。这样会造成延时增加，但是降低了IO开销，增加了吞吐量<br /><span style="text-decoration: underline;"><strong>client.id：</strong></span>服务器用来标志消息的来源，是一个任意的字符串<br /><span style="text-decoration: underline;"><strong>max.in.flight.requests.per.connection：</strong></span>一个消息发送给kafka集群，在收到服务端的响应之前的这段时间里，生产者还可以发n-1个消息。这个参数配置retries，可以保证消息的顺序，后面会介绍<br /><span style="text-decoration: underline;"><strong>request.timeout.ms：</strong></span>生产者在发送消息之后，到收到服务端响应时，等待的时间限制<br /><span style="text-decoration: underline;"><strong>max.request.size：</strong></span>生产者发送消息的大小。可以是一个消息的大小，也可以发送的一个批次的消息大小<br /><span style="text-decoration: underline;"><strong>receive.buffer.bytes和send.buffer.bytes：</strong></span>tcp socket接收和发送消息的缓冲区大小，其实指的就是ByteBuffer的大小</p>
+<p>消费者配置参数解释：</p>
+<p><span style="text-decoration: underline;"><strong>groupid：</strong></span>一个字符串用来指示一组consumer所在的组群。实现同一个topic可由不同的组群消费</p>
+<p><span style="text-decoration: underline;"><strong>auto.offset.reset：可选三个参数</strong></span></p>
+<p>earliest ---当各分区下有已提交的offset时，从提交的offset开始消费；无提交的offset时，从头开始消费 <br />latest---当各分区下有已提交的offset时，从提交的offset开始消费；无提交的offset时，消费新产生的该分区下的数据 <br />none---topic各分区都存在已提交的offset时，从offset后开始消费；只要有一个分区不存在已提交的offset，则抛出异常</p>
+<p><span style="text-decoration: underline;"><strong>socket.timeout.ms：</strong></span>默认值：3000，socket超时时间。</p>
+<p><span style="text-decoration: underline;"><strong>socket.buffersize：</strong></span> 默认值：64*1024，socket receive buffer。</p>
+<p><span style="text-decoration: underline;"><strong>fetch.size：</strong></span> 默认值：300 * 1024，控制在一个请求中获取的消息的字节数。 这个参数在0.8.x中由fetch.message.max.bytes,fetch.min.bytes取代。</p>
+<p><span style="text-decoration: underline;"><strong>backoff.increment.ms：</strong></span>默认值：1000，这个参数避免在没有新数据的情况下重复频繁的拉数据。 如果拉到空数据，则多推后这个时间。</p>
+<p><span style="text-decoration: underline;"><strong>queued.max.message.chunks：</strong></span>默认值：2，consumer内部缓存拉回来的消息到一个队列中。 这个值控制这个队列的大小。</p>
+<p><span style="text-decoration: underline;"><strong>auto.commit.enable：</strong></span>默认值：true，如果true,consumer定期地往zookeeper写入每个分区的offset。</p>
+<p><span style="text-decoration: underline;"><strong>auto.commit.interval.ms：</strong></span>默认值：10000，往zookeeper上写offset的频率。</p>
+<p><span style="text-decoration: underline;"><strong>auto.offset.reset：</strong></span>默认值：largest，如果offset出了返回，则 smallest: 自动设置reset到最小的offset. largest : 自动设置offset到最大的offset. 其它值不允许，会抛出异常。</p>
+<p><span style="text-decoration: underline;"><strong>consumer.timeout.ms：</strong></span>默认值：-1，默认-1,consumer在没有新消息时无限期的block。如果设置一个正值， 一个超时异常会抛出。</p>
+<p><span style="text-decoration: underline;"><strong>rebalance.retries.max：</strong></span>默认值：4，rebalance时的最大尝试次数。</p>
+<p><span style="text-decoration: underline;"><span style="text-decoration-line: underline;"><strong><code class="  language-kotlin">max<span class="token punctuation">.poll<span class="token punctuation">.interval<span class="token punctuation">.ms：</span></span></span></code></strong></span></span><code class="  language-kotlin">拉取的最大时间间隔，如果你一次拉取的比较多，建议加大这个值，</code><code class="  language-kotlin">长时间没有调用poll，且间隔超过这个值时，就会认为这个consumer失败了</code></p>
+<p><code class="  language-kotlin"></code><span style="text-decoration: underline;"><code class="  language-kotlin"><span class="token punctuation"><span class="token punctuation"><span class="token punctuation"><span class="token operator"><span class="token number"><span class="token number"><span class="token function"><span class="token punctuation"><span class="token punctuation"><span style="text-decoration-line: underline;"><strong>max</strong></span><span class="token punctuation"><span style="text-decoration-line: underline;"><strong>.poll</strong></span><span class="token punctuation"><span style="text-decoration-line: underline;"><strong>.records：</strong></span></span></span></span></span></span></span></span></span></span></span></span></code></span><code class="  language-kotlin"><span class="token punctuation"><span class="token punctuation"><span class="token punctuation"><span class="token operator"><span class="token number"><span class="token number"><span class="token function"><span class="token punctuation"><span class="token punctuation"><span class="token punctuation"><span class="token punctuation">默认值：</span></span></span></span></span></span></span></span></span></span></span></code><code class="  language-kotlin">500，</code><code class="  language-kotlin"><span class="token punctuation"><span class="token punctuation"><span class="token punctuation"><span class="token operator"><span class="token number"><span class="token number">Consumer每次调用<span class="token function">poll<span class="token punctuation">(<span class="token punctuation">)时取到的records的最大数。</span></span></span></span></span></span></span></span></span></code></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

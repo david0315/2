@@ -1,0 +1,153 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java ThreadLocal 的使用与源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java ThreadLocal 的使用与源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主浮云Cloud提供。<br/>
+原文连接:https://www.cnblogs.com/cloudfloating/p/11723093.html</div><br>
+    <p>GitHub Page: <a href="http://blog.cloudli.top/posts/Java-ThreadLocal-的使用与源码解析/" class="uri">http://blog.cloudli.top/posts/Java-ThreadLocal-的使用与源码解析/</a></p>
+<p><code>ThreadLocal</code> 主要解决的是每个线程绑定自己的值，可以将 <code>ThreadLocal</code> 看成全局存放数据的盒子，盒子中存储每个线程的私有数据。</p>
+<h2 id="验证线程变量的隔离性">验证线程变量的隔离性</h2>
+<pre><code><code>import static java.lang.System.out;
+
+public class Run {
+
+    private static ThreadLocal&lt;Integer&gt; threadLocal = new ThreadLocal&lt;&gt;();
+
+    static class Work extends Thread {
+
+        @Override
+        public void run() {
+            threadLocal.set(0);
+            for (int i = 1; i &lt;= 5; i++) {
+                // 获取数据
+                int sum = threadLocal.get();
+                out.printf(&quot;%s&#39;s sum = %s\n&quot;, getName(), threadLocal.get());
+                sum += i;
+                // 写回数据
+                threadLocal.set(sum);
+            }
+            out.printf(&quot;END %s&#39;s sum = %d\n\n&quot;, getName(), threadLocal.get());
+        }
+    }
+
+    public static void main(String[] args) {
+        Work work1 = new Work(),
+                work2 = new Work();
+
+        work1.start();
+        work2.start();
+    }
+}</code></code></pre>
+<p>运行结果：</p>
+<pre class="shell"><code>Thread-0&#39;s sum = null
+Thread-1&#39;s sum = null
+Thread-1&#39;s sum = 1
+Thread-1&#39;s sum = 3
+Thread-1&#39;s sum = 6
+Thread-1&#39;s sum = 10
+END Thread-1&#39;s sum = 15
+
+Thread-0&#39;s sum = 1
+Thread-0&#39;s sum = 3
+Thread-0&#39;s sum = 6
+Thread-0&#39;s sum = 10
+END Thread-0&#39;s sum = 15
+
+
+Process finished with exit code 0</code></code></pre>
+<p>从结果来看，两个线程的计算结果一致，<code>ThreadLocal</code> 中隔离了两个线程的数据。</p>
+<h2 id="threadlocal-源码解析">ThreadLocal 源码解析</h2>
+<h3 id="threadlocalmap-内部类">ThreadLocalMap 内部类</h3>
+<p>在 <code>ThreadLocal</code> 中有一个 <code>ThreadLocalMap</code> 内部类，所以 <code>ThreadLocal</code> 实际上是使用一个哈希表来存储每个线程的数据的。</p>
+<p><code>ThreadLocalMap</code> 与 <code>HashMap</code> 不同，其中 <code>Entry</code> 是一个弱引用，这意味着每次垃圾回收运行时都会将储存的数据回收掉。而且它只使用了数组来存储键值对。</p>
+<p><code>ThreadLocalMap</code> 中的 <code>Entry</code> ：</p>
+<pre><code><code>static class Entry extends WeakReference&lt;ThreadLocal&lt;?&gt;&gt; {
+            /** The value associated with this ThreadLocal. */
+            Object value;
+
+            Entry(ThreadLocal&lt;?&gt; k, Object v) {
+                super(k);
+                value = v;
+            }
+        }</code></code></pre>
+<h3 id="get-方法">get() 方法</h3>
+<pre><code><code>public T get() {
+    // 得到当前线程
+    Thread t = Thread.currentThread();
+    // 获取当前线程的哈希表
+    ThreadLocalMap map = getMap(t);
+    if (map != null) {
+        // 从哈希表中获取当前线程的数据
+        ThreadLocalMap.Entry e = map.getEntry(this);
+        if (e != null) {
+            @SuppressWarnings(&quot;unchecked&quot;)
+            T result = (T)e.value;
+            return result;
+        }
+    }
+    return setInitialValue();
+}</code></code></pre>
+<p><code>get()</code> 方法首先得到当前线程，然后获取当前线程的 <code>ThreadLocalMap</code> 对象，然后从中取出数据。</p>
+<p>这里的 <code>map.getEntry(this)</code> 看起来很奇怪，在前面有这样一行代码：</p>
+<pre><code><code>ThreadLocalMap map = getMap(t);</code></code></pre>
+<p>这个方法获取当前线程的 <code>ThreadLocalMap</code> 对象，所以，虽然 <code>map.getEntry()</code> 中的 <code>key</code> 总是 <code>ThreadLocal</code> 对象本身，但是每个线程都持有有自己的 <code>ThreadLocalMap</code> 对象。</p>
+<h3 id="getmap-方法">getMap() 方法</h3>
+<pre><code><code>/**
+ * Get the map associated with a ThreadLocal. Overridden in
+ * InheritableThreadLocal.
+ *
+ * @param  t the current thread
+ * @return the map
+ */
+ThreadLocalMap getMap(Thread t) {
+    return t.threadLocals;
+}</code></code></pre>
+<p>看到这个方法，<code>get()</code> 方法中 <code>map.getEntry(this)</code> 的迷雾就解开了。这里可以看到返回的是线程中的 <code>threadLocals</code> 属性。那么这里瞟一眼 <code>Thread</code> 的源码：</p>
+<pre><code><code>/* ThreadLocal values pertaining to this thread. This map is maintained
+ * by the ThreadLocal class. */
+ThreadLocal.ThreadLocalMap threadLocals = null;</code></code></pre>
+<p><img src="./images/Java ThreadLocal 的使用与源码解析0.png" alt="ThreadLocal" /></p>
+<p>其实每次 <code>get()</code> 时都是先获取了线程自己的 <code>ThreadLocalMap</code> 对象，然后对这个对象进行操作。</p>
+<h3 id="set-方法">set() 方法</h3>
+<pre><code><code>public void set(T value) {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null)
+        map.set(this, value);
+    else
+        // 为当前线程创建一个 ThreadLocalMap 对象
+        createMap(t, value);
+}</code></code></pre>
+<p><code>set()</code> 方法也是先获取当前线程自己的 <code>ThreadLocalMap</code> 对象，然后再设置数据。如果获取的哈希表为 null，则创建一个。</p>
+<h3 id="createmap-方法">createMap() 方法</h3>
+<pre><code><code>void createMap(Thread t, T firstValue) {
+    t.threadLocals = new ThreadLocalMap(this, firstValue);
+}</code></code></pre>
+<p><code>createMap()</code> 方法创建一个 <code>ThreadLocalMap</code> 对象，该对象由线程持有。</p>
+<h2 id="总结">总结</h2>
+<ul>
+<li><code>ThreadLocal</code> 可以隔离线程的变量，每个线程只能从这个对象中获取到属于自己的数据。</li>
+<li><code>ThreadLocal</code> 使用哈希表来存储线程的数据，而且这个哈希表是由线程自己持有的，每次获取和设值都会先获取当前线程持有的<code>ThreadLocalMap</code> 对象。</li>
+<li><code>ThreadLocalMap</code> 中的 <code>key</code> 总是 <code>ThreadLocal</code> 对象本身。</li>
+<li><code>ThreadLocalMap</code> 中的 <code>Entry</code> 是弱引用，每次 GC 运行都会被回收。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

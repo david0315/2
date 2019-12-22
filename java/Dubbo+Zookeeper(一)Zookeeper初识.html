@@ -1,0 +1,246 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Dubbo+Zookeeper(一)Zookeeper初识' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Dubbo+Zookeeper(一)Zookeeper初识</center></div><div class='banquan'>原文出处:本文由博客园博主茶底世界提供。<br/>
+原文连接:https://www.cnblogs.com/yuanqinnan/p/11730423.html</div><br>
+    <p class="md-end-block md-p"><span class="md-plain">前面花了一段时间去学习SpringCloud的相关知识，主要是理解微服务的概念并使用SpringCloud的一系列组件实现微服务落地。学习这些组件本身是简单的，跟着操作一遍基本就会了，这也得益于Springboot给我们带来了很多便利。实际的应用中也许还会碰到一些坑，但只要我们掌握基本的原理就能够解决。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">前面也讲了微服务的解决方案有两个，一个是SpringCloud,另外一个就是Dubbo+Zookeeper，下面我们来学习Dubbo+Zookeeper实现微服务。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">在学习微服务的第一篇中，理解了微服务的概念，比较了微服务与单体应用之前的优势和劣势，讲了要实现微服务主要的技术点，最重要的两块在于服务之间的通信和服务治理。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Dubbo+Zookeeper要实现微服务，就必须解决这两个技术点，Dubbo是一个RPC通信框架，它可以实现服务之间的通信。ZooKeeper 是一种分布式协调服务，用于管理大型主机。在分布式环境中协调和管理服务是一个复杂的过程。</span></p>
+<h2 class="md-end-block md-p"><span class="md-plain">一、</span><span class="md-plain md-expand">分布式协调技术</span></h2>
+<p class="md-end-block md-p"><span class="md-plain">上面说Zookeeper是一个分布式协调技术，那么我们就得先来学习什么是分布式协调技术。<span><strong>分布式协调技术</strong><span class="md-plain">主要用来解决分布式环境当中多个进程之间的同步控制，让他们有序的去访问某种临界资源，防止造成"脏数据"的后果。</span></span></span></p>
+<p class="md-end-block md-p"><span class="md-plain">首先，要明白我们为什么需要分布式锁，一个简单的例子，一般系统上都有一些定时任务，比如做一些数据的清算，如果我们部署了多台服务器，那在这个时候每台服务器都会执行这个定时任务，如果没有一个锁机制，那按照道理来说，这个定时任务就会被执行多次，这样就非常有可能出现脏数据。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">这里指的是一个定时任务，既然是定时任务，那么它必然会是同一个时刻进入，这个不需要高并发，我们也需要考虑。还有一种情况是高并发情况下，在分布式环境中，很大概率会存在多个节点上的进程同时访问某一个方法，而很多时候，<span><strong>我们需要保证一个方法在同一时间内只能被同一个线程执行</strong><span class="md-plain">，在单机环境中，Java中其实提供了很多并发处理相关的API，但是这些API在分布式场景中就无能为力了。也就是说单纯的Java Api并不能提供分布式锁的能力。所以针对分布式锁的实现目前有多种方案。</span></span></span></p>
+<p class="md-end-block md-p"><span class="md-plain">我们需要的分布式锁应该是怎么样的？（这里以方法锁为例，资源锁同理）</span></p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">可以保证在分布式部署的应用集群中，同一个方法在同一时间只能被一台机器上的一个线程执行。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">这把锁要是一把可重入锁（避免死锁）</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">这把锁最好是一把阻塞锁（根据业务需求考虑要不要这条）</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">有高可用的获取锁和释放锁功能</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">获取锁和释放锁的性能要好</span></p>
+</li>
+</ul>
+<p class="md-end-block md-p"><span class="md-plain">实现分布式锁有几种方案：</span></p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Memcached：利用 Memcached 的 <span><code>add</code><span class="md-plain"> 命令。此命令是原子性操作，只有在 <span><code>key</code><span class="md-plain"> 不存在的情况下，才能 <span><code>add</code><span class="md-plain"> 成功，也就意味着线程得到了锁。</span></span></span></span></span></span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Redis：和 Memcached 的方式类似，利用 Redis 的 <span><code>setnx</code><span class="md-plain"> 命令。此命令同样是原子性操作，只有在 <span><code>key</code><span class="md-plain"> 不存在的情况下，才能 <span><code>set</code><span class="md-plain"> 成功。</span></span></span></span></span></span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span>Zookeeper<span class="md-plain">：利用 Zookeeper 的顺序临时节点，来实现分布式锁和等待队列。Zookeeper 设计的初衷，就是为了实现分布式锁服务的。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Chubby：Google 公司实现的粗粒度分布式锁服务，底层利用了 Paxos 一致性算法。</span></p>
+</li>
+</ul>
+<h2 class="md-end-block md-heading"><span class="md-plain">二、分布式锁实现的基本原理</span></h2>
+<p class="md-end-block md-p"><span class="md-plain">要实现锁，那最基本的功能就有三个：<span><strong>加锁，解锁，锁超时</strong><span class="md-plain">，我们用redis的实现方式来简单的介绍下分布式锁的基本原理，以下代码都为伪代码。</span></span></span></p>
+<h3 class="md-end-block md-heading"><span class="md-plain">2.1 加锁</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">redis实现加锁最简单的操作就是是使用 <span><code>setnx</code><span class="md-plain"> 命令，其中的key可以根据业务名称来命名，基本模式是命名空间+对应的参数，比如我们要锁住某个商品库存，那我们可以用库存的id作为参数进行加锁，其实这里我们在不同的方法上可以加上相同的锁，比如，有两个方法都需要对库存进行处理，虽然他们并不是一个方法，但我们用同一个命名空间和参数也可以锁住。</span></span></span></p>
+<src class="cnblogs_code">
+<pre><code>setnx（lock_sale_商品ID，1）</code></pre>
+
+<p class="md-end-block md-p"><span class="md-plain">当我们在进行set方法时，如果key已经存在，说明已经有其他线程得到了锁，抢锁失败，就需要进行等待，如果key不存在，那说明得到了锁，方法就正常运行。</span></p>
+<h3 class="md-end-block md-p"><span class="md-plain">2.2 解锁</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">既然有加锁过程，那也就有解锁过程，线程执行完任务，需要释放锁，以便其他线程可以进入。释放锁的最简单方式是执行 <span><code>del</code><span class="md-plain"> 指令。一旦删除了key，那其他线程就可以正常的获得锁了。</span></span></span></p>
+<src class="cnblogs_code">
+<pre><code>del（lock_sale_商品ID）</code></pre>
+
+<h3><span class="md-plain">2.3 锁超时</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">锁超时是什么意思呢？如果一个得到锁的线程在执行任务的过程中挂掉，来不及显式地释放锁，这块资源将会永远被锁住（<span><strong>死锁</strong><span class="md-plain">），别的线程再也别想进来。所以，<span><code>setnx</code><span class="md-plain"> 的 <span><code>key</code><span class="md-plain"> 必须设置一个超时时间，以保证即使没有被显式释放，这把锁也要在一定时间后自动释放。<span><code>setnx</code><span class="md-plain"> 不支持超时参数，所以需要额外的指令。</span></span></span></span></span></span></span></span></span></p>
+<src class="cnblogs_code">
+<pre><code>expire（lock_sale_商品ID， 30）</code></pre>
+
+<p><span class="md-plain">那整体的伪代码就是：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span>（setnx（lock_sale_商品ID，1） == 1<span style="color: #000000;">）{
+    expire（lock_sale_商品ID，</span>30<span style="color: #000000;">）
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> something ......
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        del（lock_sale_商品ID）
+    }
+}</span></code></pre>
+
+<h3><span class="md-plain">2.4 存在的问题</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">redis实现分布式锁基本就是按照这个思路，但是这里存在一些问题。</span></p>
+<p class="md-end-block md-p"><span><strong><span><code>setnx</code><span class="md-plain"> 和 <span><code>expire</code><span class="md-plain"> 的非原子性</span></span></span></span></strong></span></p>
+<p class="md-end-block md-p"><span class="md-plain">如果我们使用java的指令来进行超时控制，加锁和设置超时时间不是一个原子操作，那如果加锁后进程挂掉了，那此时不会执行设置超时代码，那这个锁就永远不会被解，这样显然是不行的。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">解决方案：<span><strong>使用set指令，直接带入超时时间</strong><span class="md-plain">，那这个超时问题就交给redis本身去解决，这样即使java进程出现了问题，redis本身也能够进行解锁。</span></span></span></p>
+<src class="cnblogs_code">
+<pre><code>set（lock_sale_商品ID，1，30，NX）</code></pre>
+
+<p><strong>误删</strong></p>
+<p class="md-end-block md-p"><span class="md-plain">某一个线程A成功得到了锁，并设置了超时时间30秒，但由于这个方法本身执行比较慢，超过了30秒还没执行完，锁过期自动释放了，然后线程B得到锁，随后线程A执行完了，它执行了解锁任务，删除了锁，但我们知道这个时候解的锁并不是自己的，而是线程B的锁，这就是误删了线程B的锁。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">解决方案：可以在加锁的时候把当前的线程 ID 当做 <span><code>value</code><span class="md-plain">，并在删除之前验证 <span><code>key</code><span class="md-plain"> 对应的 <span><code>value</code><span class="md-plain"> 是不是自己线程的 ID。</span></span></span></span></span></span></span></p>
+<p class="md-end-block md-p"><span class="md-plain">那加锁的代码：</span></p>
+<src class="cnblogs_code">
+<pre><code>String threadId =<span style="color: #000000;"> Thread.currentThread().getId()
+set（key，threadId ，</span>30，NX）</code></pre>
+
+<p><span class="md-plain">解锁的代码：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span><span style="color: #000000;">（threadId .equals(redisClient.get(key))）{
+    del(key)
+}</span></code></pre>
+
+<p><strong>出现并发的可能性</strong></p>
+<p class="md-end-block md-p"><span class="md-plain">在上面的描述中，如果一个方法执行时间过长，那还是有可能会出现并发的可能性，但如果过期时间设置太长也会出现他获取锁的线程就可能要平白的多等一段时间。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">了解完redis实现分布式锁后，我们对分布式锁有了一个感性的认识，现在来学习Zookeeper</span></p>
+<h2 class="md-end-block md-heading"><span class="md-plain">三、Zookeeper初识</span></h2>
+<p class="md-end-block md-p"><span class="md-plain">Apache ZooKeeper是由集群（节点组）使用的一种服务，用于在自身之间协调，并通过稳健的同步技术维护共享数据。ZooKeeper本身是一个分布式应用程序，为写入分布式应用程序提供服务。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">ZooKeeper提供的常见服务如下 :</span></p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>命名服务</strong><span class="md-plain"> - 按名称标识集群中的节点。它类似于DNS，但仅对于节点。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>配置管理</strong><span class="md-plain"> - 加入节点的最近的和最新的系统配置信息。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>集群管理</strong><span class="md-plain"> - 实时地在集群和节点状态中加入/离开节点。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>选举算法</strong><span class="md-plain"> - 选举一个节点作为协调目的的leader。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>锁定和同步服务</strong><span class="md-plain"> - 在修改数据的同时锁定数据。此机制可帮助你在连接其他分布式应用程序（如Apache HBase）时进行自动故障恢复。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>高度可靠的数据注册表</strong><span class="md-plain"> - 即使在一个或几个节点关闭时也可以获得数据。</span></span></p>
+</li>
+</ul>
+<p class="md-end-block md-p"><span class="md-plain">分布式应用程序提供了很多好处，但它们也抛出了一些复杂和难以解决的挑战。ZooKeeper框架提供了一个完整的机制来克服所有的挑战。竞争条件和死锁使用<span><strong>故障安全同步方法</strong><span class="md-plain">进行处理。另一个主要缺点是数据的不一致性，ZooKeeper使用<span><strong>原子性</strong><span class="md-plain">解析。</span></span></span></span></span></p>
+<p class="md-end-block md-p"><span class="md-plain">以下是使用ZooKeeper的好处：</span></p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>简单的分布式协调过程</strong></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>同步</strong><span class="md-plain"> - 服务器进程之间的相互排斥和协作。此过程有助于Apache HBase进行配置管理。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>有序的消息</strong></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>序列化</strong><span class="md-plain"> - 根据特定规则对数据进行编码。确保应用程序运行一致。这种方法可以在MapReduce中用来协调队列以执行运行的线程。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>可靠性</strong></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>原子性</strong><span class="md-plain"> - 数据转移完全成功或完全失败，但没有事务是部分的。</span></span></p>
+</li>
+</ul>
+<h3 class="md-end-block md-heading"><span class="md-plain">3.1 Zookeeper 整体架构</span></h3>
+<p class="md-end-block md-p md-focus"><span class="md-plain">我们先了解Zookeeper的整体架构，先看下面的图表：</span></p>
+<p class="md-end-block md-p md-focus"><span class="md-plain"><img src="./images/Dubbo+Zookeeper(一)Zookeeper初识0.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item md-focus-container">
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">Client（客户端）:客户端，我们的分布式应用集群中的一个节点，从服务器访问信息。对于特定的时间间隔，每个客户端向服务器发送消息以使服务器知道客户端是活跃的。类似地，当客户端连接时，服务器发送确认码。如果连接的服务器没有响应，客户端会自动将消息重定向到另一个服务器。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Server（服务器）:服务器，我们的ZooKeeper总体中的一个节点，为客户端提供所有的服务。向客户端发送确认码以告知服务器是活跃的。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Ensemble: ZooKeeper服务器组。形成ensemble所需的最小节点数为3。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">Leader:服务器节点，如果任何连接的节点失败，则执行自动恢复。Leader在服务启动时被选举。</span></p>
+</li>
+<li class="md-list-item md-focus-container">
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">Follower:跟随leader指令的服务器节点。</span></p>
+</li>
+</ul>
+<h3 class="md-end-block md-heading"><span class="md-plain">3.2 Zookeeper 数据模型</span></h3>
+<p><span class="md-plain">Zookeeper 的数据模型是什么样子呢？它很像数据结构当中的树，也很像文件系统的目录。</span></p>
+<p><span class="md-plain"><img src="./images/Dubbo+Zookeeper(一)Zookeeper初识1.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p class="md-end-block md-p"><span class="md-plain">ZooKeeper节点称为 <span><strong>znode</strong><span class="md-plain"> 。每个znode由一个名称标识，并用路径(/)序列分隔，这样的层级结构，让每一个 Znode 节点拥有唯一的路径，就像命名空间一样对不同信息作出清晰的隔离。</span></span></span></p>
+<p class="md-end-block md-p md-focus"><span class="md-plain">那znode里有包含哪些元素呢？</span></p>
+<p class="md-end-block md-p md-focus"><span class="md-plain"><img src="./images/Dubbo+Zookeeper(一)Zookeeper初识2.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item md-focus-container">
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">data：Znode 存储的数据信息。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">ACL：记录 Znode 的访问权限，即哪些人或哪些 IP 可以访问本节点。</span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span class="md-plain">stat：包含 Znode 的各种元数据，比如事务 ID、版本号、时间戳、大小等等。存储在znode中的数据总量是数据长度。你最多可以存储1MB的数据。</span></p>
+</li>
+<li class="md-list-item md-focus-container">
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">child：当前节点的子节点引用</span></p>
+</li>
+</ul>
+<p class="md-end-block md-p"><span><strong>Znode的类型</strong></span></p>
+<p class="md-end-block md-p"><span class="md-plain">Znode被分为持久（persistent）节点，顺序（sequential）节点和临时（ephemeral）节点。</span></p>
+<ul class="ul-list" data-mark="-">
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>持久节点</strong><span class="md-plain"> - 即使在创建该特定znode的客户端断开连接后，持久节点仍然存在。默认情况下，除非另有说明，否则所有znode都是持久的。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>临时节点</strong><span class="md-plain"> - 客户端活跃时，临时节点就是有效的。当客户端与ZooKeeper集合断开连接时，临时节点会自动删除。因此，只有临时节点不允许有子节点。如果临时节点被删除，则下一个合适的节点将填充其位置。临时节点在leader选举中起着重要作用。</span></span></p>
+</li>
+<li class="md-list-item">
+<p class="md-end-block md-p"><span><strong>顺序节点</strong><span class="md-plain"> - 顺序节点可以是持久的或临时的。当一个新的znode被创建为一个顺序节点时，ZooKeeper通过将10位的序列号附加到原始名称来设置znode的路径。例如，如果将具有路径 <span><strong>/myapp</strong><span class="md-plain"> 的znode创建为顺序节点，则ZooKeeper会将路径更改为 <span><strong>/myapp0000000001</strong><span class="md-plain"> ，并将下一个序列号设置为0000000002。如果两个顺序节点是同时创建的，那么ZooKeeper不会对每个znode使用相同的数字。顺序节点在锁定和同步中起重要作用。</span></span></span></span></span></span></p>
+</li>
+</ul>
+<p class="md-end-block md-p"><span><strong>Znode支持的操作及暴露的API：</strong></span></p>
+<ul>
+<li class="md-end-block md-p"><span class="md-plain">create /path data：</span>创建一个名为/path的znode，数据为data。</li>
+<li class="md-end-block md-p"><span class="md-plain">delete /path：</span>删除名为/path的znode。</li>
+<li class="md-end-block md-p"><span class="md-plain">exists /path：</span>检查是否存在名为/path的znode</li>
+<li class="md-end-block md-p"><span class="md-plain">setData /path data：</span>设置名为/path的znode的数据为data</li>
+<li class="md-end-block md-p"><span class="md-plain">getData /path：</span>返回名为/path的znode的数据</li>
+<li class="md-end-block md-p"><span class="md-plain">getChildren /path：</span>返回所有/path节点的所有子节点列表</li>
+</ul>
+<h3 class="md-end-block md-heading"><span class="md-plain">3.3 Watches</span></h3>
+<p class="md-end-block md-p"><span class="md-plain">监视是一种简单的机制，使客户端收到关于ZooKeeper集合中的更改的通知。客户端可以在读取特定znode时设置Watches。Watches会向注册的客户端发送任何znode（客户端注册表）更改的通知。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Znode更改是与znode相关的数据的修改或znode的子项中的更改。只触发一次watches。如果客户端想要再次通知，则必须通过另一个读取操作来完成。当连接会话过期时，客户端将与服务器断开连接，相关的watches也将被删除。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">具体的交互如下：</span></p>
+<p class="md-end-block md-p"><span class="md-plain">客户端调用 <span><code>getData</code><span class="md-plain"> 方法，<span><code>watch</code><span class="md-plain"> 参数是 <span><code>true</code><span class="md-plain">。服务端接到请求，返回节点数据，并且在对应的哈希表里插入被 Watch 的 Znode 路径，以及 Watcher 列表。</span></span></span></span></span></span></span></p>
+<p class="md-end-block md-p"><span class="md-plain"><span><span class="md-plain"><span><span class="md-plain"><span><span class="md-plain"><img src="./images/Dubbo+Zookeeper(一)Zookeeper初识3.png" alt="" /></span></span></span></span></span></span></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;当被 Watch 的 Znode 已删除，服务端会查找哈希表，找到该 Znode 对应的所有 Watcher，异步通知客户端，并且删除哈希表中对应的 Key-Value。</p>
+<p><img src="./images/Dubbo+Zookeeper(一)Zookeeper初识4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="md-end-block md-p md-focus"><span class="md-plain md-expand">这里有点类似于观察者模式，这里想想，利用这个我们可以实现服务的注册与发现，后面我们将深入学习。</span></p>
+<p class="md-end-block md-p"><span class="md-plain">Zookeeper的基本概念是这些，下一篇将深入其基本原理，学习Zookeeper一致性实现和Zookeeper是如何实现分布式锁的。</span></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,316 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修EasyExcel 轻松灵活读取Excel内容' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>EasyExcel 轻松灵活读取Excel内容</center></div><div class='banquan'>原文出处:本文由博客园博主日拱一兵提供。<br/>
+原文连接:https://www.cnblogs.com/FraserYu/p/11717665.html</div><br>
+    <h2 id="写在前面">写在前面</h2>
+<p>Java 后端程序员应该会遇到读取 Excel 信息到 DB 等相关需求，脑海中可能突然间想起 Apache POI 这个技术解决方案，但是当 Excel 的数据量非常大的时候，你也许发现，POI 是将整个 Excel 的内容全部读出来放入到内存中，所以内存消耗非常严重，如果同时进行包含大数据量的 Excel 读操作，很容易造成内存溢出问题</p>
+<p>但 EasyExcel 的出现很好的解决了 POI 相关问题，原本一个 3M 的 Excel 用 POI 需要100M左右内存, 而 EasyExcel 可以将其降低到几 M，同时再大的 Excel 都不会出现内存溢出的情况，因为是逐行读取 Excel 的内容 (老规矩，这里不用过分关心下图，脑海中有个印象即可，看完下面的用例再回看这个图，就很简单了)</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容0.png" /></p>
+<p>另外 EasyExcel 在上层做了模型转换的封装，不需要 cell 等相关操作，让使用者更加简单和方便，且看</p>
+<h2 id="简单读">简单读</h2>
+<p>假设我们 excel 中有以下内容:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容1.png" /></p>
+<p>我们需要新建 User 实体，同时为其添加成员变量</p>
+<pre><code><code>@Data
+public class User {
+
+    /**
+     * 姓名
+     */
+    @ExcelProperty(index = 0)
+    private String name;
+
+    /**
+     * 年龄
+     */
+    @ExcelProperty(index = 1)
+    private Integer age;
+}</code></code></pre>
+<p>你也许关注到了 <code>@ExcelProperty</code> 注解，同时使用了 index 属性 (0 代表第一列，以此类推)，该注解同时支持以「列名」name 的方式匹配，比如:</p>
+<pre><code><code>@ExcelProperty(&quot;姓名&quot;)
+private String name;</code></code></pre>
+<p>按照 github 文档的说明:</p>
+<blockquote>
+<p>不建议 index 和 name 同时用，要么一个对象只用index，要么一个对象只用name去匹配</p>
+</blockquote>
+<ol>
+<li>如果读取的 Excel 模板信息列固定，这里建议以 index 的形式使用，因为如果用名字去匹配，名字重复，会导致只有一个字段读取到数据，所以 index 是更稳妥的方式</li>
+<li>如果 Excel 模板的列 index 经常有变化，那还是选择 name 方式比较好，不用经常性修改实体的注解 index 数值</li>
+</ol>
+<p>所以大家可以根据自己的情况自行选择</p>
+<p>编写测试用例<br />
+<img src="./images/EasyExcel 轻松灵活读取Excel内容2.png" /></p>
+<p>EasyExcel 类中重载了很多个 read 方法，这里不一一列举说明，请大家自行查看；同时 sheet 方法也可以指定 sheetNo，默认是第一个 sheet 的信息</p>
+<p>上面代码的 <code>new UserExcelListener()</code> 异常醒目，这也是 EasyExcel 逐行读取 Excel 内容的关键所在，自定义 <code>UserExcelListener</code> 继承 <code>AnalysisEventListener</code></p>
+<pre><code><code>@Slf4j
+public class UserExcelListener extends AnalysisEventListener&lt;User&gt; {
+
+    /**
+     * 批处理阈值
+     */
+    private static final int BATCH_COUNT = 2;
+    List&lt;User&gt; list = new ArrayList&lt;User&gt;(BATCH_COUNT);
+
+    @Override
+    public void invoke(User user, AnalysisContext analysisContext) {
+        log.info(&quot;解析到一条数据:{}&quot;, JSON.toJSONString(user));
+        list.add(user);
+        if (list.size() &gt;= BATCH_COUNT) {
+            saveData();
+            list.clear();
+        }
+    }
+
+    @Override
+    public void doAfterAllAnalysed(AnalysisContext analysisContext) {
+        saveData();
+        log.info(&quot;所有数据解析完成！&quot;);
+    }
+
+    private void saveData(){
+        log.info(&quot;{}条数据，开始存储数据库！&quot;, list.size());
+        log.info(&quot;存储数据库成功！&quot;);
+    }
+}</code></code></pre>
+<p>到这里请回看文章开头的 EasyExcel 原理图，invoke 方法逐行读取数据，对应的就是订阅者 1；doAfterAllAnalysed 方法对应的就是订阅者 2，这样你理解了吗？</p>
+<p>打印结果:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容3.png" /></p>
+<p>从这里可以看出，虽然是逐行解析数据，但我们可以自定义阈值，完成数据的批处理操作，可见 EasyExcel 操作的灵活性</p>
+<h2 id="自定义转换器">自定义转换器</h2>
+<p>这是最基本的数据读写，我们的业务数据通常不可能这么简单，有时甚至需要将其转换为程序可读的数据</p>
+<h3 id="性别信息转换">性别信息转换</h3>
+<p>比如 Excel 中新增「性别」列，其性别为男/女，我们需要将 Excel 中的性别信息转换成程序信息: 「1: 男；2:女」</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容4.png" /></p>
+<p>首先在 User 实体中添加成员变量 gender:</p>
+<pre><code><code>@ExcelProperty(index = 2)
+private Integer gender;</code></code></pre>
+<p>EasyExcel 支持我们自定义 converter，将 excel 的内容转换为我们程序需要的信息，这里新建 GenderConverter，用来转换性别信息</p>
+<pre><code><code>public class GenderConverter implements Converter&lt;Integer&gt; {
+
+    public static final String MALE = &quot;男&quot;;
+    public static final String FEMALE = &quot;女&quot;;
+
+    @Override
+    public Class supportJavaTypeKey() {
+        return Integer.class;
+    }
+
+    @Override
+    public CellDataTypeEnum supportExcelTypeKey() {
+        return CellDataTypeEnum.STRING;
+    }
+
+    @Override
+    public Integer convertToJavaData(CellData cellData, ExcelContentProperty excelContentProperty, GlobalConfiguration globalConfiguration) throws Exception {
+        String stringValue = cellData.getStringValue();
+        if (MALE.equals(stringValue)){
+            return 1;
+        }else {
+            return 2;
+        }
+    }
+
+    @Override
+    public CellData convertToExcelData(Integer integer, ExcelContentProperty excelContentProperty, GlobalConfiguration globalConfiguration) throws Exception {
+        return null;
+    }
+}</code></code></pre>
+<blockquote>
+<p>上面程序的 Converter 接口的泛型是指要转换的 Java 数据类型，与 supportJavaTypeKey 方法中的返回值类型一致</p>
+</blockquote>
+<p>打开注解 <code>@ExcelProperty</code> 查看，该注解是支持自定义 Converter 的，所以我们为 User 实体添加 <strong>gender</strong> 成员变量，并指定 converter</p>
+<pre><code><code>/**
+ * 性别 1：男；2：女
+ */
+@ExcelProperty(index = 2, converter = GenderConverter.class)
+private Integer gender;</code></code></pre>
+<p>来看运行结果:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容5.png" /></p>
+<p>数据按照我们预期做出了转换，从这里也可以看出，Converter 可以一次定义到处是用的便利性</p>
+<h3 id="日期信息转换">日期信息转换</h3>
+<p>日期信息也是我们常见的转换数据，比如 Excel 中新增「出生年月」列，我们要解析成 <strong>yyyy-MM-dd</strong> 格式，我们需要将其进行格式化，EasyExcel 通过 <code>@DateTimeFormat</code> 注解进行格式化</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容6.png" /></p>
+<p>在 User 实体中添加成员变量 <strong>birth</strong>，同时应用 <code>@DateTimeFormat</code> 注解，按照要求做格式化</p>
+<pre><code><code>/**
+ * 出生日期
+ */
+@ExcelProperty(index = 3)
+@DateTimeFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;)
+private String birth;</code></code></pre>
+<p>来看运行结果:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容7.png" /></p>
+<p>如果这里你指定 birth 的类型为 Date，试试看，你得到的结果是什么？</p>
+<p>到这里都是以测试的方式来编写程序代码，作为 Java Web 开发人员，尤其在目前主流 Spring Boot 的架构下，所以如何实现 Web 方式读取 Excel 的信息呢？</p>
+<h2 id="web-读">web 读</h2>
+<h3 id="简单-web">简单 Web</h3>
+<p>很简单，只是将测试用例的关键代码移动到 Controller 中即可，我们新建一个 <code>UserController</code>，在其添加 <code>upload</code> 方法</p>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/users&quot;)
+@Slf4j
+public class UserController {
+    @PostMapping(&quot;/upload&quot;)
+    public String upload(MultipartFile file) throws IOException {
+        EasyExcel.read(file.getInputStream(), User.class, new UserExcelListener()).sheet().doRead();
+        return &quot;success&quot;;
+    }
+}</code></code></pre>
+<p>其实在写测试用例的时候你也许已经发现，listener 是以 new 的形式作为参数传入到 EasyExcel.read 方法中的，这是不符合 Spring IoC 的规则的，我们通常读取 Excel 数据之后都要针对读取的数据编写一些业务逻辑的，而业务逻辑通常又会写在 Service 层中，我们如何在 listener 中调用到我们的 service 代码呢？</p>
+<p><strong>先不要向下看，你脑海中有哪些方案呢？ </strong></p>
+<h3 id="匿名内部类方式">匿名内部类方式</h3>
+<p>匿名内部类是最简单的方式，我们需要先新建 Service 层的信息:<br />
+新建 IUser 接口:</p>
+<pre><code><code>public interface IUser {
+    public boolean saveData(List&lt;User&gt; users);
+}</code></code></pre>
+<p>新建 IUser 接口实现类 UserServiceImpl:</p>
+<pre><code><code>@Service
+@Slf4j
+public class UserServiceImpl implements IUser {
+    @Override
+    public boolean saveData(List&lt;User&gt; users) {
+        log.info(&quot;UserService {}条数据，开始存储数据库！&quot;, users.size());
+        log.info(JSON.toJSONString(users));
+        log.info(&quot;UserService 存储数据库成功！&quot;);
+        return true;
+    }
+}</code></code></pre>
+<p>接下来，在 Controller 中注入 IUser:</p>
+<pre><code><code>@Autowired
+private IUser iUser;</code></code></pre>
+<p>修改 upload 方法，以匿名内部类重写 listener 方法的形式来实现:</p>
+<pre><code><code>@PostMapping(&quot;/uploadWithAnonyInnerClass&quot;)
+    public String uploadWithAnonyInnerClass(MultipartFile file) throws IOException {
+        EasyExcel.read(file.getInputStream(), User.class, new AnalysisEventListener&lt;User&gt;(){
+            /**
+             * 批处理阈值
+             */
+            private static final int BATCH_COUNT = 2;
+            List&lt;User&gt; list = new ArrayList&lt;User&gt;();
+
+            @Override
+            public void invoke(User user, AnalysisContext analysisContext) {
+                log.info(&quot;解析到一条数据:{}&quot;, JSON.toJSONString(user));
+                list.add(user);
+                if (list.size() &gt;= BATCH_COUNT) {
+                    saveData();
+                    list.clear();
+                }
+            }
+
+            @Override
+            public void doAfterAllAnalysed(AnalysisContext analysisContext) {
+                saveData();
+                log.info(&quot;所有数据解析完成！&quot;);
+            }
+
+            private void saveData(){
+                iUser.saveData(list);
+            }
+        }).sheet().doRead();
+        return &quot;success&quot;;
+    }</code></code></pre>
+<p>查看结果:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容8.png" /></p>
+<p>这种实现方式，其实这只是将 listener 中的内容全部重写，并在 controller 中展现出来，当你看着这么臃肿的 controller 是不是非常难受？很显然这种方式不是我们的最佳编码实现</p>
+<h3 id="构造器传参">构造器传参</h3>
+<p>在之前分析 SpringBoot 统一返回源码时，不知道你是否发现，Spring 底层源码多数以构造器的形式传参，所以我们可以将为 listener 添加有参构造器，将 Controller 中依赖注入的 IUser 以构造器的形式传入到 listener :</p>
+<pre><code><code>@Slf4j
+public class UserExcelListener extends AnalysisEventListener&lt;User&gt; {
+
+    private IUser iUser;
+
+    public UserExcelListener(IUser iUser){
+        this.iUser = iUser;
+    }
+
+    // 省略相应代码...
+
+    private void saveData(){
+        iUser.saveData(list); //调用 userService 中的 saveData 方法
+    }
+    </code></code></pre>
+<p>更改 Controller 方法:</p>
+<pre><code><code>@PostMapping(&quot;/uploadWithConstructor&quot;)
+public String uploadWithConstructor(MultipartFile file) throws IOException {
+    EasyExcel.read(file.getInputStream(), User.class, new UserExcelListener(iUser)).sheet().doRead();
+    return &quot;success&quot;;
+}</code></code></pre>
+<p>运行结果: 同上</p>
+<p>这样更改后，controller 代码看着很清晰，但如果后续业务还有别的 Service 需要注入，我们难道要一直添加有参构造器吗？很明显，这种方式同样不是很灵活。</p>
+<p>其实在使用匿名内部类的时候，你也许会想到，我们可以通过 Java8 lambda 的方式来解决这个问题</p>
+<h3 id="lambda-传参">Lambda 传参</h3>
+<p>为了解决构造器传参的痛点，同时我们又希望 listener 更具有通用性，没必要为每个 Excel 业务都新建一个 listener，因为 listener 都是逐行读取 Excel 数据，只需要将我们的业务逻辑代码传入给 listener 即可，所以我们需用到 <code>Consumer&lt;T&gt;</code> ，将其作为构造 listener 的参数。</p>
+<p>新建一个工具类 ExcelDemoUtils，用来构造 listener:</p>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容9.png" /></p>
+<p>我们看到，getListener 方法接收一个 <code>Consumer&lt;List&lt;T&gt;&gt;</code> 的参数，这样下面代码被调用时，我们的业务逻辑也就会被相应的执行了:</p>
+<pre><code><code>consumer.accept(linkedList);</code></code></pre>
+<p>继续改造 Controller 方法:<br />
+<img src="./images/EasyExcel 轻松灵活读取Excel内容10.png" /></p>
+<p>运行结果: 同上</p>
+<p>到这里，我们只需要将业务逻辑定制在 <code>batchInsert</code> 方法中:</p>
+<ol>
+<li>满足 Controller RESTful API 的简洁性</li>
+<li>listener 更加通用和灵活，它更多是扮演了抽象类的角色，具体的逻辑交给抽象方法的实现来完成</li>
+<li>业务逻辑可扩展性也更好，逻辑更加清晰</li>
+</ol>
+<h2 id="总结">总结</h2>
+<p>到这里，关于如何使用 EasyExcel 读取 Excel 信息的基本使用方式已经介绍完了，还有很多细节内容没有讲，大家可以自行查阅 <a href="https://github.com/alibaba/easyexcel">EasyExcel Github</a> 文档去发现更多内容。灵活使用 Java 8 的函数式接口，更容易让你提高代码的复用性，同时看起来更简洁规范</p>
+<p>除了读取 Excel 的读取，还有 Excel 的写入，如果需要将其写入到指定位置，配合 HuTool 的工具类 FileWriter 的使用是非常方便的，针对 EasyExcel 的使用，如果大家有什么问题，也欢迎到博客下方探讨</p>
+<p>完整代码请在公众号回复「demo」，点开链接，查看「easy-excel-demo」文件夹的内容即可，另外个人博客由于特殊原因暂时关闭首页，其他目录访问一切正常，更多文章可以从 https://dayarch.top/archives 入口查看</p>
+<h2 id="感谢">感谢</h2>
+<p>非常感谢 EasyExcel 的作者 🌹🌹，让 Excel 的读写更加方便</p>
+<h2 id="灵魂追问">灵魂追问</h2>
+<ol>
+<li>除了 Consumer，如果需要返回值的业务逻辑，需要用到哪个函数式接口呢？</li>
+<li>当出现复杂表头的时候要如何处理呢？</li>
+<li>将 DB 数据写入到 Excel 并下载，如何实现呢？</li>
+<li>从 EasyExcel 的设计上，你学到了什么，欢迎博客下方留言讨论</li>
+</ol>
+<h2 id="提高效率工具">提高效率工具</h2>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容11.png" /></p>
+<hr />
+<h2 id="推荐阅读">推荐阅读</h2>
+<ol>
+<li><a href="https://dayarch.top/p/d7e125a1.html">这次走进并发的世界，请不要错过</a></li>
+<li><a href="https://dayarch.top/p/86243a5b.html">学并发编程，透彻理解这三个核心是关键</a></li>
+<li><a href="https://dayarch.top/p/6d12b8cf.html">并发Bug之源有三，请睁大眼睛看清它们</a></li>
+<li><a href="https://dayarch.top/p/815d7647.html">可见性有序性，Happens-before来搞定</a></li>
+<li><a href="https://dayarch.top/p/32b8e26a.html">解决原子性问题？你首先需要的是宏观理解</a></li>
+<li><a href="https://dayarch.top/p/fb3c7eeb.html">面试并发volatile关键字时，我们应该具备哪些谈资？</a></li>
+</ol>
+<hr />
+<blockquote>
+<h3 id="欢迎持续关注公众号日拱一兵">欢迎持续关注公众号：「日拱一兵」</h3>
+<ul>
+<li>前沿 Java 技术干货分享</li>
+<li>高效工具汇总 | 回复「工具」</li>
+<li>面试问题分析与解答</li>
+<li>技术资料领取 | 回复「资料」</li>
+</ul>
+</blockquote>
+<blockquote>
+<p>以读侦探小说思维轻松趣味学习 Java 技术栈相关知识，本着将复杂问题简单化，抽象问题具体化和图形化原则逐步分解技术问题，技术持续更新，请持续关注......</p>
+</blockquote>
+<p><img src="./images/EasyExcel 轻松灵活读取Excel内容12.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

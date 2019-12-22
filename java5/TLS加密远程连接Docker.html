@@ -1,0 +1,190 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修TLS加密远程连接Docker' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>TLS加密远程连接Docker</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11482827.html</div><br>
+    <p><a href="https://blog.csdn.net/boling_cavalry/article/details/100049996">《Docker远程连接设置》</a>一文讲述了开启Docker远程连接的方法，但那种方法不安全，因为任何客户端都可以通过Docker服务的IP地址连接上去，今天我们就来学习Docker官方推荐的安全的远程连接方式：TLS加密连接，通过证书来保证安全性。</p>
+<h3 id="官方文档">官方文档</h3>
+<p>这里是官方的权威文档：https://docs.docker.com/engine/security/https/</p>
+<h3 id="环境信息">环境信息</h3>
+<p>本次实战的环境信息如下：</p>
+<ol>
+<li>Docker服务所在机器（下面以A机器表示）：CentOS Linux release 7.6.1810</li>
+<li>Docker服务版本：1.13.1</li>
+<li>另一台验证远程连接的机器（下面以B机器表示）也是CentOS 7.6，其上安装了Docker client 1.13.1</li>
+</ol>
+<h3 id="操作步骤">操作步骤</h3>
+<p>本次实战的操作步骤如下：</p>
+<ol>
+<li>制作证书，包括CA、服务端、客户端的；</li>
+<li>设置机器A上的Docker服务的TLS连接；</li>
+<li><p>从机器B远程连接机器A上的Docker服务；</p>
+<h3 id="制作证书a机器">制作证书（A机器）</h3></li>
+<li>在Linux服务器上建一个目录，进入此目录，我这里是<font color="blue">/root/work</font></li>
+<li>创建根证书RSA私钥：</li>
+</ol>
+<pre><code><code>openssl genrsa -aes256 -out ca-key.pem 4096</code></code></pre>
+<ol>
+<li>页面提示<font color="blue">Enter pass phrase for ca-key.pem</font>，此时输入秘钥的密码，我这里输入了<font color="blue">1234</font>，回车后会要求再输入一次，两次密码一致就会在当前目录生成CA秘钥文件<font color="blue">ca-key.pem</font>;</li>
+<li>以此秘钥创建CA证书，自己给自己签发证书,自己就是CA机构,也可以交给第三方机构去签发：</li>
+</ol>
+<pre><code><code>openssl req -new -x509 -days 1000 -key ca-key.pem -sha256 -subj &quot;/CN=*&quot; -out ca.pem</code></code></pre>
+<p>此时生成的<font color="blue">ca.pem</font>文件就是CA证书；</p>
+<ol>
+<li>创建服务端私钥：</li>
+</ol>
+<pre><code><code>openssl genrsa -out server-key.pem 4096</code></code></pre>
+<p>此时生成的<font color="blue">server-key.pem</font>文件就是服务端私钥；</p>
+<ol>
+<li>生成服务端证书签名请求(csr即certificate signing request，里面包含公钥与服务端信息)</li>
+</ol>
+<pre><code><code>openssl req -subj &quot;/CN=*&quot; -sha256 -new -key server-key.pem -out server.csr</code></code></pre>
+<p>此时生成的<font color="blue">server.csr</font>文件就是服务端证书；</p>
+<ol>
+<li>生成签名过的服务端证书（期间会要求输入密码1234）：</li>
+</ol>
+<pre><code><code>openssl x509 -req -days 1000 -sha256 -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem</code></code></pre>
+<p>此时生成的<font color="blue">server-cert.pem</font>文件就是已盖章生效的服务端证书；</p>
+<ol>
+<li>生成客户私钥：</li>
+</ol>
+<pre><code><code>openssl genrsa -out key.pem 4096</code></code></pre>
+<p>此时生成的<font color="blue">key.pem</font>文件就是客户私钥；</p>
+<ol>
+<li>生成客户端证书签名请求：</li>
+</ol>
+<pre><code><code>openssl req -subj &quot;/CN=client&quot; -new -key key.pem -out client.csr</code></code></pre>
+<p>此时生成的<font color="blue">client.csr</font>文件就是客户端证书签名请求；</p>
+<ol>
+<li>生成名为<font color="blue">extfile.cnf</font>的配置文件：</li>
+</ol>
+<pre><code><code>echo extendedKeyUsage=clientAuth &gt; extfile.cnf</code></code></pre>
+<ol>
+<li>生成签名过的客户端证书（期间会要求输入密码1234）：</li>
+</ol>
+<pre><code><code>openssl x509 -req -days 1000 -sha256 -in client.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out cert.pem -extfile extfile.cnf</code></code></pre>
+<ol>
+<li>将多余的文件删除：</li>
+</ol>
+<pre><code><code>rm -rf ca.srl client.csr extfile.cnf server.csr</code></code></pre>
+<ol>
+<li>此时还剩以下文件：</li>
+</ol>
+<table>
+<thead>
+<tr class="header">
+<th>文件名</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ca.pem</td>
+<td>CA机构证书</td>
+</tr>
+<tr class="even">
+<td>ca-key.pem</td>
+<td>根证书RSA私钥</td>
+</tr>
+<tr class="odd">
+<td>cert.pem</td>
+<td>客户端证书</td>
+</tr>
+<tr class="even">
+<td>key.pem</td>
+<td>客户私钥</td>
+</tr>
+<tr class="odd">
+<td>server-cert.pem</td>
+<td>服务端证书</td>
+</tr>
+<tr class="even">
+<td>server-key.pem</td>
+<td>服务端私钥</td>
+</tr>
+</tbody>
+</table>
+<p>至此，所有证书文件制作完成，接下来对Docker做TLS安全配置；</p>
+<h3 id="docker的tls连接设置a机器">Docker的TLS连接设置（A机器）</h3>
+<ol>
+<li>打开文件<font color="blue">/lib/systemd/system/docker.service</font>，找到下图红框中的内容：<br />
+<img src="./images/TLS加密远程连接Docker0.png" alt="在这里插入图片描述" /></li>
+<li>将上图红框中的一整行内容替换为以下内容：</li>
+</ol>
+<pre class="properties"><code>ExecStart=/usr/bin/dockerd-current --tlsverify --tlscacert=/root/work/ca.pem --tlscert=/root/work/server-cert.pem --tlskey=/root/work/server-key.pem -H tcp://0.0.0.0:2376 -H unix:///var/run/docker.sock \</code></code></pre>
+<ol>
+<li>加载上述配置，再重启docker服务：</li>
+</ol>
+<pre><code><code>systemctl daemon-reload &amp;&amp; systemctl restart docker</code></code></pre>
+<p>配置完成，接下来验证远程TLS连接。</p>
+<h3 id="验证远程tls连接b机器">验证远程TLS连接（B机器）</h3>
+<ol>
+<li>假设前面我们操作的电脑为A，IP地址是<font color="blue">192.168.121.138</font>；</li>
+<li>现在再准备一台电脑B，IP地址是<font color="blue">192.168.121.132</font>，用来验证TLS加密远程连接A上的Docker；</li>
+<li>在A机器执行以下命令，将A上的<font color="blue">ca.pem、cert.pem、key.pem</font>这三个文件复制到B机器的<font color="blue">/root/work</font>目录(请提前建好此目录)：</li>
+</ol>
+<pre><code><code>scp /root/work/ca.pem root@192.168.121.132:/root/work \
+&amp;&amp; scp /root/work/cert.pem root@192.168.121.132:/root/work \
+&amp;&amp; scp /root/work/key.pem root@192.168.121.132:/root/work</code></code></pre>
+<ol>
+<li>在制作证书时没有允许通过IP访问服务端，所以B在连接A的Docker时不能直接用A的IP，所以要用host来访问A，给B电脑增加一个host配置(如果B电脑是Linux，就在/etc/hosts文件上配置)：</li>
+</ol>
+<pre><code><code>192.168.121.138 docker-daemon</code></code></pre>
+<ol>
+<li>在B上执行以下命令，即可连接A的Docker服务：</li>
+</ol>
+<pre><code><code>docker --tlsverify --tlscacert=/root/work/ca.pem --tlscert=/root/work/cert.pem --tlskey=/root/work/key.pem -H tcp://docker-daemon:2376 version</code></code></pre>
+<p>控制台显示以下信息，其中Server部分就是A机器的Docker信息：</p>
+<pre><code><code>Client:
+ Version:         1.13.1
+ API version:     1.26
+ Package version: docker-1.13.1-102.git7f2769b.el7.centos.x86_64
+ Go version:      go1.10.3
+ Git commit:      b2f74b2/1.13.1
+ Built:           Wed May  1 14:55:20 2019
+ OS/Arch:         linux/amd64
+
+Server:
+ Version:         1.13.1
+ API version:     1.26 (minimum version 1.12)
+ Package version: docker-1.13.1-102.git7f2769b.el7.centos.x86_64
+ Go version:      go1.10.3
+ Git commit:      7f2769b/1.13.1
+ Built:           Mon Aug  5 15:09:42 2019
+ OS/Arch:         linux/amd64
+ Experimental:    false</code></code></pre>
+<ol>
+<li>不用证书连接试试，各种尝试都失败了：</li>
+</ol>
+<pre><code><code>[root@centos7 work]# docker -H tcp://192.168.121.138:2375 images
+Cannot connect to the Docker daemon at tcp://192.168.121.138:2375. Is the docker daemon running?
+[root@centos7 work]# docker -H tcp://docker-daemon:2375 images
+Cannot connect to the Docker daemon at tcp://docker-daemon:2375. Is the docker daemon running?
+[root@centos7 work]# docker -H tcp://192.168.121.138:2376 images
+Get http://192.168.121.138:2376/v1.26/images/json: net/http: HTTP/1.x transport connection broken: malformed HTTP response &quot;\x15\x03\x01\x00\x02\x02&quot;.
+* Are you trying to connect to a TLS-enabled daemon without TLS?
+[root@centos7 work]# docker -H tcp://docker-daemon:2376 images
+Get http://docker-daemon:2376/v1.26/images/json: net/http: HTTP/1.x transport connection broken: malformed HTTP response &quot;\x15\x03\x01\x00\x02\x02&quot;.
+* Are you trying to connect to a TLS-enabled daemon without TLS?</code></code></pre>
+<p>至此，TLS加密远程连接Docker的实战就完成了，希望您在设置安全的Docker远程连接是，本文能给您提供参考。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

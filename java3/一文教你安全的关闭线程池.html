@@ -1,0 +1,140 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修一文教你安全的关闭线程池' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>一文教你安全的关闭线程池</center></div><div class='banquan'>原文出处:本文由博客园博主good_andyxu提供。<br/>
+原文连接:https://www.cnblogs.com/goodAndyxublog/p/11664742.html</div><br>
+    <p><img src="./images/一文教你安全的关闭线程池0.png" /></p>
+<p>上篇文章 <a href="https://studyidea.cn/articles/2019/09/03/1567504427330.html">ShutdownHook- Java 优雅停机解决方案</a> 提到应用停机时需要释放资源，关闭连接。对于一些定时任务或者网络请求服务将会使用线程池，当应用停机时需要正确安全的关闭线程池，如果处理不当，可能造成数据丢失，业务请求结果不正确等问题。</p>
+<p>关闭线程池我们可以选择什么都不做，JVM 关闭时自然的会清除线程池对象。当然这么做，存在很大的弊端，线程池中正在执行执行的线程以及队列中还未执行任务将会变得极不可控。所以我们需要想办法控制到这些未执行的任务以及正在执行的线程。</p>
+<p>线程池 API 提供两个主动关闭的方法 <code>ThreadPoolExecutor#shutdownNow</code> 与 <code>ThreadPoolExecutor#shutdown</code>，这两个方法都可以用于关闭线程池，但是具体效果却不太一样。</p>
+<h2 id="线程池的状态">线程池的状态</h2>
+<p>在说线程池关闭方法之前，我们先了解线程池状态。</p>
+<p><em>线程池状态关系图如下：</em></p>
+<p><img src="./images/一文教你安全的关闭线程池1.png" alt="线程池状态.png" /></p>
+<p>从上图我们看到线程池总共存在 5 种状态，分别为：</p>
+<ul>
+<li><strong>RUNNING</strong>：线程池创建之后的初始状态，这种状态下可以执行任务。</li>
+<li><strong>SHUTDOWN</strong>:该状态下线程池不再接受新任务，但是会将工作队列中的任务执行结束。</li>
+<li><strong>STOP</strong>: 该状态下线程池不再接受新任务，但是不会处理工作队列中的任务，并且将会中断线程。</li>
+<li><strong>TIDYING</strong>：该状态下所有任务都已终止，将会执行 <code>terminated()</code> 钩子方法。</li>
+<li><strong>TERMINATED</strong>：执行完 <code>terminated()</code> 钩子方法之后。</li>
+</ul>
+<p>当我们执行 <code>ThreadPoolExecutor#shutdown</code> 方法将会使线程池状态从 <strong>RUNNING</strong> 转变为 <strong>SHUTDOWN</strong>。而调用 <code>ThreadPoolExecutor#shutdownNow</code> 之后线程池状态将会从 <strong>RUNNING</strong> 转变为 <strong>STOP</strong>。从上面的图上还可以看到，当线程池处于 <strong>SHUTDOWN</strong>，我们还是可以继续调用 <code>ThreadPoolExecutor#shutdownNow</code> 方法，将其状态转变为 <strong>STOP</strong> 。</p>
+<h2 id="threadpoolexecutorshutdown">ThreadPoolExecutor#shutdown</h2>
+<p>上面我们知道线程池状态，这里先说说 <code>shutdown</code> 方法。<code>shutdown</code> 方法源码比较简单，能比较直观理解其调用逻辑。</p>
+<p><em><code>shutdown</code> 方法源码：</em></p>
+<pre><code><code>    public void shutdown() {
+        final ReentrantLock mainLock = this.mainLock;
+        mainLock.lock();
+        try {
+       // 检查权限
+            checkShutdownAccess();
+            // 设置线程池状态
+        advanceRunState(SHUTDOWN);
+       // 中断空闲线程
+            interruptIdleWorkers();
+            // 钩子函数，主要用于清理一些资源
+            onShutdown(); 
+        } finally {
+            mainLock.unlock();
+        }
+        tryTerminate();
+    }</code></code></pre>
+<p><code>shutdown</code> 方法首先加锁，其次先检查系统安装状态。接着就会将线程池状态变为 <strong>SHUTDOWN</strong>，在这之后线程池不再接受提交的新任务。此时如果还继续往线程池提交任务，将会使用线程池拒绝策略响应，默认情况下将会使用 <code>ThreadPoolExecutor.AbortPolicy</code>，抛出 <code>RejectedExecutionException</code> 异常。</p>
+<p><code>interruptIdleWorkers</code> 方法只会中断空闲的线程，不会中断正在执行任务的的线程。空闲的线程将会阻塞在线程池的阻塞队列上。</p>
+<p>线程池构造参数需要指定 <strong>coreSize</strong>（核心线程池数量），<strong>maximumPoolSize</strong>（最大的线程池数量），<strong>keepAliveTime</strong>（多余空闲线程等待时间），<strong>unit</strong>（时间单位），<strong>workQueue</strong>（阻塞队列）。</p>
+<p>当调用线程池的 <code>execute</code> 方法，线程池工作流程如下：</p>
+<ol>
+<li>如果此时线程池中线程数量小于 <strong>coreSize</strong>，将会新建线程执行提交的任务。</li>
+<li>如果此时线程池线程数量已经大于 <strong>coreSize</strong>，将会直接把任务加入到队列中。线程将会从工作队列中获取任务执行。</li>
+<li>如果工作队列已满，将会继续新建线程。</li>
+<li>如果工作队列已满，且线程数等于 <strong>maximumPoolSize</strong>，此时将会使用拒绝策略拒绝任务。</li>
+<li>超过 <strong>coreSize</strong> 数量那部分线程，如果空闲了 <strong>keepAliveTime</strong> ，线程将会终止。</li>
+</ol>
+<p><em>工作流程图如下：</em></p>
+<p><img src="./images/一文教你安全的关闭线程池2.png" /></p>
+<p>当线程池处于第二步时，线程将会使用 <code>workQueue#take</code> 获取队头的任务，然后完成任务。如果工作队列一直没任务，由于队列为阻塞队列，<code>workQueue#take</code> 将会阻塞线程。</p>
+<h2 id="threadpoolexecutorshutdownnow">ThreadPoolExecutor#shutdownNow</h2>
+<p><em><code>ThreadPoolExecutor#shutdownNow</code> 源码如下：</em></p>
+<pre><code><code>    public List&lt;Runnable&gt; shutdownNow() {
+        List&lt;Runnable&gt; tasks;
+        final ReentrantLock mainLock = this.mainLock;
+        mainLock.lock();
+        try {
+        // 检查状态
+            checkShutdownAccess();
+        // 将线程池状态变为 STOP
+            advanceRunState(STOP);
+            // 中断所有线程，包括工作线程以及空闲线程
+        interruptWorkers();
+        // 丢弃工作队列中存量任务
+            tasks = drainQueue();
+        } finally {
+            mainLock.unlock();
+        }
+        tryTerminate();
+        return tasks;
+    }</code></code></pre>
+<p><code>shutdownNow</code> 方法将会把线程池状态设置为 <strong>STOP</strong>，然后中断所有线程，最后取出工作队列中所有未完成的任务返回给调用者。</p>
+<p>对比 <code>shutdown</code> 方法，<code>shutdownNow</code> 方法比较粗暴，直接中断工作线程。不过这里需要注意，中断线程并不代表线程立刻结束。这里需要线程主动配合线程中断响应。</p>
+<blockquote>
+<p>线程中断机制：<br />
+<code>thread#interrupt</code> 只是设置一个中断标志，不会立即中断正常的线程。如果想让中断立即生效，必须在线程 内调用 <code>Thread.interrupted()</code> 判断线程的中断状态。<br />
+对于阻塞的线程，调用中断时，线程将会立刻退出阻塞状态并抛出 <code>InterruptedException</code> 异常。所以对于阻塞线程需要正确处理 <code>InterruptedException</code> 异常。</p>
+</blockquote>
+<h2 id="awaittermination">awaitTermination</h2>
+<p>线程池 <code>shutdown</code> 与 <code>shutdownNow</code> 方法都不会主动等待执行任务的结束，如果需要等到线程池任务执行结束，需要调用 <code>awaitTermination</code> 主动等待任务调用结束。</p>
+<p><em>调用方法如下：</em></p>
+<pre><code><code>        threadPool.shutdown();
+        try {
+            while (!threadPool.awaitTermination(60,TimeUnit.SECONDS)){
+                System.out.println(&quot;线程池任务还未执行结束&quot;);
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }</code></code></pre>
+<p>如果线程池任务执行结束，<code>awaitTermination</code> 方法将会返回 <code>true</code>，否则当等待时间超过指定时间后将会返回 <code>false</code>。</p>
+<p>如果需要使用这种进制，建议在上面的基础上增加一定<strong>重试次数</strong>。这个真的很重要！！！</p>
+<h2 id="优雅关闭线程池">优雅关闭线程池</h2>
+<p>回顾上面线程池状态关系图，我们可以知道处于 <strong>SHUTDOWN</strong> 的状态下的线程池依旧可以调用 <code>shutdownNow</code>。所以我们可以结合 <code>shutdown</code> ， <code>shutdownNow</code>，<code>awaitTermination</code> ，更加优雅关闭线程池。</p>
+<pre><code><code>        threadPool.shutdown(); // Disable new tasks from being submitted
+        // 设定最大重试次数
+        try {
+            // 等待 60 s
+            if (!threadPool.awaitTermination(60, TimeUnit.SECONDS)) {
+                // 调用 shutdownNow 取消正在执行的任务
+                threadPool.shutdownNow();
+                // 再次等待 60 s，如果还未结束，可以再次尝试，或则直接放弃
+                if (!threadPool.awaitTermination(60, TimeUnit.SECONDS))
+                    System.err.println(&quot;线程池任务未正常执行结束&quot;);
+            }
+        } catch (InterruptedException ie) {
+            // 重新调用 shutdownNow
+            threadPool.shutdownNow();
+        }</code></code></pre>
+<p>文章首发于 <a href="https://studyidea.cn/articles/2019/09/08/1567940077280.html">studyidea.cn/close..</a></p>
+<blockquote>
+<p>欢迎关注我的公众号：程序通事，获得日常干货推送。如果您对我的专题内容感兴趣，也可以关注我的博客：<a href="https://studyidea.cn">studyidea.cn</a></p>
+</blockquote>
+<p><img src="./images/一文教你安全的关闭线程池3.png" alt="其他平台.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

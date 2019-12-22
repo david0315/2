@@ -1,0 +1,106 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修分布式Id - redis方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>分布式Id - redis方式</center></div><div class='banquan'>原文出处:本文由博客园博主神牛003提供。<br/>
+原文连接:https://www.cnblogs.com/wangrudong003/p/11502305.html</div><br>
+    <p>本篇分享内容是关于生成分布式Id的其中之一方案，除了redis方案之外还有如：数据库，雪花算法，mogodb(object_id也是数据库)等方案，对于redis来说是我们常用并接触比较多的，因此主要谈谈结合redis生成分布式id方案。</p>
+<ul>
+<li>分布式Id设计流程图</li>
+<li>基于redis的hash自动increment累加生成有序Id</li>
+<li data-spm-anchor-id="a2c4e.11153940.0.i2.2c552c35fQcDan">定期删除无用hash列</li>
+</ul>
+<h1 id="1" data-spm-anchor-id="a2c4e.11153940.0.i3.2c552c35fQcDan">分布式Id设计流程图(有点粗略)</h1>
+<p><img src="./images/分布式Id - redis方式0.png" alt="" /></p>
+<p>&nbsp;</p>
+<h1 id="2" data-spm-anchor-id="a2c4e.11153940.0.i5.2c552c35fQcDan">基于redis的hash自动increment累加生成有序Id</h1>
+<p>使用redis方案生成id，其中之一的方式主要使用increment(递增)，不管是string、hash等都具有该方法，为了更方便管理我们id生成key这里建议使用hash的列的方式，以下内容都基于springboot分享；</p>
+<p>当然，第一步我们需要创建一个hash和hkey才行，至于在业务第一次被访问来创建这个hash还是通过服务自动创建这个看业务和流量，这里的hkey是有一定规则的(当然不用局限性),这里我按照日期格式来做key，可以有如下代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #008000;">/*</span><span style="color: #008000;">*
+</span><span style="color: #008080;"> 2</span> <span style="color: #008000;">     * 生成每天的初始Id
+</span><span style="color: #008080;"> 3</span> <span style="color: #008000;">     * @param hashName
+</span><span style="color: #008080;"> 4</span> <span style="color: #008000;">     * @return
+</span><span style="color: #008080;"> 5</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String initPrimaryId(String hashName) {
+</span><span style="color: #008080;"> 7</span>         Assert.hasLength(hashName, <span style="color: #800000;">"</span><span style="color: #800000;">hashName不能为空</span><span style="color: #800000;">"</span><span style="color: #000000;">);
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>         String hashCol = LocalDate.now().format(DateTimeFormatter.ofPattern(<span style="color: #800000;">"</span><span style="color: #800000;">yyyyMMdd</span><span style="color: #800000;">"</span><span style="color: #000000;">));
+</span><span style="color: #008080;">10</span>         <span style="color: #008000;">//</span><span style="color: #008000;">自定义编号规则</span>
+<span style="color: #008080;">11</span>         String hashColVal = hashCol + <span style="color: #800000;">"</span><span style="color: #800000;">00001</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        redisTemplate.opsForHash().putIfAbsent(hashName, hashCol, hashColVal);
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> hashCol;
+</span><span style="color: #008080;">14</span>     }</code></pre>
+
+<p>上面很容易理解，hash中key是有每天日期格式组成，意思每天都需要生成一个新的日期key，通过putIfAbsent达到不重复添加的原则，至于hval可以根据自定义编号规则来生成一串数字字符(注：一定要数字)；有了上面的基础，我们仅仅需要increment来累加，redis即帮我们完整hval+1的操作，当然可以自定义累加数，如下代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #008000;">/*</span><span style="color: #008000;">*
+</span><span style="color: #008080;"> 2</span> <span style="color: #008000;">     * 获取分布式Id
+</span><span style="color: #008080;"> 3</span> <span style="color: #008000;">     *
+</span><span style="color: #008080;"> 4</span> <span style="color: #008000;">     * @param hashName
+</span><span style="color: #008080;"> 5</span> <span style="color: #008000;">     * @return
+</span><span style="color: #008080;"> 6</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> getPrimaryId(String hashName) {
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 9</span>             String hashCol =<span style="color: #000000;"> initPrimaryId(hashName);
+</span><span style="color: #008080;">10</span>             <span style="color: #0000ff;">return</span> redisTemplate.opsForHash().increment(hashName, hashCol, <span style="color: #800080;">1</span><span style="color: #000000;">);
+</span><span style="color: #008080;">11</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            ex.printStackTrace();
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">return</span> <span style="color: #800080;">0</span><span style="color: #000000;">;
+</span><span style="color: #008080;">15</span>     }</code></pre>
+
+<h1 id="3" data-spm-anchor-id="a2c4e.11153940.0.i13.2c552c35fQcDan">定期删除无用hash列</h1>
+<p>就上面我们通过hash来设置每天id只增初始值，hash的hkey布局用自动过期功能，因此我们需要代码中维护一套清除来hkey的机制，既然id是根据日期生成，我们可以就用往前推n天的方式达到清除老hkey目的：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #008000;">/*</span><span style="color: #008000;">*
+</span><span style="color: #008080;"> 2</span> <span style="color: #008000;">     * 删除多少天之前的cols
+</span><span style="color: #008080;"> 3</span> <span style="color: #008000;">     * @param hashName
+</span><span style="color: #008080;"> 4</span> <span style="color: #008000;">     * @param lessDay
+</span><span style="color: #008080;"> 5</span> <span style="color: #008000;">     * @return
+</span><span style="color: #008080;"> 6</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">public</span> Long removePrimaryByLessDay(String hashName, <span style="color: #0000ff;">int</span><span style="color: #000000;"> lessDay) {
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 9</span>             <span style="color: #008000;">//</span><span style="color: #008000;">当前日期</span>
+<span style="color: #008080;">10</span>             String hashCol = LocalDate.now().format(DateTimeFormatter.ofPattern(<span style="color: #800000;">"</span><span style="color: #800000;">yyyyMMdd</span><span style="color: #800000;">"</span><span style="color: #000000;">));
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">long</span> idl = Long.valueOf(hashCol) -<span style="color: #000000;"> lessDay;
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span>             String[] removeCols =<span style="color: #000000;"> redisTemplate.opsForHash().entries(hashName).keySet().stream().
+</span><span style="color: #008080;">14</span>                     map(key -&gt;<span style="color: #000000;"> key.toString()).
+</span><span style="color: #008080;">15</span>                     filter(key -&gt; idl &gt; Long.valueOf(key)).  <span style="color: #008000;">//</span><span style="color: #008000;">从+1开始，避免删除当天数据</span>
+<span style="color: #008080;">16</span>                     toArray(String[]::<span style="color: #0000ff;">new</span><span style="color: #000000;">);
+</span><span style="color: #008080;">17</span> 
+<span style="color: #008080;">18</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (ArrayUtils.isNotEmpty(removeCols)) {
+</span><span style="color: #008080;">19</span>                 <span style="color: #0000ff;">return</span><span style="color: #000000;"> redisTemplate.opsForHash().delete(hashName, removeCols);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">21</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">            ex.printStackTrace();
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">24</span>         <span style="color: #0000ff;">return</span> <span style="color: #800080;">0L</span><span style="color: #000000;">;
+</span><span style="color: #008080;">25</span>     }</code></pre>
+
+<p>按照日期来生成分布式id，达到id不重复的目的，这也就是分布式id(不重复)，看起来简单其实如果在高流量冲击下，需要考虑的东西要很多，比如：什么时候生成初始Id、在多个服务器保证服务器时间尽可能一样情况下，该保留多少日期hkey等;</p>
+<p>就上面代码对初始Id就做的不是很好，在业务获取Id时候，会去检测并创建id，这样与redis交互就多了一次，通常可以用服务来一次性生成当前日期往后推n天的hkey，这样就避免了在业务获取id时候，还要去putIfAbsent一次验证，减少了请求次数。实在不行可以使用lua脚本放在一次请求去做put和increment，你可能会用到：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>             RedisScript script = <span style="color: #0000ff;">new</span> DefaultRedisScript(<span style="color: #800000;">""</span><span style="color: #000000;">);
+</span><span style="color: #008080;">2</span>             redisTemplate.execute(script, Arrays.asList(<span style="color: #800000;">""</span>));</code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

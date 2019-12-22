@@ -1,0 +1,96 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11949330.html</div><br>
+    <p><img src="./images/Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能0.png" alt="file" /></p>
+<p>本文是Spring Security系列中的一篇。在上一篇文章中，我们通过实现UserDetailsService和UserDetails接口，实现了动态的从数据库加载用户、角色、权限相关信息，从而实现了登录及授权相关的功能。这一节就在此基础上新增，登录过程中经常使用的“记住我”功能，也就是我们经常会在各种网站登陆时见到的&quot;两周内免登录&quot;，“三天内免登录”的功能。该功能的作用就是：当我们登录成功之后，一定的周期内当我们再次访问该网站，不需要重新登录。</p>
+<h2 id="一最简实践">一、最简实践</h2>
+<p>其实实现这个功能非常简单，只需要我们在重写WebSecurityConfigurerAdapter 方法配置HttpSecurity 的时候增加rememberMe()方法。（下面代码中省略了大量的关于Spring Security登录验证的配置，在本号此前的文章中已经讲过）</p>
+<pre><code><code>@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.rememberMe();   //实现记住我自动登录配置，核心的代码只有这一行
+    }
+}</code></code></pre>
+<p>然后在登录表单中加入一个checkbox勾选框，name属性的值目前必须是“remember-me”（个性化更改的方法后面会讲）。</p>
+<pre><code><code>
+&lt;label&gt;&lt;input type=&quot;checkbox&quot; name=&quot;remember-me&quot;/&gt;自动登录&lt;/label&gt;
+</code></code></pre>
+<p>就是这么简单，我们就实现了记住我功能，默认效果是：2周内免登录。</p>
+<h2 id="二实现原理">二、实现原理</h2>
+<p>很多朋友可能看了上面的实现过程心里都犯懵，这样就实现了？下面和大家说明一下这过程中间，都做了哪些事情。</p>
+<ul>
+<li>当我们登陆的时候，除了用户名、密码，我们还可以勾选remember-me。</li>
+<li>如果我们勾选了remember-me，当我们登录成功之后服务端会生成一个Cookie返回给浏览器，这个Cookie的名字默认是remember-me；值是一个token令牌。</li>
+<li>当我们在有效期内再次访问应用时，经过RememberMeAuthenticationFilter,读取Cookie中的token进行验证。验正通过不需要再次登录就可以进行应用访问。</li>
+</ul>
+<p>这个token令牌是一个 <strong>MD5 hash字符串</strong>：包含username、expirationTime和passwod和一个预定义的key，并将他们经过MD5加密。可能有的朋友会问：这样安全么？如果cookie被劫持，一定是不安全的，别人拿到了这个字符串在有效期内就可以访问你的应用。<strong>这就和你的钥匙token被盗了，你家肯定不安全是一个道理。</strong> 但是不存在密码被破解为明文的可能性，MD5 hash是不可逆的。</p>
+<p><img src="./images/Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能1.png" alt="file" /></p>
+<p>RememberMeAuthenticationFilter在Spring Security过滤器链中处于整体偏后的位置，所以只有当各种传统的登录方式都无法完成验证的情况下，才走RememberMeAuthenticationFilter，这也是符合实际需求的。</p>
+<h2 id="三个性化配置">三、个性化配置</h2>
+<p>在实际的开发过程中，我们还可以根据需求做一些个性化的设置，如下：</p>
+<pre><code><code>.rememberMe()
+    .rememberMeParameter(&quot;remember-me-new&quot;)
+    .rememberMeCookieName(&quot;remember-me-cookie&quot;)
+    .tokenValiditySeconds(2 * 24 * 60 * 60);  </code></code></pre>
+<ul>
+<li>tokenValiditySeconds用于设置token的有效期，即多长时间内可以免除重复登录，单位是秒。不修改配置情况下默认是2周。</li>
+<li>通过rememberMeParameter设置from表单“自动登录”勾选框的参数名称。如果这里改了，from表单中checkbox的name属性要对应的更改。如果不设置默认是remember-me。</li>
+<li>rememberMeCookieName设置了保存在浏览器端的cookie的名称，如果不设置默认也是remember-me。如下图中查看浏览器的cookie。</li>
+</ul>
+<p><img src="./images/Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能2.png" alt="file" /></p>
+<h2 id="四token数据库存储方式">四、token数据库存储方式</h2>
+<p>上面我们讲的方式，就是最简单的实现“记住我-自动登录”功能的方式。这种方式的缺点在于：token与用户的对应关系是在内存中存储的，当我们重启应用之后所有的token都将消失，即：所有的用户必须重新登陆。为此，Spring Security还给我们提供了一种将token存储到数据库中的方式，重启应用也不受影响。</p>
+<blockquote>
+<p>有的文章说使用数据库存储方式是因为这种方式更安全，笔者不这么认为。虽然数据库存储的token的确不再是用户名、密码MD5加密字符串了，而是一个随机序列号。但是一旦你的随机序列号cookie被劫持，效果是一样的。好比你家有把密码锁：你把钥匙丢了和你把密码丢了，危害性是一样的。</p>
+</blockquote>
+<p><img src="./images/Spring Security框架下实现两周内自动登录&quot;记住我&quot;功能3.png" alt="file" /></p>
+<p>上图是token数据库存储方式的实现原理和验证过程，下面我们就来实现一下。首先，我们需要键一张数据库表persistent_logins:</p>
+<pre><code><code>CREATE TABLE `persistent_logins` (
+  `username` varchar(64) NOT NULL,
+  `series` varchar(64) NOT NULL,
+  `token` varchar(64) NOT NULL,
+  `last_used` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`series`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;</code></code></pre>
+<p>初始化一个PersistentTokenRepository类型的Spring bean，并将系统使用的DataSource注入到该bean中。（当然前提一定是你已经在Spring Boot的application.yml中配置好DataSource相关的连接属性，这里不再赘述）</p>
+<pre><code><code>@Autowired
+private DataSource dataSource;
+
+ @Bean
+ public PersistentTokenRepository persistentTokenRepository(){
+     JdbcTokenRepositoryImpl tokenRepository = new JdbcTokenRepositoryImpl();
+     tokenRepository.setDataSource(dataSource);
+     return tokenRepository;
+ }</code></code></pre>
+<p>最后在Spring Security配置方法configure(HttpSecurity http)加上如下的个性化配置：</p>
+<pre><code><code>.rememberMe()
+    .tokenRepository(persistentTokenRepository())</code></code></pre>
+<h2 id="期待您的关注">期待您的关注</h2>
+<ul>
+<li>向您推荐博主的系列文档：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

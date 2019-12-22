@@ -1,0 +1,182 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud异步场景分布式事务怎样做？试试RocketMQ' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud异步场景分布式事务怎样做？试试RocketMQ</center></div><div class='banquan'>原文出处:本文由博客园博主zlt2000提供。<br/>
+原文连接:https://www.cnblogs.com/zlt2000/p/11570917.html</div><br>
+    <p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ0.png" alt="mark" /></p>
+<h2 id="一背景">一、背景</h2>
+<p>在微服务架构中，我们常常使用异步化的手段来提升系统的 <strong>吞吐量</strong> 和 <strong>解耦</strong> 上下游，而构建异步架构最常用的手段就是使用 <code>消息队列(MQ)</code>，那异步架构怎样才能实现数据一致性呢？本文主要介绍如何使用<code>RocketMQ</code>的<code>事务消息</code>来解决一致性问题。</p>
+<blockquote>
+<p><strong>RocketMQ</strong> 是阿里巴巴开源的分布式消息中间件，目前已成为 <strong>Apache</strong> 的顶级项目。历经多次天猫双十一海量消息考验，具有高性能、低延时和高可靠等特性</p>
+</blockquote>
+<p><strong>PS</strong>：同步场景怎样保证一致性？请看文章《<a href="https://mp.weixin.qq.com/s/0yCmHzlXDC9BkbUuEt0_fQ">Spring Cloud同步场景分布式事务怎样做？试试Seata</a>》</p>
+<p> </p>
+<h2 id="二mq选型">二、MQ选型</h2>
+<p>可以看到在 <strong>业务处理</strong> 方面来说 <code>RocketMQ</code> 优于其他对手，而且原生支持 <strong>事务消息</strong></p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ1.png" alt="mark" /></p>
+<p><strong>PS</strong>：业务系统用的是其他 <code>MQ</code> 产品但是又需要 <strong>事务消息</strong> 怎么办？学习原理自己开发实现！</p>
+<p> </p>
+<h2 id="三什么是事务消息">三、什么是事务消息</h2>
+<p>例如下图的场景：生成订单记录 -&gt; MQ -&gt; 增加积分</p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ2.png" alt="mark" /></p>
+<p>我们是应该先 <strong>创建订单记录</strong>，还是先 <strong>发送MQ消息</strong> 呢？</p>
+<ol>
+<li><p><strong>先发送MQ消息</strong>：这个明显是不行的，因为如果消息发送成功，而订单创建失败的话是没办法把消息收回来的</p></li>
+<li><p><strong>先创建订单记录</strong>：如果订单创建成功后MQ消息发送失败 <strong>抛出异常</strong>，因为两个操作都在本地事务中所以订单数据是可以 <strong>回滚</strong> 的</p></li>
+</ol>
+<p>上面的 <strong>方式二</strong> 看似没问题，但是 <strong>网络是不可靠的</strong>！如果 <code>MQ</code> 的响应因为网络原因没有收到，所以在面对不确定的结果只好进行回滚；但是 <code>MQ</code> 端又确实是收到了这条消息的，只是回给客户端的 <strong>响应丢失</strong> 了！<br />
+ <br />
+所以 <code>事务消息</code> 就是用来保证 <strong>本地事务</strong> 与 <strong>MQ消息发送</strong> 的原子性！</p>
+<p> </p>
+<h2 id="四rocketmq事务消息原理">四、RocketMQ事务消息原理</h2>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ3.png" alt="mark" /></p>
+<p>主要的逻辑分为两个流程：</p>
+<ul>
+<li><strong>事务消息发送及提交</strong>：
+<ol>
+<li>发送 <code>half消息</code></li>
+<li><code>MQ服务端</code> 响应消息写入结果</li>
+<li>根据发送结果执行 <code>本地事务</code>（如果写入失败，此时half消息对业务 <strong>不可见</strong>，本地逻辑不执行）</li>
+<li>根据本地事务状态执行 <code>Commit</code> 或者 <code>Rollback</code>（Commit操作生成消息索引，消息对消费者 <strong>可见</strong>）<br />
+ </li>
+</ol></li>
+<li><strong>回查流程</strong>：
+<ol>
+<li>对于长时间没有 <code>Commit/Rollback</code> 的事务消息（<code>pending</code> 状态的消息），从服务端发起一次 <strong>回查</strong></li>
+<li><code>Producer</code> 收到回查消息，检查回查消息对应的 <code>本地事务状态</code></li>
+<li>根据本地事务状态，重新 <code>Commit</code> 或者 <code>Rollback</code></li>
+</ol></li>
+</ul>
+<p> <br />
+<strong>逻辑时序图</strong></p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ4.png" alt="mark" /></p>
+<p> </p>
+<h2 id="五异步架构一致性实现思路">五、异步架构一致性实现思路</h2>
+<p>从上面的原理可以发现 <code>事务消息</code> 仅仅只是保证本地事务和MQ消息发送形成整体的 <code>原子性</code>，而投递到MQ服务器后，并无法保证消费者一定能消费成功！<br />
+ <br />
+如果 <strong>消费端消费失败</strong> 后的处理方式，建议是记录异常信息然后 <strong>人工处理</strong>，并不建议回滚上游服务的数据(因为两者是 <strong>解耦</strong> 的，而且 <strong>复杂度</strong> 太高)<br />
+ <br />
+我们可以利用 <code>MQ</code> 的两个特性 <code>重试</code> 和 <code>死信队列</code> 来协助消费端处理：</p>
+<ol>
+<li>消费失败后进行一定次数的 <code>重试</code></li>
+<li>重试后也失败的话该消息丢进 <code>死信队列</code> 里</li>
+<li>另外起一个线程监听消费 <code>死信队列</code> 里的消息，记录日志并且预警！</li>
+</ol>
+<p>因为有 <code>重试</code> 所以消费者需要实现 <code>幂等性</code></p>
+<p> </p>
+<h2 id="六分布式事务场景样例">六、分布式事务场景样例</h2>
+<p>下面就用刚刚提到的场景：<strong>生成订单记录 -&gt; MQ -&gt; 增加积分</strong>；来简单讲一下 <code>Spring Cloud</code> 中应该怎么做，详细代码请 <strong><a href="https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-demo/rocketmq-demo/rocketmq-transactional">下载demo</a></strong> 查看。<br />
+<strong>PS</strong>：怎样安装部署RocketMQ可以参考《<a href="https://mp.weixin.qq.com/s/_4aO7RmU4MMOa0KpbNIE-g">Apache RocketMQ 消息队列部署与可视化界面安装</a>》</p>
+<h3 id="引入依赖">6.1. 引入依赖</h3>
+<p>使用 <code>spring-cloud-stream</code> 框架来访问 <code>RocketMQ</code></p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ5.png" alt="mark" /></p>
+<blockquote>
+<p>Spring Cloud Stream 是一个构建消息驱动的框架，通过抽象的定义实现应用与MQ消息队列之间的解耦，目前支持 <code>RabbitMQ</code>、<code>kafka</code> 和 <code>RocketMQ</code><br />
+<img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ6.png" alt="mark" /></p>
+</blockquote>
+<p> </p>
+<h3 id="开启事务消息">6.2. 开启事务消息</h3>
+<p>消息生产者需要添加 <code>transactional: true</code> 开启 <strong>事务消息</strong></p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ7.png" alt="mark" /></p>
+<p> </p>
+<h3 id="订单服务发送half消息">6.3. 订单服务发送half消息</h3>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ8.png" alt="mark" /></p>
+<blockquote>
+<p>因为开启了 <code>事务消息</code> 所以这里发送的是 <code>half消息</code> 对于消费端是 <code>不可见</code> 的</p>
+</blockquote>
+<p> </p>
+<h3 id="订单服务监听half消息">6.4. 订单服务监听half消息</h3>
+<p>使用 <code>@RocketMQTransactionListener</code> 注解监听 <strong>半消息</strong>，并实现 <code>RocketMQLocalTransactionListener</code> 接口，该接口有两个方法</p>
+<ul>
+<li><strong>executeLocalTransaction</strong>：用于提交本地事务</li>
+<li><strong>checkLocalTransaction</strong>：用于事务回查</li>
+</ul>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ9.png" alt="mark" /></p>
+<blockquote>
+<p>如果提交事务消息失败，需等待约1分钟左右 <strong>事务回查</strong> 方法才会被调用</p>
+</blockquote>
+<p> </p>
+<h3 id="积分服务消费消息">6.5. 积分服务消费消息</h3>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ10.png" alt="mark" /></p>
+<blockquote>
+<p><strong>注意</strong>：因为有 <code>重试</code>，这里如果是真实的业务需要自行实现 <code>幂等性</code></p>
+</blockquote>
+<p> </p>
+<h3 id="消费死信队列预警">6.6. 消费死信队列预警</h3>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ11.png" alt="mark" /></p>
+<blockquote>
+<p>监听并消费死信队列中的消息，用于记录错误日志，并且预警通知运维人员等</p>
+</blockquote>
+<p> </p>
+<h3 id="测试用例">6.7. 测试用例</h3>
+<p>demo中提供了3个接口分别测试不同的场景：</p>
+<ul>
+<li><strong>事务成功</strong><br />
+http://localhost:11002/success<br />
+流程如下：
+<ol>
+<li>订单创建 <strong>成功</strong></li>
+<li>提交事务消息 <strong>成功</strong></li>
+<li>消费消息增加积分 <strong>成功</strong></li>
+</ol></li>
+<li><strong>订单创建成功但提交事务消息失败</strong><br />
+http://localhost:11002/produceError<br />
+流程如下：
+<ol>
+<li>订单创建 <strong>成功</strong></li>
+<li>提交事务消息 <strong>失败</strong></li>
+<li>事务回查(等待1分钟左右) <strong>成功</strong></li>
+<li>提交事务消息 <strong>成功</strong></li>
+<li>消费消息增加积分 <strong>成功</strong></li>
+</ol></li>
+<li><strong>消费消息失败</strong><br />
+http://localhost:11002/consumeError<br />
+流程如下：
+<ol>
+<li>订单创建 <strong>成功</strong></li>
+<li>提交事务消息 <strong>成功</strong></li>
+<li>消费消息增加积分 <strong>失败</strong></li>
+<li>重试消费消息 <strong>失败</strong></li>
+<li>进入死信队列 <strong>成功</strong></li>
+<li>消费死信队列的消息 <strong>成功</strong></li>
+<li>记录日志并发出预警 <strong>成功</strong></li>
+</ol></li>
+</ul>
+<p> </p>
+<h2 id="七demo下载地址">七、demo下载地址</h2>
+<p><a href="https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-demo/rocketmq-demo/rocketmq-transactional" class="uri">https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-demo/rocketmq-demo/rocketmq-transactional</a></p>
+<p> </p>
+<p><strong>推荐阅读</strong></p>
+<ul>
+<li><a href="https://mp.weixin.qq.com/s/NG-RIPDBkJsH3qo6_rJGWQ">日志排查问题困难？分布式日志链路跟踪来帮你</a></li>
+<li><a href="https://mp.weixin.qq.com/s/I_piUnr63asLUcrN0eUxAA">zuul集成Sentinel最新的网关流控组件</a></li>
+<li><a href="https://mp.weixin.qq.com/s/bVo83Z0G3MxJ10yyF1ZzXw">阿里注册中心Nacos生产部署方案</a></li>
+<li><a href="https://mp.weixin.qq.com/s/fe8qziEijVmtti2kILdaEg">Spring Boot自定义配置项在IDE里面实现自动提示</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9fR-hgJ69R1iiYXiARMTLw">Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9XQ-SIbYsov3KBx9TGFN0g">Spring Cloud开发人员如何解决服务冲突和实例乱窜？</a></li>
+<li><a href="https://mp.weixin.qq.com/s/0yCmHzlXDC9BkbUuEt0_fQ">Spring Cloud同步场景分布式事务怎样做？试试Seata</a></li>
+</ul>
+<p> <br />
+<strong>扫码关注有惊喜！</strong></p>
+<p><img src="./images/Spring Cloud异步场景分布式事务怎样做？试试RocketMQ12.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

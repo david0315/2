@@ -1,0 +1,305 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty源码分析 （九）----- 拆包器的奥秘' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty源码分析 （九）----- 拆包器的奥秘</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11436512.html</div><br>
+    <p>Netty 的解码器有很多种，比如基于长度的，基于分割符的，私有协议的。但是，总体的思路都是一致的。</p>
+<p>拆包思路：当数据满足了 解码条件时，将其拆开。放到数组。然后发送到业务 handler 处理。</p>
+<p>半包思路： 当读取的数据不够时，先存起来，直到满足解码条件后，放进数组。送到业务 handler 处理。</p>
+<h2>拆包的原理</h2>
+<p>在没有netty的情况下，用户如果自己需要拆包，基本原理就是不断从TCP缓冲区中读取数据，每次读取完都需要判断是否是一个完整的数据包</p>
+<p>1.如果当前读取的数据不足以拼接成一个完整的业务数据包，那就保留该数据，继续从tcp缓冲区中读取，直到得到一个完整的数据包<br />2.如果当前读到的数据加上已经读取的数据足够拼接成一个数据包，那就将已经读取的数据拼接上本次读取的数据，够成一个完整的业务数据包传递到业务逻辑，多余的数据仍然保留，以便和下次读到的数据尝试拼接</p>
+<h2>netty中拆包的基类</h2>
+<p>netty 中的拆包也是如上这个原理，在每个SocketChannel中会一个 pipeline ，pipeline 内部会加入解码器，解码器都继承基类&nbsp;<code>ByteToMessageDecoder，其</code>内部会有一个累加器，每次从当前SocketChannel读取到数据都会不断累加，然后尝试对累加到的数据进行拆包，拆成一个完整的业务数据包，下面我们先详细分析下这个类</p>
+<p>看名字的意思是：将字节转换成消息的解码器。人如其名。而他本身也是一个入站 handler，所以，我们还是从他的 channelRead 方法入手。</p>
+<h3>channelRead 方法</h3>
+<p>我们先看看基类中的属性，cumulation是此基类中的一个&nbsp;ByteBuf 类型的累积区，每次从当前SocketChannel读取到数据都会不断累加，然后尝试对累加到的数据进行拆包，拆成一个完整的业务数据包，如果不够一个完整的数据包，则等待下一次从TCP的数据到来，继续累加到此cumulation中</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> ByteToMessageDecoder <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ChannelInboundHandlerAdapter {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">累积区</span>
+<span style="color: #000000;">    ByteBuf cumulation;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ByteToMessageDecoder.Cumulator cumulator;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> singleDecode;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> decodeWasNull;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> first;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> discardAfterReads;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> numReads;
+    .
+    .
+    .
+}</span></code></pre>
+
+<p><code>channelRead</code>方法是每次从TCP缓冲区读到数据都会调用的方法，触发点在<code>AbstractNioByteChannel</code>的<code>read</code>方法中，里面有个<code>while</code>循环不断读取，读取到一次就触发一次<code>channelRead</code></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Override
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRead(ChannelHandlerContext ctx, Object msg) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">if</span> (msg <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ByteBuf) {
+</span><span style="color: #008080;"> 4</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 从对象池中取出一个List</span>
+<span style="color: #008080;"> 5</span>         CodecOutputList out =<span style="color: #000000;"> CodecOutputList.newInstance();
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 7</span>             ByteBuf data =<span style="color: #000000;"> (ByteBuf) msg;
+</span><span style="color: #008080;"> 8</span>             first = cumulation == <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (first) {
+</span><span style="color: #008080;">10</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> 第一次解码</span>
+<span style="color: #008080;">11</span>                 cumulation = data;<span style="color: #008000;">//</span><span style="color: #008000;">直接赋值</span>
+<span style="color: #008080;">12</span>             } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">13</span>                  <span style="color: #008000;">//</span><span style="color: #008000;"> 第二次解码，就将 data 向 cumulation 追加，并释放 data</span>
+<span style="color: #008080;">14</span>                 cumulation =<span style="color: #000000;"> cumulator.cumulate(ctx.alloc(), cumulation, data);
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">16</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 得到追加后的 cumulation 后，调用 decode 方法进行解码
+</span><span style="color: #008080;">17</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 主要目的是将累积区cumulation的内容 decode 到 out数组中</span>
+<span style="color: #008080;">18</span> <span style="color: #000000;">            callDecode(ctx, cumulation, out);
+</span><span style="color: #008080;">19</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (DecoderException e) {
+</span><span style="color: #008080;">20</span>             <span style="color: #0000ff;">throw</span><span style="color: #000000;"> e;
+</span><span style="color: #008080;">21</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+</span><span style="color: #008080;">22</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DecoderException(t);
+</span><span style="color: #008080;">23</span>         } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">24</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 如果累计区没有可读字节了，有可能在上面callDecode方法中已经将cumulation全部读完了，此时writerIndex==readerIndex
+</span><span style="color: #008080;">25</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 每读一个字节，readerIndex会+1</span>
+<span style="color: #008080;">26</span>             <span style="color: #0000ff;">if</span> (cumulation != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #000000;">cumulation.isReadable()) {
+</span><span style="color: #008080;">27</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> 将次数归零</span>
+<span style="color: #008080;">28</span>                 numReads = 0<span style="color: #000000;">;
+</span><span style="color: #008080;">29</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> 释放累计区,因为累计区里面的字节都全部读完了</span>
+<span style="color: #008080;">30</span> <span style="color: #000000;">                cumulation.release();
+</span><span style="color: #008080;">31</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> 便于 gc</span>
+<span style="color: #008080;">32</span>                 cumulation = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">33</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 如果超过了 16 次，还有字节没有读完，就将已经读过的数据丢弃，将 readIndex 归零。</span>
+<span style="color: #008080;">34</span>             } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (++ numReads &gt;=<span style="color: #000000;"> discardAfterReads) {
+</span><span style="color: #008080;">35</span>                 numReads = 0<span style="color: #000000;">;
+</span><span style="color: #008080;">36</span>                 <span style="color: #008000;">//</span><span style="color: #008000;">将已经读过的数据丢弃，将 readIndex 归零。</span>
+<span style="color: #008080;">37</span> <span style="color: #000000;">                discardSomeReadBytes();
+</span><span style="color: #008080;">38</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">39</span> 
+<span style="color: #008080;">40</span>             <span style="color: #0000ff;">int</span> size =<span style="color: #000000;"> out.size();
+</span><span style="color: #008080;">41</span>             decodeWasNull = !<span style="color: #000000;">out.insertSinceRecycled();
+</span><span style="color: #008080;">42</span>             <span style="color: #008000;">//</span><span style="color: #008000;">循环数组，向后面的 handler 发送数据</span>
+<span style="color: #008080;">43</span> <span style="color: #000000;">            fireChannelRead(ctx, out, size);
+</span><span style="color: #008080;">44</span> <span style="color: #000000;">            out.recycle();
+</span><span style="color: #008080;">45</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">46</span>     } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">47</span> <span style="color: #000000;">        ctx.fireChannelRead(msg);
+</span><span style="color: #008080;">48</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">49</span> }</code></pre>
+
+<ol>
+<li>从对象池中取出一个空的数组。</li>
+<li>判断成员变量是否是第一次使用，将 unsafe 中传递来的数据写入到这个 cumulation 累积区中。</li>
+<li>写到累积区后，在callDecode方法中调用子类的 decode 方法，尝试将累积区的内容解码，每成功解码一个，就调用后面节点的 channelRead 方法。若没有解码成功，什么都不做。</li>
+<li>如果累积区没有未读数据了，就释放累积区。</li>
+<li>如果还有未读数据，且解码超过了 16 次（默认），就对累积区进行压缩。将读取过的数据清空，也就是将 readIndex 设置为0.</li>
+<li>调用 fireChannelRead 方法，将数组中的元素发送到后面的 handler 中。</li>
+<li>将数组清空。并还给对象池。</li>
+</ol>
+<p>下面来说说详细的步骤。</p>
+<h4>写入累积区</h4>
+<p>如果当前累加器没有数据，就直接跳过内存拷贝，直接将字节容器的指针指向新读取的数据，否则，调用累加器累加数据至字节容器</p>
+<src class="cnblogs_code">
+<pre><code>ByteBuf data =<span style="color: #000000;"> (ByteBuf) msg;
+first </span>= cumulation == <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (first) {
+    cumulation </span>=<span style="color: #000000;"> data;
+} </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+    cumulation </span>=<span style="color: #000000;"><strong> cumulator.cumulate(ctx.alloc(), cumulation, data);</strong>
+}</span></code></pre>
+
+<p>我们看看构造方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> ByteToMessageDecoder() {
+    </span><strong><span style="color: #0000ff;">this</span>.cumulator =<span style="color: #000000;"> MERGE_CUMULATOR;
+    </span></strong><span style="color: #0000ff;">this</span>.discardAfterReads = 16<span style="color: #000000;">;
+    CodecUtil.ensureNotSharable(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>可以看到 this.cumulator = MERGE_CUMULATOR;，那我们接下来看看 MERGE_CUMULATOR</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> ByteToMessageDecoder.Cumulator MERGE_CUMULATOR = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteToMessageDecoder.Cumulator() {
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ByteBuf <strong>cumulate</strong>(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+        ByteBuf buffer;
+        </span><span style="color: #0000ff;">if</span> (cumulation.writerIndex() &lt;= cumulation.maxCapacity() - in.readableBytes() &amp;&amp; cumulation.refCnt() &lt;= 1<span style="color: #000000;">) {
+            buffer </span>=<span style="color: #000000;"> cumulation;
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            buffer </span>=<span style="color: #000000;"> ByteToMessageDecoder.expandCumulation(alloc, cumulation, in.readableBytes());
+        }
+
+        buffer.writeBytes(in);
+        in.release();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> buffer;
+    }
+};</span></code></pre>
+
+<p>MERGE_CUMULATOR是基类ByteToMessageDecoder中的一个静态常量，其重写了cumulate方法，下面我们看一下&nbsp;<code>MERGE_CUMULATOR</code>&nbsp;是如何将新读取到的数据累加到字节容器里的</p>
+<p>netty 中ByteBuf的抽象，使得累加非常简单，通过一个简单的api调用&nbsp;<code>buffer.writeBytes(in);</code>&nbsp;便将新数据累加到字节容器中，为了防止字节容器大小不够，在累加之前还进行了扩容处理</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> ByteBuf expandCumulation(ByteBufAllocator alloc, ByteBuf cumulation, <span style="color: #0000ff;">int</span><span style="color: #000000;"> readable) {
+        ByteBuf oldCumulation </span>=<span style="color: #000000;"> cumulation;
+        cumulation </span>= alloc.buffer(oldCumulation.readableBytes() +<span style="color: #000000;"> readable);
+        cumulation.writeBytes(oldCumulation);
+        oldCumulation.release();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cumulation;
+}</span></code></pre>
+
+<p>扩容也是一个内存拷贝操作，新增的大小即是新读取数据的大小</p>
+<h4>将累加到的数据传递给业务进行拆包</h4>
+<p>当数据追加到累积区之后，需要调用 decode 方法进行解码，代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isReadable() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">写的坐标大于读的坐标则说明还有数据可读</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.writerIndex &gt; <span style="color: #0000ff;">this</span><span style="color: #000000;">.readerIndex;
+}
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> callDecode(ChannelHandlerContext ctx, ByteBuf in, List&lt;Object&gt;<span style="color: #000000;"> out) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果累计区还有可读字节，循环解码，因为这里in有可能是粘包，即多次完整的数据包粘在一起，通过换行符连接
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 下面的decode方法只能处理一个完整的数据包，所以这里循环处理粘包</span>
+    <span style="color: #0000ff;">while</span><span style="color: #000000;"> (in.isReadable()) {
+        </span><span style="color: #0000ff;">int</span> outSize =<span style="color: #000000;"> out.size();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 上次循环成功解码</span>
+        <span style="color: #0000ff;">if</span> (outSize &gt; 0<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 处理一个粘包就 调用一次后面的业务 handler 的  ChannelRead 方法</span>
+<span style="color: #000000;">            fireChannelRead(ctx, out, outSize);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 size 置为0</span>
+            out.clear();<span style="color: #008000;">//
+</span>            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (ctx.isRemoved()) {
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            }
+            outSize </span>= 0<span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到可读字节数</span>
+        <span style="color: #0000ff;">int</span> oldInputLength =<span style="color: #000000;"> in.readableBytes();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 decode 方法，将成功解码后的数据放入道 out 数组中</span>
+<span style="color: #000000;">        decode(ctx, in, out);
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (ctx.isRemoved()) {
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">if</span> (outSize ==<span style="color: #000000;"> out.size()) {
+            </span><span style="color: #0000ff;">if</span> (oldInputLength ==<span style="color: #000000;"> in.readableBytes()) {
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSingleDecode()) {
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+    }
+}</span></code></pre>
+
+<p>我们看看&nbsp;fireChannelRead</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> fireChannelRead(ChannelHandlerContext ctx, List&lt;Object&gt; msgs, <span style="color: #0000ff;">int</span><span style="color: #000000;"> numElements) {
+    </span><span style="color: #0000ff;">if</span> (msgs <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> CodecOutputList) {
+        fireChannelRead(ctx, (CodecOutputList)msgs, numElements);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">将所有已解码的数据向下业务hadder传递</span>
+        <span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i = 0; i &lt; numElements; ++<span style="color: #000000;">i) {
+            ctx.fireChannelRead(msgs.get(i));
+        }
+    }
+
+}</span></code></pre>
+
+<p>该方法主要逻辑：只要累积区还有未读数据，就循环进行读取。</p>
+<ol>
+<li>
+<p>调用 decodeRemovalReentryProtection 方法，内部调用了子类重写的 decode 方法，很明显，这里是个模板模式。decode 方法的逻辑就是将累积区的内容按照约定进行解码，如果成功解码，就添加到数组中。同时该方法也会检查该 handler 的状态，如果被移除出 pipeline 了，就将累积区的内容直接刷新到后面的 handler 中。</p>
+</li>
+<li>
+<p>如果 Context 节点被移除了，直接结束循环。如果解码前的数组大小和解码后的数组大小相等，且累积区的可读字节数没有变化，说明此次读取什么都没做，就直接结束。如果字节数变化了，说明虽然数组没有增加，但确实在读取字节，就再继续读取。</p>
+</li>
+<li>
+<p>如果上面的判断过了，说明数组读到数据了，但如果累积区的 readIndex 没有变化，则抛出异常，说明没有读取数据，但数组却增加了，子类的操作是不对的。</p>
+</li>
+<li>
+<p>如果是个单次解码器，解码一次就直接结束了，如果数据包一次就解码完了，则下一次循环时&nbsp;in.isReadable()就为false，因为&nbsp;writerIndex = this.readerIndex 了</p>
+</li>
+</ol>
+<p>所以，这段代码的关键就是子类需要重写 decode 方法，将累积区的数据正确的解码并添加到数组中。每添加一次成功，就会调用 fireChannelRead 方法，将数组中的数据传递给后面的 handler。完成之后将数组的 size 设置为 0.</p>
+<p>所以，如果你的业务 handler 在这个地方可能会被多次调用。也可能一次也不调用。取决于数组中的值。</p>
+<p>解码器最主要的逻辑：</p>
+<blockquote>
+<p>将 read 方法的数据读取到累积区，使用解码器解码累积区的数据，解码成功一个就放入到一个数组中，并将数组中的数据一次次的传递到后面的handler。</p>
+</blockquote>
+<h4>清理字节容器</h4>
+<p>业务拆包完成之后，只是从累积区中取走了数据，但是这部分空间对于累积区来说依然保留着，而字节容器每次累加字节数据的时候都是将字节数据追加到尾部，如果不对累积区做清理，那么时间一长就会OOM，清理部分的代码如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果累计区没有可读字节了，有可能在上面callDecode方法中已经将cumulation全部读完了，此时writerIndex==readerIndex
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 每读一个字节，readerIndex会+1</span>
+    <span style="color: #0000ff;">if</span> (cumulation != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #000000;">cumulation.isReadable()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将次数归零</span>
+        numReads = 0<span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 释放累计区,因为累计区里面的字节都全部读完了</span>
+<span style="color: #000000;">        cumulation.release();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 便于 gc</span>
+        cumulation = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果超过了 16 次，还有字节没有读完，就将已经读过的数据丢弃，将 readIndex 归零。</span>
+    } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (++ numReads &gt;=<span style="color: #000000;"> discardAfterReads) {
+        numReads </span>= 0<span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">将已经读过的数据丢弃，将 readIndex 归零。</span>
+<span style="color: #000000;">        discardSomeReadBytes();
+    }
+
+    </span><span style="color: #0000ff;">int</span> size =<span style="color: #000000;"> out.size();
+    decodeWasNull </span>= !<span style="color: #000000;">out.insertSinceRecycled();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">循环数组，向后面的 handler 发送数据</span>
+<span style="color: #000000;">    fireChannelRead(ctx, out, size);
+    out.recycle();
+}</span></code></pre>
+
+<ol>
+<li>如果累积区没有可读数据了，将计数器归零，并释放累积区。</li>
+<li>如果不满足上面的条件，且计数器超过了 16 次，就压缩累积区的内容，压缩手段是删除已读的数据。将 readIndex 置为 0。还记得 ByteBuf 的指针结构吗？</li>
+</ol>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="./images/Netty源码分析 （九）----- 拆包器的奥秘0.png" alt="" /></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ByteBuf discardSomeReadBytes() {
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.ensureAccessible();
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.readerIndex == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.readerIndex == <span style="color: #0000ff;">this</span><span style="color: #000000;">.writerIndex) {
+        </span><span style="color: #0000ff;">this</span>.adjustMarkers(<span style="color: #0000ff;">this</span><span style="color: #000000;">.readerIndex);
+        </span><span style="color: #0000ff;">this</span>.writerIndex = <span style="color: #0000ff;">this</span>.readerIndex = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">读指针超过了Buffer容量的一半时做清理工作</span>
+        <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.readerIndex &gt;= <span style="color: #0000ff;">this</span>.capacity() &gt;&gt;&gt; 1<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">拷贝，从readerIndex开始，拷贝this.writerIndex - this.readerIndex 长度</span>
+            <span style="color: #0000ff;">this</span>.setBytes(0, <span style="color: #0000ff;">this</span>, <span style="color: #0000ff;">this</span>.readerIndex, <span style="color: #0000ff;">this</span>.writerIndex - <span style="color: #0000ff;">this</span><span style="color: #000000;">.readerIndex);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">writerIndex=writerIndex-readerIndex</span>
+            <span style="color: #0000ff;">this</span>.writerIndex -= <span style="color: #0000ff;">this</span><span style="color: #000000;">.readerIndex;
+            </span><span style="color: #0000ff;">this</span>.adjustMarkers(<span style="color: #0000ff;">this</span><span style="color: #000000;">.readerIndex);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">将读指针重置为0</span>
+            <span style="color: #0000ff;">this</span>.readerIndex = 0<span style="color: #000000;">;
+        }
+
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>我们看到discardSomeReadBytes 主要是将未读的数据拷贝到原Buffer，重置&nbsp;readerIndex 和&nbsp;writerIndex&nbsp;</p>
+<p>我们看到最后还调用 fireChannelRead 方法，尝试将数组中的数据发送到后面的 handler。为什么要这么做。按道理，到这一步的时候，数组不可能是空，为什么这里还要这么谨慎的再发送一次？</p>
+<p>如果是单次解码器，就需要发送了，因为单词解码器是不会在 callDecode 方法中发送的。</p>
+<h2>总结</h2>
+<p>可以说，ByteToMessageDecoder 是解码器的核心所做，Netty 在这里使用了模板模式，留给子类扩展的方法就是 decode 方法。</p>
+<p>主要逻辑就是将所有的数据全部放入累积区，子类从累积区取出数据进行解码后放入到一个 数组中，ByteToMessageDecoder 会循环数组调用后面的 handler 方法，将数据一帧帧的发送到业务 handler 。完成这个的解码逻辑。</p>
+<p>使用这种方式，无论是粘包还是拆包，都可以完美的实现。</p>
+<p>Netty 所有的解码器，都可以在此类上扩展，一切取决于 decode 的实现。只要遵守 ByteToMessageDecoder 的约定即可。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

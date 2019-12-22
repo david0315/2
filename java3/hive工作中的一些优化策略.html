@@ -1,0 +1,231 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修hive工作中的一些优化策略' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>hive工作中的一些优化策略</center></div><div class='banquan'>原文出处:本文由博客园博主crazy_orange提供。<br/>
+原文连接:https://www.cnblogs.com/liufei-yes/p/11518338.html</div><br>
+    <p><!--?xml version="1.0" encoding="UTF-8"?--></p>
+<src>1、hive抓取策略
+<src>&nbsp;&nbsp; &nbsp;hive.fetch.task.conversion = more/none
+<src>&nbsp; &nbsp; more不走mr，none走mr
+<src>&nbsp;
+<src>2、explain 显示执行计划
+<src>&nbsp;
+<src>3、设置本地运行模式
+<src>&nbsp; &nbsp; set hive.exec.mode.local.auto = true
+<src>&nbsp; &nbsp; hive.exec.mode.local.inputbytes.max 默认128M，表示加载文件的最大值，若大于该配置仍会以集群方式运行
+<src>&nbsp;
+<src>4、并行计算
+<src>&nbsp; &nbsp;&nbsp;Set hive.exec.parallel = true/falses
+<src>&nbsp; &nbsp;&nbsp;Set hive.exec.parallel.thread.number&nbsp; &nbsp; 默认8个<br />
+
+<src>&nbsp;
+<src>5、严格模式
+<src>&nbsp; &nbsp; set hive.mapred.mode = strict/nonstrict
+<src>&nbsp; &nbsp; 限制查询：
+<ul>
+<li>对于分区表，必须添加where对于分区字段的过滤条件
+</li>
+<li>order by语句必须包含limit输出限制
+</li>
+<li>限制执行笛卡尔积的查询
+</li>
+
+
+</ul>
+<src>&nbsp;
+<src>6、hive排序
+
+<ul>
+<li>order by：对于查询结果做全排序，只允许一个reduce处理（当数据量较大时，慎用。严格模式下，必须结合limit来使用）
+</li>
+<li>sort by：对于单个reduce的数据进行排序
+</li>
+<li>distribute by：分区排序，经常和sort by结合使用
+</li>
+<li>cluster by：相当于sort by+distribute by
+<ul>
+<li>　　cluster by不能通过asc、desc的方式指定排序顺序，可通过distribute by column sort by column asc|desc的方式</li>
+
+</ul>
+
+</li>
+
+
+</ul>
+<src>&nbsp;
+<src>7、hive join
+
+<ul>
+<li>join计算时，将小表（驱动表）放在join的左边
+</li>
+<li>Map join：在map端完成join
+<ul>
+<li>　　SQL方式：在sql语句中添加map join的标记(mapjoin hint)
+<ul>
+<li>　　语法：select /* MAPJOIN(b) */ a.key, a.value from a join b on a.key = b.key</li>
+
+</ul>
+
+</li>
+<li>
+<p>　　自动的mapjion
+</p>
+<ul>
+<li>&nbsp; &nbsp; &nbsp; 通过以后配置启用自动的mapjion
+<ul>
+<li style="list-style-type: none;">
+<ul>
+<li>　　set hive.auto.convert.join = true （为true时，hive自动对左边的表统计量，如果时小表就加入内存，即对小表启动mapjion）
+</li>
+<li>　　hive.mapjion.smalltable.filesize 默认25M
+</li>
+<li>　　Hive.ignore.mapjion.hint 是否忽略maojoin hint的标</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</li>
+
+</ul>
+
+</li>
+<li>尽可能使用相同的连接键（转化为一个mr）
+</li>
+<li>大表join大表 （不一定有用）
+<ul>
+<li>空key过滤：有时join超时是因为某些key对应的数据太多，而相同key对应的数据都会发送到相同的reducer上，从而导致内存不够。此时我们应该仔细分析这些异常的key，很多情况下，这些key对应的数据是异常数据，我们需要在SQL语句中进行过滤。
+</li>
+<li>空key转换：有时虽然某个key为空对应的数据很多，但是相应的数据不是异常数据，必须要包含在join的结果中，此时我们可以表a中key为空的字段赋一个随机的值，使得数据随机均匀地分不到不同的reducer上
+</li>
+
+</ul>
+
+</li>
+
+
+</ul>
+<src>&nbsp;
+<src>8、map-side聚合<br />
+
+<ul>
+<li>通过设置参数开启map端的聚合：set hive.map.aggr=true
+</li>
+<li>hive.groupby.mapaggr.checkinterval &nbsp;&mdash;map端gourp by执行聚合时处理的多少行数据（默认100000）
+</li>
+<li>hive.map.aggr.hash.min.reduction &nbsp;&mdash;进行聚合的最小比例（预先对100000条数据做聚合，若聚合之后的数据量/100000的值大于配置的0.5，则不会聚合）
+</li>
+<li>hive.map.aggr.hash.percentmemory &mdash;map端聚合使用的内存最大值
+</li>
+<li>hive.map.aggr.hash.force.flush.memory.threshold &mdash;map端做聚合操作时hash表的最大可用内容，大于该值出发flush
+</li>
+<li>hive.groupby.skewindata &mdash; 是否对groupby产生的数据倾斜做优化。默认false，当选项设定为 true，生成的查询计划会有两个 MR Job。第一个 MR Job 中，Map 的输出结果集合会随机分布到 Reduce 中，每个 Reduce 做部分聚合操作，并输出结果，这样处理的结果是相同的 Group By Key 有可能被分发到不同的 Reduce 中，从而达到负载均衡的目的；第二个 MR Job 再根据预处理的数据结果按照 Group By Key 分布到 Reduce 中（这个过程可以保证相同的 Group By Key 被分布到同一个 Reduce 中），最后完成最终的聚合操作。</li>
+
+
+</ul>
+<src>&nbsp;
+<src>9、合并小文件 文件数据小，容易在文件存储端造成压力，给hdfs造成压力，影响效率
+
+<ul>
+<li>设置合并属性
+<ul>
+<li>是否合并map输出文件：hive.merge.mapfiles=true
+</li>
+<li>是否合并reduce输出文件：hive.merge.mapredfiles=true
+</li>
+<li>合并文件的大小：hive.merge.size.per.task=256*1000*1000
+</li>
+
+</ul>
+
+</li>
+
+
+</ul>
+<src>&nbsp;
+<src>10、去重统计：数据量小的时候无所谓，数据量大的情况下，由于COUNT DISTINCT操作需要用一个Reduce Task来完成，这一个Reduce需要处理的数据量太大，就会导致整个Job很难完成，一般COUNT DISTINCT使用先GROUP BY再COUNT的方式替换
+
+<src>&nbsp;
+<src>11、控制hive中map以及reduce的数量
+
+<ul>
+<li>Map数量相关的参数
+<ul>
+<li>mapred.max.split.size 每个split的最大值，即每个map处理文件的最大值
+</li>
+<li>mapred.min.split.size.per.node 一个节点上split的最小值
+</li>
+<li>mapred.min.split.size.per.rack 一个机架上split的最小值
+</li>
+
+</ul>
+
+</li>
+<li>reduce数量相关的参数
+<ul>
+<li>mapred.reduce.tasks 强制指定reduce任务的数量
+</li>
+<li>hive.exec.reducers.bytes.per.reduce 每个reduce任务处理的数据量
+</li>
+<li>hive.exec.reduce.max 每个任务最大的reduce书
+</li>
+
+</ul>
+
+</li>
+
+
+</ul>
+<src>&nbsp;
+<src>12、hive-JVM重用
+
+<ul>
+<ul>
+<li>适用场景
+<ul>
+<li>小文件个数过多
+</li>
+<li>task个数过多
+</li>
+
+</ul>
+
+</li>
+<li>通过set mapred.job.reuse.jvm.num.tasks=n来设置
+<ul>
+<li>　　缺陷：设置开启之后，task插槽会一直占用资源，无论是否有task运行，直到所有的task即整个job全部执行完成时，才会释放所有的task插槽的资源&nbsp;</li>
+
+</ul>
+
+</li>
+
+
+</ul>
+
+</ul>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

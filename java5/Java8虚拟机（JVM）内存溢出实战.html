@@ -1,0 +1,305 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java8虚拟机（JVM）内存溢出实战' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java8虚拟机（JVM）内存溢出实战</center></div><div class='banquan'>原文出处:本文由博客园博主冲锅煮酒提供。<br/>
+原文连接:https://www.cnblogs.com/pingyun/p/11569087.html</div><br>
+    <h4 id="前言">前言</h4>
+<p>相信很多JAVA中高级的同学在面试的时候会经常碰到一个面试题<html><font color="#0382AD" ><br />
+<strong>你是如何在工作中对JVM调优和排查定位问题的</strong>？</font><br />
+</html></p>
+<p>事实上，如果用户量不大的情况下，在你的代码还算正常的情况下，在工作中除非真正碰到与JVM相关的问题是少之又少，就算碰到了也是由公司的一些大牛去排查解决，那么我们又如何积累这方面的经验呢？<strong>下面由冲锅带大家一起来实践JVM的调优吧</strong></p>
+<blockquote>
+<p>注意我们平常所说的JVM调优一般指Java堆，Java虚拟机栈参数调优</p>
+</blockquote>
+<h4 id="java堆溢出">Java堆溢出</h4>
+<blockquote>
+<p>先来一段代码示例，注意笔者用的是IDEA工具，需要配置一下VM options 为-Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError，如果不清楚的百度一下如何配置idea的JVM运行参数</p>
+</blockquote>
+<pre><code><code>package com.example.demo.jvm;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @Author: Wang Chong 
+ * @Date: 2019/9/22 9:37
+ * @Version: V1.0
+ */
+public class HeapOutMemoryTest {
+    static class ChongGuo {
+
+    }
+    public static void main(String[] args) {
+        List&lt;ChongGuo&gt; chongGuos = new ArrayList&lt;&gt;();
+        while (true) {
+            chongGuos.add(new ChongGuo());
+        }
+    }
+}
+</code></code></pre>
+<p>运行结果如下：</p>
+<pre><code><code>java.lang.OutOfMemoryError: Java heap space
+Dumping heap to java_pid9352.hprof ...
+Heap dump file created [28701160 bytes in 0.122 secs]
+Exception in thread &quot;main&quot; java.lang.OutOfMemoryError: Java heap space
+    at java.util.Arrays.copyOf(Arrays.java:3210)
+    at java.util.Arrays.copyOf(Arrays.java:3181)
+    at java.util.ArrayList.grow(ArrayList.java:261)
+    at java.util.ArrayList.ensureExplicitCapacity(ArrayList.java:235)
+    at java.util.ArrayList.ensureCapacityInternal(ArrayList.java:227)
+    at java.util.ArrayList.add(ArrayList.java:458)
+    at com.example.demo.jvm.HeapOutMemoryTest.main(HeapOutMemoryTest.java:18)
+Disconnected from the target VM, address: &#39;127.0.0.1:54599&#39;, transport: &#39;socket&#39;</code></code></pre>
+<p>可以看到控制台出现<font color="red">java.lang.OutOfMemoryError: Java heap space</font>的错误，这是为什么呢，首先先解释一下上面的运行参数<br />
+<html><br />
+-Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError<br />
+<ul><br />
+<li>-Xms20m:设置JVM最小内存为20m。此值可以设置与-Xmx相同，以避免每次垃圾回收完成后JVM重新分配内存</li><br />
+<li>-Xmx20m:设置JVM最大可用内存20M</li><br />
+<li>-XX:+HeapDumpOnOutOfMemoryError 表示当JVM发生OOM时，自动生成DUMP文件</li><br />
+</ul><br />
+</html></p>
+<blockquote>
+<p>下面我们分析一下出错的原因，用JProfiler分析一下，打开刚才生成的名为java_pid9352.hprof的dump文件。可以看到根据（InstanceXcount和Size）基本可以确定哪个类的对象出现问题,在上面示例中，可以是ChongGuo这个实例生在数量的大小已经超过12M，但没有超过20M，那么新问题又来了？<strong><font color="#0382AD" >没到20M为啥会报堆内存溢出呢</strong>？</font></p>
+</blockquote>
+<p><img src="./images/Java8虚拟机（JVM）内存溢出实战0.png" /></p>
+<blockquote>
+<p>答案就是JDK8中堆内存中还包括Metaspace,即元内存空间，在元空间出现前JDK1.7之前在JDK7以及其前期的JDK版本号中。堆内存通常被分为三块区域Nursery内存(young generation)、长时内存(old generation)、永久内存(Permanent Generation for VM Matedata)，如下图</p>
+</blockquote>
+<p><img src="./images/Java8虚拟机（JVM）内存溢出实战1.png" /></p>
+<blockquote>
+<p>当中最上一层是年轻代，一个对象被创建以后首先被放到年轻代中的Eden内存中，假设存活期超两个Survivor之后就会被转移到长时内存中(Old Generation)中永久内存中存放着对象的方法、变量等元数据信息。通过假设永久内存不够。我们就会得到例如以下错误：java.lang.OutOfMemoryError: PermGen<br />
+而在JDK8中情况发生了明显的变化，就是普通情况下你都不会得到这个错误，原因<br />
+在于JDK8中把存放元数据中的永久内存从堆内存中移到了本地内存(native memory)<br />
+中，JDK8中JVM堆内存结构就变成了例如以下：</p>
+</blockquote>
+<p><img src="./images/Java8虚拟机（JVM）内存溢出实战2.png" /></p>
+<blockquote>
+<p>如果我启动VM参数加上：-XX:MaxMetaspaceSize=1m，重新运行一下上面的程序，</p>
+</blockquote>
+<pre><code><code>Connected to the target VM, address: &#39;127.0.0.1:56433&#39;, transport: &#39;socket&#39;
+java.lang.OutOfMemoryError: Metaspace
+Dumping heap to java_pid9232.hprof ...
+Heap dump file created [1604635 bytes in 0.024 secs]
+FATAL ERROR in native method: processing of -javaagent failed
+Exception in thread &quot;main&quot; Disconnected from the target VM, address: &#39;127.0.0.1:56433&#39;, transport: &#39;socket&#39;
+
+Process finished with exit code 1</code></code></pre>
+<blockquote>
+<p>可以发现报错信息变成了<font color="red">java.lang.OutOfMemoryError: Metaspace</font>,说明元空间不够，我改成到大概4m左右才能满足启动条件。</p>
+</blockquote>
+<h4 id="虚拟机栈和本地方法栈栈溢出">虚拟机栈和本地方法栈栈溢出</h4>
+<blockquote>
+<p>在Java虚拟机规范中描述了两种异常：</p>
+</blockquote>
+<ul>
+<li>如果线程请求的栈深度大于虚拟机所允许的最大深度，将抛出StackOverflowError异常</li>
+<li><p>如果虚拟机在扩展栈无法申请到足够的内存空间，则抛出OutOfMemoryError异常</p>
+<blockquote>
+<p>StackOverflowError比较好测试，测试代码如下：</p>
+</blockquote></li>
+</ul>
+<pre><code><code>package com.example.demo.jvm;
+
+/**
+ * @Author: Wang Chong
+ * @Date: 2019/9/22 19:09
+ * @Version: V1.0
+ */
+public class StackOverflowTest {
+
+    /**
+     * 栈大小
+     */
+    private int stackLength = 1;
+
+    /**
+     * 递归压栈
+     */
+    public void stackLeak() {
+        stackLength++;
+        stackLeak();
+    }
+
+    public static void main(String[] args) {
+        StackOverflowTest stackOverflowTest = new StackOverflowTest();
+        try {
+            stackOverflowTest.stackLeak();
+        } catch (Throwable e) {
+            System.out.println(&quot;stack length is :&quot; + stackOverflowTest.stackLength);
+            throw e;
+        }
+
+    }
+
+}
+</code></code></pre>
+<p>运行结果如下：</p>
+<pre><code><code>Exception in thread &quot;main&quot; stack length is :20739
+java.lang.StackOverflowError
+    at com.example.demo.jvm.StackOverflowTest.stackLeak(StackOverflowTest.java:20)
+    at com.example.demo.jvm.StackOverflowTest.stackLeak(StackOverflowTest.java:20)</code></code></pre>
+<p>在VM参数-Xss参数未设置的情况下，该线程的内存支持的栈深度为20739，该测试结果与机器的内存大小有关，不过上面的第二点如何测试呢？正常来说如果是单线程，则难以测试内存泄露的情况，那么多线程呢？我们看一下以下测试代码：</p>
+<pre><code><code>package com.example.demo.jvm;
+
+/**
+ * @Author: Wang Chong
+ * @Date: 2019/9/22 19:09
+ * @Version: V1.0
+ */
+public class StackOOMTest implements Runnable{
+
+    /**
+     * 栈大小
+     */
+    private int stackLength = 1;
+
+    /**
+     * 递归压栈
+     */
+    public void stackLeak() {
+        stackLength++;
+        stackLeak();
+    }
+
+    public static void main(String[] args) {
+       while (true){
+           StackOOMTest stackOverflowTest = new StackOOMTest();
+           new Thread(stackOverflowTest).start();
+       }
+
+    }
+
+    @Override
+    public void run() {
+       stackLeak();
+    }
+}
+</code></code></pre>
+<p>如果系统不假死的情况下，会出现<font color="red">Exception in thread &quot;main&quot; java.lang.OutOfMemoryError:unable to create new native thread</font></p>
+<h4 id="运行时常量池溢出">运行时常量池溢出</h4>
+<ul>
+<li>字符型常量池溢出，在JAVA8中也是堆溢出，测试代码如下：</li>
+</ul>
+<pre><code><code>package com.example.demo.jvm;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @Author: Wang Chong
+ * @Date: 2019/9/22 19:44
+ * @Version: V1.0
+ */
+public class RuntimePoolOOMTest {
+
+    public static void main(String[] args) {
+        List&lt;String&gt; list = new ArrayList&lt;&gt;();
+        int i = 0;
+        while (true) {
+            list.add(String.valueOf(i).intern());
+        }
+    }
+}
+</code></code></pre>
+<p>结果如下：</p>
+<pre><code><code>Exception in thread &quot;main&quot; java.lang.OutOfMemoryError: Java heap space
+    at java.util.Arrays.copyOf(Arrays.java:3210)
+    at java.util.Arrays.copyOf(Arrays.java:3181)
+    at java.util.ArrayList.grow(ArrayList.java:261)
+    at java.util.ArrayList.ensureExplicitCapacity(ArrayList.java:235)
+    at java.util.ArrayList.ensureCapacityInternal(ArrayList.java:227)
+    at java.util.ArrayList.add(ArrayList.java:458)
+    at com.example.demo.jvm.RuntimePoolOOMTest.main(RuntimePoolOOMTest.java:17)
+Disconnected from the target VM, address: &#39;127.0.0.1:50253&#39;, transport: &#39;socket&#39;</code></code></pre>
+<p>证明字符常量池已经在Java8中是在堆中分配的。</p>
+<h4 id="方法区溢出">方法区溢出</h4>
+<blockquote>
+<p>在Java7之前，方法区位于永久代(PermGen)，永久代和堆相互隔离，永久代的大小在启动JVM时可以设置一个固定值，不可变；Java8仍然保留方法区的概念，只不过实现方式不同。取消永久代，方法存放于元空间(Metaspace)，元空间仍然与堆不相连，但与堆共享物理内存，逻辑上可认为在堆中<br />
+测试代码如下，为快速看出结果，请加入VM参数-Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError -XX:MaxMetaspaceSize=10m：</p>
+</blockquote>
+<pre><code><code>package com.example.demo.jvm;
+
+import org.springframework.cglib.proxy.Enhancer;
+import org.springframework.cglib.proxy.MethodInterceptor;
+
+/**
+ * @Author: Wang Chong
+ * @Date: 2019/9/22 19:56
+ * @Version: V1.0
+ */
+public class MethodAreaOOMTest {
+    public static void main(String[] args) {
+        while (true) {
+            Enhancer enhancer = new Enhancer();
+            enhancer.setSuperclass(OOMObject.class);
+            enhancer.setUseCache(false);
+            enhancer.setCallback((MethodInterceptor) (o, method, objects, methodProxy) -&gt; methodProxy.invokeSuper(o,
+                    objects));
+            enhancer.create();
+        }
+    }
+
+    static class OOMObject {
+
+    }
+}</code></code></pre>
+<p>运行结果如下：</p>
+<pre><code><code>java.lang.OutOfMemoryError: Metaspace
+Dumping heap to java_pid8816.hprof ...
+Heap dump file created [6445908 bytes in 0.039 secs]
+Exception in thread &quot;main&quot; org.springframework.cglib.core.CodeGenerationException: java.lang.reflect.InvocationTargetException--&gt;null
+    at org.springframework.cglib.core.AbstractClassGenerator.generate(AbstractClassGenerator.java:345)
+    at org.springframework.cglib.proxy.Enhancer.generate(Enhancer.java:492)
+    at org.springframework.cglib.core.AbstractClassGenerator$ClassLoaderData.get(AbstractClassGenerator.java:114)
+    at org.springframework.cglib.core.AbstractClassGenerator.create(AbstractClassGenerator.java:291)
+    at org.springframework.cglib.proxy.Enhancer.createHelper(Enhancer.java:480)
+    at org.springframework.cglib.proxy.Enhancer.create(Enhancer.java:305)
+    at com.example.demo.jvm.MethodAreaOOMTest.main(MethodAreaOOMTest.java:19)
+Caused by: java.lang.reflect.InvocationTargetException
+    at sun.reflect.GeneratedMethodAccessor1.invoke(Unknown Source)
+    at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+    at java.lang.reflect.Method.invoke(Method.java:498)
+    at org.springframework.cglib.core.ReflectUtils.defineClass(ReflectUtils.java:459)
+    at org.springframework.cglib.core.AbstractClassGenerator.generate(AbstractClassGenerator.java:336)
+    ... 6 more
+Caused by: java.lang.OutOfMemoryError: Metaspace
+    at java.lang.ClassLoader.defineClass1(Native Method)
+    at java.lang.ClassLoader.defineClass(ClassLoader.java:763)
+    ... 11 more
+
+Process finished with exit code 1</code></code></pre>
+<p>元空间内存报错，证明方法区的溢出与元空间相关。</p>
+<blockquote>
+<p>总结如下：</p>
+</blockquote>
+<ul>
+<li>正常JVM调优都是针对堆内存和栈内存、元空间的参数做相应的改变</li>
+<li>元空间并不在虚拟机中，而是使用本地内存。因此，默认情况下，元空间的大小仅受本地内存限制，但可以通过以下参数来指定元空间的大小：</li>
+<li>-XX:MetaspaceSize，初始空间大小，达到该值就会触发垃圾收集进行类型卸载，同时GC会对该值进行调整：如果释放了大量的空间，就适当降低该值；如果释放了很少的空间，那么在不超过MaxMetaspaceSize时，适当提高该值。</li>
+<li>-XX:MaxMetaspaceSize，最大空间，默认是没有限制的。</li>
+<li>字符串池常量池在每个VM中只有一份，存放的是字符串常量的引用值,存放在堆中</li>
+</ul>
+<p>有更多的文章，请关注查看，更有面试宝典相送<br />
+<img src="./images/Java8虚拟机（JVM）内存溢出实战3.png" alt="image" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

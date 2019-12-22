@@ -1,0 +1,688 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring 学习指南 第三章 bean的配置 (未完结)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring 学习指南 第三章 bean的配置 (未完结)</center></div><div class='banquan'>原文出处:本文由博客园博主train99999提供。<br/>
+原文连接:https://www.cnblogs.com/train99999/p/11964898.html</div><br>
+    <h2 id="第三章-bean-的配置">第三章 bean 的配置</h2>
+<p>​ 在本章中，我们将介绍以下内容：</p>
+<ol>
+<li>bean 定义的继承：</li>
+<li>如何解决 bean 类的构造函数的参数：</li>
+<li>如何配置原始类型 (如 int 、float 等) 、集合类型（如 java.util.List、java.util.Map）等以及自定义类型 (如 Address ) 等的 bean 属性和构造函数参数；</li>
+<li>如何通过使用 p 命名空间和 c 命名空间分别指定 bean 属性和构造参数来使用应用程序上下文 XML 文件变得简洁；</li>
+<li>Spring 的 FactoryBean 接口，运行编写自己的工厂类来创建 bean 实例；</li>
+<li>模块化 bean 配置。</li>
+</ol>
+<h4 id="bean-定义的继承">bean 定义的继承</h4>
+<p>​ 我们在第一章和第二章中看到，应用程序上下文 XML 文件中的 bean 定义指定了 bean 类及其依赖项的完全限定名称。在某些场景下，为了使 bean 定义不那么冗长，你可能希望 bean 定义从另一个 bean 定义继承配置信息。下面介绍 MyBank 应用中这样的一个场景。</p>
+<h6 id="mybankbean-定义继承实例">MyBank——bean 定义继承实例</h6>
+<p>​ 在上一章中，我们了解到 MyBank 应用通过 DAO 来访问数据库。假设 MyBank 应用定义了一个可以与数据库交互的 DatabaseOperations 类，因此 MyBank 应用中的所有 DAO 都依赖于 DatabaseOperations 类来执行数据库操作，如下图所示。</p>
+<p><img src="./images/Spring 学习指南 第三章 bean的配置 (未完结)0.png" alt="image" /></p>
+<p>​ 上图展示了 FixedDepositDao 和 PersonalBankingDao 类依赖于 DatabaseOperations 类。以下应用程序上下文 XML 文件展示了这些类的 bean 定义。</p>
+<pre><code><code>&lt;bean id=&quot;databaseOperations&quot;
+    class=&quot;sample.spring.chapter01.bankapp.utils.DatabaseOperations&quot;&gt;&lt;/bean&gt;
+
+&lt;bean id=&quot;personalBankingDao&quot; class=&quot;sample.spring.chapter01.bankapp.dao.PersonalBankingDaoImpl&quot;&gt;
+    &lt;property name=&quot;databaseOperations&quot; ref=&quot;databaseOperations&quot; /&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;fixedDepositDao&quot; class=&quot;sample.spring.chapter01.bankapp.dao.FixedDepositDaoImpl&quot;&gt;
+    &lt;property name=&quot;databaseOperations&quot; ref=&quot;databaseOperations&quot; /&gt;
+&lt;/bean&gt;
+</code></code></pre>
+<p>​ 上面 xml 中，personalBankingDao 和 fixedDepositDao bean 定义都使用 databaseOperations 属性来引用 DatabaseOperations 实例。这意味着 PersonalBankingDaoImpl 和 FixedDepositDaoImpl 类都定义了一个 setDatabaseOperations 方法，以允许 Spring 容器注入 DatabaseOperations 实例。</p>
+<p>​ 如果应用程序中的 多个 bean 共享一组公共的配置 (属性、构造函数参数等)，则可以创建一个 bean 定义，作为其他 bean 定义的父定义。在 personalBankingDao 和 fixedDepositDao bean定义中，公共的配置是 databaseOperations 属性。下面展示了 personalBankingDao 和 fixedDepositDao bean 定义如何从父 bean 定义继承 databaseOperations 属性。</p>
+<pre><code><code>&lt;bean id=&quot;databaseOperations&quot; class=&quot;sample.spring.chapter03.bankapp.utils.DatabaseOperations&quot;&gt;&lt;/bean&gt;
+
+&lt;bean id=&quot;daoTemplate&quot; abstract=&quot;true&quot;&gt;
+    &lt;property name=&quot;databaseOperations&quot; ref=&quot;databaseOperations&quot; /&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;fixedDepositDao&quot; parent=&quot;daoTemplate&quot; class=&quot;sample.spring.chapter03.bankapp.dao.FixedDepositDaoImpl&quot;&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;personalBankingDao&quot; parent=&quot;daoTemplate&quot; 
+      class=&quot;sample.spring.chapter03.bankapp.dao.PersonalBankingDaoImpl&quot;&gt;&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面的 xml 中，daoTemplate bean 定义了 fixedDepositDao 和 personalBankingDao bean 定义共享的公共配置。由于 fixedDepositDao 和 personalBankingDao bean 定义都需要 databaseOperations 依赖项，daoTemplate bean 定义使用 <property>元素定义 databaseOperations 依赖项。 <bean>元素的 parent 属性指定从中继承配置的 bean 定义的名称。由于 fixedDepositDao 和 personalBankingDao bean 定义中的 parent 属性值为 daoTemplate ，因此他们从 daoTemplate bean 定义继承了 databaseOperation 属性。</p>
+<p>​ 如果 <bean> 元素的 abstract 特性值设置为 true ， 则表示 bean 定义是抽象的。在上面 xml 中， daoTemplate bean 定义是抽象的。请注意，Spring 容器不会尝试创建一个与抽象 bean 定义相对应的 bean 。</p>
+<pre><code><code>注意：
+    抽象 bean 不能作为其他 bean 定义的依赖项，也就是说，不能使用 &lt;property&gt; 或 &lt;constructor-arg&gt; 元素来引用抽象  bean 。</code></code></pre>
+<p>​ 你可能已经注意到 daoTemplate bean 定义没有指定 class特性。如果父 bean 定义没有指定 class特性，则需要在子 bean 定义 (如 fixedDepositDao 和 personalBankingDao) 中指定 class 特性。注意，如果不指定 class 特性，则必须将 bean 定义为抽象的，以使 Spring 容器不会去尝试创建与之对应的 bean实例。</p>
+<p>​ 要验证 fixedDepositDao 和 personalBankingDao bean 定义是否继承了 daoTemplate bean 定义的 databaseOperations 属性。请执行下面的 java 代码。BankApp 类的 main 方法调用在 fixedDepositDao 和 personalBankingDao bean 中的方法，而这些 bean 调用 DatabaseOperations 实例上的方法。你会注意到，BankApp 的 main 方法成功运行。没有抛出任何异常。如果没有将 DatabaseOperations 实例注入 fixedDepositDao 和 personalBankingDao bean 中，那么代码将抛出 java.lang.NullPointerException。</p>
+<pre class="java"><code>package sample.spring.chapter03.bankapp;
+
+import org.apache.log4j.Logger;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+import sample.spring.chapter03.bankapp.controller.FixedDepositController;
+import sample.spring.chapter03.bankapp.controller.PersonalBankingController;
+import sample.spring.chapter03.bankapp.domain.FixedDepositDetails;
+
+public class BankApp {
+    private static Logger logger = Logger.getLogger(BankApp.class);
+
+    public static void main(String args[]) {
+        ApplicationContext context = new ClassPathXmlApplicationContext(
+                &quot;classpath:META-INF/spring/applicationContext.xml&quot;);
+
+        FixedDepositController fixedDepositController = context
+                .getBean(FixedDepositController.class);
+        fixedDepositController.submit(context
+                .getBean(FixedDepositDetails.class).setDepositAmount(100)
+                .setEmail(&quot;someemail@somedomain.com&quot;).setId(1).setTenure(10));
+        logger.info(&quot;Your fixed deposit details : &quot; + fixedDepositController.get());
+
+        PersonalBankingController personalBankingController = context
+                .getBean(PersonalBankingController.class);
+        logger.info(personalBankingController.getMiniStatement());
+        
+    }
+}
+</code></code></pre>
+<p>​ 下图 显示了 fixedDepositDao 和 personalBankingDao bean 定义中，bean 定义继承是如何工作的</p>
+<p><img src="./images/Spring 学习指南 第三章 bean的配置 (未完结)1.png" alt="image" /></p>
+<p>​ 上图展示了 fixedDepositDao 和 personalBankingDao bean 定义从 daoTemplate bean 定义继承了 databaseOperations 属性(以 fixedDeopsitDa 和 personalBankingDao 标识的方框中的 property 属性)。上图还描述了 Spring 容器不会尝试创建 与 daoTemplate bean 定义相对应的bean 实例，因为他被标记为 abstract。</p>
+<h6 id="继承了什么">继承了什么</h6>
+<p>​ 子 bean 定义从 父 bean 定义继承一下配置信息：</p>
+<ol>
+<li>属性，通过 <property>元素指定。</li>
+<li>构造函数参数，通过 <constructor-arg>元素指定。</li>
+<li>方法覆盖(见4,5节)</li>
+<li>初始化和销毁方法(见 第五章)；</li>
+<li>工厂方法，通过 <bean> 元素的 工厂方法特性指定(见2,3节，了解静态和实例工厂方法如何用于创建 bean)</li>
+</ol>
+<h6 id="bean-定义继承实例-父-bean-定义非抽象">bean 定义继承实例 —— 父 bean 定义非抽象</h6>
+<p>​ 下面 xml 文件中展示了一个 bean 继承实例，其中父 bean 定义不是抽象的，而且子 bean 定义了一个额外的依赖项</p>
+<pre><code><code>&lt;bean id=&quot;serviceTemplate&quot; class=&quot;sample.spring.chapter03.bankapp.base.ServiceTemplate&quot;&gt;
+    &lt;property name=&quot;jmsMessageSender&quot; ref=&quot;jmsMessageSender&quot; /&gt;
+    &lt;property name=&quot;emailMessageSender&quot; ref=&quot;emailMessageSender&quot; /&gt;
+    &lt;property name=&quot;webServiceInvoker&quot; ref=&quot;webServiceInvoker&quot; /&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;fixedDepositService&quot; class=&quot;.....FixedDepositServiceImpl&quot; parent=&quot;serviceTemplate&quot;&gt;
+    &lt;property name=&quot;fixedDepositDao&quot; ref=&quot;personalBankingDao&quot; /&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;personalBankingService&quot; class=&quot;....PersonalBankingServiceImpl&quot; parent=&quot;serviceTemplate&quot;&gt;
+    &lt;property name=&quot;personalBankingDao&quot; ref=&quot;personalBankingDao&quot; /&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;userRequestController&quot; class=&quot;....UserRequestControllerImpl&quot;&gt;
+    &lt;property name=&quot;serviceTemplate&quot; ref=&quot;serviceTemplate&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在深入了解上述配置的细节之前，有一点背景需要了解：MyBank 应用程序中的服务可能会将 JMS 消息发送到消息传递中间件或将电子邮件发送到电子邮件服务器，或者可能会调用外部 web 服务。在上面 xml 文件中， jmsMessageSender、emailMessageSender 和 webServiceInvoker bean 通过提供一个抽象层来简化这些任务，由 serviceTemplate bean 提供对 jmsMessageSender、emailMessageSender 和 webServiceInvoker bean 的 访问。这就是 serviceTemplate bean 依赖于 jmsMessageSender、emailMessageSender 和 webServiceInvoker bean 的原因。</p>
+<p>​ 在上面 xml 中展示了 serviceTemplate bean 定义是 fixedDepositService 和 personalBankingService bean 定义的 父 bean 定义。请注意，serviceTemplate bean 定义不是抽象的，class 特性指定的类为 ServiceTemplate。在之前的 bean 定义继承实例中，子 bean 定义没有定义任何属性。注意，在 XML 中，fixedDepositService 和 personalBankingService 子 bean 定义分别定义了 fixedDepositDao 和 personalBankingDao 属性。</p>
+<p>​ 由于父 bean 定义的属性由子 bean 定义继承，FixedDepositServiceImpl 和 PersonalBankingServiceImpl 类必须为 jmsMessageSender、emailMessageSender 和 webServiceInvoker 属性定义 setter 方法。你可以选择在 FixedDepositServiceImpl 和 PersonalBankingServiceImpl 类中定义 setter 方法。也可以将 FixedDepositServiceImpl 和 PersonalBankingServiceImpl 类作为 ServiceTemplate 类的子类。在 下面的 程序代码中 FixedDepositServiceImp 和 PersonalBankingServiceImp 类是 ServiceTemplate 类的子类。</p>
+<pre class="java"><code>//FixedDepositServiceImpl 类继承这 ServiceTemplate
+package sample.spring.chapter03.bankapp.service;
+
+import org.apache.log4j.Logger;
+
+import sample.spring.chapter03.bankapp.base.ServiceTemplate;
+import sample.spring.chapter03.bankapp.dao.FixedDepositDao;
+import sample.spring.chapter03.bankapp.domain.FixedDepositDetails;
+
+public class FixedDepositServiceImpl extends ServiceTemplate implements FixedDepositService {
+    private static Logger logger = Logger
+            .getLogger(FixedDepositServiceImpl.class);
+
+    private FixedDepositDao fixedDepositDao;
+
+    public FixedDepositServiceImpl() {
+        logger.info(&quot;initializing&quot;);
+    }
+
+    public FixedDepositDao getFixedDepositDao() {
+        return fixedDepositDao;
+    }
+
+    public void setFixedDepositDao(FixedDepositDao fixedDepositDao) {
+        logger.info(&quot;Setting fixedDepositDao property&quot;);
+        this.fixedDepositDao = fixedDepositDao;
+    }
+
+    public FixedDepositDetails getFixedDepositDetails(long id) {
+        return fixedDepositDao.getFixedDepositDetails(id);
+    }
+
+    public boolean createFixedDeposit(FixedDepositDetails fdd) {
+        return fixedDepositDao.createFixedDeposit(fdd);
+    }
+}
+</code></code></pre>
+<pre class="java"><code>//PersonalBankingServiceImpl 类继承自 ServiceTemplate
+package sample.spring.chapter03.bankapp.service;
+
+import sample.spring.chapter03.bankapp.base.ServiceTemplate;
+import sample.spring.chapter03.bankapp.dao.PersonalBakingDao;
+import sample.spring.chapter03.bankapp.domain.BankStatement;
+
+public class PersonalBankingServiceImpl extends ServiceTemplate implements PersonalBankingService {
+
+    private PersonalBakingDao personalBakingDao;
+
+    public void setPersonalBankingDao(PersonalBakingDao personalBakingDao) {
+        this.personalBakingDao = personalBakingDao;
+    }
+
+    @Override
+    public BankStatement getMiniStatement() {
+        return personalBakingDao.getMiniStatement();
+    }
+}
+</code></code></pre>
+<pre class="java"><code>// 父类 ServiceTemplate
+package sample.spring.chapter03.bankapp.base;
+
+public class ServiceTemplate {
+    private JmsMessageSender jmsMessageSender;
+    private EmailMessageSender emailMessageSender;
+    private WebServiceInvoker webServiceInvoker;
+
+    public JmsMessageSender getJmsMessageSender() {
+        return jmsMessageSender;
+    }
+
+    public void setJmsMessageSender(JmsMessageSender jmsMessageSender) {
+        this.jmsMessageSender = jmsMessageSender;
+    }
+
+    public EmailMessageSender getEmailMessageSender() {
+        return emailMessageSender;
+    }
+
+    public void setEmailMessageSender(EmailMessageSender emailMessageSender) {
+        this.emailMessageSender = emailMessageSender;
+    }
+
+    public WebServiceInvoker getWebServiceInvoker() {
+        return webServiceInvoker;
+    }
+
+    public void setWebServiceInvoker(WebServiceInvoker webServiceInvoker) {
+        this.webServiceInvoker = webServiceInvoker;
+    }
+}
+</code></code></pre>
+<p>​ 在上面 xml 文件中，personalBankingService bean 定义将 personalBankingDao 指定为依赖项。其中， setPersonalBankingDao setter 方法对应于 personalBankingDao 依赖项。另外，请注意 PersonalBankingServiceImpl 类是 ServiceTemplate 类的子类。</p>
+<p>​ 下图展示了父 bean 定义 （如 ServiceTemplate）不必是抽象的，子 bean 定义（如 fixedDepositService 和 personalBankingService） 可以定义附加属性，父类 （如 ServiceTemplate 类 ）和 子 bean 定义（如 FixedDepositServiceImpl 和 PersonalBankingServiceImpl ）所表示的类本身也可以通过继承相关联。</p>
+<p>​ 由下图可知：</p>
+<ol>
+<li>因为 serviceTemplate bean 没有被定义为抽象，所以 Spring 容器将创建一个它的实例。</li>
+<li>FixedDepositServiceImpl 和 PersonalBankingServiceImpl 类（对应于子 bean 定义）是对应于 serviceTemplate 父bean 定义的 ServiceTemplate 类的子类。</li>
+<li>而且，fixedDepositService 和 personalBankingService bean 定义分别定义了附加属性 fixedDepositDao 和 personalBankingDao，应该注意的是，子 bean 定义还可以定义附加的构造函数参数和方法覆盖（在4.5节中讨论）。</li>
+</ol>
+<p><img src="./images/Spring 学习指南 第三章 bean的配置 (未完结)2.png" alt="image" /></p>
+<p>​ 由于 serviceTemplate bean 定义不是抽象的 ，其他 bean 可以将 serviceTemplate bean 定义为依赖项。例如，在上面 xml 文件中，serviceTemplate bean 是 userRequestController bean 的依赖项。你可以从这个讨论中推断，如果一个 父 bean 定义不是抽象的。那么父 bean 提供的功能不仅可以被子 bean 使用，也可以被应用程序上下文中的其他 bean 所利用。</p>
+<h6 id="bean-定义继承实例-继承工厂方法配置">bean 定义继承实例 —— 继承工厂方法配置</h6>
+<p>​ 子 bean 定义可以使用 bean 定义继承来从父 bean 定义继承工厂方法配置。我们来看一个例子，其中父工厂方法配置由子 bean 定义继承。</p>
+<p>​ 在下面 代码中，ControllerFactory 类定义了一个 getController 实例工厂方法。</p>
+<pre class="java"><code>package sample.spring.chapter03.bankapp.controller;
+
+public class ControllerFactory{
+    
+    public Object getController(String controllerName) {
+        Object controller = null;
+        if(&quot;fixedDepositController&quot;.equalsIgnoreCase(controllerName)){
+            controller = new FixedDepositControllerImpl();
+        }
+        if(&quot;personalBankingController&quot;.equalsIgnoreCase(controllerName)){
+            controller = new PersonalBankingControllerImpl();
+        }
+        return controller;
+    }
+}</code></code></pre>
+<p>​ 由上面代码可知，getController 工厂方法根据传递给他的 controllerName 参数的值创建 FixeDepositControllerImpl 或 PersonalBankingControllerImpl 类的实例。如果 controllerName 参数的值为 fixedDepositController,getController 方法将创建 FixedDepositControllerImpl 类的实例。而如果 controllerName 参数的值为 personalBankingController，getController 方法将创建 PersonalBankingControllerImpl 类的实例。</p>
+<p>​ 在 applicationContext.xml 文件中的 bean 定义表明子 bean 定义从父 bean 定义继承了 getController 实例工厂方法配置，如下所示</p>
+<pre><code><code>&lt;bean id=&quot;controllerFactory&quot; class=&quot;sample.spring.chapter03.bankapp.controller.ControllerFactory&quot;&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;controllerTemplate&quot; factory-bean=&quot;controllerFactory&quot; factory-method=&quot;getController&quot; abstract=&quot;true&quot;&gt;&lt;/bean&gt;
+
+&lt;bean id=&quot;fixedDepositController&quot; parent=&quot;controllerTemplate&quot;&gt;
+    &lt;constructor-arg index=&quot;0&quot; value=&quot;fixedDepositController&quot; /&gt;
+    &lt;property name=&quot;personalBankingService&quot; ref=&quot;personalBankingService&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 文件中，ControllerFactory 类表示一个定义 getController 实例工厂方法的工厂类。controllerTemplate bean 定义指定 ControllerFactory 类的 getController 工厂方法用于创建 bean 实例。getController 方法创建一个 FixedDepositControllerImpl 或 PersonalBankingControllerImpl bean 实例，具体创建哪个实例取决于传递给 gerController 方法的参数。</p>
+<p>​ 由于 controllerTemplate bean 定义是抽象的，他由 fixedDepositController 和 personalBankingController 子 bean 定义来使用 getBcontroller 工厂方法配置。<constructor-arg> 元素用于将参数传递给实例工厂方法。在 上面代码中，fixedDepositController 和 personalBankingController 子 bean 定义使用了 <constructor-arg> 元素分别将 'fixedDepositController' 和 'personalBankingController' 值传递给 getController 工厂方法。</p>
+<p>​ 因此，在使用 fixedDepositController bean 定义的情况下， Spring 容器使用参数 'fixedDepositController' 调用 getController 方法，从而创建了 FixedDepositControllerImpl 实例。此外，在使用 personalBankingController bean 定义的情况下，Spring 容器使用参数 ‘personalBankingController' 调用 getController 方法，从而创建 PersonalBankingControllerImpl 实例。</p>
+<h6 id="构造函数参数匹配">构造函数参数匹配</h6>
+<p>​ 在第二章中，我们学习了如何使用 <constructor-arg>元素在 bean 定义中指定构造函数参数。在本节中，我们将介绍 Spring 容器如何将使用 <construtor-arg> 元素指定的构造函数参数和在 bean 类的构造函数中指定的构造函数参数进行匹配。</p>
+<p>​ 在介绍构造函数参数匹配的细节之前，我们再来看一下如何把参数传递给一个 bean 类的构造函数。</p>
+<h6 id="使用-元素传递简单的值和-bean-引用">使用 <constructor-arg> 元素传递简单的值和 bean 引用。</h6>
+<p>​ 如果构造函数参数是简单的 Java 类型 (如 int 、String 等)，则 <constructor-arg> 元素的 value 特性用于指定构造函数参数的值。如果构造函数参数是对 bean 的引用，则使用 <constructor-arg> 元素的 ref 特性指定 bean 的名称。</p>
+<p>​ 下面的代码展示了 UserRequestController 类，其构造函数接受 ServiceTemplate 类型的参数。</p>
+<pre class="java"><code>public class UserRequestControllerImpl implements UserRequestController{
+    private ServiceTemplate serviceTemplate;
+    
+    public UserRequestControllerImpl(ServiceTemplate serviceTemplate){
+        this.serviceTemplate = serviceTemplate;
+    }
+    
+    @Override
+    public void submitRequest(Request request){
+        //-- do something using ServiceTemplate
+        serviceTemplate.getJmsMessageSender();
+    }
+}</code></code></pre>
+<p>​ 在下面的 xml 中，使用 <constructor-arg> 元素的 ref 特性将对 ServiceTemplate 实例 (由 serviceTemplate bean 定义表示) 的引用传递给 UserRequestControllerImpl 的构造函数。</p>
+<pre><code><code>&lt;bean id=&quot;serviceTemplate&quot; class=&quot;sample.spring.chapter03.bankapp.base.ServiceTemplate&quot;&gt;
+....
+&lt;/bean&gt;
+&lt;bean id=&quot;userRequestController&quot; class=&quot;sample.spring.chapter03.bankapp.controller.UserRequestControllerImpl&quot;&gt;
+    &lt;constructor-arg index=&quot;0&quot; ref=&quot;serviceTemplate&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 有了如何将简单值和 bean 引用作为构造函数参数的背景信息，现在我们来看一下 Spring 容器如何匹配构造函数参数类型，并以此定位其调用的 bean 的构造函数。</p>
+<h6 id="基于类型的构造方法参数匹配">基于类型的构造方法参数匹配</h6>
+<p>​ 如果未指定 <constructor-arg> 元素的 index 特性，则 Spring 容器通过将 <constructor-arg> 元素引用的类型与 bean 类的构造函数中指定的参数类型进行匹配来定位其调用的构造函数。</p>
+<h6 id="构造函数参数表示不同的-spring-bean">构造函数参数表示不同的 Spring bean</h6>
+<p>​ 下面的代码展示了 ServiceTemplate 类，该类定义了一个构造函数，该构造函数接受对 JmsMessageSender、EmailMessageSender 和 WebServiceInvoker bean 的引用。</p>
+<pre class="java"><code>public class ServiceTemplate {
+    .....
+    public ServiceTemplate (JmsMessageSender jmsMessageSender,EmailMessageSender emailMessageSender,WebServiceInvoker webServiceInvoker){
+        ....}
+}</code></code></pre>
+<p>​ 下面的 xml 展示了 ServiceTemplate 类的 bean 定义和 ServiceTemplate 引用的 bean。</p>
+<pre><code><code>&lt;bean id=&quot;serviceTemplate&quot; class=&quot;sample.spring.chapter03.bankapp.base.ServiceTemplate&quot;&gt;
+    &lt;constructor-arg ref=&quot;emailMessageSender&quot; /&gt;
+    &lt;constructor-arg ref=&quot;jmsMessageSender&quot; /&gt;
+    &lt;constructor-arg ref=&quot;webServiceInvoker&quot; /&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;jmsMessageSender&quot; class=&quot;sample.spring.chapter03.bankapp.base.JmsMessageSender&quot;&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;emailMessageSender&quot; class=&quot;smaple.spring.chapter03.bankapp.base.EmailMessageSender&quot;&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;webServiceInovoker&quot; class=&quot;sample.spring.chapter03.bankapp.base.WebServiceInvoker&quot;&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 中， serviceTemplate bean 的 <constructor-arg> 元素没有指定 index 特性。由 <constructor-arg> 元素指定的构造函数参数的顺序是 ：EmailMessageSender 、JmsMessageSender 、WebServiceInvoker 。可以看到，构造函数参数由 <constructor-arg> 元素定义的顺序与在 ServiceTemlate 类的构造函数中指定的顺序不同。</p>
+<pre><code><code>package sample.spring.chapter03.bankapp;
+
+import org.apache.log4j.Logger;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+import sample.spring.chapter03.bankapp.controller.FixedDepositController;
+import sample.spring.chapter03.bankapp.controller.PersonalBankingController;
+import sample.spring.chapter03.bankapp.controller.UserRequestController;
+import sample.spring.chapter03.bankapp.domain.FixedDepositDetails;
+import sample.spring.chapter03.bankapp.domain.Request;
+
+public class BankApp {
+    private static Logger logger = Logger.getLogger(BankApp.class);
+
+    public static void main(String args[]) {
+        ApplicationContext context = new ClassPathXmlApplicationContext(
+                &quot;classpath:META-INF/spring/applicationContext.xml&quot;);
+
+        FixedDepositController fixedDepositController = context
+                .getBean(FixedDepositController.class);
+        fixedDepositController.submit(context
+                .getBean(FixedDepositDetails.class).setDepositAmount(100)
+                .setEmail(&quot;someemail@somedomain.com&quot;).setId(1).setTenure(10));
+        logger.info(&quot;Your fixed deposit details : &quot;
+                + fixedDepositController.get());
+
+        PersonalBankingController personalBankingController = context
+                .getBean(PersonalBankingController.class);
+        logger.info(personalBankingController.getMiniStatement());
+
+        UserRequestController userRequestController = context
+                .getBean(UserRequestController.class);
+        userRequestController.submitRequest(new Request());
+        logger.info(&quot;Submitted user request&quot;);
+    }
+}
+</code></code></pre>
+<p>​ 执行上面代码的 main 方法，你会发现 Spring 容器成功创建了一个 ServiceTemplate bean 的实例。这是因为 JmsMessageSender 、EmailMessageSender 和 WebServiceInvoker 的类型在本质上是不同的 (即他们与继承关系无关)，这使得 Spring 容器可以将他们以正确的顺序注入 ServiceTemplate 的构造函数中。</p>
+<h6 id="构造函数参数表示相关的-spring-bean">构造函数参数表示相关的 Spring bean</h6>
+<p>​ 请看下面的 SampleBean 类，其构造函数接受与继承关系相关的参数类型。</p>
+<pre class="java"><code>public class SampleBean {
+    public SampleBean (ABean aBean ，BBean bBean) {....}
+    ....
+}</code></code></pre>
+<p>​ 在上面代码中，SampleBean 类的构造函数接受 ABean 和 BBean 类型作为参数。ABean 和 BBean 表示与继承关系相关的 Spring bean ，BBean 是 ABean 的一个子类。</p>
+<p>​ 在下面的应用程序上下文 XML 文件展示了 SampleBean、ABean 和 BBean 类的 bean 定义。</p>
+<pre><code><code>&lt;bean id=&quot;aBean&quot; class=&quot;example.ABean&quot; /&gt;
+&lt;bean id=&quot;bBean&quot; class=&quot;example.BBean&quot; /&gt;
+
+&lt;bean id=&quot;sampleBean&quot; class=&quot;example.SampleBean&quot;&gt;
+    &lt;constructor-arg ref=&quot;bBean&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg ref=&quot;aBean&quot;&gt;&lt;/constructor-arg&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 由于 aBean bean 和 bBean bean 与继承关系相关，因此 Spring 容器按照 SampleBean 类的 bean 定义中的 <constructor-arg> 元素的顺序将构造参数应用于 SampleBean 的构造函数。在上面的 XML 中 sampleBean bean 定义中，第一个 <constructor-arg> 元素指的是 bBean bean，第二个 ，<constructor-arg> 元素是指 aBean bean。这意味着 bBean 作为第一个构造函数参数传递，并将 aBean 作为第二个构造函数参数传递给 SampleBean 构造函数。由于 ABean (超类) 的实例满足不了程序对 BBean(子类) 实例的需求，因此 sampleBean bean 定义中的第二个<constructor-arg> 元素会导致 Spring 容器抛出异常。为了处理这种情况，你可以使用 <constructor-arg> 元素的 index 或 type 特性来标识 <constructor-arg> 元素中对应的构造函数参数。例如，下面 xml 中的 sampleBean bean 定义用 type 特性来标识 <constructor-arg> 元素中对应的构造函数参数的类型。</p>
+<pre><code><code>&lt;bean id=&quot;sampleBean&quot; class=&quot;example.SampleBean&quot;&gt;
+    &lt;constructor-arg type=&quot;sample.spring.chapter03.bankapp.controller.BBean&quot; ref=&quot;bBean&quot; /&gt;
+    &lt;constructor-arg type=&quot;sample.spring.chapter03.bankapp.controller.ABean&quot; ref=&quot;aBean&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ <constructor-arg> 元素的 type 特性指定了 <constructor-arg> 元素所使用的类型的完全限定名称。在上面 xml 文件中，第一个 <constructor-arg> 适用于类型为 BBean 的构造函数参数，第二个 <constructor-arg> 元素适用于类型为 ABean 的构造函数参数。指定 type 特性会消除构造函数与继承关系相关的歧义。</p>
+<pre><code><code>注意： 如果两个或多个构造函数的参数类型是相同的类型，唯一的选择是选择使用 index 特性来标识每个 &lt;constructor-arg&gt; 元素对应的构造函数参数。</code></code></pre>
+<p>​ 到目前为止，我们已经看到构造函数参数类型匹配的场景，其中构造函数参数表示不同或相关的 Spring bean 。现在我们来看一下构造函数参数类型是如何匹配标准的 Java 类型 (如 int 、long 、boolean 、String、Date等)和自定义 (如 Address )类型的。</p>
+<h6 id="构造函数参数表示标准-java-类型和自定义类型">构造函数参数表示标准 Java 类型和自定义类型</h6>
+<p>​ 如果构造函数参数的类型是原始类型 (如 int 、long 、boolean 等)或 String 类型或自定义类型 (如 Address)，则 <constructor-arg> 元素的 value 特性用于指定值。如果有两个或多个构造函数参数，由 value 属性指定的字符串值可以互相转换，则 Spring 容器无法获取构造函数参数的类型（例如，该值表示 int 、long 或 String）。在这种情况下，你需要使用 type 特性显示指定构造函数参数的类型。</p>
+<p>​ 下面代码展示 TransferFundsServiceImpl 类，其构造函数可以接受 String、boolean、long 和 int 类型的参数。</p>
+<pre class="java"><code>public class TransferFundsServiceImpl implements TransferFundsService {
+    public TransferFundsServiceImpl (String webServiceUrl,boolean active,long timeout,int numberOfRetrialAttempts) {....}
+}</code></code></pre>
+<p>​ TransferFundsServiceImpl 的构造函数接受以下参数 ：webServiceUrl 、 active 、 timeout 和 numberOfRetrialAttempts 。下面的 TransferFundsServiceImpl 类的 bean 定义展示了如何将构造函数参数值传递给 TransferFundsServiceImpl 的构造函数。</p>
+<pre><code><code>&lt;bean id=&quot;transferFundsService&quot; class=&quot;sample.spring.chapter03.bankapp.service.TransferFundsServiceImpl&quot;&gt;
+    &lt;construtor-arg value=&quot;http://someUrl.com/xyz&quot; /&gt;
+    &lt;construtor-arg value=&quot;true&quot; /&gt;
+    &lt;construtor-arg value=&quot;5&quot; /&gt;
+    &lt;construtor-arg value=&quot;200&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 假设第三个 <constructor-arg> 元素应该为 numberOfRetralAttempts 构造函数参数提供值，第四个<constructor-arg> 应该为 timeout 构造函数参数提供值。 Spring 容器根据 transferFundsService bean 定义中的 <constructor-arg> 元素的顺序将 <constructor-arg> 元素应用于 TransferFundsServiceImpl 的构造函数。这意味着第三个 <constructor-arg> 元素应用于 timeout 参数，而不是 numberOfRetrialAttempts 参数。而且，第四个 <constructor-arg> 元素应用于 numberOfRetralAttempts 参数，而不是 timeout 参数。要处理这种情况，可以使用 <constructor-arg> 元素的 type 属性来指定构造函数参数的类型，如下面 xml 所示</p>
+<pre><code><code>&lt;bean id=&quot;transferFundsService&quot; class=&quot;sample.spring.chapter03.bankapp.service.TransferFundsServiceImpl&quot;&gt;
+    &lt;constructor-arg type=&quot;java.lang.String&quot; value=&quot;http://someUrl.com/xyz&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg type=&quot;boolean&quot; value=&quot;true&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg type=&quot;int&quot; value=&quot;5&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg type=&quot;long&quot; value=&quot;200&quot;&gt;&lt;/constructor-arg&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 TransferFundsServiceImpl 类的 bean 定义中，type 特性用于指定构造函数参数类型。Spring 容器现在可以比较构造函数参数类型，以将其正确的应用于 TransferFundsServiceImpl 的构造函数。</p>
+<pre><code><code>注意：如果两个或多个构造函数的参数是相同的类型，则唯一的选择时使用 index 特性来表示每个&lt;constructor-arg&gt; 元素对应的构造函数参数</code></code></pre>
+<p>​ 在本节中，我们看到 Spring 如何执行类型匹配来解析构造函数参数。现在我们来看一下如何指示 Spring 根据构造函数参数的名称来执行构造函数参数的匹配</p>
+<h6 id="基于名称的构造函数参数匹配">基于名称的构造函数参数匹配</h6>
+<p>​ <constructor-arg> 元素的 name 特性用于指定 <constructor-arg> 元素对应的构造函数参数的名称。下面代码再一次展示了接受多个参数的 TransferFundsServiceImpl 类的构造函数。</p>
+<pre class="java"><code>public class TransferFundsServiceImpl implements TransferFundsService {
+    ....
+    public TransferFundsServiceImpl (String webServiceUrl,boolean active,long timeout,int numberOfRetrialAttempts) {.....}
+}</code></code></pre>
+<p>​ 在上面代码中，由 TransferFundsServiceImpl 的构造函数定义的构造方法参数的名称是 webServiceUrl、active、timeout 和 numberOfRetrialAttempts</p>
+<pre class="java"><code>注意： TransferFundsServiceImpl 类的构造函数接受简单 Java 类型的参数 (如 int 、 long 、 boolean 、String 等)，但本节中介绍的概念也适用于构造函数参数为 Spring bean 的引用的场景。</code></code></pre>
+<p>​ 在 下面 xml 中 ，TransferFundsServiceImpl 类的 bean 定义使用 <constructor-arg> 元素的 name 特性来指定 <constructor-arg> 元素对应的构造函数参数的名称。</p>
+<pre><code><code>&lt;bean id=&quot;transferFundsService&quot; class=&quot;sample.spring.chapter03.bankapp.service.TransferFundsServiceImpl&quot;&gt;
+    &lt;constructor-arg name=&quot;webServiceUrl&quot; value=&quot;http://someUrl.com/xyz&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg name=&quot;active&quot; value=&quot;true&quot; /&gt;
+    &lt;constructor-arg name=&quot;numberOfRertrialAttempts&quot; value=&quot;5&quot;&gt;&lt;/constructor-arg&gt;
+    &lt;constructor-arg name=&quot;timeout&quot; value=&quot;200&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 上述配置将仅在 TransferFundsServiceImpl 类编译时启用了调式标志或启用了 ”参数名称发现(parameter name discovery)“ 标志时才起作用。当启用调式或 &quot;参数名称发现&quot;标志时，构造函数参数和方法参数的名称将保留在生成的 .class 文件中。如果不使用调式或 &quot;参数名称发现&quot; 标志编译类，则编译期间构造函数参数名称将丢失。在生成的 .class 文件中没有构造函数参数名称的情况下， Spring 无法通过名称来匹配构造函数参数。</p>
+<p>​ 如果不想使用调式或 &quot;参数名称发现&quot; 标志编译类，则可以使用 @ConstructorProperties 注释来清楚地显示构造函数参数的名称，如 TransferFundsServiceImpl 类，如下面代码所示</p>
+<pre class="java"><code>public class TransferFundsServiceImpl implements TransferFundsService {
+    @ConstructorProperties({&quot;webServiceUrl&quot;,&quot;active&quot;,&quot;timeout&quot;,&quot;numberOfRetrialAttempts&quot;})
+    public TransferFundsServiceImpl (String webServiceUrl,boolean active,long timeout,int numberOfRetrialAttempts) {....}
+}</code></code></pre>
+<p>​ 在上面代码中， @ConstructorProperties 注释以构造函数参数的名称指定它们在 bean 类的构造函数中显示顺序。必须确保在 <constructor-arg> 元素中使用相同的构造函数参数名称。</p>
+<p>​ 现在我们来看一下 @ConstructorProperties 注释如何影响 bean 定义继承。</p>
+<h6 id="constructorproperties-注释和-bean-定义继承">（1） @ConstructorProperties 注释和 bean 定义继承</h6>
+<p>​ 如果对应于父 bean 定义的类的构造函数使用 @ConstructorProperties 注释，则对应于子 bean 定义的 bean 类也必须使用 @ConstructorProperties 注释。</p>
+<p>​ 下面xml serviceTemplate （父 bean) 和 FixedDepositService (子 bean）的 bean 定以</p>
+<pre><code><code>&lt;bean id=&quot;serviceTemplate&quot; class=&quot;sample.spring.chapter03.bankapp.base.ServiceTemplate&quot;&gt;
+    &lt;constructor-arg name=&quot;emailMessageSender&quot; ref=&quot;emailMessageSender&quot; /&gt;
+    &lt;constructor-arg name=&quot;jmsMessageSender&quot; ref=&quot;jmsMessageSender&quot; /&gt;
+    &lt;constructor-arg name=&quot;webServiceInvoker&quot; ref=&quot;webServiceInvoker&quot; /&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;fixedDepositServie&quot; class=&quot;sample.spring.chapter03.bankapp.service.FixedDepositServiceImpl&quot;
+      parent=&quot;serviceTemplate&quot;&gt;
+    &lt;property name=&quot;fixedDepositDao&quot; ref=&quot;fixedDepositDao&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面的 xml 中展示了 sersviceTemplate bean 定义是非抽象的，这意味着 Spring 容器创建一个 serviceTemplate bean 的实例。serviceTemplate bean 定义指定 3 个 <constructor-arg> 元素，对应于 ServiceTemplate 类定义的 3 个参数。</p>
+<p>​ 由于我们通过 serviceTemplate bean 定义中的名称指定了构造函数参数，ServiceTemplate 类的构造函数使用 @ConstructorProperties 进行注释，以确保构造函数参数名在运行时可用于 Spring ，如下面 代码所示</p>
+<pre class="java"><code>public class ServiceTemplate {
+    @ConstructorProperties({&quot;jmsMessageSender&quot;,&quot;emailMessageSender&quot;,&quot;webServiceInvoker&quot;})
+    public ServiceTemplate(JmsMessageSerder jmsMessageSender,EmailMessageSender emailMessageSender,WebServiceInvoker webServiceInvoker){....}
+}</code></code></pre>
+<p>​ 由于 FixedDepositService 是 serviceTemplate 的子 bean 定义，serviceTemplate bean 定义中的 <constructor-arg> 配置由 FixedDepositService bean 定义继承。这意味着 FixedDepositServiceImpl 类必须定义一个构造函数，改构造函数接受与 ServiceTemplate 类定义相同的参数集合，并且必须使用 @ConstructorProperties 注释来注释，以允许 Spring 通过名称来匹配构造函数参数。如果不使用 @ConstructorProperties 注释对 FixedDepositServiceImpl 的构造函数进行注释，则 Spring 容器无法将继承的 <constructor-arg> 元素与 FixedDepositServiceImpl 的构造函数中指定的构造函数想匹配</p>
+<p>​ 不能使用 @ConstructorProperties 注释通过名称来将参数传递给静态或实例工厂方法，如下所述。</p>
+<h6 id="constructorproperties-注释和工厂方法">(2) @ConstructorProperties 注释和工厂方法</h6>
+<p>​ <constructor-arg> 元素也用于将参数传递给静态和实例工厂方法。你可能会以为，可以通过指定 <constructor-arg> 元素的 name 特性并使用 @ConstructorProperties 注释工厂方法，将名称传递给静态和实例工厂方法。你应该注意到， @ConstructorProperties 注释仅适用于构造函数，不能使用 @ConstructorProperties 来注释方法。因此，如果要通过名称将参数传递给静态或实例工厂方法，则唯一的选项是启用调式或 &quot;参数名称发现“标志来编译类。</p>
+<pre><code><code>注意 ： 如果使用 debug 或 &quot;参数名称发现&quot; 标志编译类，会导致 .class 文件比原本要大，但这只会使类的加载时间增加，对应用程序的运行性能没有影响。</code></code></pre>
+<p>​</p>
+<h6 id="配置不同类型的-bean-属性和构造函数参数">配置不同类型的 bean 属性和构造函数参数</h6>
+<p>​ 在现实世界的应用程序开发场景中， Spring bean 的属性和构造函数参数的取值范围可以是 String 类型、对另一个 bean 的引用、其他标准类型 (如 java.util.Date、java.util.Map) 或自定义类型 (例如 Address)。到目前为止，我们已经看到了如何为 bean 属性 (使用 <property> 元素的 value 特性)和构造函数参数 (使用<constructor-arg> 元素的 value 特性)提供字符串值的示例。我们还研究了如何通过 bean 属性（使用 <property>元素的 ref 特性)和构造函数参数 (使用<constructor-arg>元素的 ref 特性）注入依赖项。</p>
+<p>​ 在本节中，我们将介绍 Spring 中内置的 PropertyEditor 实现，他简化了 java.util.Date、java.util.Currency、primitive 等类型作为 bean 属性和构造函数参数的传递。我们还将介绍如何为应用程序上下文 XML 文件中的集合类型 (如 java.util.List 和 java.util.Map) 指定值，以及如何使用 Spring 注册自定义 PropertyEditor 实现。</p>
+<h6 id="spring-的内置属性编辑器">spring 的内置属性编辑器</h6>
+<p>​ JavaBeans PropertyEditors 提供了将 Java 类型转换为字符串值所必需的逻辑，反之亦然。Spring 提供了几个内置的 PropertyEditor，用于将 bean 属性或构造函数参数 (通过 <property>和<constructor-arg>元素的 value 特性指定)的字符串值转换为实际的 Java 类型的属性或构造函数。</p>
+<p>​ 在学习涉及内置 PropertyEditors 的示例之前，首先需要了解 PropertyEditors 在设置 bean 属性和 构造函数参数的值时的重要性。</p>
+<p>​ 下面程序示例 BankDetails 类配置为具有预定义特性值的 singleton 范围的 bean</p>
+<pre class="java"><code>public class BankDetails {
+    private String bankName;
+    
+    public void setBankName (String bankName) {
+        this.bankName = bankName;
+    }
+}</code></code></pre>
+<p>​ 在上面代码中，bankName 是 BankDetails 类的一个 String 类型的特性。在下面 xml 中，BankDetails 类的 bean 定义展示了如何将 bankName 特性的值设置为 &quot;My Personal Bank&quot;。</p>
+<pre><code><code>&lt;bean id=&quot;bankDetails&quot; class=&quot;BankDetails&quot;&gt;
+    &lt;property name=&quot;bankName&quot; value=&quot;My Personal Bank&quot; /&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 的 bean 定义中，<property> 元素的 value 特性指定了 bankName 属性的字符串值。可以看到，如果一个 bean 属性是 String 类型，那么可以使用 <property> 元素的 value 特性来简单地设置改属性值。类似地，如果构造函数参数的类型为 String，则可以使用 <constructor-arg> 元素的 value 特性来设置构造函数参数值。</p>
+<p>​ 假设以下特性 (以及它们的 setter 方法)已经被添加都 BankDetails 类中：byte[ ] 类型的 bankPrimary-Business 特性、char[ ]类型 headOfficeAddress 特性、char 类型的 privateBank 特性、 java.util.Currency 类型的 primaryCurrency 特性、java.uti.Date类型的 dateOfInception 特性，以及 java.util.Properties 类型的 branchAddresses 特性。修改后 BankDetails 类如下所示</p>
+<pre class="java"><code>public class BankDetails {
+    private String bankName;
+    private byte[] bankPrimaryBusiness;
+    private char[] headOfficeAddress;
+    private char privateBank;
+    private Currency primaryCurrency;
+    private Date dateOfInception;
+    private Properties branchAddresses;
+    ....
+    public void setBankName (String bankName) {
+        this.bankName = bankName;
+    }
+}</code></code></pre>
+<p>​ 可以通过为属性指定字符串来将 BankDetails 类配置为 Spring bean,并通过使用注册的 JavaBeans PropertyEditor 实现使 Spring 容器将这些字符串值转换为相应的 Java 类型的属性。</p>
+<p>​ 在下面的 xml 中，BankDetails 类的 bean 定义为不同的属性类型指定简单的字符串值。</p>
+<pre><code><code>&lt;bean id=&quot;bankDetails&quot; class=&quot;sample.spring.chapter03.beans.BankDetails&quot;&gt;
+    &lt;property name=&quot;bankName&quot; value=&quot;My Personal Bank&quot; /&gt;
+    &lt;property name=&quot;bankPrimaryBusiness&quot; value=&quot;Retail banking&quot;/&gt;
+    &lt;property name=&quot;headOfficeAddress&quot; value=&quot;Address of head office&quot;/&gt;
+    &lt;property name=&quot;privateBank&quot; value=&quot;Y&quot;/&gt;
+    &lt;property name=&quot;primaryCurrency&quot; value=&quot;INR&quot;/&gt;
+    &lt;property name=&quot;dateOfInception&quot; value=&quot;30-0.-2012&quot;/&gt;
+    &lt;property name=&quot;branchAddresses&quot; &gt;
+        &lt;value&gt;
+            x = Branch X&#39;s address
+            y = Branch Y&#39;s address
+        &lt;/value&gt;
+    &lt;/property&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 中，为 java.util.Date、java.util.Currency、char [ ] 、byte [ ] 、char 和 java.util.Properties 类型的属性指定了字符串值。Spring 容器使用注册的 PropertyEditor 将属性和构造函数参数的字符串值转换为相应的 Java 类型。例如， Spring 容器使用 CustomDateEditor (java.util.Date 类型的内置 PropertyEditor 实现) 将 dateOfInception 属性的值 “30-01-2012&quot; 转换为 java.util.Date 类型。</p>
+<p>​ 如果你观察上面 xml 中 branchAddresses 属性是如何配置的，就会注意到，属性的值是通过 <property> 元素的 <value> 子元素指定而不是 <property> 元素的 value 属性。在单值属性的情况下，使用 <property> 元素的 value 特性优于 <value> 子元素，但是，如果需要为属性指定多个值，或者需要在个别的行上指定值 (如在 branchAddresses 属性的情况下)，则 <value> 子元素优于 value 属性。在下一节中，你将看到类型为 java.util.Properties 的属性（或构造函数参数）的值也可以使用<property>（或 <constructor-arg>） 元素的 <props>子元素指定</p>
+<p>​ Spring 带有几个内置的 PropertyEditor 实现，他们的功能是将应用程序上下文 XML 文件中指定的值转换为 bean 属性或构造函数参数的对应的 Java 类型。下表介绍了 Spring 中一些内置的 PropertyEditor实现</p>
+<table>
+<thead>
+<tr class="header">
+<th>内置 PropertyEditor 实现</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>CustomBooleanEditor</td>
+<td>将字符串值转换为布尔型或布尔类型</td>
+</tr>
+<tr class="even">
+<td>CustomNumberEditor</td>
+<td>将字符串值转换为数字</td>
+</tr>
+<tr class="odd">
+<td>CharacterEditor</td>
+<td>将字符串值转换为字符类型</td>
+</tr>
+<tr class="even">
+<td>ByteArrayPropertyEditor</td>
+<td>将字符串值转换为 byte [ ]</td>
+</tr>
+<tr class="odd">
+<td>CustomDateEditor</td>
+<td>将字符串值转换为 java.util.Date 类型</td>
+</tr>
+<tr class="even">
+<td>PropertiesEditor</td>
+<td>将字符串值转换为 java.util.Properties 类型</td>
+</tr>
+</tbody>
+</table>
+<p>​ 上表中仅显示了 Spring 中内置 PropertyEditor 实现的一个子集。有关完整列表，请参阅 Spring 的 org.springframework.beans.propertyeditors 包。注意，默认情况下，并非 Spring 中的所有内置 PropertyEditor 实现都注册到 Spring 容器中。例如，你需要明确注册 CustomDateEditor 以允许 Spring 容器执行从字符串值到 java.util.Date 类型的转换。稍后我们将介绍如何使用 Spring 容器注册属性编辑器。</p>
+<p>​ 现在来看如何为 java.util.List、java.util.Set 和 java.util.Map 类型的 bean 属性(或构造函数参数)指定值</p>
+<h6 id="指定不同集合类型的值">指定不同集合类型的值</h6>
+<p>​ <property> 和 <constructor-arg>元素的 <list> 、<map> 和 <set> 子元素（在 Spring 的 beans schema 中定义）分别用于设置类型为 java.util.List、java.util.Map 和 java.util.Set 的属性和构造方法参数。</p>
+<p>​ 如下面程序中，DataTypesExample 类展示了接受不同类型参数的构造函数。</p>
+<pre class="java"><code>import java.beans.ConstructorProperties;
+public class DataTypesExample {
+    private static Logger logger = Logger.getLogger(DataTypesExample.class);
+    @SuppressWarnings(&quot;rawtypes&quot;)
+    @ConstructorProperties({&quot;byteArrayType&quot;,&quot;charTeype&quot;,&quot;charArray&quot;,&quot;classType&quot;,&quot;currencyType&quot;,&quot;booleanType&quot;,&quot;dateType&quot;,&quot;longType&quot;,&quot;doubleType&quot;,&quot;propertiesType&quot;,&quot;listType&quot;,&quot;mapType&quot;,&quot;setType&quot;,&quot;anotherPropertiesType&quot;})
+    public DataTypesExample(byte[] byteArraytype,char charType,char[] charArray,Class ClassType,Currency currencyType,boolean booleanType,Date dateType,long longType,double doubleType,Properties propertiesType,List&lt;Integer&gt; listType,Map mapType,Set setType,Properties anotherPropertiestType){
+        ....
+        logger.info(&quot;classType &quot;+ classType.getName());
+        logger.info(&quot;listType &quot;+listType);
+        logger.info(&quot;mapType&quot;+mapType);
+        logger.info(&quot;setType&quot;+setType);
+        logger.info(&quot;anotherPropertiesType &quot;+anotherPropertiesType);
+    }
+}</code></code></pre>
+<p>​ DataTypesExample 类的构造函数接受 java.util.List、java.util.Map、 java.util.Set、java.util.Properties 等类型参数，并记录每个构造函数参数的值。</p>
+<p>​ DataTypesExample 类的 bean 定义如下所示</p>
+<pre><code><code>&lt;bean id=&quot;dataTypes&quot; class=&quot;sample.spring.charter03.beans.DataTypesExample&quot;&gt;
+   ....
+    &lt;constructor-arg name=&quot;anotherPropertiesType&quot;&gt;
+        &lt;props&gt;
+            &lt;prop key=&quot;book&quot;&gt;Getting started with the Spring Framework&lt;/prop&gt;
+        &lt;/props&gt;
+    &lt;/constructor-arg&gt;
+    
+    &lt;constructor-arg name=&quot;listType&quot;&gt;
+        &lt;list&gt;
+            &lt;value&gt;1&lt;/value&gt;
+            &lt;value&gt;2&lt;/value&gt;
+        &lt;/list&gt;
+    &lt;/constructor-arg&gt;
+    
+    &lt;constructor-arg name=&quot;mapType&quot;&gt;
+        &lt;map&gt;
+            &lt;entry&gt;
+                &lt;key&gt;
+                    &lt;value&gt;map key 1&lt;/value&gt;
+                &lt;/key&gt;
+                &lt;value&gt; map key 1&#39;s value&lt;/value&gt;
+            &lt;/entry&gt;
+        &lt;/map&gt;
+    &lt;/constructor-arg&gt;
+    
+    &lt;constructor-arg name=&quot;setType&quot;&gt;
+        &lt;set&gt;
+            &lt;value&gt;Element 1&lt;/value&gt;
+            &lt;value&gt;Element 2&lt;/value&gt;
+        &lt;/set&gt;
+    &lt;/constructor-arg&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>​ 由上面的 xml 可以得到一些结论</p>
+<ol>
+<li><p>使用 <constructor-arg> 元素的 <props>子元素指定 anotherPropertiesType (java.util.Properties 类型)的值。在 <props> 元素内，每个 <prop> 子元素指定一个键值对，key 特性指定该键，而 <prop> 元素的内容是该键的值。你可以使用 <constructor-arg> 元素的 <value>子元素取代 <props> 元素来指定 anotherPropertiesType 参数的值</p></li>
+<li><p>使用<constructor-arg>的 <list>子元素指定 listType 构造函数参数(类型为 java.util.List<Integer>)的值。<list> 元素的 <value>子元素指定列表中包含的项目。由于 listType 构造函数参数的类型为 List<Integer>，Spring 容器使用 CustomNumberEditor(默认情况下与 Spring 容器注册的 PropertyEditor) 将由 <value>元素指定的字符串值转换为 java.lang.Integer 类型。</p></li>
+<li><p>使用 <constructor-arg> 的 <map>子元素指定 mapType 构造函数参数 (类型为 java.util.Map) 的值。<map>的 <entry> 子元素指定 Map 中包含的键值对，<key> 元素指定键，<value>元素指定键的值。如果构造函数参数被定义为参数化的Map (如 Map&lt;Integer,Integer&gt;)，那么 Spring 容器使用注册了的属性编辑器来执行键和值的转换，使其被参数化的 Map 接受。</p></li>
+<li><p>使用 <constructor-arg>的<set>子元素指定 setType 构造函数参数 (类型为 java.util.Set)的值。<set> 的每个<value>子元素指定一个 Set 中包含的元素。如果构造函数参数被定义为参数化 Set(如 Set<Integer>)，则 Spring 容器使用注册了的属性编辑器来执行将值转换为参数化 Set 接受的类型。</p>
+<p>在 DataTypesExample 类中，List、Map 和 Set 类型的构造函数参数包含 String 或 Integer 类型的元素。在应用程序中，集合可能包含 Map 、Set 、 Class 、Properties 或任何其他 Java 类型的元素。集合中包含的元素也可以是 bean 引用。为了解决这种情况，Spring 允许以 <map>、<set>、<list>、<props>、<ref>等元素作为<list>、<map>和<set>的子元素。</p>
+<h6 id="将-list-map-set-和-properties-类型的元素添加到集合类型">将 List 、Map 、Set 和 Properties 类型的元素添加到集合类型</h6>
+<p>如果 bean属性或构造函数参数的类型为 List<List>、只需使用嵌套的<list>元素，如下所示</p>
+<pre><code><code>&lt;constructor-arg name=&quot;nestedList&quot;&gt;
+ &lt;list&gt;
+     &lt;list&gt;
+         &lt;value&gt;A simple String value in the nested list&lt;/value&gt;
+            &lt;value&gt;Another simple String value in nested list&lt;/value&gt;
+        &lt;/list&gt;
+    &lt;/list&gt;
+&lt;/constructor-arg&gt;</code></code></pre>
+<p>​ 在上面的 xml 中，<constructor-arg> 元素为名为 nestedList 的构造函数参数提供了类型为 List<List> 的值。嵌套的 <list> 元素表示一个 List 类型的元素。类似地，可以通过在 <list>元素中嵌套<map>、<set>和<props>元素来分别设置 List <Map>、List<Set>和List<Properties>的属性或构造函数参数的值。像 <list>元素一样，<set> 元素也可以包含 <set>、<list>、<map>或 <props>元素。在 <map> 元素中，可以使用<map>、<set>、<list>、或<props>元素来指定条目的键和值。</p>
+<p>​ 下面 xml 展示了如何为 Map &lt;List,Set&gt; 类型的构造函数参数指定值。</p>
+<pre><code><code>&lt;constructor-arg name=&quot;nestedListAndSetMap&quot;&gt;
+ &lt;map&gt;
+     &lt;entry&gt;
+         &lt;key&gt;
+             &lt;list&gt;
+                 &lt;value&gt;a List element&lt;/value&gt;
+                &lt;/list&gt;
+            &lt;/key&gt;
+            &lt;set&gt;
+             &lt;value&gt;a Set element&lt;/value&gt;
+            &lt;/set&gt;
+        &lt;/entry&gt;
+    &lt;/map&gt;
+&lt;/constructor-arg&gt;</code></code></pre>
+<p>在上面 xml 中，nestedListAndSetMap 的构造函数参数是 Map 类型，该 Map 的键为 List 类型，值为 Set 类型。<key> 元素可以包含以下任何元素作为其子元素：<map>、<set>、<list>和 <props>。键值可以使用 <map>、<set>、<list>或 <props>元素定义。</p>
+<h6 id="将-bean-引用添加到集合类型">将 bean 引用添加到集合类型</h6>
+<p>​ 可以通过使用 <list> 和 <set> 元素中的 <ref> 元素将对 Spring bean 的引用添加到 List 和 Set 类型的属性和构造函数参数中。</p>
+<p>​ 下面 xml 展示了如何将对 bean 的引用添加到 List 类型的构造函数参数中。</p>
+<pre><code><code>&lt;bean ....&gt;
+    &lt;constructor-arg name=&quot;myList&quot;&gt;
+     &lt;list&gt;
+         &lt;ref bean = &quot;aBean&quot; /&gt;
+            &lt;ref bean = &quot;bBean&quot; /&gt;
+        &lt;/list&gt;
+    &lt;/constructor-arg&gt;
+&lt;/bean&gt;
+
+&lt;bean id=&quot;aBean&quot; class=&quot;somepackage.ABean&quot;&gt;&lt;/bean&gt;
+&lt;bean id=&quot;bBean&quot; class=&quot;somepackage.BBean&quot;&gt;&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 展示了 myList 的构造函数参数是 List 类型，它包含两个元素：对 aBean bean 的引用和对 bBean bean 的引用。<ref> 元素的 bean 特性指定由 <ref> 元素引用的 bean 名称</p>
+<p>​ 例如在 <list> 元素的情况下，可以使用<set>元素中的 <ref> 元素将 bean 引用添加到 Set 类型构造函数参数或 bean 属性。在 <map> 元素的情况下，可以在 <key> 元素中使用 <ref>元素来指定一个 bean 引用作为键，并使用<ref>元素指定一个 bean 引用作为键值，下面 xml 展示了一个 Map 类型的构造函数参数，他包含一个键值对，其中 key 和 value 都是 bean 的引用</p>
+<pre><code><code>&lt;bean ...&gt;
+ &lt;constructor-arg name=&quot;myMapWithBeanRef&quot;&gt;
+     &lt;map&gt;
+         &lt;entry&gt;
+             &lt;key&gt;
+                 &lt;ref bean=&quot;aBean&quot;&gt;&lt;/ref&gt;
+                &lt;/key&gt;
+                &lt;ref bean=&quot;bBean&quot; /&gt;
+            &lt;/entry&gt;
+        &lt;/map&gt;
+    &lt;/constructor-arg&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;aBean&quot; class=&quot;somepackage.ABean&quot;&gt;&lt;/bean&gt;
+&lt;bean id=&quot;bBean&quot; class=&quot;somepackage.BBean&quot;&gt;&lt;/bean&gt;</code></code></pre>
+<p>​ 在上面 xml 中，<constructor-arg> 为 Map 类型的构造函数参数的键值对提供了值，其中 Key是对 aBean bean 的引用，value是对 bBean bean 的引用。</p>
+<h6 id="将-bean-名称添加到集合类型">将 bean 名称添加到集合类型</h6>
+<p>​ 如果要将一个 bean 名称（由<bean> 元素的id特性指定）添加到 List 、Map 或 Set 类型的构造函数参数或 bean 属性中，那么可以使用 <Map>、<set>和<list>元素的 <idref> 元素。在下面xml中，<constructor-arg>元素为 Map 类型构造函数参数提供了一个键值对，其中 bean 名称是键，而 bean 应用的是值</p>
+<pre><code><code>&lt;constructor-arg name=&quot;myExample&quot;&gt;
+ &lt;map&gt;
+     &lt;entry&gt;
+         &lt;key&gt;
+             &lt;idref bean=&quot;sampleBean&quot; /&gt;
+            &lt;/key&gt;
+            &lt;ref bean=&quot;sampleBean&quot; /&gt;
+        &lt;/entry&gt;
+    &lt;/map&gt;
+&lt;/constructor-arg&gt;</code></code></pre>
+<p>​ 在上面 xml 中，<constructor-arg> 为 Map 类型构造函数参数提供了一个键值对，其中 key 是字符串值 &quot;sampleBean&quot; ，value 是 sampleBean bean。我们可以使用 <value> 元素来设置 ‘ssampleBean’ 字符串值作为 key ，而这里使用 <idref> 元素的原因是 Spring 容器会在部署应用程序时验证 sampleBean bean 是否存在。</p>
+<h6 id="将-null-值添加到集合类型">将 null 值添加到集合类型</h6>
+<p>​ 可以使用<null> 元素为 Set 和 List 类型的集合添加一个空值。下面 xml 展示了如何使用 <null> 元素将一个空值添加到 Set 类型的构造函数参数。</p>
+<pre><code><code>&lt;constructor-arg name=&quot;setWithNullElement&quot;&gt;
+ &lt;set&gt;
+     &lt;value&gt;Element 1&lt;/value&gt;
+        &lt;value&gt;Element2&lt;/value&gt;
+        &lt;null /&gt;
+    &lt;/set&gt;
+&lt;/constructor-arg&gt;</code></code></pre>
+<p>​ 在上面 xml 中，setWithNullElement 的构造函数参数包含 3 个元素：Element 1 ,Element 2 和 null 。</p>
+<p>​ 要向 Map 类型构造函数参数或属性添加 空键，可以使用 <key> 元素内的 <null> 元素。另外，要添加一个空值，可以在 <entry> 元素中添加 <null> 元素。如下 xml 展示了一个包含空键和空值的 Map 类型构造函数参数。</p>
+<pre><code><code>&lt;constructor-arg name=&quot;mapType&quot;&gt;
+ &lt;map&gt;
+     &lt;entry&gt;
+         &lt;null /&gt;
+        &lt;/entry&gt;
+        &lt;null /&gt;
+    &lt;/map&gt;
+&lt;/constructor-arg&gt;</code></code></pre></li>
+</ol>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

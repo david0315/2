@@ -1,0 +1,279 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud学习笔记(2)：使用Ribbon负载均衡' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud学习笔记(2)：使用Ribbon负载均衡</center></div><div class='banquan'>原文出处:本文由博客园博主布禾卡斐先生提供。<br/>
+原文连接:https://www.cnblogs.com/seve/p/11502669.html</div><br>
+    <h3 id="简介">简介</h3>
+<p>Spring Cloud Ribbon是基于Netflix Ribbon实现的一套客户端负载均衡工具，在注册中心对Ribbon客户端进行注册后，Ribbon可以基于某种负载均衡算法，如轮询(默认)、随机、加权轮询、加权随机等自动帮助服务消费者调用接口。</p>
+<h3 id="项目介绍">项目介绍</h3>
+<ol>
+<li>sc-parent，父模块(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-eureka，注册中心(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-provider-random，随机端口的提供者</li>
+<li>sc-consumer，使用Ribbon负载均衡的消费者</li>
+</ol>
+<h3 id="随机端口的提供者">随机端口的提供者</h3>
+<h4 id="在父模块下创建子模块项目sc-provider-randompom.xml">1.在父模块下创建子模块项目sc-provider-random，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-provider-random&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类provider.providerapplication">2.创建启动类provider.ProviderApplication：</h4>
+<pre><code><code>package provider;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ProviderApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ProviderApplication.class, args);
+    }
+}</code></code></pre>
+<h4 id="创建controllerprovider.controller.bookcontroller">3.创建Controller：provider.controller.BookController</h4>
+<pre><code><code>package provider.controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RequestMapping(&quot;/book&quot;)
+@RestController
+public class BookController {
+    
+    @GetMapping(&quot;/list&quot;)
+    public String getBookList(){
+        System.out.println(&quot;------------我被访问了-----------&quot;);
+        return &quot;[\&quot;Java入门到放弃\&quot;,\&quot;C++入门到放弃\&quot;,\&quot;Python入门到放弃\&quot;,\&quot;C入门到放弃\&quot;]&quot;;
+    }
+}</code></code></pre>
+<h4 id="创建application.yml">4.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 0 #默认8080，配置随机端口需要设置为0
+
+spring:
+  application:
+    name: sc-provider-random
+eureka:
+  client:
+    serviceUrl: 
+      defaultZone: http://localhost:8080/eureka/
+  instance:
+    instance-id: ${spring.application.name}:${random.value} #实例名随机生成</code></code></pre>
+<h4 id="依次启动注册中心sc-eureka以及两个提供者sc-provider-random提供者sc-provider-random每次启动端口都不一样可以看到sc-provider-random的两个实例都在注册中心注册">5.依次启动注册中心sc-eureka以及两个提供者sc-provider-random，提供者sc-provider-random每次启动端口都不一样，可以看到sc-provider-random的两个实例都在注册中心注册：</h4>
+<p><img src="./images/SpringCloud学习笔记(2)：使用Ribbon负载均衡0.png" /></p>
+<h3 id="使用ribbon负载均衡的消费者">使用Ribbon负载均衡的消费者</h3>
+<h4 id="在父模块下创建子模块项目sc-consumerpom.xml">1.在父模块下创建子模块项目sc-consumer，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-consumer&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    
+    &lt;!-- spring-cloud-starter-netflix-eureka-client依赖中已经包含ribbon --&gt;
+    &lt;!-- &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-ribbon&lt;/artifactId&gt;
+    &lt;/dependency&gt; --&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类consumer.consumerapplication">2.创建启动类consumer.ConsumerApplication：</h4>
+<pre><code><code>package consumer;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.context.annotation.Bean;
+import org.springframework.web.client.RestTemplate;
+
+@SpringBootApplication
+public class ConsumerApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ConsumerApplication.class, args);
+    }
+    
+    //为RestTemplate整合Ribbon，使其具备负载均衡的能力
+    @LoadBalanced
+    @Bean
+    public RestTemplate restTemplate(){
+        return new RestTemplate();
+    }
+}</code></code></pre>
+<h4 id="创建调用提供者服务的controllerconsumer.controller.consumercontroller">3.创建调用提供者服务的Controller：consumer.controller.ConsumerController</h4>
+<pre><code><code>package consumer.controller;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+@RestController
+public class ConsumerController {
+    @Autowired
+    private RestTemplate restTemplate;
+    
+    @GetMapping(&quot;/getBookList&quot;)
+    public String getBookList(){
+        //sc-provider-random 为提供者服务名
+        return restTemplate.getForObject(&quot;http://sc-provider-random/book/list&quot;, String.class);
+    }
+}</code></code></pre>
+<p><font color="red">注意：在使用Ribbon负载均衡时，服务名称不能有下划线，否则会出现valid hostname异常</font></p>
+<h4 id="创建application.yml-1">4.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 8083
+
+spring:
+  application:
+    name: sc-consumer
+    
+eureka:
+  client:
+    registerWithEureka: false
+    serviceUrl:
+      defaultZone: http://localhost:8080/eureka/    </code></code></pre>
+<h4 id="依次启动注册中心sc-eureka两个提供者sc-provider-random消费者sc-consumer并访问httplocalhost8083getbooklist">5.依次启动注册中心sc-eureka、两个提供者sc-provider-random、消费者sc-consumer，并访问http://localhost:8083/getBookList：</h4>
+<p><img src="./images/SpringCloud学习笔记(2)：使用Ribbon负载均衡1.png" /></p>
+<p>多次访问后，通过控制台的日志打印可以发现消费者时通过轮询的方式访问两个提供者实例。</p>
+<h3 id="更改负载均衡策略">更改负载均衡策略</h3>
+<p>Ribbon默认使用RoundRobinRule(轮询)来做为负载均衡策略，我们可以实现IRule接口或者使用Ribbon提供的现成的负载均衡策略来替换默认的轮询策略。如下，使用随机访问的策略来替代默认的轮询，在消费者启动类中添加：</p>
+<pre><code><code>    @Bean
+    public IRule randomRule(){
+        return new RandomRule();//使用随机访问的策略来替代默认的轮询
+    }</code></code></pre>
+<h3 id="自定义负载均衡策略">自定义负载均衡策略</h3>
+<p>一个自定义负载均衡策略小例子，依旧是轮询访问策略，只是每个服务实例访问5次后才会访问下一个服务实例。</p>
+<h4 id="创建类consumer.rule.myrule">1.创建类consumer.rule.MyRule：</h4>
+<pre><code><code>package consumer.rule;
+
+import java.util.List;
+
+import com.netflix.client.config.IClientConfig;
+import com.netflix.loadbalancer.AbstractLoadBalancerRule;
+import com.netflix.loadbalancer.ILoadBalancer;
+import com.netflix.loadbalancer.Server;
+
+public class MyRule extends AbstractLoadBalancerRule {
+    private int currIndex = 0;//当前服务实例索引
+    
+    private int currCount = 0;//当前服务实例被访问次数
+    
+    private static final int MAX_COUNT = 5;//每个服务实例最大访问次数为5
+
+    public Server choose(ILoadBalancer lb, Object key) {
+        if (lb == null) {
+            return null;
+        }
+        Server server = null;
+
+        while (server == null) {
+            if (Thread.interrupted()) {
+                return null;
+            }
+            List&lt;Server&gt; upList = lb.getReachableServers();
+            List&lt;Server&gt; allList = lb.getAllServers();
+
+            int serverCount = allList.size();
+            if (serverCount == 0) {
+                /*
+                 * No servers. End regardless of pass, because subsequent passes
+                 * only get more restrictive.
+                 */
+                return null;
+            }
+
+            int index = chooseRandomInt(upList.size());
+            server = upList.get(index);
+
+            if (server == null) {
+                /*
+                 * The only time this should happen is if the server list were
+                 * somehow trimmed. This is a transient condition. Retry after
+                 * yielding.
+                 */
+                Thread.yield();
+                continue;
+            }
+
+            if (server.isAlive()) {
+                return (server);
+            }
+
+            // Shouldn&#39;t actually happen.. but must be transient or a bug.
+            server = null;
+            Thread.yield();
+        }
+
+        return server;
+
+    }
+
+    protected synchronized int chooseRandomInt(int serverCount) {
+        currCount++;
+        if(currCount &gt; MAX_COUNT){
+            currIndex++;
+            if(currIndex &gt;= serverCount){
+                currIndex = 0;
+            }
+            currCount = 1;
+        }
+        return currIndex;
+    }
+
+    @Override
+    public Server choose(Object key) {
+        return choose(getLoadBalancer(), key);
+    }
+
+    @Override
+    public void initWithNiwsConfig(IClientConfig clientConfig) {
+        // TODO Auto-generated method stub
+        
+    }
+}</code></code></pre>
+<h4 id="修改配置">2.修改配置：</h4>
+<pre><code><code>    @Bean
+    public IRule randomRule(){
+        return new MyRule();
+    }</code></code></pre>
+<p>依次启动注册中心sc-eureka、两个提供者sc-provider-random、消费者sc-consumer，并访问http://localhost:8083/getBookList进行测试。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,91 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java开发笔记（一百四十九）引入预报告的好处' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java开发笔记（一百四十九）引入预报告的好处</center></div><div class='banquan'>原文出处:本文由博客园博主pinlantu提供。<br/>
+原文连接:https://www.cnblogs.com/pinlantu/p/11508418.html</div><br>
+    <p>前面介绍了各种SQL语句的调用过程，虽然例子代码写死了每个SQL串，但是完全可以把查询条件作为方法参数传进来。比如现在想删除某个课程的教师记录，那么在编写删除方法时，就把课程名称作为该方法的一个输入参数。据此编写的方法代码示例如下：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	// 删除记录
+	private static void deleteRecord(Statement stmt, String course) throws SQLException {
+		String sql = String.format("delete from teacher where course='%s'", course);
+		int count = stmt.executeUpdate(sql); // 执行处理语句
+		System.out.println("待执行的SQL语句："+sql);
+		System.out.println("删除记录语句的返回结果为"+count);
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>接着外部准备调用上面的deleteRecord方法，第二个课程参数填&ldquo;化学&rdquo;，表示希望删除所有化学老师的记录，调用代码如下所示：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>			deleteRecord(stmt, "化学"); // 删除记录
+</code></pre>
+
+<p>&nbsp;</p>
+<p>运行包含以上代码的测试程序，观察到以下的输出日志。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>待执行的SQL语句：delete from teacher where course='化学'
+删除记录语句的返回结果为1
+</code></pre>
+
+<p>从日志信息可见，只删除一条化学老师的记录，看起来似乎一切正常。不过课程参数由外部传入，谁知道课程字符串是什么东西呢？倘若有人闲得发慌，在键盘上随便输了几个字符，像&ldquo;' or '1'='1&rdquo;这样的字符串当作课程名称。于是删除方法的调用代码变成了下面这般：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>			deleteRecord(stmt, "' or '1'='1"); // 删除记录
+</code></pre>
+
+<p>&nbsp;</p>
+<p>再次运行测试程序，发现输出日志变得有点不对劲：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>待执行的SQL语句：delete from teacher where course='' or '1'='1'
+删除记录语句的返回结果为4
+</code></pre>
+
+<p>&nbsp;</p>
+<p>没想到随便输的几个字符竟然也让SQL语句执行了，而且是把teacher表的剩余记录删得精光。这可不得了了，原语句的格式明明只肯删除特定课程的记录，为啥执行结果大相径庭呢？缘由在于待执行的SQL语句呆板地将课程字符串原样填了进去，造成出现&ldquo;or '1'='1'&rdquo;这种极端条件，自然MySQL忠实地删光了teacher表。诸如此类的SQL缺陷，人称SQL注入漏洞，它常常被黑客利用为所欲为，造成重大损失。<br />上述的实验结果暴露了报告机制的安全问题，一旦条件参数被人恶意篡改，就可能产生意料之外的严重状况。为此JDBC又设计了另一种预报告机制，预报告定义了新类PreparedStatement，与原报告Statement不同的是，创建预报告对象时就要设定SQL语句，并且SQL里面的动态参数以问号代替。然后准备调用executeUpdate或者executeQuery之前，先调用预报告对象的setString方法来设置对应序号的参数值。下面便是引入预报告之后的数据库操作代码例子：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	// 测试预报告的处理
+	private static void testPreparedStatement() {
+		String sql = "delete from teacher where course=?";
+		// 先获取数据库的连接，再创建连接的预报告
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUserName, dbPassword);
+				PreparedStatement stmt = conn.prepareStatement(sql)) {
+			//stmt.setString(1, "化学"); // 设置对应序号的参数值
+			stmt.setString(1, "'' or 1=1"); // 设置对应序号的参数值
+			int count = stmt.executeUpdate(); // 执行处理语句
+			System.out.println("预先准备的SQL语句："+stmt.toString());
+			System.out.println("删除记录语句的返回结果为"+count);
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>仍以之前的恶意字符串为例，上面代码在调用setString方法时填入了&ldquo;' or '1'='1&rdquo;，意图继续浑水摸鱼。运行包含testPreparedStatement方法的测试程序，观察到的日志信息如下所示：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>预先准备的SQL语句：com.mysql.cj.jdbc.ClientPreparedStatement: delete from teacher where course='\'\' or 1=1'
+删除记录语句的返回结果为0
+</code></pre>
+
+<p>&nbsp;</p>
+<p>从日志结果可见，这次捣乱行为没有得逞，一条记录都没删除。注意此时的条件语句变为&ldquo;course='\'\' or 1=1'&rdquo;，显然预报告把字符串中的单引号做了转义，使得转义后的条件语句格式不正确，也就没能成功执行SQL。由此证明预报告PreparedStatement提升了数据库操作的安全性，凡是需要动态传入参数的SQL语句，最好采取预报告机制加以处理。</p>
+<p><br /><em id="__mceDel"><br /></em>更多Java技术文章参见《<a href="https://www.cnblogs.com/pinlantu/p/9941789.html" target="_blank">Java开发笔记（序）章节目录</a>》</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

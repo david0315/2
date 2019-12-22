@@ -1,0 +1,207 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java分布式ID生成解决方案' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java分布式ID生成解决方案</center></div><div class='banquan'>原文出处:本文由博客园博主佩奇er提供。<br/>
+原文连接:https://www.cnblogs.com/hxun/p/11451629.html</div><br>
+    <h3><strong><span style="font-family: 黑体;">分布式</span>ID<span style="font-family: 黑体;">生成器</span></strong></h3>
+<p><span style="font-family: 宋体;">我们采用的是开源的</span>twitter( &nbsp;<span style="font-family: 宋体;">非官方中文惯称：</span><span style="font-family: 宋体;">推特</span>.<span style="font-family: 宋体;">是国外的一个网站，是一个社交网络及微博客服务</span>) &nbsp;<span style="font-family: 宋体;">的</span><span style="font-family: Calibri;">snowflake</span><span style="font-family: 宋体;">算法（推特雪花算法）。</span></p>
+<p>&nbsp;<img src="./images/Java分布式ID生成解决方案0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>封装为工具类，源码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> util;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.lang.management.ManagementFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.net.InetAddress;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.net.NetworkInterface;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * &lt;p&gt;名称：IdWorker.java&lt;/p&gt;
+ * &lt;p&gt;描述：分布式自增长ID&lt;/p&gt;
+ * &lt;pre&gt;
+ *     Twitter的 Snowflake　JAVA实现方案
+ * &lt;/pre&gt;
+ * 核心代码为其IdWorker这个类实现，其原理结构如下，我分别用一个0表示一位，用&mdash;分割开部分的作用：
+ * 1||0---0000000000 0000000000 0000000000 0000000000 0 --- 00000 ---00000 ---000000000000
+ * 在上面的字符串中，第一位为未使用（实际上也可作为long的符号位），接下来的41位为毫秒级时间，
+ * 然后5位datacenter标识位，5位机器ID（并不算标识符，实际是为线程标识），
+ * 然后12位该毫秒内的当前毫秒内的计数，加起来刚好64位，为一个Long型。
+ * 这样的好处是，整体上按照时间自增排序，并且整个分布式系统内不会产生ID碰撞（由datacenter和机器ID作区分），
+ * 并且效率较高，经测试，snowflake每秒能够产生26万ID左右，完全满足需要。
+ * &lt;p&gt;
+ * 64位ID (42(毫秒)+5(机器ID)+5(业务编码)+12(重复累加))
+ *
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> Polim
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> IdWorker {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 时间起始标记点，作为基准，一般取系统的最近时间（一旦确定不能变动）</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> twepoch = 1288834974657L<span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 机器标识位数</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> workerIdBits = 5L<span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 数据中心标识位数</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> datacenterIdBits = 5L<span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 机器ID最大值</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> maxWorkerId = -1L ^ (-1L &lt;&lt;<span style="color: #000000;"> workerIdBits);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 数据中心ID最大值</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> maxDatacenterId = -1L ^ (-1L &lt;&lt;<span style="color: #000000;"> datacenterIdBits);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 毫秒内自增位</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> sequenceBits = 12L<span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 机器ID偏左移12位</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> workerIdShift =<span style="color: #000000;"> sequenceBits;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 数据中心ID左移17位</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> datacenterIdShift = sequenceBits +<span style="color: #000000;"> workerIdBits;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 时间毫秒左移22位</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> timestampLeftShift = sequenceBits + workerIdBits +<span style="color: #000000;"> datacenterIdBits;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> sequenceMask = -1L ^ (-1L &lt;&lt;<span style="color: #000000;"> sequenceBits);
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 上次生产id时间戳 </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> lastTimestamp = -1L<span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 0，并发控制</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span> sequence = 0L<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> workerId;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 数据标识id部分</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> datacenterId;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> IdWorker(){
+        </span><span style="color: #0000ff;">this</span>.datacenterId =<span style="color: #000000;"> getDatacenterId(maxDatacenterId);
+        </span><span style="color: #0000ff;">this</span>.workerId =<span style="color: #000000;"> getMaxWorkerId(datacenterId, maxWorkerId);
+    }
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> workerId
+     *            工作机器ID
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> datacenterId
+     *            序列号
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> IdWorker(<span style="color: #0000ff;">long</span> workerId, <span style="color: #0000ff;">long</span><span style="color: #000000;"> datacenterId) {
+        </span><span style="color: #0000ff;">if</span> (workerId &gt; maxWorkerId || workerId &lt; 0<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException(String.format("worker Id can't be greater than %d or less than 0"<span style="color: #000000;">, maxWorkerId));
+        }
+        </span><span style="color: #0000ff;">if</span> (datacenterId &gt; maxDatacenterId || datacenterId &lt; 0<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException(String.format("datacenter Id can't be greater than %d or less than 0"<span style="color: #000000;">, maxDatacenterId));
+        }
+        </span><span style="color: #0000ff;">this</span>.workerId =<span style="color: #000000;"> workerId;
+        </span><span style="color: #0000ff;">this</span>.datacenterId =<span style="color: #000000;"> datacenterId;
+    }
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 获取下一个ID
+     *
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> nextId() {
+        </span><span style="color: #0000ff;">long</span> timestamp =<span style="color: #000000;"> timeGen();
+        </span><span style="color: #0000ff;">if</span> (timestamp &lt;<span style="color: #000000;"> lastTimestamp) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> RuntimeException(String.format("Clock moved backwards.  Refusing to generate id for %d milliseconds", lastTimestamp -<span style="color: #000000;"> timestamp));
+        }
+
+        </span><span style="color: #0000ff;">if</span> (lastTimestamp ==<span style="color: #000000;"> timestamp) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当前毫秒内，则+1</span>
+            sequence = (sequence + 1) &amp;<span style="color: #000000;"> sequenceMask;
+            </span><span style="color: #0000ff;">if</span> (sequence == 0<span style="color: #000000;">) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当前毫秒内计数满了，则等待下一秒</span>
+                timestamp =<span style="color: #000000;"> tilNextMillis(lastTimestamp);
+            }
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            sequence </span>= 0L<span style="color: #000000;">;
+        }
+        lastTimestamp </span>=<span style="color: #000000;"> timestamp;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> ID偏移组合生成最终的ID，并返回ID</span>
+        <span style="color: #0000ff;">long</span> nextId = ((timestamp - twepoch) &lt;&lt;<span style="color: #000000;"> timestampLeftShift)
+                </span>| (datacenterId &lt;&lt;<span style="color: #000000;"> datacenterIdShift)
+                </span>| (workerId &lt;&lt; workerIdShift) |<span style="color: #000000;"> sequence;
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> nextId;
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span> tilNextMillis(<span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> lastTimestamp) {
+        </span><span style="color: #0000ff;">long</span> timestamp = <span style="color: #0000ff;">this</span><span style="color: #000000;">.timeGen();
+        </span><span style="color: #0000ff;">while</span> (timestamp &lt;=<span style="color: #000000;"> lastTimestamp) {
+            timestamp </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.timeGen();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> timestamp;
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> timeGen() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> System.currentTimeMillis();
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * &lt;p&gt;
+     * 获取 maxWorkerId
+     * &lt;/p&gt;
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> getMaxWorkerId(<span style="color: #0000ff;">long</span> datacenterId, <span style="color: #0000ff;">long</span><span style="color: #000000;"> maxWorkerId) {
+        StringBuffer mpid </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringBuffer();
+        mpid.append(datacenterId);
+        String name </span>=<span style="color: #000000;"> ManagementFactory.getRuntimeMXBean().getName();
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">name.isEmpty()) {
+         </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+          * GET jvmPid
+          </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            mpid.append(name.split(</span>"@")[0<span style="color: #000000;">]);
+        }
+      </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+       * MAC + PID 的 hashcode 获取16个低位
+       </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">return</span> (mpid.toString().hashCode() &amp; 0xffff) % (maxWorkerId + 1<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * &lt;p&gt;
+     * 数据标识id部分
+     * &lt;/p&gt;
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">long</span> getDatacenterId(<span style="color: #0000ff;">long</span><span style="color: #000000;"> maxDatacenterId) {
+        </span><span style="color: #0000ff;">long</span> id = 0L<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            InetAddress ip </span>=<span style="color: #000000;"> InetAddress.getLocalHost();
+            NetworkInterface network </span>=<span style="color: #000000;"> NetworkInterface.getByInetAddress(ip);
+            </span><span style="color: #0000ff;">if</span> (network == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                id </span>= 1L<span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">byte</span>[] mac =<span style="color: #000000;"> network.getHardwareAddress();
+                id </span>= ((0x000000FF &amp; (<span style="color: #0000ff;">long</span>) mac[mac.length - 1<span style="color: #000000;">])
+                        </span>| (0x0000FF00 &amp; (((<span style="color: #0000ff;">long</span>) mac[mac.length - 2]) &lt;&lt; 8))) &gt;&gt; 6<span style="color: #000000;">;
+                id </span>= id % (maxDatacenterId + 1<span style="color: #000000;">);
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            System.out.println(</span>" getDatacenterId: " +<span style="color: #000000;"> e.getMessage());
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+    * 测试
+    </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        IdWorker idWorker</span>=<span style="color: #0000ff;">new</span> IdWorker(0,0<span style="color: #000000;">);
+        
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i=0; i&lt;100;i++<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">long</span> nextId =<span style="color: #000000;"> idWorker.nextId();
+            System.out.println(nextId);
+        }
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

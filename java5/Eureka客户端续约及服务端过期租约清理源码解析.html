@@ -1,0 +1,311 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka客户端续约及服务端过期租约清理源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka客户端续约及服务端过期租约清理源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11724154.html</div><br>
+    <p>在之前的文章：<a href="https://mp.weixin.qq.com/s/-G_eXhlOqFagSdSxcrrQPQ">EurekaClient自动装配及启动流程解析</a>中，我们提到了在构造<code>DiscoveryClient</code>时除了包含注册流程之外，还调度了一个心跳线程：</p>
+<pre><code><code>scheduler.schedule(
+                    new TimedSupervisorTask(
+                            &quot;heartbeat&quot;,
+                            scheduler,
+                            heartbeatExecutor,
+                            renewalIntervalInSecs,
+                            TimeUnit.SECONDS,
+                            expBackOffBound,
+                            new HeartbeatThread()
+                    ),
+                    renewalIntervalInSecs, TimeUnit.SECONDS);
+                    </code></code></pre>
+<p>其中<code>HeartbeatThread</code>线程如下：</p>
+<pre><code><code>    private class HeartbeatThread implements Runnable {
+
+        public void run() {
+        //续约
+            if (renew()) {
+              //续约成功时间戳更新
+                lastSuccessfulHeartbeatTimestamp = System.currentTimeMillis();
+            }
+        }
+    }
+
+ boolean renew() {
+        EurekaHttpResponse&lt;InstanceInfo&gt; httpResponse;
+        try {
+          //发送续约请求
+            httpResponse = eurekaTransport.registrationClient.sendHeartBeat(instanceInfo.getAppName(), instanceInfo.getId(), instanceInfo, null);
+            logger.debug(PREFIX + &quot;{} - Heartbeat status: {}&quot;, appPathIdentifier, httpResponse.getStatusCode());
+            if (httpResponse.getStatusCode() == 404) {
+                REREGISTER_COUNTER.increment();
+                logger.info(PREFIX + &quot;{} - Re-registering apps/{}&quot;, appPathIdentifier, instanceInfo.getAppName());
+                long timestamp = instanceInfo.setIsDirtyWithTime();
+              //重新注册
+                boolean success = register();
+                if (success) {
+                    instanceInfo.unsetIsDirty(timestamp);
+                }
+                return success;
+            }
+            return httpResponse.getStatusCode() == 200;
+        } catch (Throwable e) {
+            logger.error(PREFIX + &quot;{} - was unable to send heartbeat!&quot;, appPathIdentifier, e);
+            return false;
+        }
+    }</code></code></pre>
+<p>这里直接发出了续约请求，如果续约请求失败则会尝试再次去注册</p>
+<h5 id="服务端接受续约请求">服务端接受续约请求</h5>
+<p>服务端接受续约请求的Controller在<code>InstanceResource</code>类中</p>
+<pre><code><code>@PUT
+    public Response renewLease(
+            @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication,
+            @QueryParam(&quot;overriddenstatus&quot;) String overriddenStatus,
+            @QueryParam(&quot;status&quot;) String status,
+            @QueryParam(&quot;lastDirtyTimestamp&quot;) String lastDirtyTimestamp) {
+        boolean isFromReplicaNode = &quot;true&quot;.equals(isReplication);
+      //续约
+        boolean isSuccess = registry.renew(app.getName(), id, isFromReplicaNode);
+
+        // 续约失败
+        if (!isSuccess) {
+            logger.warn(&quot;Not Found (Renew): {} - {}&quot;, app.getName(), id);
+            return Response.status(Status.NOT_FOUND).build();
+        }
+        // 校验客户端与服务端的时间差异，如果存在问题则需要重新发起注册
+        Response response = null;
+        if (lastDirtyTimestamp != null &amp;&amp; serverConfig.shouldSyncWhenTimestampDiffers()) {
+            response = this.validateDirtyTimestamp(Long.valueOf(lastDirtyTimestamp), isFromReplicaNode);
+            if (response.getStatus() == Response.Status.NOT_FOUND.getStatusCode()
+                    &amp;&amp; (overriddenStatus != null)
+                    &amp;&amp; !(InstanceStatus.UNKNOWN.name().equals(overriddenStatus))
+                    &amp;&amp; isFromReplicaNode) {
+                registry.storeOverriddenStatusIfRequired(app.getAppName(), id, InstanceStatus.valueOf(overriddenStatus));
+            }
+        } else {
+            response = Response.ok().build();
+        }
+        logger.debug(&quot;Found (Renew): {} - {}; reply status={}&quot;, app.getName(), id, response.getStatus());
+        return response;
+    }</code></code></pre>
+<p>可以看到续约之后还有一个检查时间差的问题，这个不详细展开，继续往下看续约的相关信息</p>
+<pre><code><code>    public boolean renew(final String appName, final String id, final boolean isReplication) {
+        if (super.renew(appName, id, isReplication)) {
+          //集群同步
+            replicateToPeers(Action.Heartbeat, appName, id, null, null, isReplication);
+            return true;
+        }
+        return false;
+    }</code></code></pre>
+<p>这里集群同步的相关内容在之前的文章已经说过了，不再展开，续约的核心处理在下面</p>
+<pre><code><code> public boolean renew(String appName, String id, boolean isReplication) {
+        RENEW.increment(isReplication);
+   //获取已存在的租约
+        Map&lt;String, Lease&lt;InstanceInfo&gt;&gt; gMap = registry.get(appName);
+        Lease&lt;InstanceInfo&gt; leaseToRenew = null;
+        if (gMap != null) {
+            leaseToRenew = gMap.get(id);
+        }
+   //租约不存在
+        if (leaseToRenew == null) {
+            RENEW_NOT_FOUND.increment(isReplication);
+            logger.warn(&quot;DS: Registry: lease doesn&#39;t exist, registering resource: {} - {}&quot;, appName, id);
+            return false;
+        } else {
+          //获取客户端
+            InstanceInfo instanceInfo = leaseToRenew.getHolder();
+          //设置客户端的状态
+            if (instanceInfo != null) {
+                // touchASGCache(instanceInfo.getASGName());
+                InstanceStatus overriddenInstanceStatus = this.getOverriddenInstanceStatus(
+                        instanceInfo, leaseToRenew, isReplication);
+                if (overriddenInstanceStatus == InstanceStatus.UNKNOWN) {
+                    logger.info(&quot;Instance status UNKNOWN possibly due to deleted override for instance {}&quot;
+                            + &quot;; re-register required&quot;, instanceInfo.getId());
+                    RENEW_NOT_FOUND.increment(isReplication);
+                    return false;
+                }
+                if (!instanceInfo.getStatus().equals(overriddenInstanceStatus)) {
+                    logger.info(
+                            &quot;The instance status {} is different from overridden instance status {} for instance {}. &quot;
+                                    + &quot;Hence setting the status to overridden status&quot;, instanceInfo.getStatus().name(),
+                                    instanceInfo.getOverriddenStatus().name(),
+                                    instanceInfo.getId());
+                  //覆盖当前状态
+                    instanceInfo.setStatusWithoutDirty(overriddenInstanceStatus);
+
+                }
+            }
+            renewsLastMin.increment();
+          //设置租约最后更新时间
+            leaseToRenew.renew();
+            return true;
+        }
+    }</code></code></pre>
+<p>对于看过之前文章的同学来说整体流程比较简单</p>
+<h5 id="服务端过期租约清理">服务端过期租约清理</h5>
+<p>在文章<a href="https://mp.weixin.qq.com/s/HXYWFdzCal2NpJCp0WmdZw">Eureka应用注册与集群数据同步源码解析</a>一文中大家应该对下面这行代码比较熟悉</p>
+<pre><code><code>int registryCount = registry.syncUp();</code></code></pre>
+<p>上面这行代码发起了集群数据同步，而紧接着这行代码的就是服务端的过期租约清理逻辑</p>
+<pre><code><code>registry.openForTraffic(applicationInfoManager, registryCount);</code></code></pre>
+<p><code>openForTraffic</code>方法的最后调用了一个方法<code>postInit</code>，而在<code>postInit</code>方法中启动了一个线程<code>EvictionTask</code>，这个线程就负责清理已经过期的租约</p>
+<pre><code><code>evictionTimer.schedule(evictionTaskRef.get(),       
+serverConfig.getEvictionIntervalTimerInMs(), 
+serverConfig.getEvictionIntervalTimerInMs());
+</code></code></pre>
+<p>看一下这个线程</p>
+<pre><code><code>class EvictionTask extends TimerTask {
+
+   @Override
+   public void run() {
+       try {
+           //补偿时间毫秒数
+           long compensationTimeMs = getCompensationTimeMs();
+           logger.info(&quot;Running the evict task with compensationTime {}ms&quot;, compensationTimeMs);
+           // 清理逻辑
+           evict(compensationTimeMs);
+       } catch (Throwable e) {
+           logger.error(&quot;Could not run the evict task&quot;, e);
+       }
+   }
+
+}</code></code></pre>
+<p>其中补偿时间的获取是这样的：</p>
+<pre><code><code>long getCompensationTimeMs() {
+            long currNanos = getCurrentTimeNano();
+            long lastNanos = lastExecutionNanosRef.getAndSet(currNanos);
+            if (lastNanos == 0l) {
+                return 0l;
+            }
+
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(currNanos - lastNanos);
+            //当前时间 - 最后任务执行时间 - 任务执行频率
+            long compensationTime = elapsedMs - serverConfig.getEvictionIntervalTimerInMs();
+            return compensationTime &lt;= 0l ? 0l : compensationTime;
+        }</code></code></pre>
+<p>接着看清理的核心逻辑</p>
+<pre><code><code>public void evict(long additionalLeaseMs) {
+        logger.debug(&quot;Running the evict task&quot;);
+
+        if (!isLeaseExpirationEnabled()) {
+            logger.debug(&quot;DS: lease expiration is currently disabled.&quot;);
+            return;
+        }
+
+        // 1. 获得所有的过期租约
+        List&lt;Lease&lt;InstanceInfo&gt;&gt; expiredLeases = new ArrayList&lt;&gt;();
+        for (Entry&lt;String, Map&lt;String, Lease&lt;InstanceInfo&gt;&gt;&gt; groupEntry : registry.entrySet()) {
+            Map&lt;String, Lease&lt;InstanceInfo&gt;&gt; leaseMap = groupEntry.getValue();
+            if (leaseMap != null) {
+                for (Entry&lt;String, Lease&lt;InstanceInfo&gt;&gt; leaseEntry : leaseMap.entrySet()) {
+                    Lease&lt;InstanceInfo&gt; lease = leaseEntry.getValue();
+                    if (lease.isExpired(additionalLeaseMs) &amp;&amp; lease.getHolder() != null) {
+                        expiredLeases.add(lease);
+                    }
+                }
+            }
+        }
+
+        // 2. 计算允许清理的数量
+        int registrySize = (int) getLocalRegistrySize();
+        int registrySizeThreshold = (int) (registrySize * serverConfig.getRenewalPercentThreshold());
+        int evictionLimit = registrySize - registrySizeThreshold;
+        int toEvict = Math.min(expiredLeases.size(), evictionLimit);
+        
+        // 3. 过期
+        if (toEvict &gt; 0) {
+            logger.info(&quot;Evicting {} items (expired={}, evictionLimit={})&quot;, toEvict, expiredLeases.size(), evictionLimit);
+
+            Random random = new Random(System.currentTimeMillis());
+            for (int i = 0; i &lt; toEvict; i++) {
+                // Pick a random item (Knuth shuffle algorithm)
+                int next = i + random.nextInt(expiredLeases.size() - i);
+                Collections.swap(expiredLeases, i, next);
+                Lease&lt;InstanceInfo&gt; lease = expiredLeases.get(i);
+
+                String appName = lease.getHolder().getAppName();
+                String id = lease.getHolder().getId();
+                EXPIRED.increment();
+                logger.warn(&quot;DS: Registry: expired lease for {}/{}&quot;, appName, id);
+                internalCancel(appName, id, false);
+            }
+        }
+    }</code></code></pre>
+<p>整个过期的执行过程主要分为以下3个步骤：</p>
+<ol>
+<li>获得所有的过期租约<br />
+过期租约的计算方法为<code>isExpired</code></li>
+</ol>
+<pre><code><code>public boolean isExpired(long additionalLeaseMs) {    
+    return (evictionTimestamp &gt; 0 || System.currentTimeMillis() &gt; 
+(lastUpdateTimestamp + duration + additionalLeaseMs));
+}</code></code></pre>
+<p>服务下线时间&gt;0||当前时间&gt;(最后更新时间+租约持续时间+补偿时间)</p>
+<ol>
+<li>计算允许清理的数量<br />
+<code>getRenewalPercentThreshold()</code>默认值为0.85，也是就说默认情况下每次清理最大允许过期数量和15%的所有注册数量两者之间的最小值</li>
+<li>过期<br />
+过期的清理是随机进行的，这样设计也是为了避免单个应用全部过期的。<br />
+过期的处理则和注册的处理正好是相反的：</li>
+</ol>
+<pre><code><code> protected boolean internalCancel(String appName, String id, boolean isReplication) {
+        try {
+            read.lock();
+            CANCEL.increment(isReplication);
+            Map&lt;String, Lease&lt;InstanceInfo&gt;&gt; gMap = registry.get(appName);
+            Lease&lt;InstanceInfo&gt; leaseToCancel = null;
+            if (gMap != null) {
+                leaseToCancel = gMap.remove(id);
+            }
+            synchronized (recentCanceledQueue) {
+                recentCanceledQueue.add(new Pair&lt;Long, String&gt;(System.currentTimeMillis(), appName + &quot;(&quot; + id + &quot;)&quot;));
+            }
+            InstanceStatus instanceStatus = overriddenInstanceStatusMap.remove(id);
+            if (instanceStatus != null) {
+                logger.debug(&quot;Removed instance id {} from the overridden map which has value {}&quot;, id, instanceStatus.name());
+            }
+            if (leaseToCancel == null) {
+                CANCEL_NOT_FOUND.increment(isReplication);
+                logger.warn(&quot;DS: Registry: cancel failed because Lease is not registered for: {}/{}&quot;, appName, id);
+                return false;
+            } else {
+                leaseToCancel.cancel();
+                InstanceInfo instanceInfo = leaseToCancel.getHolder();
+                String vip = null;
+                String svip = null;
+                if (instanceInfo != null) {
+                    instanceInfo.setActionType(ActionType.DELETED);
+                    recentlyChangedQueue.add(new RecentlyChangedItem(leaseToCancel));
+                    instanceInfo.setLastUpdatedTimestamp();
+                    vip = instanceInfo.getVIPAddress();
+                    svip = instanceInfo.getSecureVipAddress();
+                }
+                invalidateCache(appName, vip, svip);
+                logger.info(&quot;Cancelled instance {}/{} (replication={})&quot;, appName, id, isReplication);
+                return true;
+            }
+        } finally {
+            read.unlock();
+        }
+    }</code></code></pre>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

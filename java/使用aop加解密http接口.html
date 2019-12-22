@@ -1,0 +1,134 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修使用aop加解密http接口' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>使用aop加解密http接口</center></div><div class='banquan'>原文出处:本文由博客园博主执偕提供。<br/>
+原文连接:https://www.cnblogs.com/zhixie/p/11990686.html</div><br>
+    <h2 id="背景">背景</h2>
+<p>最近在写一个小程序接口，由于安全性比较高，因此需要给请求参数和响应进行加密处理。如果在每个方法上都加密解密，那样代码就显得太繁琐了而且工作量会加大。所以，我们会统一进行加解密处理，一种比较传统的方式就是通过拦截器进行拦截处理。在这里我们选择通过使用spring的aop来实现。</p>
+<h2 id="处理方案">处理方案</h2>
+<p>1.比较spring的五种通知后。很容易发现，环绕通知可以解决我们的问题，环绕通知有哪些特点呢？</p>
+<ul>
+<li>环绕通知是所有通知类型中功能最为强大的, 能够全面地控制连接点. 甚至可以控制是否执行连接点 。</li>
+<li>对于环绕通知来说, 连接点的参数类型必须是 ProceedingJoinPoint. 它是 JoinPoint的子接口, 允许控制何时执行, 是否执行连接点 。</li>
+<li>在环绕通知中需要明确调用 ProceedingJoinPoint 的 proceed() 方法来执行被代理的方法. 如果忘记这样做就会导致通知被执行了, 但目标方法没有被执行 。</li>
+<li>环绕通知的方法需要返回目标方法执行之后的结果, 即调用 joinPoint.proceed(); 的返回值, 否则会出现空指针异常</li>
+</ul>
+<p>2.具体看一下代码如何实现。</p>
+<ul>
+<li>aspect类</li>
+</ul>
+<pre><code><code>import com.legendnet.elecmeter.utils.EncryptUtils;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.StringUtils;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import javax.servlet.http.HttpServletRequest;
+
+/**
+ * @Author 情系IT
+ * @Description
+ * @Date 2019-12-04 14:55
+ */
+@Aspect
+@Slf4j
+@Component
+public class HttpAspect {
+
+    // 定义切点controller包及子包下面的所有方法
+    @Pointcut(&quot;execution(public * com.legendnet.elecmeter.controller..*.*(..))&quot;)
+    public void httpRequest(){}
+
+    @Around(&quot;httpRequest()&quot;)
+    public Object around(ProceedingJoinPoint proceedingJoinPoint) throws Exception {
+
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attributes.getRequest();
+
+        // target 判断来源然后根据不同的解密算法解密
+        String target = request.getParameter(&quot;target&quot;);
+        String paramCode = request.getParameter(&quot;param_code&quot;);
+        paramCode = paramCode.replaceAll(&quot; &quot;, &quot;+&quot;);
+
+        if(StringUtils.isNotBlank(paramCode)){
+            if(&quot;miniProgram&quot;.equals(target)){
+                paramCode = EncryptUtils.aesDecrypt(paramCode);
+            }
+
+            log.info(&quot;请求参数为：【{}】&quot;,paramCode);
+        }
+        request.setAttribute(&quot;param_code&quot;,paramCode);
+        Object proceed = &quot;&quot;;
+        try {
+            proceed = proceedingJoinPoint.proceed();
+            if(&quot;miniProgram&quot;.equals(target)){
+                proceed = EncryptUtils.aesEncrypt(proceed.toString());
+            }
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+        return proceed;
+    }
+}</code></code></pre>
+<ul>
+<li>controller类</li>
+</ul>
+<pre><code><code>import com.alibaba.fastjson.JSON;
+import com.legendnet.elecmeter.common.ResultBean;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * @Author 情系IT
+ * @Description
+ * @Date 2019-12-04 15:23
+ */
+@RestController
+@Slf4j
+public class TestController {
+
+    @RequestMapping(&quot;test&quot;)
+    public String test(HttpServletRequest request){
+        String param_code = request.getAttribute(&quot;param_code&quot;).toString();
+
+        log.info(&quot;我已接收到参数，参数为：【{}】&quot;,paramCode);
+
+        ResultBean resultBean = new ResultBean();
+        resultBean.fillData(&quot;这就是我的响应&quot;);
+        return JSON.toJSONString(resultBean);
+    }
+}</code></code></pre>
+<p>3.由于小程序和app的加密方式不同，为了代码的高可用，我们通过target参数来判断其来源，然后选择不同的加解密方式进行处理。</p>
+<p>大功告成，接下来安心的写接口就可以了，妈妈再也不用担心我去处理加密解密的问题了。</p>
+<blockquote>
+<p>如果文章对您有帮助，请记得点赞关注哟~<br />
+欢迎大家关注我的公众号：情系IT，每日推送技术文章供大家学习参考。</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

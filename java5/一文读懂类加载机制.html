@@ -1,0 +1,105 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修一文读懂类加载机制' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>一文读懂类加载机制</center></div><div class='banquan'>原文出处:本文由博客园博主小强的进阶之路提供。<br/>
+原文连接:https://www.cnblogs.com/xiaoqiang-code/p/11526107.html</div><br>
+    <h3 id="类记载过程">类记载过程</h3>
+<p>多个java文件经过编译打包生成可运行的jar包，最终由java命令运行某个主类的main函数启动程序，这里首先需要通过类加载器把主类加载到jvm。<br />
+主类在运行过程中如果使用到其他类，会逐步加载这些类。<br />
+注意，jar包里的类不是一次性全部加载的，是使用时才加载的。</p>
+<p>从类加载到使用整个过程由如下几步：<br />
+加载、验证、准备、解析、初始化、使用、卸载</p>
+<ul>
+<li>加载：在硬盘上查找并通过IO读入字节码文件，使用到类时才会加载，例如：调用类的main方法，new对象等；</li>
+<li>验证：校验字节码文件的正确性；</li>
+<li>准备：给类的静态变量分配内存，并赋予默认值；</li>
+<li>解析：将符号引用替换为直接引用，该阶段会把一些静态方法（符号引用，比如main方法）替换为指向数据所在内存的指针或句柄等（直接引用），这就是静态链接过程，这个过程是在类记载期间完成的。动态链接是程序运行期间完成的将符号引用替换为直接引用。</li>
+<li><p>初始化：对类的静态变量初始化为指定的值，执行静态代码块。<br />
+<img src="./images/一文读懂类加载机制0.png" /></p>
+<h2 id="类加载器">类加载器</h2>
+上面的类加载过程主要是通过类加载器来实现的，java里有以下几种类加载器。</li>
+<li>启动类加载器：负责加载支撑JVM运行的位于JREd额lib目录下的核心类库；</li>
+<li>扩展类加载器：负责加载支撑JVM运行位于JRE的lib目录下的ext扩展目录中的JAR类包；</li>
+<li>应用程序加载器：负责加载ClassPath路径下的类包，主要就是加载应用程序的类；</li>
+<li><p>自定义加载器：负责加载用户自定义路径下的类包；</p></li>
+</ul>
+<p>类记载器继承了java.lang.ClassLoader类，该类有两个核心方法，loadClass和findClass。</p>
+<pre><code><code>protected Class&lt;?&gt; loadClass(String name, boolean resolve)
+    throws ClassNotFoundException
+{
+    synchronized (getClassLoadingLock(name)) {
+        // First, check if the class has already been loaded
+        Class&lt;?&gt; c = findLoadedClass(name);
+        if (c == null) {
+            long t0 = System.nanoTime();
+            try {
+                if (parent != null) {
+                    c = parent.loadClass(name, false);
+                } else {
+                    c = findBootstrapClassOrNull(name);
+                }
+            } catch (ClassNotFoundException e) {
+                // ClassNotFoundException thrown if class not found
+                // from the non-null parent class loader
+            }
+
+            if (c == null) {
+                // If still not found, then invoke findClass in order
+                // to find the class.
+                long t1 = System.nanoTime();
+                c = findClass(name);
+
+                // this is the defining class loader; record the stats
+                sun.misc.PerfCounter.getParentDelegationTime().addTime(t1 - t0);
+                sun.misc.PerfCounter.getFindClassTime().addElapsedTimeFrom(t1);
+                sun.misc.PerfCounter.getFindClasses().increment();
+            }
+        }
+        if (resolve) {
+            resolveClass(c);
+        }
+        return c;
+    }
+}</code></code></pre>
+<p>findClass方法默认实现是抛出异常，所以我们在自定义类加载器主要是重写findClass方法。</p>
+<pre><code><code>protected Class&lt;?&gt; findClass(String name) throws ClassNotFoundException {
+    throw new ClassNotFoundException(name);
+}</code></code></pre>
+<h2 id="双亲委派机制">双亲委派机制</h2>
+<p>jvm类加载器是有亲子层结构的.</p>
+<p><img src="./images/一文读懂类加载机制1.png" /></p>
+<p>这里类加载就是双亲委派机制，记载某个类时， 会先委托父加载器寻找目标类，找不到再委托上层父加载器加载，如果所有父加载器再自己的加载类路径下都找不到目标类，则再自己的类加载路径中查找并载入目标类。</p>
+<p>比如：Math类，最先会找应用程序类加载器加载，应用程序加载器会先委托扩展类加载器加载，扩展类加载器再委托启动类加载器，顶层启动类加载器在自己的类加载器路径里找了半天没找到Math类，则向下退回加载Math类的请求，扩展类加载器收到回复就自己加载，在自己的类加载路径里找了半天也没找到Math类，又向下退回Math类的加载请求给应用程序类加载器，应用程序类加载器于是在自己的类加载路径中找到了Math类，于是就自己加载了。</p>
+<p>双亲委派机制说简单就是：先找父亲加载，不行再由父亲自己加载。</p>
+<blockquote>
+<p>还没关注我的公众号？</p>
+</blockquote>
+<ul>
+<li>扫文末二维码关注公众号【小强的进阶之路】可领取如下:</li>
+<li>学习资料： 1T视频教程：涵盖Javaweb前后端教学视频、机器学习/人工智能教学视频、Linux系统教程视频、雅思考试视频教程；</li>
+<li>100多本书：包含C/C++、Java、Python三门编程语言的经典必看图书、LeetCode题解大全；</li>
+<li>软件工具：几乎包括你在编程道路上的可能会用到的大部分软件；</li>
+<li>项目源码：20个JavaWeb项目源码。<br />
+<img src="./images/一文读懂类加载机制2.png" alt="小强的进阶之路二维码" /></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

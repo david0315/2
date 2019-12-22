@@ -1,0 +1,385 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （四）----- SqlSession的创建过程' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （四）----- SqlSession的创建过程</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11743506.html</div><br>
+    <p>SqlSession是mybatis的核心接口之一，是myabtis接口层的主要组成部分，对外提供了mybatis常用的api。myabtis提供了两个SqlSesion接口的实现，常用的实现类是DefaultSqlSession。它相当于一个数据库连接对象，在一个SqlSession中可以执行多条SQL语句。</p>
+<h2>创建SqlSession</h2>
+<p>前面的两篇文章我们已经得到了<code>SqlSessionFactory</code>，那么<code>SqlSession</code>将由<code>SqlSessionFactory</code>进行创建。</p>
+<src class="cnblogs_code">
+<pre><code>SqlSession sqlSession=sqlSessionFactory.openSession();</code></pre>
+
+<src>
+<p>我们就来看看这个<code>SqlSessionFactory</code>的 <code>openSession</code>方法是如何创建SqlSession对象的。根据上面的分析，这里的<code>SqlSessionFactory</code>类型对象其实是一个<code>DefaultSqlSessionFactory</code>对象，因此，需要到<code>DefaultSqlSessionFactory</code>类中去看<code>openSession</code>方法。</p>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">  @Override
+  </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSession openSession() {
+    </span><span style="color: #0000ff;">return</span> <strong>openSessionFromDataSource</strong>(<strong>configuration.getDefaultExecutorType()</strong>, <span style="color: #0000ff;">null</span>, <strong><span style="color: #0000ff;">false</span></strong><span style="color: #000000;">);
+  }</span></code></pre>
+
+<p>调用了<strong>openSessionFromDataSource</strong>方法，并且第一个参数获取了默认的执行器类型，第二个参数为null,第三个参数为false,看看这个默认的执行器类型是啥</p>
+<p><img src="./images/Mybaits 源码解析 （四）----- SqlSession的创建过程0.png" alt="" />&nbsp;&nbsp;<img src="./images/Mybaits 源码解析 （四）----- SqlSession的创建过程1.png" alt="" /></p>
+<p>默认的执行器类型SIMPLE，我们跟进<strong>openSessionFromDataSource</strong>方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * ExecutorType 指定Executor的类型，分为三种：SIMPLE, REUSE, BATCH，默认使用的是SIMPLE
+ * TransactionIsolationLevel 指定事务隔离级别，使用null,则表示使用数据库默认的事务隔离界别
+ * autoCommit 是否自动提交，传过来的参数为false，表示不自动提交
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> SqlSession openSessionFromDataSource(ExecutorType execType, TransactionIsolationLevel level, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit) {
+    Transaction tx </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取配置中的环境信息，包括了数据源信息、事务等</span>
+        <span style="color: #0000ff;">final</span> Environment environment =<span style="color: #000000;"> configuration.getEnvironment();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建事务工厂</span>
+        <strong><span style="color: #0000ff;">final</span> TransactionFactory transactionFactory =<span style="color: #000000;"> getTransactionFactoryFromEnvironment(environment);
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建事务，配置事务属性</span>
+      <strong>  tx =<span style="color: #000000;"> transactionFactory.newTransaction(environment.getDataSource(), level, autoCommit);
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建Executor，即执行器
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 它是真正用来Java和数据库交互操作的类，后面会展开说。</span>
+      <strong>  <span style="color: #0000ff;">final</span> Executor executor =<span style="color: #000000;"> configuration.newExecutor(tx, execType);
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建DefaultSqlSession对象返回，其实现了SqlSession接口</span>
+      <strong>  <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> DefaultSqlSession(configuration, executor, autoCommit);</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        closeTransaction(tx);
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error opening session.  Cause: " +<span style="color: #000000;"> e, e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+}</span></code></pre>
+
+<p>主要包含以下几个步骤：</p>
+<ol>
+<li>首先从configuration获取Environment对象，里面主要包含了DataSource和TransactionFactory对象</li>
+<li>创建TransactionFactory</li>
+<li>创建Transaction</li>
+<li>从configuration获取Executor</li>
+<li>构造DefaultSqlSession对象</li>
+</ol>
+<p>&nbsp;我们先来看看常规的environment配置</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">配置environment环境</span>
+&lt;environments <span style="color: #0000ff;">default</span>="development"&gt;
+    &lt;environment id="development"&gt;
+        <span style="color: #008000;">/**</span><span style="color: #008000;"> 事务配置 type= JDBC、MANAGED 
+         *  1.JDBC:这个配置直接简单使用了JDBC的提交和回滚设置。它依赖于从数据源得到的连接来管理事务范围。
+         *  2.MANAGED:这个配置几乎没做什么。它从来不提交或回滚一个连接。
+         </span><span style="color: #008000;">*/</span>
+        &lt;transactionManager type="JDBC" /&gt;
+        <span style="color: #008000;">/**</span><span style="color: #008000;"> 数据源类型：type = UNPOOLED、POOLED、JNDI 
+         *  1.UNPOOLED：这个数据源的实现是每次被请求时简单打开和关闭连接。
+         *  2.POOLED：这是JDBC连接对象的数据源连接池的实现。 
+         *  3.JNDI：这个数据源的实现是为了使用如Spring或应用服务器这类的容器
+         </span><span style="color: #008000;">*/</span>
+        &lt;dataSource type="POOLED"&gt;
+            &lt;property name="driver" value="com.mysql.jdbc.Driver" /&gt;
+            &lt;property name="url" value="jdbc:mysql://localhost:3306/xhm" /&gt;
+            &lt;property name="username" value="root" /&gt;
+            &lt;property name="password" value="root" /&gt;
+            <span style="color: #008000;">//</span><span style="color: #008000;">默认连接事务隔离级别</span>
+            &lt;property name="defaultTransactionIsolationLevel" value=""/&gt; 
+        &lt;/dataSource&gt;
+    &lt;/environment&gt;
+&lt;/environments&gt;</code></pre>
+
+<p>还记得前面文章是怎么解析environments的吗，<a id="post_title_link_11743430" href="https://www.cnblogs.com/java-chen-hao/p/11743430.html">Mybaits 源码解析 （二）----- 根据配置文件创建SqlSessionFactory（Configuration的创建过程）</a>，我们简单的回顾一下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> environmentsElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (environment == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 default 属性</span>
+            environment = context.getStringAttribute("default"<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : context.getChildren()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 id 属性</span>
+            String id = child.getStringAttribute("id"<span style="color: #000000;">);
+            </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 检测当前 environment 节点的 id 与其父节点 environments 的属性 default 
+             * 内容是否一致，一致则返回 true，否则返回 false
+             * 将其default属性值与子元素environment的id属性值相等的子元素设置为当前使用的Environment对象
+             </span><span style="color: #008000;">*/</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSpecifiedEnvironment(id)) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将environment中的transactionManager标签转换为TransactionFactory对象</span>
+             <strong>   TransactionFactory txFactory = transactionManagerElement(child.evalNode("transactionManager"<span style="color: #000000;">));
+                </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 将environment中的dataSource标签转换为DataSourceFactory对象</span>
+                DataSourceFactory dsFactory = dataSourceElement(child.evalNode("dataSource"<span style="color: #000000;">));
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 DataSource 对象</span>
+             <strong>   DataSource dataSource =</strong><span style="color: #000000;"><strong> dsFactory.getDataSource();</strong>
+               <strong> Environment.Builder environmentBuilder </strong></span><strong>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Environment.Builder(id)
+                    .transactionFactory(txFactory)
+                    .dataSource(dataSource);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建 Environment 对象，并设置到 configuration 中</span>
+</strong><span style="color: #000000;"><strong>                configuration.setEnvironment(environmentBuilder.build());</strong>
+            }
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> TransactionFactory transactionManagerElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        String type </span>= context.getStringAttribute("type"<span style="color: #000000;">);
+        Properties props </span>=<span style="color: #000000;"> context.getChildrenAsProperties();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过别名获取Class,并实例化</span>
+        TransactionFactory factory = (TransactionFactory)<span style="color: #0000ff;">this</span><span style="color: #000000;">.resolveClass(type).newInstance();
+        factory.setProperties(props);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Environment declaration requires a TransactionFactory."<span style="color: #000000;">);
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> DataSourceFactory dataSourceElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        String type </span>= context.getStringAttribute("type"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过别名获取Class,并实例化</span>
+        Properties props =<span style="color: #000000;"> context.getChildrenAsProperties();
+        DataSourceFactory factory </span>= (DataSourceFactory)<span style="color: #0000ff;">this</span><span style="color: #000000;">.resolveClass(type).newInstance();
+        factory.setProperties(props);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Environment declaration requires a DataSourceFactory."<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<h3>获取TransactionFactory</h3>
+<p>我们的environment配置中transactionManager type="JDBC"和dataSource type="POOLED"，则生成的<strong>transactionManager为JdbcTransactionFactory，DataSourceFactory为PooledDataSourceFactory</strong></p>
+<p>我们回到openSessionFromDataSource，接着看看<strong>getTransactionFactoryFromEnvironment方法</strong></p>
+<src class="cnblogs_code">
+<pre><code>    <span style="color: #0000ff;">private</span><span style="color: #000000;"> TransactionFactory getTransactionFactoryFromEnvironment(Environment environment) {
+        </span><span style="color: #0000ff;">return</span> (TransactionFactory)(environment != <span style="color: #0000ff;">null</span> &amp;&amp; environment.getTransactionFactory() != <span style="color: #0000ff;">null</span> ? environment.getTransactionFactory() : <span style="color: #0000ff;">new</span><span style="color: #000000;"> ManagedTransactionFactory());
+    }</span></code></pre>
+
+<h3>创建Transaction</h3>
+<p>很明显&nbsp;environment.getTransactionFactory() 就是<strong>JdbcTransactionFactory，</strong>看看这个工厂是如何创建Transaction的</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> Transaction newTransaction(DataSource ds, TransactionIsolationLevel level, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> JdbcTransaction(ds, level, autoCommit);
+}</span></code></pre>
+
+<p>直接通过工厂方法创建了一个JdbcTransaction对象，并传参DataSource ，事务隔离级别null，自动提交false三个参数，我们来看看JdbcTransaction</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> JdbcTransaction <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Transaction {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">数据库连接对象</span>
+    <span style="color: #0000ff;">protected</span><span style="color: #000000;"> Connection connection;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">数据库DataSource</span>
+    <span style="color: #0000ff;">protected</span><span style="color: #000000;"> DataSource dataSource;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">数据库隔离级别</span>
+    <span style="color: #0000ff;">protected</span><span style="color: #000000;"> TransactionIsolationLevel level;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">是否自动提交</span>
+    <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommmit;
+
+    </span></strong><span style="color: #0000ff;">public</span> JdbcTransaction(DataSource ds, TransactionIsolationLevel desiredLevel, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> desiredAutoCommit) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">设置dataSource和隔离级别，是否自动提交属性
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">这里隔离级别传过来的是null,表示使用数据库默认隔离级别，自动提交为false，表示不自动提交</span>
+        <span style="color: #0000ff;">this</span>.dataSource =<span style="color: #000000;"> ds;
+        </span><span style="color: #0000ff;">this</span>.level =<span style="color: #000000;"> desiredLevel;
+        </span><span style="color: #0000ff;">this</span>.autoCommmit =</strong><span style="color: #000000;"><strong> desiredAutoCommit;</strong>
+    }
+
+     </span><span style="color: #0000ff;">public</span> Connection getConnection() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.connection == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.openConnection();
+        }
+
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.connection;
+    }
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">提交功能是通过Connection去完成的</span></strong>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> commit() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.connection != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #0000ff;">this</span><span style="color: #000000;">.connection.getAutoCommit()) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (log.isDebugEnabled()) {
+                log.debug(</span>"Committing JDBC Connection [" + <span style="color: #0000ff;">this</span>.connection + "]"<span style="color: #000000;">);
+            }
+
+            </span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.connection.commit();</strong>
+        }
+
+    }
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">回滚功能是通过Connection去完成的</span></strong>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> rollback() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.connection != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #0000ff;">this</span><span style="color: #000000;">.connection.getAutoCommit()) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (log.isDebugEnabled()) {
+                log.debug(</span>"Rolling back JDBC Connection [" + <span style="color: #0000ff;">this</span>.connection + "]"<span style="color: #000000;">);
+            }
+
+            </span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.connection.rollback();</strong>
+        }
+
+    }
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">关闭功能是通过Connection去完成的</span></strong>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> close() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.connection != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.resetAutoCommit();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (log.isDebugEnabled()) {
+                log.debug(</span>"Closing JDBC Connection [" + <span style="color: #0000ff;">this</span>.connection + "]"<span style="color: #000000;">);
+            }
+
+            </span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.connection.close();</strong>
+        }
+
+    }
+    
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">获取连接是通过dataSource来完成的</span></strong>
+    <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> openConnection() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (log.isDebugEnabled()) {
+            log.debug(</span>"Opening JDBC Connection"<span style="color: #000000;">);
+        }
+
+        </span><strong><span style="color: #0000ff;">this</span>.connection = <span style="color: #0000ff;">this</span><span style="color: #000000;">.dataSource.getConnection();
+        </span></strong><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.level != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span>.connection.setTransactionIsolation(<span style="color: #0000ff;">this</span><span style="color: #000000;">.level.getLevel());
+        }
+
+        </span><span style="color: #0000ff;">this</span>.setDesiredAutoCommit(<span style="color: #0000ff;">this</span><span style="color: #000000;">.autoCommmit);
+    }
+}</span></code></pre>
+
+<p>JdbcTransaction主要维护了一个默认autoCommit为false的Connection对象，对事物的提交，回滚，关闭等都是接见通过Connection完成的。</p>
+<h3>创建Executor</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">创建一个执行器，默认是SIMPLE</span>
+<span style="color: #0000ff;">public</span><span style="color: #000000;"> Executor newExecutor(Transaction transaction, ExecutorType executorType) {
+    executorType </span>= executorType == <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> defaultExecutorType : executorType;
+    executorType </span>= executorType == <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> ExecutorType.SIMPLE : executorType;
+    Executor executor;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">根据executorType来创建相应的执行器,Configuration默认是SIMPLE</span>
+    <span style="color: #0000ff;">if</span> (ExecutorType.BATCH ==<span style="color: #000000;"> executorType) {
+      executor </span>= <span style="color: #0000ff;">new</span> BatchExecutor(<span style="color: #0000ff;">this</span><span style="color: #000000;">, transaction);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (ExecutorType.REUSE ==<span style="color: #000000;"> executorType) {
+      executor </span>= <span style="color: #0000ff;">new</span> ReuseExecutor(<span style="color: #0000ff;">this</span><span style="color: #000000;">, transaction);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+      </span><span style="color: #008000;">//</span><span style="color: #008000;">创建SimpleExecutor实例，并且包含Configuration和transaction属性</span>
+     <strong> executor = <span style="color: #0000ff;">new</span> SimpleExecutor(<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>, transaction);</strong>
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果要求缓存，生成另一种CachingExecutor,装饰者模式,默认都是返回CachingExecutor</span>
+    <span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 二级缓存开关配置示例
+     * &lt;settings&gt;
+     *   &lt;setting name="cacheEnabled" value="true"/&gt;
+     * &lt;/settings&gt;
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (cacheEnabled) {
+      </span><span style="color: #008000;">//</span><span style="color: #008000;">CachingExecutor使用装饰器模式，将executor的功能添加上了二级缓存的功能，二级缓存会单独文章来讲</span>
+   <strong>   executor = <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> CachingExecutor(executor);</strong>
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">此处调用插件,通过插件可以改变Executor行为，此处我们后面单独文章讲</span>
+ <strong>   executor =<span style="color: #000000;"> (Executor) interceptorChain.pluginAll(executor);
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> executor;
+}</span></code></pre>
+
+<p>executor包含了Configuration和刚刚创建的Transaction，默认的执行器为SimpleExecutor，如果开启了二级缓存(默认开启)，则CachingExecutor会包装SimpleExecutor，然后依次调用拦截器的plugin方法返回一个被代理过的Executor对象。</p>
+<p>CachingExecutor 对象里面包含了刚创建的<strong>SimpleExecutor</strong>，后面文章我们会及具体讲这个类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> CachingExecutor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Executor {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Executor delegate;
+    </span><span style="color: #0000ff;">private</span> TransactionalCacheManager tcm = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TransactionalCacheManager();
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> CachingExecutor(Executor delegate) {
+        </span><strong><span style="color: #0000ff;">this</span>.delegate =</strong><span style="color: #000000;"><strong> delegate;</strong>
+        delegate.setExecutorWrapper(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<h3>构造DefaultSqlSession对象</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">new</span> DefaultSqlSession(<span style="color: #0000ff;">this</span>.configuration, executor, autoCommit);</code></pre>
+
+<p>传参configuration和刚生成的executor，我们来简单看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultSqlSession <span style="color: #0000ff;">implements</span><span style="color: #000000;"> SqlSession {
+
+  </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+   * mybatis全局配置新
+   </span><span style="color: #008000;">*/</span>
+  <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Configuration configuration;
+  </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+   * SQL执行器
+   </span><span style="color: #008000;">*/</span>
+  <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Executor executor;
+
+  </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+   * 是否自动提交
+   </span><span style="color: #008000;">*/</span>
+  <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit;
+
+  </span><span style="color: #0000ff;">private</span> List&lt;Cursor&lt;?&gt;&gt;<span style="color: #000000;"> cursorList;
+  
+  </span><span style="color: #0000ff;">public</span> DefaultSqlSession(Configuration configuration, Executor executor, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit) {
+        </span><span style="color: #0000ff;">this</span>.configuration =<span style="color: #000000;"> configuration;
+        </span><span style="color: #0000ff;">this</span>.executor =<span style="color: #000000;"> executor;
+        </span><span style="color: #0000ff;">this</span>.dirty = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.autoCommit =<span style="color: #000000;"> autoCommit;
+  }
+  
+  @Override
+  </span><span style="color: #0000ff;">public</span> &lt;T&gt;<span style="color: #000000;"> T selectOne(String statement) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.&lt;T&gt;selectOne(statement, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+  }
+
+  @Override
+  </span><span style="color: #0000ff;">public</span> &lt;T&gt;<span style="color: #000000;"> T selectOne(String statement, Object parameter) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Popular vote was to return null on 0 results and throw exception on too many.</span>
+    List&lt;T&gt; list = <span style="color: #0000ff;">this</span>.&lt;T&gt;<span style="color: #000000;">selectList(statement, parameter);
+    </span><span style="color: #0000ff;">if</span> (list.size() == 1<span style="color: #000000;">) {
+      </span><span style="color: #0000ff;">return</span> list.get(0<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (list.size() &gt; 1<span style="color: #000000;">) {
+      </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> TooManyResultsException("Expected one result (or null) to be returned by selectOne(), but found: " +<span style="color: #000000;"> list.size());
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+      </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+  }
+  @Override
+  </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.selectList(statement, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+  }
+
+  @Override
+  </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement, Object parameter) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.selectList(statement, parameter, RowBounds.DEFAULT);
+  }
+
+  @Override
+  </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement, Object parameter, RowBounds rowBounds) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+      MappedStatement ms </span>=<span style="color: #000000;"> configuration.getMappedStatement(statement);
+      </span><span style="color: #0000ff;">return</span><span style="color: #000000;"><strong> executor.query(ms, wrapCollection(parameter), rowBounds, Executor.NO_RESULT_HANDLER);</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+      </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error querying database.  Cause: " +<span style="color: #000000;"> e, e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+      ErrorContext.instance().reset();
+    }
+  }
+  
+  </span><span style="color: #008000;">//</span><span style="color: #008000;">略....update等方法</span>
+}</code></pre>
+
+<p>SqlSession的所有查询接口最后都归结位Exector的方法调用。后面文章我们来分析其调用流程</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

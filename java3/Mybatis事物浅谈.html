@@ -1,0 +1,145 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybatis事物浅谈' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybatis事物浅谈</center></div><div class='banquan'>原文出处:本文由博客园博主木卯生十木提供。<br/>
+原文连接:https://www.cnblogs.com/jxearlier/p/11676584.html</div><br>
+    <p>&nbsp; &nbsp; 本篇文章主要对Mybatis事物进行基础的介绍。先回顾JDBC事物，再了解Mybatis里面的事物应用。</p>
+<p>1.JDBC的事务管理回顾</p>
+<p>JDBC的事务管理是基于Connection对象实现的：</p>
+<p>开启事务：connection.setAutoCommit(false)</p>
+<p>提交事务：connection.commit()</p>
+<p>回滚事务：connection.rollback()</p>
+<p>2.事务的特性：ACID</p>
+<p>原子性：事务是不可分割的。一个事务里的操作，不可能成功一半</p>
+<p>一致性：事务提交前后，数据/状态是一致的</p>
+<p>隔离性：事务并发时，事务应该是互不干扰相互独立的</p>
+<p>持久性：事务一旦提交，数据就永久保存到磁盘上。</p>
+<p>3.事务并发时可能存在的问题：</p>
+<p>①脏读：一个事务里读取到另外一个事务未提交的数据。</p>
+<p>②不可重复读：一个事务里，多次读取的数据不一致。是受到了其它事务update的干扰。</p>
+<p>③虚读/幻读：一个事务里，多次读取的数据不一致。是受到了其它事务insert、delete干扰事务之间的隔离级别不够高，会导致事务并发问题。</p>
+<p>&nbsp; 使用隔离级别解决事务并发问题</p>
+<table style="width: 415px;" border="0" cellspacing="0" cellpadding="0">
+<thead>
+<tr>
+<td width="141">
+<p>隔离级别</p>
+</td>
+<td width="66">
+<p>脏读</p>
+</td>
+<td width="113">
+<p>不可重复读</p>
+</td>
+<td width="94">
+<p>虚读</p>
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width="141">
+<p>read uncommitted</p>
+</td>
+<td width="66">
+<p>有</p>
+</td>
+<td width="113">
+<p>有</p>
+</td>
+<td width="94">
+<p>有</p>
+</td>
+</tr>
+<tr>
+<td width="141">
+<p>read committed</p>
+</td>
+<td width="66">
+<p>无</p>
+</td>
+<td width="113">
+<p>有</p>
+</td>
+<td width="94">
+<p>有</p>
+</td>
+</tr>
+<tr>
+<td width="141">
+<p>repeatable read</p>
+</td>
+<td width="66">
+<p>无</p>
+</td>
+<td width="113">
+<p>无</p>
+</td>
+<td width="94">
+<p>有</p>
+</td>
+</tr>
+<tr>
+<td width="141">
+<p>serializable</p>
+</td>
+<td width="66">
+<p>无</p>
+</td>
+<td width="113">
+<p>无</p>
+</td>
+<td width="94">
+<p>无</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>两种事物管理的方式：<span style="color: #ff0000;">手动提交</span>与<span style="color: #ff0000;">自动提交</span>（实际开发中是交给sping控制与我们无关了），增.删.改需要事物,查不需要。</p>
+<p>Mybatis的<span style="color: #ff0000;">是对JDBC的封装，所以Mybatis在本质上也是基于Connection对象实现的事务管理，只是把管理的代码封装起来了，是使用SqlSession对象进行事务管理的</span>。</p>
+<p>1.默认事务管理方式，默认情况下，我们使用工厂对象的openSession()方法得到的SqlSession对象，是关闭了事务自动提交的，即：默认情况下，SqlSession是开启了事务的，需要手动提交。</p>
+<p>&nbsp;&nbsp;&nbsp; 　①获取session对象：factory.openSession()</p>
+<p>　　②操作完数据库之后，需要手动提交事务：sqlSession.commit();</p>
+<p>　　③如果要回滚事务，就使用方法：sqlSession.rollback();&nbsp;</p>
+<p>2自动提交事务实现，Mybatis也支持自动提交事务，操作方法如下：</p>
+<p>&nbsp; &nbsp; &nbsp; ①获取SqlSession对象：factory.openSession(true)</p>
+<p>&nbsp; &nbsp; &nbsp; ②操作数据库，事务会自动提交</p>
+<p>&nbsp; &nbsp; &nbsp; ③自动提交事务openSession(true)</p>
+<p>自动提交事务_映射器实现类方式_<span style="color: #ff0000;">实现类</span>_例：</p>
+<src class="cnblogs_code">
+<pre><code>1 @Override
+2 public void save(User user) {
+3     SqlSession session = factory.openSession(<span style="color: #ff0000;">true</span>);<span style="color: #339966;">//自动提交了事物</span>
+4     session.insert("com.jxjdemo.dao.UserDao.save",user);
+5     session.close();<span style="color: #339966;">//关闭流，释放资源</span>
+6 }</code></pre>
+
+<p>手动提交事务_映射器配置文件方式_<span style="color: #ff0000;">测试类</span>_例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #000000;"> @Test
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testDelete(){  
+</span><span style="color: #008080;">3</span>         userDao.delete(57<span style="color: #000000;">);
+</span><span style="color: #008080;">4</span>         session.<span style="color: #ff0000;">commit()</span>;  <span style="color: #008000;">//手动</span><span style="color: #008000;">提交事务</span>
+<span style="color: #008080;">5</span>     }</code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

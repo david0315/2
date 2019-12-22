@@ -1,0 +1,642 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JDK1.8新特性——Collector接口和Collectors工具类' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JDK1.8新特性——Collector接口和Collectors工具类</center></div><div class='banquan'>原文出处:本文由博客园博主鲨猫提供。<br/>
+原文连接:https://www.cnblogs.com/shamao/p/11828204.html</div><br>
+    <h1>JDK1.8新特性&mdash;&mdash;Collector接口和Collectors工具类</h1>
+<p>摘要：本文主要学习了在Java1.8中新增的Collector接口和Collectors工具类，以及使用它们在处理集合时的改进和优化。</p>
+<p>部分内容来自以下博客：</p>
+<p>https://www.jianshu.com/p/7eaa0969b424</p>
+<h2>流式处理</h2>
+<p>JDK1.8中新增的流式处理提供了一种高效且易于使用的处理数据的方式，它可以对集合执行非常复杂的查找、过滤和映射数据等操作，极大的简化了对于集合的使用。借助流式处理，可以像使用SQL语句一样对集合进行操作。</p>
+<p>JDK1.8通过内部迭代来实现对流的处理，一个流式处理可以分为三个部分：转换成流、中间操作、终止操作。</p>
+<h3>转换成流</h3>
+<p>对于集合，可以使用集合类中的stream()方法或者parallelStream()方法将集合转换成流。</p>
+<h3>中间操作</h3>
+<p>中间操作可以对流进行处理并返回处理后的流对象，多个中间操作可以连接起来形成一个流水线，直到执行终止操作结束流的执行。</p>
+<h3>终止操作</h3>
+<p>终止操作会对经过中间操作后得到的流进行处理，返回任何不是流的数据。</p>
+<h2>Collector接口</h2>
+<p>在对流进行的终止操作中，有一个方法是collect，其作用是收集元素并进行处理，最终返回处理后的非流对象。</p>
+<p>查看其方法定义如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> &lt;R, A&gt; R collect(Collector&lt;? <span style="color: #0000ff;">super</span> T, A, R&gt; collector);</code></pre>
+
+<p>可以看到，collect方法要求传入一个Collector接口的实例对象，Collector可以看做是用来处理流的工具，在Collectors里面封装了很多Collector工具。</p>
+<h3>全局变量</h3>
+<p>Collector主要包含五个参数，它的行为也是由这五个参数来定义的，如下所示：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> supplier参数用于生成结果容器，容器类型为A。</span>
+<span style="color: #008080;"> 2</span> Supplier&lt;A&gt;<span style="color: #000000;"> supplier();
+</span><span style="color: #008080;"> 3</span> <span style="color: #008000;">//</span><span style="color: #008000;"> accumulator用于归纳元素，泛型T就是元素，它会将流中的元素同结果容器A发生操作。</span>
+<span style="color: #008080;"> 4</span> BiConsumer&lt;A, T&gt;<span style="color: #000000;"> accumulator();
+</span><span style="color: #008080;"> 5</span> <span style="color: #008000;">//</span><span style="color: #008000;"> combiner用于合并两个并行执行的结果，将其合并为最终结果A。</span>
+<span style="color: #008080;"> 6</span> BinaryOperator&lt;A&gt;<span style="color: #000000;"> combiner();
+</span><span style="color: #008080;"> 7</span> <span style="color: #008000;">//</span><span style="color: #008000;"> finisher用于将之前完整的结果R转为A。</span>
+<span style="color: #008080;"> 8</span> Function&lt;A, R&gt;<span style="color: #000000;"> finisher();
+</span><span style="color: #008080;"> 9</span> <span style="color: #008000;">//</span><span style="color: #008000;"> characteristics表示当前Collector的特征值，是一个不可变的Set。</span>
+<span style="color: #008080;">10</span> Set&lt;Characteristics&gt; characteristics();</code></pre>
+
+<h3>枚举</h3>
+<p>Characteristics这个特征值是一个枚举：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"> Characteristics {
+</span><span style="color: #008080;">2</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 多线程并行。</span>
+<span style="color: #008080;">3</span> <span style="color: #000000;">    CONCURRENT,
+</span><span style="color: #008080;">4</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 无序。</span>
+<span style="color: #008080;">5</span> <span style="color: #000000;">    UNORDERED,
+</span><span style="color: #008080;">6</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 无需转换结果。</span>
+<span style="color: #008080;">7</span> <span style="color: #000000;">    IDENTITY_FINISH
+</span><span style="color: #008080;">8</span> }</code></pre>
+
+<h3>构造方法</h3>
+<p>Collector拥有两个of方法用于生成Collector实例，其中一个拥有上面所有五个参数，另一个四个参数，不包括finisher参数。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 四参方法，用于生成一个Collector，T代表流中的元素，R代表最终的结果。因为没有finisher参数，所以需要有IDENTITY_FINISH特征值。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span>&lt;T, R&gt; Collector&lt;T, R, R&gt; of(Supplier&lt;R&gt;<span style="color: #000000;"> supplier,
+</span><span style="color: #008080;"> 3</span>                                           BiConsumer&lt;R, T&gt;<span style="color: #000000;"> accumulator,
+</span><span style="color: #008080;"> 4</span>                                           BinaryOperator&lt;R&gt;<span style="color: #000000;"> combiner,
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">                                          Characteristics... characteristics) {
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    Objects.requireNonNull(supplier);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    Objects.requireNonNull(accumulator);
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">    Objects.requireNonNull(combiner);
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">    Objects.requireNonNull(characteristics);
+</span><span style="color: #008080;">10</span>     Set&lt;Characteristics&gt; cs = (characteristics.length == 0<span style="color: #000000;">)
+</span><span style="color: #008080;">11</span>                               ?<span style="color: #000000;"> Collectors.CH_ID
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">                              : Collections.unmodifiableSet(EnumSet.of(Collector.Characteristics.IDENTITY_FINISH,
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">                                                                       characteristics));
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> Collectors.CollectorImpl&lt;&gt;<span style="color: #000000;">(supplier, accumulator, combiner, cs);
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 五参方法，用于生成一个Collector，T代表流中的元素，A代表中间结果，R代表最终结果，finisher用于将A转换为R。</span>
+<span style="color: #008080;">18</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span>&lt;T, A, R&gt; Collector&lt;T, A, R&gt; of(Supplier&lt;A&gt;<span style="color: #000000;"> supplier,
+</span><span style="color: #008080;">19</span>                                              BiConsumer&lt;A, T&gt;<span style="color: #000000;"> accumulator,
+</span><span style="color: #008080;">20</span>                                              BinaryOperator&lt;A&gt;<span style="color: #000000;"> combiner,
+</span><span style="color: #008080;">21</span>                                              Function&lt;A, R&gt;<span style="color: #000000;"> finisher,
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">                                             Characteristics... characteristics) {
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">    Objects.requireNonNull(supplier);
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">    Objects.requireNonNull(accumulator);
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">    Objects.requireNonNull(combiner);
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    Objects.requireNonNull(finisher);
+</span><span style="color: #008080;">27</span> <span style="color: #000000;">    Objects.requireNonNull(characteristics);
+</span><span style="color: #008080;">28</span>     Set&lt;Characteristics&gt; cs =<span style="color: #000000;"> Collectors.CH_NOID;
+</span><span style="color: #008080;">29</span>     <span style="color: #0000ff;">if</span> (characteristics.length &gt; 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">30</span>         cs = EnumSet.noneOf(Characteristics.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">        Collections.addAll(cs, characteristics);
+</span><span style="color: #008080;">32</span>         cs =<span style="color: #000000;"> Collections.unmodifiableSet(cs);
+</span><span style="color: #008080;">33</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">34</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> Collectors.CollectorImpl&lt;&gt;<span style="color: #000000;">(supplier, accumulator, combiner, finisher, cs);
+</span><span style="color: #008080;">35</span> }</code></pre>
+
+<h2>Collectors工具类</h2>
+<p>Collectors是一个工具类，是JDK预实现Collector的工具类，它内部提供了多种Collector。</p>
+<h3>toCollection方法</h3>
+<p>将流中的元素全部放置到一个集合中返回，这里使用Collection，泛指多种集合。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, C <span style="color: #0000ff;">extends</span> Collection&lt;T&gt;&gt; Collector&lt;T, ?, C&gt; toCollection(Supplier&lt;C&gt;<span style="color: #000000;"> collectionFactory) {
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">3</span>             collectionFactory, Collection&lt;T&gt;<span style="color: #000000;">::add,
+</span><span style="color: #008080;">4</span>             (r1, r2) -&gt; { r1.addAll(r2); <span style="color: #0000ff;">return</span><span style="color: #000000;"> r1; }, 
+</span><span style="color: #008080;">5</span> <span style="color: #000000;">            CH_ID);
+</span><span style="color: #008080;">6</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     LinkedList&lt;String&gt; newList = list.stream().collect(Collectors.toCollection(LinkedList::<span style="color: #0000ff;">new</span><span style="color: #000000;">));
+</span><span style="color: #008080;">5</span>     System.out.println(newList);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">6</span> }</code></pre>
+
+<h3>toList方法</h3>
+<p>将流中的元素放置到一个List集合中返回，默认为ArrayList。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt;
+<span style="color: #008080;">2</span> Collector&lt;T, ?, List&lt;T&gt;&gt;<span style="color: #000000;"> toList() {
+</span><span style="color: #008080;">3</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">4</span>             (Supplier&lt;List&lt;T&gt;&gt;) ArrayList::<span style="color: #0000ff;">new</span><span style="color: #000000;">, List::add,
+</span><span style="color: #008080;">5</span>             (left, right) -&gt; { left.addAll(right); <span style="color: #0000ff;">return</span><span style="color: #000000;"> left; },
+</span><span style="color: #008080;">6</span> <span style="color: #000000;">            CH_ID);
+</span><span style="color: #008080;">7</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     List&lt;String&gt; newList =<span style="color: #000000;"> list.stream().collect(Collectors.toList());
+</span><span style="color: #008080;">5</span>     System.out.println(newList);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">6</span> }</code></pre>
+
+<h3>toSet方法</h3>
+<p>将流中的元素放置到一个Set集合中返回，默认为HashSet。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Set&lt;T&gt;&gt;<span style="color: #000000;"> toSet() {
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">3</span>             (Supplier&lt;Set&lt;T&gt;&gt;) HashSet::<span style="color: #0000ff;">new</span><span style="color: #000000;">, Set::add,
+</span><span style="color: #008080;">4</span>             (left, right) -&gt; { left.addAll(right); <span style="color: #0000ff;">return</span><span style="color: #000000;"> left; },
+</span><span style="color: #008080;">5</span> <span style="color: #000000;">            CH_UNORDERED_ID);
+</span><span style="color: #008080;">6</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     Set&lt;String&gt; newSet =<span style="color: #000000;"> list.stream().collect(Collectors.toSet());
+</span><span style="color: #008080;">5</span>     System.out.println(newSet);<span style="color: #008000;">//</span><span style="color: #008000;"> [100, 123, 521, 345, 228, 838, 250]</span>
+<span style="color: #008080;">6</span> }</code></pre>
+
+<h3>toMap方法</h3>
+<p>根据传入的键生成器和值生成器，将生成的键和值保存到一个Map中返回，键和值的生成都依赖于元素，可以指定出现重复键时的处理方案和保存结果的Map。</p>
+<p>还有支持并发toConcurrentMap方法，同样有三种重载方法，与toMap基本一致，只是它最后使用的Map是并发ConcurrentHashMap。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 指定键和值的生成方式，遇到键冲突的情况默认抛出异常，默认使用HashMap。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K, U&gt; Collector&lt;T, ?, Map&lt;K,U&gt;&gt;<span style="color: #000000;"> toMap(
+</span><span style="color: #008080;"> 3</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> keyMapper,
+</span><span style="color: #008080;"> 4</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> U&gt;<span style="color: #000000;"> valueMapper) {
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">return</span> toMap(keyMapper, valueMapper, throwingMerger(), HashMap::<span style="color: #0000ff;">new</span><span style="color: #000000;">);
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 7</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 指定键和值的生成方式，遇到键冲突的情况使用传入的方法处理，默认使用HashMap。</span>
+<span style="color: #008080;"> 8</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K, U&gt; Collector&lt;T, ?, Map&lt;K,U&gt;&gt;<span style="color: #000000;"> toMap(
+</span><span style="color: #008080;"> 9</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> keyMapper,
+</span><span style="color: #008080;">10</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> U&gt;<span style="color: #000000;"> valueMapper,
+</span><span style="color: #008080;">11</span>             BinaryOperator&lt;U&gt;<span style="color: #000000;"> mergeFunction) {
+</span><span style="color: #008080;">12</span>     <span style="color: #0000ff;">return</span> toMap(keyMapper, valueMapper, mergeFunction, HashMap::<span style="color: #0000ff;">new</span><span style="color: #000000;">);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">14</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 指定键和值的生成方式，遇到键冲突的情况使用传入的方法处理，使用传入的Map类型返回数据。前两种方式最终还是调用此方法来返回Map数据。</span>
+<span style="color: #008080;">15</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K, U, M <span style="color: #0000ff;">extends</span> Map&lt;K, U&gt;&gt; Collector&lt;T, ?, M&gt;<span style="color: #000000;"> toMap(
+</span><span style="color: #008080;">16</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> keyMapper,
+</span><span style="color: #008080;">17</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> U&gt;<span style="color: #000000;"> valueMapper,
+</span><span style="color: #008080;">18</span>             BinaryOperator&lt;U&gt;<span style="color: #000000;"> mergeFunction,
+</span><span style="color: #008080;">19</span>             Supplier&lt;M&gt;<span style="color: #000000;"> mapSupplier) {
+</span><span style="color: #008080;">20</span>     BiConsumer&lt;M, T&gt; accumulator = (map, element) -&gt;<span style="color: #000000;"> map.merge(
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">            keyMapper.apply(element), 
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">            valueMapper.apply(element), 
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">            mergeFunction);
+</span><span style="color: #008080;">24</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(mapSupplier, accumulator, mapMerger(mergeFunction), CH_ID);
+</span><span style="color: #008080;">25</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     Map&lt;String, String&gt; newMap = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]
+</span><span style="color: #008080;"> 5</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 123和100的键都是1，导致冲突，默认抛出异常，使用limit截取前两个元素。</span>
+<span style="color: #008080;"> 6</span>     newMap = list.stream().limit(2).collect(Collectors.toMap(e -&gt; e.substring(0, 1), e -&gt;<span style="color: #000000;"> e));
+</span><span style="color: #008080;"> 7</span>     System.out.println(newMap);<span style="color: #008000;">//</span><span style="color: #008000;"> {1=123, 5=521}
+</span><span style="color: #008080;"> 8</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 传入主键冲突时的处理方法，保留先插入的值，默认使用HashMap，对主键由小到大排序。</span>
+<span style="color: #008080;"> 9</span>     newMap = list.stream().collect(Collectors.toMap(e -&gt; e.substring(0, 1), e -&gt; e, (m, n) -&gt;<span style="color: #000000;"> m));
+</span><span style="color: #008080;">10</span>     System.out.println(newMap);<span style="color: #008000;">//</span><span style="color: #008000;"> {1=123, 2=228, 3=345, 5=521, 8=838}
+</span><span style="color: #008080;">11</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 传入主键冲突时的处理方法，保留新插入的值，默认使用LinkedHashMap，对主键按照插入顺序排序。</span>
+<span style="color: #008080;">12</span>     newMap = list.stream().collect(Collectors.toMap(e -&gt; e.substring(0, 1), e -&gt; e, (m, n) -&gt; n, LinkedHashMap::<span style="color: #0000ff;">new</span><span style="color: #000000;">));
+</span><span style="color: #008080;">13</span>     System.out.println(newMap);<span style="color: #008000;">//</span><span style="color: #008000;"> {1=100, 5=521, 2=250, 8=838, 3=345}</span>
+<span style="color: #008080;">14</span> }</code></pre>
+
+<h3>joining方法</h3>
+<p>将流中的元素全部以字符串的方式连接到一起，可以指定连接符，也可以指定前后缀。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 将流中的元素全部以字符串的方式连接到一起，不使用连接符，也不指定前后缀。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Collector&lt;CharSequence, ?, String&gt;<span style="color: #000000;"> joining() {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;CharSequence, StringBuilder, String&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 4</span>             StringBuilder::<span style="color: #0000ff;">new</span><span style="color: #000000;">, StringBuilder::append,
+</span><span style="color: #008080;"> 5</span>             (r1, r2) -&gt; { r1.append(r2); <span style="color: #0000ff;">return</span><span style="color: #000000;"> r1; },
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">            StringBuilder::toString, CH_NOID);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 8</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 将流中的元素全部以字符串的方式连接到一起，使用指定的连接符，不指定前后缀。</span>
+<span style="color: #008080;"> 9</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Collector&lt;CharSequence, ?, String&gt;<span style="color: #000000;"> joining(CharSequence delimiter) {
+</span><span style="color: #008080;">10</span>     <span style="color: #0000ff;">return</span> joining(delimiter, "", ""<span style="color: #000000;">);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">12</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 将流中的元素全部以字符串的方式连接到一起，使用指定的连接符，使用指定的前后缀。</span>
+<span style="color: #008080;">13</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Collector&lt;CharSequence, ?, String&gt;<span style="color: #000000;"> joining(CharSequence delimiter,
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                                                         CharSequence prefix,
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                                                         CharSequence suffix) {
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">17</span>             () -&gt; <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringJoiner(delimiter, prefix, suffix),
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">            StringJoiner::add, StringJoiner::merge,
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            StringJoiner::toString, CH_NOID);
+</span><span style="color: #008080;">20</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     String str = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 5</span>     str =<span style="color: #000000;"> list.stream().collect(Collectors.joining());
+</span><span style="color: #008080;"> 6</span>     System.out.println(str);<span style="color: #008000;">//</span><span style="color: #008000;"> 123521100228838250345</span>
+<span style="color: #008080;"> 7</span>     str = list.stream().collect(Collectors.joining("-"<span style="color: #000000;">));
+</span><span style="color: #008080;"> 8</span>     System.out.println(str);<span style="color: #008000;">//</span><span style="color: #008000;"> 123-521-100-228-838-250-345</span>
+<span style="color: #008080;"> 9</span>     str = list.stream().collect(Collectors.joining("-", "&lt;", "&gt;"<span style="color: #000000;">));
+</span><span style="color: #008080;">10</span>     System.out.println(str);<span style="color: #008000;">//</span><span style="color: #008000;"> &lt;123-521-100-228-838-250-345&gt;</span>
+<span style="color: #008080;">11</span> }</code></pre>
+
+<h3>mapping方法</h3>
+<p>将流中的元素按照传入的方法进行处理，并将结果按照指定的格式返回。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, U, A, R&gt;
+<span style="color: #008080;"> 2</span> Collector&lt;T, ?, R&gt;<span style="color: #000000;"> mapping(
+</span><span style="color: #008080;"> 3</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> U&gt;<span style="color: #000000;"> mapper,
+</span><span style="color: #008080;"> 4</span>             Collector&lt;? <span style="color: #0000ff;">super</span> U, A, R&gt;<span style="color: #000000;"> downstream) {
+</span><span style="color: #008080;"> 5</span>     BiConsumer&lt;A, ? <span style="color: #0000ff;">super</span> U&gt; downstreamAccumulator =<span style="color: #000000;"> downstream.accumulator();
+</span><span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">            downstream.supplier(),
+</span><span style="color: #008080;"> 8</span>             (r, t) -&gt;<span style="color: #000000;"> downstreamAccumulator.accept(r, mapper.apply(t)),
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">            downstream.combiner(),
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            downstream.finisher(),
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">            downstream.characteristics());
+</span><span style="color: #008080;">12</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;Score&gt; scoreList = <span style="color: #0000ff;">new</span> ArrayList&lt;Score&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">3</span>     scoreList.add(<span style="color: #0000ff;">new</span> Score("2019", "10", "张三", 1<span style="color: #000000;">));
+</span><span style="color: #008080;">4</span>     scoreList.add(<span style="color: #0000ff;">new</span> Score("2019", "11", "李四", 1<span style="color: #000000;">));
+</span><span style="color: #008080;">5</span>     scoreList.add(<span style="color: #0000ff;">new</span> Score("2019", "12", "王五", 1<span style="color: #000000;">));
+</span><span style="color: #008080;">6</span>     List&lt;String&gt; names =<span style="color: #000000;"> scoreList.stream().collect(Collectors.mapping(Score::getName, Collectors.toList()));
+</span><span style="color: #008080;">7</span>     System.out.println(names);<span style="color: #008000;">//</span><span style="color: #008000;"> [张三, 李四, 王五]</span>
+<span style="color: #008080;">8</span> }</code></pre>
+
+<h3>collectingAndThen方法</h3>
+<p>该方法是按照传入的collector处理完之后，对归纳的结果进行再处理。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span>&lt;T,A,R,RR&gt; Collector&lt;T,A,RR&gt;<span style="color: #000000;"> collectingAndThen(
+</span><span style="color: #008080;"> 2</span>             Collector&lt;T,A,R&gt;<span style="color: #000000;"> downstream,
+</span><span style="color: #008080;"> 3</span>             Function&lt;R,RR&gt;<span style="color: #000000;"> finisher) {
+</span><span style="color: #008080;"> 4</span>     Set&lt;Collector.Characteristics&gt; characteristics =<span style="color: #000000;"> downstream.characteristics();
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (characteristics.contains(Collector.Characteristics.IDENTITY_FINISH)) {
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">if</span> (characteristics.size() == 1<span style="color: #000000;">)
+</span><span style="color: #008080;"> 7</span>             characteristics =<span style="color: #000000;"> Collectors.CH_NOID;
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 9</span>             characteristics =<span style="color: #000000;"> EnumSet.copyOf(characteristics);
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            characteristics.remove(Collector.Characteristics.IDENTITY_FINISH);
+</span><span style="color: #008080;">11</span>             characteristics =<span style="color: #000000;"> Collections.unmodifiableSet(characteristics);
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(downstream.supplier(),
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                               downstream.accumulator(),
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">                               downstream.combiner(),
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                               downstream.finisher().andThen(finisher),
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">                               characteristics);
+</span><span style="color: #008080;">19</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     Integer size =<span style="color: #000000;"> list.stream().collect(Collectors.collectingAndThen(Collectors.toList(), List::size));
+</span><span style="color: #008080;">5</span>     System.out.println(size);<span style="color: #008000;">//</span><span style="color: #008000;"> 7</span>
+<span style="color: #008080;">6</span> }</code></pre>
+
+<h3>counting方法</h3>
+<p>该方法主要用来计数。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Long&gt;<span style="color: #000000;"> counting() {
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">return</span> reducing(0L, e -&gt; 1L<span style="color: #000000;">, Long::sum);
+</span><span style="color: #008080;">3</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     Long count =<span style="color: #000000;"> list.stream().collect(Collectors.counting());
+</span><span style="color: #008080;">5</span>     System.out.println(count);<span style="color: #008000;">//</span><span style="color: #008000;"> 7</span>
+<span style="color: #008080;">6</span> }</code></pre>
+
+<h3>reducing方法</h3>
+<p>对流中的元素做统计归纳，有三个重载方法，和Stream里的三个reduce方法对应，二者是可以替换使用的，作用完全一致。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 返回一个可以直接产生Optional类型结果的Collector，没有初始值。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Optional&lt;T&gt;&gt; reducing(BinaryOperator&lt;T&gt;<span style="color: #000000;"> op) {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">class</span> OptionalBox <span style="color: #0000ff;">implements</span> Consumer&lt;T&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;"> 4</span>         T value = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">boolean</span> present = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">        @Override
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> accept(T t) {
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (present) {
+</span><span style="color: #008080;">10</span>                 value =<span style="color: #000000;"> op.apply(value, t);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">13</span>                 value =<span style="color: #000000;"> t;
+</span><span style="color: #008080;">14</span>                 present = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">18</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;T, OptionalBox, Optional&lt;T&gt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">19</span>             OptionalBox::<span style="color: #0000ff;">new</span><span style="color: #000000;">, OptionalBox::accept,
+</span><span style="color: #008080;">20</span>             (a, b) -&gt; { <span style="color: #0000ff;">if</span> (b.present) a.accept(b.value); <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">21</span>             a -&gt;<span style="color: #000000;"> Optional.ofNullable(a.value), CH_NOID);
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">23</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 返回一个可以直接产生结果的Collector，指定初始值。</span>
+<span style="color: #008080;">24</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, T&gt; reducing(T identity, BinaryOperator&lt;T&gt;<span style="color: #000000;"> op) {
+</span><span style="color: #008080;">25</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">            boxSupplier(identity),
+</span><span style="color: #008080;">27</span>             (a, t) -&gt; { a[0] = op.apply(a[0<span style="color: #000000;">], t); },
+</span><span style="color: #008080;">28</span>             (a, b) -&gt; { a[0] = op.apply(a[0], b[0]); <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">29</span>             a -&gt; a[0<span style="color: #000000;">],
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">            CH_NOID);
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">32</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 返回一个可以直接产生结果的Collector，指定初始值，在返回结果之前先使用传入的方法将流进行转换。</span>
+<span style="color: #008080;">33</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, U&gt; Collector&lt;T, ?, U&gt;<span style="color: #000000;"> reducing(
+</span><span style="color: #008080;">34</span> <span style="color: #000000;">            U identity,
+</span><span style="color: #008080;">35</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> U&gt;<span style="color: #000000;"> mapper,
+</span><span style="color: #008080;">36</span>             BinaryOperator&lt;U&gt;<span style="color: #000000;"> op) {
+</span><span style="color: #008080;">37</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">38</span> <span style="color: #000000;">            boxSupplier(identity),
+</span><span style="color: #008080;">39</span>             (a, t) -&gt; { a[0] = op.apply(a[0<span style="color: #000000;">], mapper.apply(t)); },
+</span><span style="color: #008080;">40</span>             (a, b) -&gt; { a[0] = op.apply(a[0], b[0]); <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">41</span>             a -&gt; a[0<span style="color: #000000;">], CH_NOID);
+</span><span style="color: #008080;">42</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 4</span>     Optional&lt;Integer&gt; optional = list.stream().limit(4<span style="color: #000000;">).map(String::length).collect(Collectors.reducing(Integer::sum));
+</span><span style="color: #008080;"> 5</span>     System.out.println(optional);<span style="color: #008000;">//</span><span style="color: #008000;"> Optional[12]</span>
+<span style="color: #008080;"> 6</span>     Integer integer = list.stream().limit(3).map(String::length).collect(Collectors.reducing(0<span style="color: #000000;">, Integer::sum));
+</span><span style="color: #008080;"> 7</span>     System.out.println(integer);<span style="color: #008000;">//</span><span style="color: #008000;"> 9</span>
+<span style="color: #008080;"> 8</span>     Integer sum = list.stream().limit(4).collect(Collectors.reducing(0<span style="color: #000000;">, String::length, Integer::sum));
+</span><span style="color: #008080;"> 9</span>     System.out.println(sum);<span style="color: #008000;">//</span><span style="color: #008000;"> 12</span>
+<span style="color: #008080;">10</span> }</code></pre>
+
+<h3>minBy方法和maxBy方法</h3>
+<p>生成一个用于获取最小值或者最大值的Optional结果的Collector。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Optional&lt;T&gt;&gt; minBy(Comparator&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> comparator) {
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> reducing(BinaryOperator.minBy(comparator));
+</span><span style="color: #008080;">3</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">4</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Optional&lt;T&gt;&gt; maxBy(Comparator&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> comparator) {
+</span><span style="color: #008080;">5</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> reducing(BinaryOperator.maxBy(comparator));
+</span><span style="color: #008080;">6</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     Optional&lt;String&gt; max = list.stream().collect(Collectors.maxBy((m, n) -&gt; Integer.valueOf(m) -<span style="color: #000000;"> Integer.valueOf(n)));
+</span><span style="color: #008080;">5</span>     System.out.println(max);<span style="color: #008000;">//</span><span style="color: #008000;"> Optional[838]</span>
+<span style="color: #008080;">6</span>     Optional&lt;String&gt; min = list.stream().collect(Collectors.minBy((m, n) -&gt; Integer.valueOf(m) -<span style="color: #000000;"> Integer.valueOf(n)));
+</span><span style="color: #008080;">7</span>     System.out.println(min);<span style="color: #008000;">//</span><span style="color: #008000;"> Optional[100]</span>
+<span style="color: #008080;">8</span> }</code></pre>
+
+<h3>summingInt方法、summingLong方法和summingDouble方法</h3>
+<p>生成一个用于求元素和的Collector，首先将元素转换类型，然后再求和。</p>
+<p>参数的作用就是将元素转换为指定的类型，最后结果与转换后类型一致。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Integer&gt; summingInt(ToIntFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 3</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">int</span>[1<span style="color: #000000;">],
+</span><span style="color: #008080;"> 4</span>             (a, t) -&gt; { a[0] +=<span style="color: #000000;"> mapper.applyAsInt(t); },
+</span><span style="color: #008080;"> 5</span>             (a, b) -&gt; { a[0] += b[0]; <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;"> 6</span>             a -&gt; a[0<span style="color: #000000;">], CH_NOID);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 8</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Long&gt; summingLong(ToLongFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">10</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">long</span>[1<span style="color: #000000;">],
+</span><span style="color: #008080;">11</span>             (a, t) -&gt; { a[0] +=<span style="color: #000000;"> mapper.applyAsLong(t); },
+</span><span style="color: #008080;">12</span>             (a, b) -&gt; { a[0] += b[0]; <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">13</span>             a -&gt; a[0<span style="color: #000000;">], CH_NOID);
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">15</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Double&gt; summingDouble(ToDoubleFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">17</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">double</span>[3<span style="color: #000000;">],
+</span><span style="color: #008080;">18</span>             (a, t) -&gt;<span style="color: #000000;"> { sumWithCompensation(a, mapper.applyAsDouble(t));
+</span><span style="color: #008080;">19</span>                         a[2] +=<span style="color: #000000;"> mapper.applyAsDouble(t); },
+</span><span style="color: #008080;">20</span>             (a, b) -&gt; { sumWithCompensation(a, b[0<span style="color: #000000;">]);
+</span><span style="color: #008080;">21</span>                         a[2] += b[2]; <span style="color: #0000ff;">return</span> sumWithCompensation(a, b[1<span style="color: #000000;">]); },
+</span><span style="color: #008080;">22</span>             a -&gt;<span style="color: #000000;"> computeFinalSum(a), CH_NOID);
+</span><span style="color: #008080;">23</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 4</span>     Integer intCollect =<span style="color: #000000;"> list.stream().collect(Collectors.summingInt(Integer::parseInt));
+</span><span style="color: #008080;"> 5</span>     System.out.println(intCollect);<span style="color: #008000;">//</span><span style="color: #008000;"> 2405</span>
+<span style="color: #008080;"> 6</span>     Long longCollect =<span style="color: #000000;"> list.stream().collect(Collectors.summingLong(Long::parseLong));
+</span><span style="color: #008080;"> 7</span>     System.out.println(longCollect);<span style="color: #008000;">//</span><span style="color: #008000;"> 2405</span>
+<span style="color: #008080;"> 8</span>     Double doubleCollect =<span style="color: #000000;"> list.stream().collect(Collectors.summingDouble(Double::parseDouble));
+</span><span style="color: #008080;"> 9</span>     System.out.println(doubleCollect);<span style="color: #008000;">//</span><span style="color: #008000;"> 2405.0</span>
+<span style="color: #008080;">10</span> }</code></pre>
+
+<h3>summarizingInt方法、summarizingLong方法和summarizingDouble方法</h3>
+<p>这三个方法适用于汇总的，返回值分别是IntSummaryStatistics、LongSummaryStatistics和DoubleSummaryStatistics。</p>
+<p>在这些返回值中包含有流中元素的指定结果的数量、和、最大值、最小值、平均值。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, IntSummaryStatistics&gt; summarizingInt(ToIntFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;T, IntSummaryStatistics, IntSummaryStatistics&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 3</span>             IntSummaryStatistics::<span style="color: #0000ff;">new</span><span style="color: #000000;">,
+</span><span style="color: #008080;"> 4</span>             (r, t) -&gt;<span style="color: #000000;"> r.accept(mapper.applyAsInt(t)),
+</span><span style="color: #008080;"> 5</span>             (l, r) -&gt; { l.combine(r); <span style="color: #0000ff;">return</span><span style="color: #000000;"> l; }, CH_ID);
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 7</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, LongSummaryStatistics&gt; summarizingLong(ToLongFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;T, LongSummaryStatistics, LongSummaryStatistics&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 9</span>             LongSummaryStatistics::<span style="color: #0000ff;">new</span><span style="color: #000000;">,
+</span><span style="color: #008080;">10</span>             (r, t) -&gt;<span style="color: #000000;"> r.accept(mapper.applyAsLong(t)),
+</span><span style="color: #008080;">11</span>             (l, r) -&gt; { l.combine(r); <span style="color: #0000ff;">return</span><span style="color: #000000;"> l; }, CH_ID);
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">13</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, DoubleSummaryStatistics&gt; summarizingDouble(ToDoubleFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;T, DoubleSummaryStatistics, DoubleSummaryStatistics&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">15</span>             DoubleSummaryStatistics::<span style="color: #0000ff;">new</span><span style="color: #000000;">,
+</span><span style="color: #008080;">16</span>             (r, t) -&gt;<span style="color: #000000;"> r.accept(mapper.applyAsDouble(t)),
+</span><span style="color: #008080;">17</span>             (l, r) -&gt; { l.combine(r); <span style="color: #0000ff;">return</span><span style="color: #000000;"> l; }, CH_ID);
+</span><span style="color: #008080;">18</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 4</span>     IntSummaryStatistics intSummaryStatistics =<span style="color: #000000;"> list.stream().collect(Collectors.summarizingInt(Integer::parseInt));
+</span><span style="color: #008080;"> 5</span>     System.out.println(intSummaryStatistics);<span style="color: #008000;">//</span><span style="color: #008000;"> {count=7, sum=2405, min=100, average=343.571429, max=838}</span>
+<span style="color: #008080;"> 6</span>     LongSummaryStatistics longSummaryStatistics =<span style="color: #000000;"> list.stream().collect(Collectors.summarizingLong(Long::parseLong));
+</span><span style="color: #008080;"> 7</span>     System.out.println(longSummaryStatistics);<span style="color: #008000;">//</span><span style="color: #008000;"> {count=7, sum=2405, min=100, average=343.571429, max=838}</span>
+<span style="color: #008080;"> 8</span>     DoubleSummaryStatistics doubleSummaryStatistics =<span style="color: #000000;"> list.stream().collect(Collectors.summarizingDouble(Double::parseDouble));
+</span><span style="color: #008080;"> 9</span>     System.out.println(doubleSummaryStatistics);<span style="color: #008000;">//</span><span style="color: #008000;"> {count=7, sum=2405.000000, min=100.000000, average=343.571429, max=838.000000}</span>
+<span style="color: #008080;">10</span> }</code></pre>
+
+<h3>averagingInt方法、averagingLong方法和averagingDouble方法</h3>
+<p>生成一个用于求元素平均值的Collector，首先将元素转换类型，然后再求平均值。</p>
+<p>参数的作用就是将元素转换为指定的类型，求平均值涉及到除法操作，结果一律为Double类型。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Double&gt; averagingInt(ToIntFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;"> 3</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">long</span>[2<span style="color: #000000;">],
+</span><span style="color: #008080;"> 4</span>             (a, t) -&gt; { a[0] += mapper.applyAsInt(t); a[1]++<span style="color: #000000;">; },
+</span><span style="color: #008080;"> 5</span>             (a, b) -&gt; { a[0] += b[0]; a[1] += b[1]; <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;"> 6</span>             a -&gt; (a[1] == 0) ? 0.0d : (<span style="color: #0000ff;">double</span>) a[0] / a[1<span style="color: #000000;">], CH_NOID);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 8</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Double&gt; averagingLong(ToLongFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">10</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">long</span>[2<span style="color: #000000;">],
+</span><span style="color: #008080;">11</span>             (a, t) -&gt; { a[0] += mapper.applyAsLong(t); a[1]++<span style="color: #000000;">; },
+</span><span style="color: #008080;">12</span>             (a, b) -&gt; { a[0] += b[0]; a[1] += b[1]; <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">13</span>             a -&gt; (a[1] == 0) ? 0.0d : (<span style="color: #0000ff;">double</span>) a[0] / a[1<span style="color: #000000;">], CH_NOID);
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">15</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Double&gt; averagingDouble(ToDoubleFunction&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> mapper) {
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(
+</span><span style="color: #008080;">17</span>             () -&gt; <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">double</span>[4<span style="color: #000000;">],
+</span><span style="color: #008080;">18</span>             (a, t) -&gt; { sumWithCompensation(a, mapper.applyAsDouble(t)); a[2]++; a[3]+=<span style="color: #000000;"> mapper.applyAsDouble(t); },
+</span><span style="color: #008080;">19</span>             (a, b) -&gt; { sumWithCompensation(a, b[0]); sumWithCompensation(a, b[1]); a[2] += b[2]; a[3] += b[3]; <span style="color: #0000ff;">return</span><span style="color: #000000;"> a; },
+</span><span style="color: #008080;">20</span>             a -&gt; (a[2] == 0) ? 0.0d : (computeFinalSum(a) / a[2<span style="color: #000000;">]), CH_NOID);
+</span><span style="color: #008080;">21</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">double</span> intAverage =<span style="color: #000000;"> list.stream().collect(Collectors.averagingInt(Integer::parseInt));
+</span><span style="color: #008080;"> 5</span>     System.out.println(intAverage);<span style="color: #008000;">//</span><span style="color: #008000;"> 343.57142857142856</span>
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">double</span> longAverage =<span style="color: #000000;"> list.stream().collect(Collectors.averagingLong(Long::parseLong));
+</span><span style="color: #008080;"> 7</span>     System.out.println(longAverage);<span style="color: #008000;">//</span><span style="color: #008000;"> 343.57142857142856</span>
+<span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">double</span> doubleAverage =<span style="color: #000000;"> list.stream().collect(Collectors.averagingDouble(Double::parseDouble));
+</span><span style="color: #008080;"> 9</span>     System.out.println(doubleAverage);<span style="color: #008000;">//</span><span style="color: #008000;"> 343.57142857142856</span>
+<span style="color: #008080;">10</span> }</code></pre>
+
+<h3>groupingBy方法</h3>
+<p>生成一个拥有分组功能的Collector，有三个重载方法。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 只需一个分组参数classifier，内部自动将结果保存到一个Map中，每个Map键的类型即classifier的结果类型，默认将组的元素保存在List中。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K&gt; Collector&lt;T, ?, Map&lt;K, List&lt;T&gt;&gt;&gt;<span style="color: #000000;"> groupingBy(
+</span><span style="color: #008080;"> 3</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> classifier) {
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> groupingBy(classifier, toList());
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 6</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 在上面方法的基础上增加了对流中元素的处理方式的Collector，默认是List。</span>
+<span style="color: #008080;"> 7</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K, A, D&gt; Collector&lt;T, ?, Map&lt;K, D&gt;&gt;<span style="color: #000000;"> groupingBy(
+</span><span style="color: #008080;"> 8</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> classifier,
+</span><span style="color: #008080;"> 9</span>             Collector&lt;? <span style="color: #0000ff;">super</span> T, A, D&gt;<span style="color: #000000;"> downstream) {
+</span><span style="color: #008080;">10</span>     <span style="color: #0000ff;">return</span> groupingBy(classifier, HashMap::<span style="color: #0000ff;">new</span><span style="color: #000000;">, downstream);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">12</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 在第二个方法的基础上再添加了结果Map的生成方法，默认是HashMap。</span>
+<span style="color: #008080;">13</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, K, D, A, M <span style="color: #0000ff;">extends</span> Map&lt;K, D&gt;&gt; Collector&lt;T, ?, M&gt;<span style="color: #000000;"> groupingBy(
+</span><span style="color: #008080;">14</span>             Function&lt;? <span style="color: #0000ff;">super</span> T, ? <span style="color: #0000ff;">extends</span> K&gt;<span style="color: #000000;"> classifier,
+</span><span style="color: #008080;">15</span>             Supplier&lt;M&gt;<span style="color: #000000;"> mapFactory,
+</span><span style="color: #008080;">16</span>             Collector&lt;? <span style="color: #0000ff;">super</span> T, A, D&gt;<span style="color: #000000;"> downstream) {
+</span><span style="color: #008080;">17</span>     Supplier&lt;A&gt; downstreamSupplier =<span style="color: #000000;"> downstream.supplier();
+</span><span style="color: #008080;">18</span>     BiConsumer&lt;A, ? <span style="color: #0000ff;">super</span> T&gt; downstreamAccumulator =<span style="color: #000000;"> downstream.accumulator();
+</span><span style="color: #008080;">19</span>     BiConsumer&lt;Map&lt;K, A&gt;, T&gt; accumulator = (m, t) -&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;">20</span>         K key = Objects.requireNonNull(classifier.apply(t), "element cannot be mapped to a null key"<span style="color: #000000;">);
+</span><span style="color: #008080;">21</span>         A container = m.computeIfAbsent(key, k -&gt;<span style="color: #000000;"> downstreamSupplier.get());
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">        downstreamAccumulator.accept(container, t);
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">    };
+</span><span style="color: #008080;">24</span>     BinaryOperator&lt;Map&lt;K, A&gt;&gt; merger = Collectors.&lt;K, A, Map&lt;K, A&gt;&gt;<span style="color: #000000;">mapMerger(downstream.combiner());
+</span><span style="color: #008080;">25</span>     @SuppressWarnings("unchecked"<span style="color: #000000;">)
+</span><span style="color: #008080;">26</span>     Supplier&lt;Map&lt;K, A&gt;&gt; mangledFactory = (Supplier&lt;Map&lt;K, A&gt;&gt;<span style="color: #000000;">) mapFactory;
+</span><span style="color: #008080;">27</span> 
+<span style="color: #008080;">28</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (downstream.characteristics().contains(Collector.Characteristics.IDENTITY_FINISH)) {
+</span><span style="color: #008080;">29</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(mangledFactory, accumulator, merger, CH_ID);
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">31</span>     <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">32</span>         @SuppressWarnings("unchecked"<span style="color: #000000;">)
+</span><span style="color: #008080;">33</span>         Function&lt;A, A&gt; downstreamFinisher = (Function&lt;A, A&gt;<span style="color: #000000;">) downstream.finisher();
+</span><span style="color: #008080;">34</span>         Function&lt;Map&lt;K, A&gt;, M&gt; finisher = intermediate -&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;">35</span>             intermediate.replaceAll((k, v) -&gt;<span style="color: #000000;"> downstreamFinisher.apply(v));
+</span><span style="color: #008080;">36</span>             @SuppressWarnings("unchecked"<span style="color: #000000;">)
+</span><span style="color: #008080;">37</span>             M castResult =<span style="color: #000000;"> (M) intermediate;
+</span><span style="color: #008080;">38</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> castResult;
+</span><span style="color: #008080;">39</span> <span style="color: #000000;">        };
+</span><span style="color: #008080;">40</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(mangledFactory, accumulator, merger, finisher, CH_NOID);
+</span><span style="color: #008080;">41</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">42</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;"> 2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;"> 4</span>     Map&lt;String, List&lt;String&gt;&gt; groupByFirst = list.stream().collect(Collectors.groupingBy(e -&gt; e.substring(0, 1<span style="color: #000000;">)));
+</span><span style="color: #008080;"> 5</span>     System.out.println(groupByFirst);<span style="color: #008000;">//</span><span style="color: #008000;"> {1=[123, 100], 2=[228, 250], 3=[345], 5=[521], 8=[838]}</span>
+<span style="color: #008080;"> 6</span>     Map&lt;String, Set&lt;String&gt;&gt; groupByLast = list.stream().collect(Collectors.groupingBy(e -&gt; e.substring(e.length() - 1<span style="color: #000000;">), Collectors.toSet()));
+</span><span style="color: #008080;"> 7</span>     System.out.println(groupByLast);<span style="color: #008000;">//</span><span style="color: #008000;"> {0=[100, 250], 1=[521], 3=[123], 5=[345], 8=[228, 838]}</span>
+<span style="color: #008080;"> 8</span>     Map&lt;Integer, Set&lt;String&gt;&gt; groupByLength = list.stream().collect(Collectors.groupingBy(String::length, HashMap::<span style="color: #0000ff;">new</span><span style="color: #000000;">, Collectors.toSet()));
+</span><span style="color: #008080;"> 9</span>     System.out.println(groupByLength);<span style="color: #008000;">//</span><span style="color: #008000;"> {3=[100, 123, 521, 345, 228, 838, 250]}</span>
+<span style="color: #008080;">10</span> }</code></pre>
+
+<h3>partitioningBy方法</h3>
+<p>将流中的元素按照给定的校验规则的结果分为两个部分，放到Map中返回，键是Boolean类型，值为元素的列表List。</p>
+<p>方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 只需一个校验参数predicate。</span>
+<span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T&gt; Collector&lt;T, ?, Map&lt;Boolean, List&lt;T&gt;&gt;&gt; partitioningBy(Predicate&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> predicate) {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> partitioningBy(predicate, toList());
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 5</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 在上面方法的基础上增加了对流中元素的处理方式的Collector，默认的处理方法就是Collectors.toList()。</span>
+<span style="color: #008080;"> 6</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> &lt;T, D, A&gt; Collector&lt;T, ?, Map&lt;Boolean, D&gt;&gt; partitioningBy(Predicate&lt;? <span style="color: #0000ff;">super</span> T&gt;<span style="color: #000000;"> predicate,
+</span><span style="color: #008080;"> 7</span>                                                 Collector&lt;? <span style="color: #0000ff;">super</span> T, A, D&gt;<span style="color: #000000;"> downstream) {
+</span><span style="color: #008080;"> 8</span>     BiConsumer&lt;A, ? <span style="color: #0000ff;">super</span> T&gt; downstreamAccumulator =<span style="color: #000000;"> downstream.accumulator();
+</span><span style="color: #008080;"> 9</span>     BiConsumer&lt;Partition&lt;A&gt;, T&gt; accumulator = (result, t) -&gt;
+<span style="color: #008080;">10</span>             downstreamAccumulator.accept(predicate.test(t) ?<span style="color: #000000;"> result.forTrue : result.forFalse, t);
+</span><span style="color: #008080;">11</span>     BinaryOperator&lt;A&gt; op =<span style="color: #000000;"> downstream.combiner();
+</span><span style="color: #008080;">12</span>     BinaryOperator&lt;Partition&lt;A&gt;&gt; merger = (left, right) -&gt;
+<span style="color: #008080;">13</span>             <span style="color: #0000ff;">new</span> Partition&lt;&gt;<span style="color: #000000;">(op.apply(left.forTrue, right.forTrue),
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                            op.apply(left.forFalse, right.forFalse));
+</span><span style="color: #008080;">15</span>     Supplier&lt;Partition&lt;A&gt;&gt; supplier = () -&gt;
+<span style="color: #008080;">16</span>             <span style="color: #0000ff;">new</span> Partition&lt;&gt;<span style="color: #000000;">(downstream.supplier().get(),
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                            downstream.supplier().get());
+</span><span style="color: #008080;">18</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (downstream.characteristics().contains(Collector.Characteristics.IDENTITY_FINISH)) {
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(supplier, accumulator, merger, CH_ID);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">21</span>     <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">22</span>         Function&lt;Partition&lt;A&gt;, Map&lt;Boolean, D&gt;&gt; finisher = par -&gt;
+<span style="color: #008080;">23</span>                 <span style="color: #0000ff;">new</span> Partition&lt;&gt;<span style="color: #000000;">(downstream.finisher().apply(par.forTrue),
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">                                downstream.finisher().apply(par.forFalse));
+</span><span style="color: #008080;">25</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> CollectorImpl&lt;&gt;<span style="color: #000000;">(supplier, accumulator, merger, finisher, CH_NOID);
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">27</span> }</code></pre>
+
+<p>实例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+</span><span style="color: #008080;">2</span>     List&lt;String&gt; list = Arrays.asList("123", "521", "100", "228", "838", "250", "345"<span style="color: #000000;">);
+</span><span style="color: #008080;">3</span>     System.out.println(list);<span style="color: #008000;">//</span><span style="color: #008000;"> [123, 521, 100, 228, 838, 250, 345]</span>
+<span style="color: #008080;">4</span>     Map&lt;Boolean, List&lt;String&gt;&gt; moreThan = list.stream().collect(Collectors.partitioningBy(e -&gt; Integer.parseInt(e) &gt; 300<span style="color: #000000;">));
+</span><span style="color: #008080;">5</span>     System.out.println(moreThan);<span style="color: #008000;">//</span><span style="color: #008000;"> {false=[123, 100, 228, 250], true=[521, 838, 345]}</span>
+<span style="color: #008080;">6</span>     Map&lt;Boolean, Set&lt;String&gt;&gt; lessThan = list.stream().collect(Collectors.partitioningBy(e -&gt; Integer.parseInt(e) &lt; 300<span style="color: #000000;">, Collectors.toSet()));
+</span><span style="color: #008080;">7</span>     System.out.println(lessThan);<span style="color: #008000;">//</span><span style="color: #008000;"> {false=[521, 345, 838], true=[100, 123, 228, 250]}</span>
+<span style="color: #008080;">8</span> }</code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

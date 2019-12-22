@@ -1,0 +1,449 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring源码系列8AOP源码解析之代理的创建' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring源码系列8AOP源码解析之代理的创建</center></div><div class='banquan'>原文出处:本文由博客园博主三人行{必有我师}提供。<br/>
+原文连接:https://www.cnblogs.com/smallstudent/p/11724144.html</div><br>
+    <h2 id="回顾">回顾</h2>
+<p>首先回顾：</p>
+<p><a href="https://juejin.im/post/5da995f2518825458329de28">JDK动态代理与CGLIB动态代理</a></p>
+<p><a href="https://juejin.im/post/5da995d25188256a49204d7b">Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别</a></p>
+<p>我们得知<br />
+JDK动态代理两要素：Proxy+InvocationHandler<br />
+CGLB动态代理两要素：Enhancer + MethodInterceptor(Callback)</p>
+<p>springAOP底层是通过动态代理和CGLB代理实现的。也就是spring<strong>最终的落脚点</strong>还应该是在Proxy+InvocationHandler 或者Enhancer + MethodInterceptor上。</p>
+<p>带着这个期待我们看看spring是如何组织AOP的,并在动态代理之上建立一个AOP体系的。</p>
+<h2 id="概念的理解">概念的理解:</h2>
+<ul>
+<li>通知: 通知<strong>可以理解增强器</strong>, 就是做的额外工作.</li>
+<li>连接点: 可以<strong>允许切面插入的点</strong>, 这个点可以是<strong>方法调用时</strong>, <strong>抛出异常时</strong>等.</li>
+<li>切点: 并不是所有的连接点都需要被切面插入, 切点就是<strong>定义哪些连接点可以插入切面</strong>.</li>
+</ul>
+<p>总结为：从所有连接点中选出部分连接点, 进行拦截,执行额外操作。</p>
+<h2 id="组件的理解">组件的理解:</h2>
+<p>AOP最早由AOP联盟的组织提出的,制定了一套规范.Spring将AOP思想引入到框架中,必须遵守AOP联盟的规范.</p>
+<p><strong>注意:各种组件非常之多. 我只把自认为涉及到主线理解的组件列出</strong></p>
+<hr />
+<h4 id="aop联盟规范定义组件">AOP联盟规范定义组件</h4>
+<p>通知(增强器): 不要纠结于太多. 就统一理解为拦截器或者增强器。</p>
+<p><img src="./images/spring源码系列8AOP源码解析之代理的创建0.png" alt="file" /></p>
+<pre><code><code>注意一点：这里的MethodInterceptor区别于上文提到的
+org.springframework.cglib.proxy.MethodInterceptor不要混了。</code></code></pre>
+<p>连接点(被拦截)：spring大多都是对方法调用的拦截, 这里可以理解为方法调用.</p>
+<p><img src="./images/spring源码系列8AOP源码解析之代理的创建1.png" alt="file" /></p>
+<hr />
+<h4 id="spring定义组件">spring定义组件</h4>
+<p><strong>1.Pointcut</strong>：<strong>定义哪些连接点可以插入切面</strong>。提供ClassFilter 与MethodMatcher两种匹配器，匹配连接点。</p>
+<p><strong>2.Advisor</strong> : 包装Advice和Pointcut .语义: 在哪里拦截, 插入什么样的增强器（在哪里做什么)<strong>Advisor=Advice+Pointcut</strong><br />
+分为</p>
+<ul>
+<li>IntroductionAdvisor: 引介增强，在不修改某个类的情况下， 让其具备某接口的功能。</li>
+<li>PointcutAdvisor： 与切点有关的Advisor</li>
+</ul>
+<p><strong>3.TargetSource</strong>: 对<strong>目标对象</strong>的封装。</p>
+<p><strong>4.Advised接口</strong> : 包装 Advisor 与 TargetSource。<br />
+实现类AdvisedSupport：从其两个属性上，真切看出其封装了 Advisor 与 TargetSource</p>
+<ul>
+<li>TargetSource targetSource = EMPTY_TARGET_SOURCE; 表示目标对象</li>
+<li>private List<Advisor> advisors = new ArrayList<Advisor>(); 存储Advisor</li>
+</ul>
+<p><strong>5.AopProxy</strong>：<strong>AOP代理对象</strong></p>
+<ul>
+<li>分JDK代理（JdkDynamicAopProxy）</li>
+<li>Cglib代理（CglibAopProxy）<br />
+<img src="./images/spring源码系列8AOP源码解析之代理的创建2.png" alt="在这里插入图片描述" /></li>
+</ul>
+<p>JdkDynamicAopProxy与CglibAopProxy都实现了AopProxy的getProxy()方法，用于返回真正的代理对象。</p>
+<p><strong>6.AopProxyFactory</strong>：<strong>AOP代理策略工厂类</strong>。根据条件选择使用JDK还是Cglib的方式来创建代理对象。</p>
+<p><img src="./images/spring源码系列8AOP源码解析之代理的创建3.png" alt="file" /></p>
+<p><strong>7.ProxyCreatorSupport</strong>: 从其语义上理解，<strong>对创建代理对象的支持</strong>。我们从其继承关系上看看他是如何提供支持的。</p>
+<ul>
+<li>ProxyConfig: 提供aop配置属性。</li>
+<li>AdvisedSupport:继承ProxyConfig，实现了Advised接口。封装通知（Advise）和TargetSource，并提供对他们的操作</li>
+<li>ProxyCreatorSupport: 包含AopProxyFactory，AopProxyFactory策略工厂提供对JdkDynamicAopProxy与CglibAopProxy的创建</li>
+</ul>
+<p><img src="./images/spring源码系列8AOP源码解析之代理的创建4.png" alt="file" /></p>
+<p><strong>8.AbstractAutoProxyCreator</strong>： 从其继承关系。我们分析下这个组件。</p>
+<ul>
+<li>首先他是一个（BeanPostProcessor）InstantiationAwareBeanPostProcessor 所以他会在spring的Bean生产线createBean()过程中被执行。在BeanDefinition创建Bean的过程中进行拦截，根据要求创建出代理对象。</li>
+<li>Aware: 可以获取到BeanFactory仓库， 与BeanClassLoader加载器。</li>
+<li>ProxyCreatorSupport，继承了创建代理的功能。</li>
+</ul>
+<p>关于BeanPostProcessor与InstantiationAwareBeanPostProcessor的理解，还是深刻理解<a href="https://juejin.im/post/5da995d25188256a49204d7b">Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别</a>。</p>
+<p><img src="./images/spring源码系列8AOP源码解析之代理的创建5.png" alt="file" /></p>
+<p><strong>小结</strong>：</p>
+<p>如果总结下组件之间的关系：</p>
+<p>开发人员定义切面信息--》spring解析出Advice,切点等配置信息--》AopProxyFactory根据配置创建代理对象--》代理方法执行。</p>
+<p>这也是springAOP大部分工作内容。</p>
+<p>笼统来看：</p>
+<ul>
+<li>《1》定义的解析：</li>
+<li>《2》代理的创建：</li>
+<li>《3》代理的执行：</li>
+</ul>
+<p>下面我们重点看看定义的解析与代理的创建。</p>
+<h2 id="代理的生成过程">代理的生成过程:</h2>
+<p>代理的执行过程:<br />
+我们还是以springboot环境下的AOP实现来讲讲AOP的过程.</p>
+<p>1.<strong>配置AOP的扩展器,拦截BeanDefiniiton创建Bean的过程:AnnotationAwareAspectJAutoProxyCreator</strong>:</p>
+<p>首先配置AOP环境</p>
+<p><strong>@EnableAspectJAutoProxy</strong>注解上的@Import(AspectJAutoProxyRegistrar.class)引入AspectJAutoProxyRegistrar类.AspectJAutoProxyRegistrar实现了ImportBeanDefinitionRegistrar接口. 所以其registerBeanDefinitions()会有一些注入BeanDefiniiton的操作 . registerBeanDefinitions()方法会向仓库中注入一个AnnotationAwareAspectJAutoProxyCreator.</p>
+<pre class="java"><code>@Override
+    public void registerBeanDefinitions(
+            AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+
+//注入AnnotationAwareAspectJAutoProxyCreator扩展器
+        AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary(registry);
+
+        AnnotationAttributes enableAspectJAutoProxy =
+                AnnotationConfigUtils.attributesFor(importingClassMetadata, EnableAspectJAutoProxy.class);
+        if (enableAspectJAutoProxy.getBoolean(&quot;proxyTargetClass&quot;)) {
+            AopConfigUtils.forceAutoProxyCreatorToUseClassProxying(registry);
+        }
+        if (enableAspectJAutoProxy.getBoolean(&quot;exposeProxy&quot;)) {
+            AopConfigUtils.forceAutoProxyCreatorToExposeProxy(registry);
+        }
+    }</code></code></pre>
+<p>AnnotationAwareAspectJAutoProxyCreator 间接继承了AOP扩展工具AbstractAutoProxyCreator， 是一个BeanPostProcessor。</p>
+<p>AbstractAutoProxyCreator：</p>
+<ul>
+<li>是一个BeanPostProcessor，可以拦截Bean创建过程</li>
+<li>继承了ProxyCreatorSupport具有代理类的创建能力。</li>
+</ul>
+<p>这样：AOP环境有了。</p>
+<p>2.<strong>拦截生产过程,创建AOP对象</strong>:</p>
+<p>createBean()生产线在创建Bean的过程中. 会执行所有的BeanPostProcessor. AnnotationAwareAspectJAutoProxyCreator(<strong>AbstractAutoProxyCreator</strong>)作为一个BeanPostProcessor也在此时执行.</p>
+<p>在<a href="https://juejin.im/post/5da995d25188256a49204d7b">Spring中的InstantiationAwareBeanPostProcessor和BeanPostProcessor的区别</a>讲过. 实现了InstantiationAwareBeanPostProcessor接口的BeanPostProcessor的会有5个方法伴随Bean创建过程且执行顺序。<br />
+<strong>postProcessBeforeInstantiation() --&gt;postProcessAfterInstantiation--&gt;postProcessPropertyValues--&gt;postProcessBeforeInitialization()--&gt;postProcessAfterInitialization()</strong></p>
+<p><strong>过程</strong>:</p>
+<p>(2.1)首先执行的是postProcessBeforeInstantiation 实例化前置处理方法</p>
+<pre class="java"><code>@Override
+    public Object postProcessBeforeInstantiation(Class&lt;?&gt; beanClass, String beanName) throws BeansException {
+        Object cacheKey = getCacheKey(beanClass, beanName);
+        if (beanName == null || !this.targetSourcedBeans.contains(beanName)) {
+            if (this.advisedBeans.containsKey(cacheKey)) {
+                return null;
+            }
+            if (isInfrastructureClass(beanClass) || shouldSkip(beanClass, beanName)) {
+                this.advisedBeans.put(cacheKey, Boolean.FALSE);
+                return null;
+            }
+        }
+        if (beanName != null) {
+            TargetSource targetSource = getCustomTargetSource(beanClass, beanName);
+            if (targetSource != null) {
+                this.targetSourcedBeans.add(beanName);
+                Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(beanClass, beanName, targetSource);
+                Object proxy = createProxy(beanClass, beanName, specificInterceptors, targetSource);
+                this.proxyTypes.put(cacheKey, proxy.getClass());
+                return proxy;
+            }
+        }
+        return null;
+    }</code></code></pre>
+<p>主要分为两部分：<br />
+(2.1.1)先判断是否应该代理</p>
+<ul>
+<li>isInfrastructureClass(beanClass)如果是AOP基础设施类, 不代理。指的是Advice、Pointcut、Advisor等AOP相关定义类不应该创建代理</li>
+<li>shouldSkip()应该跳过的类，不代理。判断的依据:默认是都不跳过的. 子类可能重写其判断依据.AnnotationAwareAspectJAutoProxyCreator的父类AnnotationAwareAspectJAutoProxyCreator重写了shouldSkip方法（<strong>《1》并伴随切面定义的解析</strong>）。</li>
+</ul>
+<p>重点看看shouldSkip()</p>
+<pre class="java"><code>/*
+1.首先查找适于当前Bean的Advisor .通findCandidateAdvisors()去查找
+        findCandidateAdvisors()会经过两个渠道获取Advisors.
+            &gt; BeanFactoryAdvisorRetrievalHelper.findAdvisorBeans():是从仓库中找实现了Advisor类的Advisor
+            &gt; BeanFactoryAspectJAdvisorsBuilder.buildAspectJAdvisors()会从仓库中取出@Aspect注解的切面类,解析出Advisor
+ 
+     重点说一下其中buildAspectJAdvisors
+            &gt;遍历BeanFactory仓库中的BeanDefinition,根据其类型判断其是否是isAspect()： 判断条件是类是否被@Aspect注释，并且没有被aspectj编译过
+            &gt;如果是, 根据当前BeanDefinition创建一个(AspectJAdvisorFactory)BeanFactoryAspectInstanceFactory工厂对象.
+            &gt;使用AspectJAdvisorFactory 工厂创建List&lt;Advisor&gt;
+            &gt;上文已经说过Advisor=Advice+Pointcut, Advice 就是对通知的封装(@Before...), Pointcut 是对切点的封装.
+         
+    小结:这次知道我们定义一个切面类, 被解析什么样子了吧
+
+2.判断找到的CandidateAdvisors中有没有当前BeanDefinition，有的话就跳过。
+
+
+*/
+@Override
+    protected boolean shouldSkip(Class&lt;?&gt; beanClass, String beanName) {
+        // TODO: Consider optimization by caching the list of the aspect names
+        List&lt;Advisor&gt; candidateAdvisors = findCandidateAdvisors();
+        for (Advisor advisor : candidateAdvisors) {
+            if (advisor instanceof AspectJPointcutAdvisor) {
+                if (((AbstractAspectJAdvice) advisor.getAdvice()).getAspectName().equals(beanName)) {
+                    return true;
+                }
+            }
+        }
+        return super.shouldSkip(beanClass, beanName);
+    }</code></code></pre>
+<p>(2.1.2) 判断是否有自定义的 TargetSource。<br />
+如果有自定义TargetSource ，将当前beanName放入targetSourcedBeans缓存中，直接走创建代理的分支，不会走createBean去创建Bean，这里就是给一个机会。 关于自定义TargetSource这个分支暂时不讲。</p>
+<pre class="java"><code>if (beanName != null) {
+            TargetSource targetSource = getCustomTargetSource(beanClass, beanName);
+            if (targetSource != null) {
+                this.targetSourcedBeans.add(beanName);
+                Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(beanClass, beanName, targetSource);
+                Object proxy = createProxy(beanClass, beanName, specificInterceptors, targetSource);
+                this.proxyTypes.put(cacheKey, proxy.getClass());
+                return proxy;
+            }
+        }</code></code></pre>
+<p>总结postProcessBeforeInstantiation工作内容：</p>
+<ul>
+<li>解析切面定义</li>
+<li>提供一个机会直接返回代理对象，不走createBean()流水线。自定义TargetSource</li>
+</ul>
+<p>(2.2)postProcessAfterInstantiation</p>
+<ul>
+<li>return true ;</li>
+</ul>
+<p>(2.3)postProcessBeforeInitialization</p>
+<ul>
+<li>返回Bean没有做处理</li>
+</ul>
+<p>(2.4)postProcessAfterInitialization() （<strong>敲黑板，重点</strong>）</p>
+<pre class="java"><code>public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        if (bean != null) {
+            Object cacheKey = getCacheKey(bean.getClass(), beanName);
+            if (this.earlyProxyReferences.remove(cacheKey) != bean) {
+                return wrapIfNecessary(bean, beanName, cacheKey);
+            }
+        }
+        return bean;
+    }</code></code></pre>
+<p>关键便在于wrapIfNecessary方法: 名字 wrap if Necessary 如果<strong>满足条件</strong>就<strong>包装</strong><br />
+这个方法就可以拆成两部分看：</p>
+<ol>
+<li>满足条件：</li>
+<li>包装：</li>
+</ol>
+<pre class="java"><code>protected Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+        //1.自定义TargetSource，已经进行过代理子类生成 。 不包装直接返回Bean实例
+        if (beanName != null &amp;&amp; this.targetSourcedBeans.contains(beanName)) {
+            return bean;
+        }
+        //2.已经判定不需要代理的， 不代理
+        if (Boolean.FALSE.equals(this.advisedBeans.get(cacheKey))) {
+            return bean;
+        }
+        //3.isInfrastructureClass(bean.getClass())是基础设施类的不代理
+        //4.shouldSkip(bean.getClass(), beanName)应该跳过的不代理
+        if (isInfrastructureClass(bean.getClass()) || shouldSkip(bean.getClass(), beanName)) {
+            this.advisedBeans.put(cacheKey, Boolean.FALSE);
+            return bean;
+        }
+
+        // Create proxy if we have advice.
+        Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, null);
+        if (specificInterceptors != DO_NOT_PROXY) {
+            this.advisedBeans.put(cacheKey, Boolean.TRUE);
+            Object proxy = createProxy(
+                    bean.getClass(), beanName, specificInterceptors, new SingletonTargetSource(bean));
+            this.proxyTypes.put(cacheKey, proxy.getClass());
+            return proxy;
+        }
+        //5.没有具体拦截器的不代理
+        this.advisedBeans.put(cacheKey, Boolean.FALSE);
+        return bean;
+    }</code></code></pre>
+<p>我们挨个分析下这两部分</p>
+<hr />
+<p><strong><em>(2.4.1) 满足条件</em></strong></p>
+<p><strong>不代理的情况</strong>：</p>
+<ul>
+<li>自定义TargetSource，已经进行过代理子类生成 。 不包装直接返回Bean实例。（）</li>
+<li>已经判定不需要代理的， 不代理。 直接返回Bean实例</li>
+<li>isInfrastructureClass(bean.getClass())是基础设施类的不代理。 （上文已经提过）</li>
+<li>shouldSkip(bean.getClass(), beanName)应该跳过的不代理 （上文已经提过）</li>
+<li>没有具体拦截器的不代理</li>
+</ul>
+<p><strong>代理的的情况</strong>：</p>
+<ul>
+<li>有具体Advice的才代理：getAdvicesAndAdvisorsForBean() 的返回不为空的。（Create proxy if we have advice.）</li>
+</ul>
+<p><strong>Advisor寻找</strong>：重点就落在了此处。</p>
+<p>即getAdvicesAndAdvisorsForBean方法，这里进行的便是去容器中寻找适用于当前bean的Advisor，最终调用的是</p>
+<p>AbstractAdvisorAutoProxyCreator.findEligibleAdvisors:</p>
+<pre class="java"><code>    protected List&lt;Advisor&gt; findEligibleAdvisors(Class&lt;?&gt; beanClass, String beanName) {
+        List&lt;Advisor&gt; candidateAdvisors = findCandidateAdvisors();
+        List&lt;Advisor&gt; eligibleAdvisors = findAdvisorsThatCanApply(candidateAdvisors, beanClass, beanName);
+        extendAdvisors(eligibleAdvisors);
+        if (!eligibleAdvisors.isEmpty()) {
+            eligibleAdvisors = sortAdvisors(eligibleAdvisors);
+        }
+        return eligibleAdvisors;
+    }</code></code></pre>
+<ul>
+<li><p>findCandidateAdvisors: 获取所有Advisor ，前面已经说过。 因为做了缓存此处直接从缓存中取。</p></li>
+<li>findAdvisorsThatCanApply： 看其传入的参数，candidateAdvisors(所有的候选Advisor)， 也就是这个方法肯定就是从所有的候选Advisor找出适合当前Bean</li>
+<li><p>extendAdvisors： 允许子类添加advisor</p></li>
+</ul>
+<p><strong>适用性判断</strong><br />
+findAdvisorsThatCanApply最终调用AopUtils.findAdvisorsThatCanApply:</p>
+<pre class="java"><code>public static List&lt;Advisor&gt; findAdvisorsThatCanApply(List&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt; clazz) {
+        if (candidateAdvisors.isEmpty()) {
+            return candidateAdvisors;
+        }
+        List&lt;Advisor&gt; eligibleAdvisors = new LinkedList&lt;Advisor&gt;();
+        //第一遍
+        for (Advisor candidate : candidateAdvisors) {
+            if (candidate instanceof IntroductionAdvisor &amp;&amp; canApply(candidate, clazz)) {
+                eligibleAdvisors.add(candidate);
+            }
+        }
+        //第一遍
+        boolean hasIntroductions = !eligibleAdvisors.isEmpty();
+        for (Advisor candidate : candidateAdvisors) {
+            if (candidate instanceof IntroductionAdvisor) {
+                // already processed
+                continue;
+            }
+            if (canApply(candidate, clazz, hasIntroductions)) {
+                eligibleAdvisors.add(candidate);
+            }
+        }
+        return eligibleAdvisors;
+    }</code></code></pre>
+<p>此方法有两个for循环。<br />
+第一个for循环寻找IntroductionAdvisor(引介增强)类型的advisor，调用AopUtils.canApply<br />
+第二遍for循环寻找普通的advisor，调用AopUtils.canApply</p>
+<p>AopUtils.canApply针对两种类型的Advisor做了不同的判断：</p>
+<ul>
+<li>针对IntroductionAdvisor类型advisor的，只需要校验Advisor的ClassFilter是否匹配当前类</li>
+<li>针对普通的advisor：（1）首先查看定的类是否在Pointcut的匹配范围内；（2）是的话，再查看是否能匹配此类任意方法，是的话返回true；（3）不能匹配任意方法，便会用反射的方法获取targetClass(被检测类)的全部方法逐一交由Pointcut的MethodMatcher.matches方法进行检测。</li>
+</ul>
+<pre class="java"><code>public static boolean canApply(Pointcut pc, Class&lt;?&gt; targetClass, boolean hasIntroductions) {
+        Assert.notNull(pc, &quot;Pointcut must not be null&quot;);
+        if (!pc.getClassFilter().matches(targetClass)) {
+            return false;
+        }
+        //是否配置任意方法
+        MethodMatcher methodMatcher = pc.getMethodMatcher();
+        if (methodMatcher == MethodMatcher.TRUE) {
+            // No need to iterate the methods if we&#39;re matching any method anyway...
+            return true;
+        }
+
+        IntroductionAwareMethodMatcher introductionAwareMethodMatcher = null;
+        if (methodMatcher instanceof IntroductionAwareMethodMatcher) {
+            introductionAwareMethodMatcher = (IntroductionAwareMethodMatcher) methodMatcher;
+        }
+        //逐一排查
+        Set&lt;Class&lt;?&gt;&gt; classes = new LinkedHashSet&lt;Class&lt;?&gt;&gt;(ClassUtils.getAllInterfacesForClassAsSet(targetClass));
+        classes.add(targetClass);
+        for (Class&lt;?&gt; clazz : classes) {
+            Method[] methods = ReflectionUtils.getAllDeclaredMethods(clazz);
+            for (Method method : methods) {
+                if ((introductionAwareMethodMatcher != null &amp;&amp;
+                        introductionAwareMethodMatcher.matches(method, targetClass, hasIntroductions)) ||
+                        methodMatcher.matches(method, targetClass)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }</code></code></pre>
+<p>到此，AopUtils.canApply返回true后。findAdvisorsThatCanApply()算是找到了能应用于当前类的Advisors. 再extendAdvisors后；对，应用于当前类的Advisors一番排序后，getAdvicesAndAdvisorsForBean工作完成。</p>
+<p>getAdvicesAndAdvisorsForBean()返回如果不为Null。那下面就是包装。</p>
+<hr />
+<p><strong><em>(2.4.2) 包装</em></strong><br />
+在getAdvicesAndAdvisorsForBean返回advisors不为null后，可以创建代理。</p>
+<pre class="java"><code>protected Object createProxy(
+            Class&lt;?&gt; beanClass, String beanName, Object[] specificInterceptors, TargetSource targetSource) {
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.copyFrom(this);
+
+        if (!proxyFactory.isProxyTargetClass()) {
+            if (shouldProxyTargetClass(beanClass, beanName)) {
+                proxyFactory.setProxyTargetClass(true);
+            }
+            else {
+                evaluateProxyInterfaces(beanClass, proxyFactory);
+            }
+        }
+
+        Advisor[] advisors = buildAdvisors(beanName, specificInterceptors);
+        proxyFactory.addAdvisors(advisors);
+        proxyFactory.setTargetSource(targetSource);
+        customizeProxyFactory(proxyFactory);
+
+        proxyFactory.setFrozen(this.freezeProxy);
+        if (advisorsPreFiltered()) {
+            proxyFactory.setPreFiltered(true);
+        }
+
+        return proxyFactory.getProxy(getProxyClassLoader());
+    }</code></code></pre>
+<ul>
+<li>首先创建ProxyFactory 工厂，从AbstractAutoProxyCreator复制代理属性，因为AbstractAutoProxyCreator继承了ProxyConfig，所以本身也是一个代理配置类。</li>
+<li>判断其是基于类代理， 还是基于接口代理。如果基于接口代理，获取接口，并设置到ProxyFactory 。</li>
+<li>buildAdvisors()方法，整合getAdvicesAndAdvisorsForBean找的advisors 与AbstractAutoProxyCreator. interceptorNames属性可能设置的增强器，统一包装成Advisor类型数组，设置到ProxyFactory 。并且AbstractAutoProxyCreator. interceptorNames属性设置的增强器在前。</li>
+<li>customizeProxyFactory(proxyFactory); 子类可以继续处理ProxyFactory</li>
+<li>设置ProxyFactory的Frozen属性</li>
+<li>setPreFiltered设置ProxyFactory 的preFiltered</li>
+<li>getProxy <strong>返回代理对象</strong></li>
+</ul>
+<p>我们可以看出,这里两大部分：</p>
+<p>（1）创建proxyFactory工厂,并配置工厂</p>
+<p>（2）proxyFactory.getProxy(getProxyClassLoader())返回代理对象。</p>
+<p><strong>proxyFactory.getProxy(ClassLoader classLoader)</strong></p>
+<p>proxyFactory.getProxy(ClassLoader classLoader) 首先会先创建一个默认的策略工厂<strong>DefaultAopProxyFactory</strong>。DefaultAopProxyFactory 会根据proxyFactory是基于接口的代理还是基于类的代理,选择创建<strong>JdkDynamicAopProxy对象</strong>，或者创建一个<strong>CglibAopProxy对象</strong></p>
+<p>JdkDynamicAopProxy.getProxy()或者CglibAopProxygetProxy()才是真正返回代理对象。</p>
+<hr />
+<p><strong>再次回顾</strong><a href="https://juejin.im/post/5da995f2518825458329de28">JDK动态代理与CGLIB动态代理</a></p>
+<p><strong>JdkDynamicAopProxy.getProxy()</strong></p>
+<pre class="java"><code>@Override
+    public Object getProxy(ClassLoader classLoader) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(&quot;Creating JDK dynamic proxy: target source is &quot; + this.advised.getTargetSource());
+        }
+        Class&lt;?&gt;[] proxiedInterfaces = AopProxyUtils.completeProxiedInterfaces(this.advised, true);
+        findDefinedEqualsAndHashCodeMethods(proxiedInterfaces);
+        return Proxy.newProxyInstance(classLoader, proxiedInterfaces, this);
+    }</code></code></pre>
+<p>我们看到JDK动态代理的两个要素： Proxy+InvocationHandler<br />
+<strong>InvocationHandler 此时就是JdkDynamicAopProxy，同时JdkDynamicAopProxy封装了advised。这样完美的把advised与JDK动态代理联系在了一起</strong>。</p>
+<p>接下来就是在内存中生成一个字节码JDK代理类$Proxy66.class，生成真正的代理对象了。</p>
+<p><strong>CglibAopProxygetProxy()</strong><br />
+（省略部分源码，直奔主题）</p>
+<pre class="java"><code>            // Configure CGLIB Enhancer...
+            Enhancer enhancer = createEnhancer();
+            Callback[] callbacks = getCallbacks(rootClass);
+            enhancer.setInterfaces(AopProxyUtils.completeProxiedInterfaces(this.advised));
+            return createProxyClassAndInstance(enhancer, callbacks);
+        }
+        </code></code></pre>
+<p>我们看到了Cglb熟悉的要素Enhancer 。MethodInterceptor去哪了呢？</p>
+<p>跟进getCallbacks()方法，会发现此方法会创建一个DynamicAdvisedInterceptor。DynamicAdvisedInterceptor实现了MethodInterceptor，并封装了advisors。</p>
+<pre class="java"><code>Callback aopInterceptor = new DynamicAdvisedInterceptor(this.advised);</code></code></pre>
+<p>这样，CGLB动态代理完美的与advised结合在了一起。<br />
+接下来就是在内存中生成一个新的字节码CGLB代理类<code>***$$FastClassByCGLIB$$29e52466</code>，并生成真实代理对象了。</p>
+<h3 id="总结">总结</h3>
+<p><strong>springaop 底层还是JDK动态代理，CGLB动态代理。通过把增强器封装到Advised中，把Advised与InvocationHandler或者MethodInterceptor联系起来，完美的实现AOP技术</strong>。</p>
+<p>都说事务是根据AOP实现的，趁热打铁，看看事务是如何创建代理的？敬请期待<br />
+欢迎大家关注我的公众号【源码行动】，最新个人理解及时奉送。<br />
+<img src="./images/spring源码系列8AOP源码解析之代理的创建6.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

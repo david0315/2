@@ -1,0 +1,321 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringAOP之使用切入点创建通知' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringAOP之使用切入点创建通知</center></div><div class='banquan'>原文出处:本文由博客园博主小鱼吃猫提供。<br/>
+原文连接:https://www.cnblogs.com/Lyn4ever/p/Lyn4ever.html</div><br>
+    <p>之前已经说过了SpringAOP中的几种通知类型以及如何创建简单的通知<a href="https://www.cnblogs.com/Lyn4ever/p/11939250.html">见地址</a></p>
+<h3 id="一什么是切入点">一、什么是切入点</h3>
+<p>通过之前的例子中，我们可以创建ProxyFactory的方式来创建通知，然后获取目标类中的方法。通过不同类型的通知，能对这些方法做不同的事。但是，这种方式会对整个类中的所有方法都有作用，但是很多时间我们只想对这个类中的部分方法进行通知处理，那就要使用切入点来精确地控制到特定的方法</p>
+<ul>
+<li>也就是说，我们的切入点就是用来确定一个类中的方法（精确到方法），类似于定义一些规则一样，来找到和这个规则相匹配的类，知道这一点，往下看就容易多了。</li>
+</ul>
+<h3 id="二切入点的分类">二、切入点的分类</h3>
+<p>在Spring中的要创建切入点时，就要实现Pointcut类。</p>
+<pre><code><code>package org.springframework.aop;
+
+public interface Pointcut{
+    ClassFilter getClassFilter();
+    MethodMatcher getMethodMacher();
+}</code></code></pre>
+<p>以上两个方法返回的类的源码如下：</p>
+<ul>
+<li>ClassFilter</li>
+</ul>
+<pre><code><code>package org.springframework.aop;
+/**
+*   这是一个函数式接口，就是传入一个类，
+*   如果这个类满足我们的要求，就返回true
+*   也就是说这个切入点适用于这个类（也就是这个类不匹配我们的规则）
+*/
+@FunctionalInterface
+public interface ClassFilter {
+    boolean matches(Class&lt;?&gt; var1);
+}</code></code></pre>
+<ul>
+<li>MethodMatcher</li>
+</ul>
+<pre><code><code>package org.springframework.aop;
+
+import java.lang.reflect.Method;
+/**
+*   这个当然就是用来匹配方法了，
+*   有两种类型，动态和静态，这个由isRuntime()的返回值来决定，true就是动态，false就是静态。这个类型就是决定了这个切入点是动态的还是静态的
+*   
+*/
+public interface MethodMatcher {
+    MethodMatcher TRUE = TrueMethodMatcher.INSTANCE;
+    //用于静态匹配，就是和方法的参数无关
+    boolean matches(Method var1, Class&lt;?&gt; var2);
+
+    boolean isRuntime();
+    //用于动态匹配，也就是和方法的参数有关，因为参数是会变的
+    boolean matches(Method var1, Class&lt;?&gt; var2, Object... var3);
+}</code></code></pre>
+<p>综上，切入点分为两种，动态切入点和静态切入点，动态切入点要每次检查方法的实参是不是满足要求，这会产生额外的开支。如果可以，如果可以，尽可能使用静态切入点。</p>
+<h3 id="三切入点的八个实现类">三、切入点的八个实现类</h3>
+<table>
+<thead>
+<tr class="header">
+<th>实现类</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>org.springframework.aop.support.annotation.AnnotationMatchingPointcut</td>
+<td>在类或方法上找特定的注解，需要JDK5以上版本</td>
+</tr>
+<tr class="even">
+<td>org.springframework.aop.aspectj.AspectJExpressionPointcut</td>
+<td>使用AspectJ织入器以AspectJ语法评估切入点表态式</td>
+</tr>
+<tr class="odd">
+<td>org.springframework.aop.support.ComposablePointcut</td>
+<td>使用诸如union()和intersection()等操作组合两个或多个切入点</td>
+</tr>
+<tr class="even">
+<td>org.springframework.aop.support.ControlFlowPointcut</td>
+<td>是一种特殊的切入点，它们匹配另一个方法的控制流中的所有方法，即任何作为另一个方法的结果而直接或间接调用的方法</td>
+</tr>
+<tr class="odd">
+<td>org.springframework.aop.support.JdkRegexpMethodPointcut</td>
+<td>对方法名使用正则表达式定义切入点，要JDK4以上</td>
+</tr>
+<tr class="even">
+<td>org.springframework.aop.support.NameMatchMethodPointcut</td>
+<td>顾名思义，这是对方法名称列表进行简单的匹配</td>
+</tr>
+<tr class="odd">
+<td>org.springframework.aop.support.DynamicMethodMatcherPointcut</td>
+<td>这个类作为创建动态切入点的基类</td>
+</tr>
+<tr class="even">
+<td>org.springframework.aop.support.StaticMethodMatcherPointcut</td>
+<td>作为创建表态切入点的基类</td>
+</tr>
+</tbody>
+</table>
+<h3 id="四使用staticmethodmatcherpointcut来创建静态切入点">四、使用StaticMethodMatcherPointcut来创建静态切入点</h3>
+<ul>
+<li>创建一个类，两个方法。我们的目的就是只在walk()方法中创建环绕通知，打印一句，&quot;I am a cute cat.&quot;</li>
+</ul>
+<pre><code><code>public class Cat {
+    public void sleep(){
+        System.out.println(&quot;sleep....&quot;);
+    }
+    public void walk(){
+        System.out.println(&quot;walking....&quot;);
+    }
+}</code></code></pre>
+<ul>
+<li>创建切入点</li>
+</ul>
+<pre><code><code>public class MethodPointcutDemo extends StaticMethodMatcherPointcut {
+
+    @Override
+    public boolean matches(Method method, Class&lt;?&gt; aClass) {
+        return method.getName().equals(&quot;walk&quot;);
+    }
+
+    @Override
+    public ClassFilter getClassFilter() {
+        return clz -&gt; clz == Cat.class;
+        
+//        上边的lambda表达式等于下边的这个
+//        return new ClassFilter() {
+//            @Override
+//            public boolean matches(Class&lt;?&gt; clz) {
+//                return clz == Cat.class;
+//            }
+//        };
+    }
+}</code></code></pre>
+<blockquote>
+<p>上边的lambda表达式可查看<a href="https://www.cnblogs.com/Lyn4ever/p/11967959.html" class="uri">https://www.cnblogs.com/Lyn4ever/p/11967959.html</a>,后边出现时只写lambda表达式，且不再说明</p>
+</blockquote>
+<blockquote>
+<p>在上边这个方法中，当然，我们可以不用实现getClassFilter()方法，因为这个方法已经被上级实现过了，我们就可以在matches方法中直接去判断这个类是不是Cat.class</p>
+</blockquote>
+<ul>
+<li>通知类（这个和上一次是一样的，创建一个环绕通知）</li>
+</ul>
+<pre><code><code>import org.aopalliance.intercept.MethodInterceptor;
+import org.aopalliance.intercept.MethodInvocation;
+
+public class CatAdvisor implements MethodInterceptor{
+
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        //最不靠谱的方法，我们可以在这里判断这个method的是不是walk,从而要不要进行通知
+        System.out.println(&quot;I am a cute Cat.&quot;);
+        Object proceed = invocation.proceed();
+        return proceed;
+    }
+}</code></code></pre>
+<blockquote>
+<p>当然，我们在这里也是可以判断这个方法名和类名的，为什么还要用切入点呢。可是这并不靠谱，我们中需要在这里实现我们的逻辑代码，而通过切入点来控制哪个类，哪个方法要被通知，这样更灵活。</p>
+</blockquote>
+<ul>
+<li>测试方法</li>
+</ul>
+<pre><code><code>public static void main(String[] args) {
+        Cat cat = new Cat();
+
+        Pointcut pointcut = new MethodPointcutDemo();//切入点实例
+        Advice advice = new CatAdvisor();//通知类实例（就是我们的通知代码存放的类的对象）
+
+        Advisor advisor = new DefaultPointcutAdvisor(pointcut, advice);//切面类，就是切入点和通知类的集合
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        //和之前代码的区别就是这一句，这里我们使用的是切入点控制，如果把这句注释了，就要用设置通知类
+        proxyFactory.addAdvisor(advisor);//设置切面类，包含切入点（控制通知点）和通知类（逻辑代码）
+        
+        //如果注释了上面一句，用这一句的话，就会对这个类中的所有方法都通知
+//        proxyFactory.addAdvice(advice);//设置通知类
+        proxyFactory.setTarget(cat);
+        Cat proxy = (Cat) proxyFactory.getProxy();
+
+        proxy.sleep();
+        proxy.walk();
+    }</code></code></pre>
+<p>运行结果肯定就是我们想的那样</p>
+<pre><code><code>sleep....
+I am a cute Cat.
+walking....</code></code></pre>
+<h3 id="五使用dyanmicmatcherpointcut创建动态切入点">五、使用DyanmicMatcherPointcut创建动态切入点</h3>
+<p>这个和上边的静态切入点是一样的，只不过是让传入方法的参数满足一定要求时，才会执行通知。由于篇幅原因，就不写了，在本文最后下载代码就能看懂。</p>
+<h3 id="六其他类型的pointcut的实现类">六、其他类型的PointCut的实现类</h3>
+<h4 id="简单的名称匹配-namematchmethodpointcut">1.简单的名称匹配 ( <em>NameMatchMethodPointcut</em> )</h4>
+<p>目标类和通知类还是之前的Cat类，之前的切入点的实现类不用写，因为这个类已经做了默认实现,感兴趣的可以看下它的源码，很简单的，就是匹配类名，和我们刚才创建的静态切入点差不多。</p>
+<pre><code><code>public class NameMatchPointcutDemo {
+    public static void main(String[] args) {
+        Cat cat = new Cat();
+
+        //这个类已经是个实现类，我们就不需要再去写实现类了
+        NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+        pointcut.addMethodName(&quot;walk&quot;);
+
+        Advisor advisor = new DefaultPointcutAdvisor(pointcut,new CatAdvisor());
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.addAdvisor(advisor);
+        proxyFactory.setTarget(cat);
+        Cat proxy = (Cat) proxyFactory.getProxy();
+
+        proxy.sleep();
+        proxy.walk();
+    }
+}</code></code></pre>
+<h4 id="使用正则表达式创建切入点-jdkregexpmethodpointcut">2.使用正则表达式创建切入点 ( <em>JdkRegexpMethodPointcut</em> )</h4>
+<p>只写测试类，其他的都和上边一样</p>
+<pre><code><code>public class JdkRegexpPointcutDemo {
+
+    public static void main(String[] args) {
+        Cat cat = new Cat();
+
+        JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
+        pointcut.setPattern(&quot;.*ee.*&quot;);//匹配中间有ee字母的，sleep()
+
+        Advisor advisor = new DefaultPointcutAdvisor(pointcut,new CatAdvisor());
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.addAdvisor(advisor);
+        proxyFactory.setTarget(cat);
+        Cat proxy = (Cat) proxyFactory.getProxy();
+
+        proxy.sleep();
+        proxy.walk();
+    }
+}</code></code></pre>
+<h4 id="使用aspectj切入点表达式创建切入点-aspectjexpressionpointcut">3.使用AspectJ切入点表达式创建切入点 ( <em>AspectJExpressionPointcut</em> )</h4>
+<p>使用AspectJ时要加入相关依赖</p>
+<pre class="xml"><code>    &lt;dependency&gt;
+      &lt;groupId&gt;org.aspectj&lt;/groupId&gt;
+      &lt;artifactId&gt;aspectjrt&lt;/artifactId&gt;
+      &lt;version&gt;1.9.1&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.aspectj&lt;/groupId&gt;
+      &lt;artifactId&gt;aspectjweaver&lt;/artifactId&gt;
+      &lt;version&gt;1.9.1&lt;/version&gt;
+    &lt;/dependency&gt;</code></code></pre>
+<pre><code><code>public class AspectJExpressionPointcutDemo {
+    public static void main(String[] args) {
+        Cat cat = new Cat();
+
+        AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+        pointcut.setExpression(&quot;execution(* walk*(..))&quot;);
+
+        Advisor advisor = new DefaultPointcutAdvisor(pointcut, new CatAdvisor());
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.addAdvisor(advisor);
+        proxyFactory.setTarget(cat);
+        Cat proxy = (Cat) proxyFactory.getProxy();
+
+        proxy.sleep();
+        proxy.walk();
+    }
+}</code></code></pre>
+<p>这个execution表达式的意思是：任何以walk开头的，具有任何参数和任何返回值的方法</p>
+<h4 id="创建注解匹配的切入点-annotationmatchingpointcut">4.创建注解匹配的切入点 ( <em>AnnotationMatchingPointcut</em> )</h4>
+<p>首先自定义一个注解，如果不是很懂，参考<a href="https://www.cnblogs.com/Lyn4ever/p/11594533.html">Java中自定义注解类，并加以运用</a></p>
+<pre><code><code>/**
+ * 这个注解是用于运行时期、可用于类、方法上
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE,ElementType.METHOD})
+public @interface MyAdvice {
+}</code></code></pre>
+<p>然后在目标方法上添加这个注解（要被通知的类）</p>
+<pre><code><code>    /**
+     * 为了不与之前的冲突，就新写了一个方法
+     */
+    @MyAdvice
+    public void eat(){
+        System.out.println(&quot;eating....&quot;);
+    }</code></code></pre>
+<p>然后在main方法中指定这个注解名：</p>
+<pre><code><code>public class AnnotationPointcutDemo {
+    public static void main(String[] args) {
+        Cat cat = new Cat();
+
+        AnnotationMatchingPointcut pointcut = AnnotationMatchingPointcut
+                .forMethodAnnotation(MyAdvice.class);
+        //这个类还有一个.forClassAnnotation()方法，就是指定类的
+
+        Advisor advisor = new DefaultPointcutAdvisor(pointcut, new CatAdvisor());
+
+        ProxyFactory proxyFactory = new ProxyFactory();
+        proxyFactory.addAdvisor(advisor);
+        proxyFactory.setTarget(cat);
+        Cat proxy = (Cat) proxyFactory.getProxy();
+
+        proxy.sleep();//不会被通知
+        proxy.walk();//不会被通知
+        proxy.eat();//会被通知
+    }
+}</code></code></pre>
+<p><a href="https://github.com/Lyn4ever29/RequireSpring.git">代码已上传至github,如果喜欢，就给个star</a></p>
+<p>上一篇：<a href="https://www.cnblogs.com/Lyn4ever/p/11938449.html">SpringAOP基础</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

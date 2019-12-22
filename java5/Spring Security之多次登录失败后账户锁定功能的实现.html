@@ -1,0 +1,102 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Security之多次登录失败后账户锁定功能的实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Security之多次登录失败后账户锁定功能的实现</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11946727.html</div><br>
+    <p><img src="./images/Spring Security之多次登录失败后账户锁定功能的实现0.png" alt="file" /></p>
+<p>在上一次写的文章中，为大家说到了如何动态的从数据库加载用户、角色、权限信息，从而实现登录验证及授权。在实际的开发过程中，我们通常会有这样的一个需求：当用户多次登录失败的时候，我们应该将账户锁定，等待一定的时间之后才能再次进行登录操作。</p>
+<h2 id="一基础知识回顾">一、基础知识回顾</h2>
+<p>要实现多次登录失败账户锁定的功能，我们需要先回顾一下基础知识：</p>
+<ul>
+<li>Spring Security 不需要我们自己实现登录验证逻辑，而是将用户、角色、权限信息以实现UserDetails和UserDetailsService接口的方式告知Spring Security。具体的登录验证逻辑Spring Security 会帮助我们实现。</li>
+<li>UserDetails接口中有一个方法叫做isAccountNonLocked()用于判断账号是否被锁定，也就是说我们应该通过该方法对应的set方法setAccountNonLocked(false)告知Spring Security该登录账户被锁定。</li>
+<li>那么应该在哪里判断账号登录失败的次数并执行锁定机制呢？当然是我们之前文章给大家介绍的《自定义登录成功及失败结果处理》的AuthenticationFailureHandler。</li>
+</ul>
+<p>建议您先阅读本文，如果您对本文的实现过程感到迷惑，建议您再翻看本号之前的相关内容。</p>
+<h2 id="二实现多次登录失败锁定的原理">二、实现多次登录失败锁定的原理</h2>
+<p>一般来说实现这个需求，我们需要针对每一个用户记录登录失败的次数nLock和锁定账户的到期时间releaseTime。具体你是把这2个信息存储在mysql、还是文件中、还是redis中等等，完全取决于你对你所处的应用架构适用性的判断。具体的实现逻辑无非就是：</p>
+<ul>
+<li>登陆失败之后，从存储中将nLock取出来加1。</li>
+<li>如果nLock大于登陆失败阈值(比如3次)，则将nLock=0，然后设置releaseTime为当前时间加上锁定周期。通过setAccountNonLocked(false)告知Spring Security该登录账户被锁定。</li>
+<li>如果nLock小于等于1，则将nLock再次存起来。</li>
+<li>在一个合适的时机，将锁定状态重置为setAccountNonLocked(true)。</li>
+</ul>
+<p>这是一种非常典型的实现方式，笔者向大家介绍一款非常有用的开源软件叫做：ratelimitj。这个软件的功能主要是为API访问进行限流，也就是说可以通过制定规则限制API接口的访问频率。那恰好登录验证接口也是API的一种啊，我们正好也需要限制它在一定的时间内的访问次数。</p>
+<h2 id="三具体实现">三、具体实现</h2>
+<p>首先需要将ratelimitj通过maven坐标引入到我们的应用里面来。我们使用的是内存存储的版本，还有redis存储的版本，大家可以根据自己的应用情况选用。</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;es.moki.ratelimitj&lt;/groupId&gt;
+            &lt;artifactId&gt;ratelimitj-inmemory&lt;/artifactId&gt;
+            &lt;version&gt;0.4.1&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>之后通过继承SimpleUrlAuthenticationFailureHandler ，实现onAuthenticationFailure方法。该实现是针对登录失败的结果的处理，在我们之前的文章中已经讲过。</p>
+<pre><code><code>@Component
+public class MyAuthenticationFailureHandler extends SimpleUrlAuthenticationFailureHandler {
+
+    @Autowired
+    UserDetailsManager userDetailsManager;
+
+    //规则定义：1小时之内5次机会，就触发限流行为
+    Set&lt;RequestLimitRule&gt; rules = 
+            Collections.singleton(RequestLimitRule.of(1 * 60, TimeUnit.MINUTES,5)); 
+    RequestRateLimiter limiter = new InMemorySlidingWindowRequestRateLimiter(rules);
+
+
+    @Override
+    public void onAuthenticationFailure(HttpServletRequest request,
+                                        HttpServletResponse response, 
+                                        AuthenticationException exception) 
+                                        throws IOException, ServletException {
+
+         String userId = //从request或request.getSession中获取登录用户名
+         //计数器加1，并判断该用户是否已经到了触发了锁定规则
+         boolean reachLimit = limiter.overLimitWhenIncremented(userId);
+
+        if(reachLimit){ //如果触发了锁定规则，通过UserDetails告知Spring Security锁定账户
+               user.setAccountNonLocked(false);
+               userDetailsManager.updateUser(user);
+               SysUser user = (SysUser) userDetailsManager.loadUserByUsername(userId);
+        }
+        
+
+        
+        //此处省略通过response做json或html响应
+    }
+}</code></code></pre>
+<ul>
+<li>核心实现注意看代码中的注释</li>
+<li>代码中的SysUser为UserDetails的实现类，如果不知道如何实现请参考本号之前的文章</li>
+<li>userDetailsManager被用于管理UserDetails信息，通过改变UserDetails改变Spring Security验证行为。</li>
+</ul>
+<h2 id="四重置锁定状态的时机">四、重置锁定状态的时机</h2>
+<pre><code><code>user.setAccountNonLocked(true);</code></code></pre>
+<p>重置锁定状态很简单，就是上面的代码。但是更重要的是如何选择重置锁定状态的时机。笔者能想到几种方案如下</p>
+<ul>
+<li>下一次登陆的时候，自定义过滤器，加在Spring Boot过滤器链最前端做锁定状态重置的判断。</li>
+<li>当登录账户被锁定之后，之后用户的每一次登录都会抛出LockedException。我们完全可以通过Spring Boot的全局异常捕获机制，在其中捕获LockedException，并做锁定状态的判断及重置行为。</li>
+<li><p>写一个Spring 的定时器轮询，当然这是最差的方案。</p>
+<h2 id="期待您的关注">期待您的关注</h2></li>
+<li>向您推荐博主的系列文档：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li><p>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</p></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

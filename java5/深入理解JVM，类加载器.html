@@ -1,0 +1,204 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修深入理解JVM，类加载器' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>深入理解JVM，类加载器</center></div><div class='banquan'>原文出处:本文由博客园博主Java博客手留余香提供。<br/>
+原文连接:https://www.cnblogs.com/yuxiang1/p/11536708.html</div><br>
+    <p><span style="font-size: 16px;">虚拟机设计团队把类加载阶段中的&ldquo;通过一个类的全限定名来获取描述此类的二进制字节流(即字节码)&rdquo;这个动作放到Java虚拟机外部去实现，以便让应用程序自己决定如何去获取所需要的类。实现这个动作的代码模块称为&ldquo;类加载器&rdquo;。</span></p>
+<p><span style="font-size: 16px;">一般来说，Java 虚拟机使用 Java 类的方式如下：</span></p>
+<ol>
+<li><span style="font-size: 16px;">Java 源程序（.java 文件）在经过 Java 编译器编译之后就被转换成字节码（.class 文件）。</span></li>
+<li><span style="font-size: 16px;">类加载器负责读取 Java 字节代码，并转换成&nbsp;<code>java.lang.Class</code>类的一个实例。每个这样的实例用来表示一个 Java 类。通过此实例的&nbsp;<code>newInstance()</code>方法就可以创建出该类的一个对象。</span></li>
+</ol>
+<p><span style="font-size: 16px;">实际的情况可能更加复杂，比如 Java 字节代码可能是通过工具动态生成的，也可能是通过网络下载的。更详细的内容可以参考上一篇文章中讲类加载过程中的加载阶段时介绍的几个例子（JAR包、Applet、动态代理、JSP等）。</span></p>
+<h2><span style="font-size: 16px;">类与类加载器</span></h2>
+<p><span style="font-size: 16px;">类加载器虽然只用于实现类的加载动作，但它在Java程序起到的作用却远大于类加载阶段。对于任意一个类，都需要由加载它的类加载器和这个类本身一同确立其在Java虚拟机中的唯一性，每一个类加载器，都拥有一个独立的类名称空间。通俗而言：比较两个类是否&ldquo;相等&rdquo;（这里所指的&ldquo;相等&rdquo;，包括类的Class对象的equals()方法、isAssignableFrom()方法、isInstance()方法的返回结果，也包括使用instanceof()关键字对做对象所属关系判定等情况），只有在这两个类时由同一个类加载器加载的前提下才有意义，否则，即使这两个类来源于同一个Class文件，被同一个虚拟机加载，只要加载它们的类加载器不同，那这两个类就必定不相等。</span></p>
+<h2><span style="font-size: 16px;">双亲委派模型</span></h2>
+<p><span style="font-size: 16px;">从jvm的角度来讲，只存在以下两种不同的类加载器：</span></p>
+<ul>
+<li><span style="font-size: 16px;">启动类加载器（Bootstrap ClassLoader），这个类加载器用C++实现，是虚拟机自身的一部分；</span></li>
+<li><span style="font-size: 16px;">所有其他类的加载器，这些类由Java实现，独立于虚拟机外部，并且全都继承自抽象类<code>java.lang.ClassLoader</code>。</span></li>
+</ul>
+<p><span style="font-size: 16px;">从Java开发人员的角度看，类加载器可以划分得更细致一些：</span></p>
+<ul>
+<li><span style="font-size: 16px;">启动类加载器（Bootstrap ClassLoader）&nbsp;此类加载器负责将存放在&nbsp;<code>&lt;JAVA_HOME&gt;\lib</code>&nbsp;目录中的，或者被 -Xbootclasspath 参数所指定的路径中的，并且是虚拟机识别的（仅按照文件名识别，如 rt.jar，名字不符合的类库即使放在lib 目录中也不会被加载）类库加载到虚拟机内存中。</span></li>
+<li><span style="font-size: 16px;">启动类加载器无法被 Java 程序直接引用，用户在编写自定义类加载器时，如果需要把加载请求委派给引导类加载器，直接使用null代替即可。</span></li>
+<li><span style="font-size: 16px;">扩展类加载器（Extension ClassLoader）&nbsp;这个类加载器是由<code>ExtClassLoader（sun.misc.Launcher$ExtClassLoader）</code>实现的。它负责将<code>&lt;Java_Home&gt;/lib/ext</code>或者被&nbsp;<code>java.ext.dir</code>系统变量所指定路径中的所有类库加载到内存中，开发者可以直接使用扩展类加载器。</span></li>
+<li><span style="font-size: 16px;">应用程序类加载器（Application ClassLoader）&nbsp;这个类加载器是由&nbsp;<code>AppClassLoader（sun.misc.Launcher$AppClassLoader）</code>实现的。由于这个类加载器是<code>ClassLoader</code>中的<code>getSystemClassLoader()</code>方法的返回值，因此一般称为系统类加载器。</span></li>
+<li><span style="font-size: 16px;">它负责加载用户类路径（ClassPath）上所指定的类库，开发者可以直接使用这个类加载器，如果应用程序中没有自定义过自己的类加载器，一般情况下这个就是程序中默认的类加载器。</span></li>
+</ul>
+<p><span style="font-size: 16px;">由开发人员开发的应用程序都是由这三种类加载器相互配合进行加载的，如果有必要，还可以加入自己定义的类加载器。这些类加载器的关系一般如下图所示：</span></p>
+<p><span style="font-size: 16px;"><img class="origin_image zh-lightbox-thumb lazy" src="./images/深入理解JVM，类加载器0.png" alt="" width="457" data-caption="" data-size="normal" data-rawwidth="457" data-rawheight="373" data-original="https://pic4.zhimg.com/v2-d4af5df076ca1a8b46a275d62c9d919f_r.jpg" data-actualsrc="https://pic4.zhimg.com/v2-d4af5df076ca1a8b46a275d62c9d919f_b.jpg" data-lazy-status="ok" /></span></p>
+<p><span style="font-size: 16px;">上图展示的类加载器之间的层次关系，称为类加载器的双亲委派模型（Parents Delegation Model）。该模型要求除了顶层的启动类加载器外，其余的类加载器都应有自己的父类加载器，这里类加载器之间的父子关系一般通过组合（Composition）关系来实现，而不是通过继承（Inheritance）的关系实现。</span></p>
+<p><span style="font-size: 16px;">工作过程</span></p>
+<p><span style="font-size: 16px;">如果一个类加载器收到了类加载的请求，它首先不会自己去尝试加载，而是把这个请求委派给父类加载器，每一个层次的加载器都是如此，依次递归，因此所有的加载请求最终都应该传送到顶层的启动类加载器中，只有当父加载器反馈自己无法完成此加载请求（它搜索范围中没有找到所需类）时，子加载器才会尝试自己加载。</span></p>
+<p><span style="font-size: 16px;">优点</span></p>
+<p><span style="font-size: 16px;">使用双亲委派模型来组织类加载器之间的关系，使得Java类随着它的类加载器一起具备了一种带有优先级的层次关系。例如类<code>java.lang.Object</code>，它存放再<code>rt.jar</code>中，无论哪个类加载器要加载这个类，最终都是委派给处于模型最顶端的启动类加载器进行加载，因此Object类在程序的各种类加载器环境中都是同一个类。</span></p>
+<p><span style="font-size: 16px;">相反，如果没有双亲委派模型，由各个类加载器自行加载的话，如果用户编写了一个称为｀<code>java.lang.Object</code>的类，并放在程序的ClassPath中，那系统中将会出现多个不同的Object类，程序将变得一片混乱。如果开发者尝试编写一个与<code>rt.jar</code>类库中已有类重名的Java类，将会发现可以正常编译，但是永远无法被加载运行。</span></p>
+<p><span style="font-size: 16px;">双亲委派模型的实现如下：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> synchronized Class&lt;?&gt;<span style="color: #000000;"> loadClass(String name,boolean resolve)throws ClassNotFoundException{
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">check the class has been loaded or not</span>
+    Class c =<span style="color: #000000;"> findLoadedClass(name);
+    </span><span style="color: #0000ff;">if</span>(c == <span style="color: #0000ff;">null</span><span style="color: #000000;">){
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;">{
+            </span><span style="color: #0000ff;">if</span>(parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">){
+                c </span>= parent.loadClass(name,<span style="color: #0000ff;">false</span><span style="color: #000000;">);
+            }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+                c </span>=<span style="color: #000000;"> findBootstrapClassOrNull(name);
+            }
+        }</span><span style="color: #0000ff;">catch</span><span style="color: #000000;">(ClassNotFoundException e){
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">if throws the exception ,the father can not complete the load</span>
+<span style="color: #000000;">        }
+        </span><span style="color: #0000ff;">if</span>(c == <span style="color: #0000ff;">null</span><span style="color: #000000;">){
+            c </span>=<span style="color: #000000;"> findClass(name);
+        }
+    }
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(resolve){
+        resolveClass(c);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> c;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<h2><span style="font-size: 16px;">破坏双亲委派模型</span></h2>
+<h3><span style="font-size: 16px;">线程上下文类加载器</span></h3>
+<p><span style="font-size: 16px;">双亲委派模型并不能解决 Java 应用开发中会遇到的类加载器的全部问题。Java 提供了很多服务提供者接口（Service Provider Interface，SPI），允许第三方为这些接口提供实现。常见的 SPI 有&nbsp;JDBC、JCE、JNDI、JAXP 和 JBI&nbsp;等。这些&nbsp;SPI 的接口由 Java 核心库来提供，如 JAXP 的 SPI 接口定义包含在&nbsp;<code>javax.xml.parsers</code>包中。</span></p>
+<p><span style="font-size: 16px;">这些 SPI 的实现代码很可能是作为 Java 应用所依赖的&nbsp;jar 包被包含进来，可以通过类路径（ClassPath）来找到，如实现了 JAXP SPI 的 Apache Xerces所包含的 jar 包。SPI 接口中的代码经常需要加载具体的实现类。如 JAXP 中的&nbsp;<code>javax.xml.parsers.DocumentBuilderFactory</code>类中的&nbsp;<code>newInstance()</code>&nbsp;方法用来生成一个新的&nbsp;<code>DocumentBuilderFactory</code>&nbsp;的实例。</span></p>
+<p><span style="font-size: 16px;">这里的实例的真正的类是继承自&nbsp;<code>javax.xml.parsers.DocumentBuilderFactory</code>，由 SPI 的实现所提供的。如在 Apache Xerces 中，实现的类是 org.apache.xerces.jaxp.DocumentBuilderFactoryImpl。</span></p>
+<p><span style="font-size: 16px;">而问题在于，SPI 的接口是Java 核心库的一部分，是由引导类加载器加载的，而SPI 实现的 Java 类一般是由系统类加载器加载的。引导类加载器是无法找到 SPI 的实现类的，因为它只加载 Java 的核心库。</span></p>
+<p><span style="font-size: 16px;">它也不能委派给系统类加载器，因为它是系统类加载器的祖先类加载器。也就是说，类加载器的双亲委派模型无法解决这个问题。</span></p>
+<p><span style="font-size: 16px;">为了解决这个问题，Java设计团队只好引入了一个不太优雅的设计：线程上下文类加载器（Thread Context ClassLoader）。</span></p>
+<p><span style="font-size: 16px;">线程上下文类加载器是从 JDK 1.2 开始引入的。类&nbsp;<code>java.lang.Thread</code>中的方法&nbsp;<code>getContextClassLoader()</code>和&nbsp;<code>setContextClassLoader(ClassLoader cl)</code>用来获取和设置线程的上下文类加载器。</span></p>
+<p><span style="font-size: 16px;">如果没有通过&nbsp;<code>setContextClassLoader(ClassLoader cl)</code>方法进行设置的话，线程将继承其父线程的上下文类加载器。Java 应用运行的初始线程的上下文类加载器是应用程序类加载器。在线程中运行的代码可以通过此类加载器来加载类和资源。</span></p>
+<p><span style="font-size: 16px;">有了线程上下文类加载器，就可以做一些&ldquo;舞弊&rdquo;的事情了，JNDI服务使用这个线程上下文类加载器去加载所需要的SPI代码，也就是父类加载器请求子类加载器去完成类加载器的动作，这种行为实际上就是打通了双亲委派模型的层次结构来逆向使用类加载器，已经违背了双亲委派模型的一般性原则。</span></p>
+<h3><span style="font-size: 16px;">追求程序动态性</span></h3>
+<p><span style="font-size: 16px;">这里所说的&ldquo;动态性&rdquo;指的是当前一些非常热门的名词：代码热替换（HotSwap）、模块热部署(Hot Deployment)等。即希望应用程序能像计算机的外设一样，接上鼠标、键盘，不用重启就能立即使用，鼠标出了问题或需要升级就换个鼠标，不用停机或重启。</span></p>
+<p><span style="font-size: 16px;">当前业界&ldquo;事实上&rdquo;的Java模块化标准是OSGi，而OSGi实现代码热部署的关键则是它自定义的类机载器的实现。关于OSGi的细节将在稍后的案例分析中详细讲解。</span></p>
+<h2><span style="font-size: 16px;">自定义类加载器</span></h2>
+<p><span style="font-size: 16px;">API</span></p>
+<p class="ztext-empty-paragraph"><span style="font-size: 16px;">&nbsp;</span></p>
+<p><span style="font-size: 16px;"><img class="content_image lazy" src="./images/深入理解JVM，类加载器1.png" alt="" width="301" data-caption="" data-size="normal" data-rawwidth="301" data-rawheight="270" data-actualsrc="https://pic1.zhimg.com/v2-bb7433eecae2d441d602973cf63b97e8_b.jpg" data-lazy-status="ok" /></span></p>
+<p class="ztext-empty-paragraph"><span style="font-size: 16px;">&nbsp;</span></p>
+<p><span style="font-size: 16px;">其中有如下三个比较重要的方法</span></p>
+<p><span style="font-size: 16px;"><img class="origin_image zh-lightbox-thumb lazy" src="./images/深入理解JVM，类加载器2.png" alt="" width="706" data-caption="" data-size="normal" data-rawwidth="706" data-rawheight="288" data-original="https://pic3.zhimg.com/v2-dec9e24a21769a113dd5c49742408ffa_r.jpg" data-actualsrc="https://pic3.zhimg.com/v2-dec9e24a21769a113dd5c49742408ffa_b.jpg" data-lazy-status="ok" /></span></p>
+<p class="ztext-empty-paragraph"><span style="font-size: 16px;">&nbsp;</span></p>
+<p><span style="font-size: 16px;">在了解完上述内容后，我们可以容易地意识到自定义类加载器有以下两种方式：</span></p>
+<ul>
+<li><span style="font-size: 16px;">采用双亲委派模型：继承ClassLoader类，只需重写其的<code>findClass(String name)</code>方法，而不需重写<code>loadClass(String name)</code>方法。</span></li>
+<li><span style="font-size: 16px;">破坏双亲委派模型：继承ClassLoader类，需要整个重写实现了双亲委派模型逻辑的<code>loadClass(String name)</code>方法。</span></li>
+</ul>
+<h3><span style="font-size: 16px;">实例</span></h3>
+<p><span style="font-size: 16px;">下面我们来实现一个自定义类加载器，用来加载存储在文件系统上的 Java 字节代码。</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> FileSystemClassLoader extends ClassLoader { 
+ 
+   </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String rootDir; 
+ 
+   </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> FileSystemClassLoader(String rootDir) { 
+       </span><span style="color: #0000ff;">this</span>.rootDir =<span style="color: #000000;"> rootDir; 
+   } 
+ 
+   @Override
+   </span><span style="color: #0000ff;">protected</span> Class&lt;?&gt;<span style="color: #000000;"> findClass(String name) throws ClassNotFoundException { 
+       </span><span style="color: #0000ff;">byte</span>[] classData =<span style="color: #000000;"> getClassData(name); 
+       </span><span style="color: #0000ff;">if</span> (classData == <span style="color: #0000ff;">null</span><span style="color: #000000;">) { 
+           </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ClassNotFoundException(); 
+       } 
+       </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> { 
+           </span><span style="color: #0000ff;">return</span> defineClass(name, classData, <span style="color: #800080;">0</span><span style="color: #000000;">, classData.length); 
+       } 
+   } 
+ 
+   </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">byte</span><span style="color: #000000;">[] getClassData(String className) { 
+       String path </span>=<span style="color: #000000;"> classNameToPath(className); 
+       </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> { 
+           InputStream ins </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> FileInputStream(path); 
+           ByteArrayOutputStream baos </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayOutputStream(); 
+           </span><span style="color: #0000ff;">int</span> bufferSize = <span style="color: #800080;">4096</span><span style="color: #000000;">; 
+           </span><span style="color: #0000ff;">byte</span>[] buffer = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span><span style="color: #000000;">[bufferSize]; 
+           </span><span style="color: #0000ff;">int</span> bytesNumRead = <span style="color: #800080;">0</span><span style="color: #000000;">; 
+           </span><span style="color: #0000ff;">while</span> ((bytesNumRead = ins.read(buffer)) != -<span style="color: #800080;">1</span><span style="color: #000000;">) { 
+               baos.write(buffer, </span><span style="color: #800080;">0</span><span style="color: #000000;">, bytesNumRead); 
+           } 
+           </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> baos.toByteArray(); 
+       } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) { 
+           e.printStackTrace(); 
+       } 
+       </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">; 
+   } 
+ 
+   </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String classNameToPath(String className) { 
+       </span><span style="color: #0000ff;">return</span> rootDir +<span style="color: #000000;"> File.separatorChar 
+               </span>+ className.replace(<span style="color: #800000;">'</span><span style="color: #800000;">.</span><span style="color: #800000;">'</span>, File.separatorChar) + <span style="color: #800000;">"</span><span style="color: #800000;">.class</span><span style="color: #800000;">"</span><span style="color: #000000;">; 
+   } 
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 16px;">类 FileSystemClassLoader的&nbsp;<code>findClass()</code>方法首先根据类的全名在硬盘上查找类的字节代码文件（.class 文件），然后读取该文件内容，最后通过 defineClass()方法来把这些字节代码转换成&nbsp;<code>java.lang.Class</code>类的实例。</span></p>
+<h2><span style="font-size: 16px;">案例分析</span></h2>
+<h3><span style="font-size: 16px;">Tomcat：正统的类加载器架构</span></h3>
+<p><span style="font-size: 16px;">主流的Java Web服务器如Tomcat、Jetty、WebLogic、WebSphere等等，都实现了自己定义的类加载器（一般都不止一个）。因为一个功能健全的Web服务器，要解决以下问题：</span></p>
+<ul>
+<li><span style="font-size: 16px;">部署在同一个服务器上的两个Web应用程序所使用的Java类库可以实现相互隔离。&nbsp;两个不同的应用程序可能会依赖同一个第三方类库的不同版本，不能要求一个类库在一个服务器中只有一份，服务器应当保证两个应用程序的类库可以互相独立使用。</span></li>
+<li><span style="font-size: 16px;">部署在同一个服务器上的两个Web应用程序所使用的Java类库可以相互共享。&nbsp;例如，用户可能有5个使用Spring组织的应用程序部署在同一台服务器上，如果把5份Spring分别放在各个应用程序的隔离目录中，库在使用时都要被加载到服务器内存中，JVM的方法区就会有过度膨胀的风险。</span></li>
+<li><span style="font-size: 16px;">服务器需要尽可能保证自身安全不受部署的Web应用程序影响。&nbsp;很多Web服务器本身是用Java实现的，服务器使用的类库应该与应用程序的类库相互独立。</span></li>
+<li><span style="font-size: 16px;">支持JSP应用的服务器，大多数需要支持代码热替换（HotSwap）功能。&nbsp;JSP文件由于其纯文本存储的特性，运行时修改的概率远大于第三方类库或程序自身的Class文件，因此需要做到修改后无须重启。</span></li>
+</ul>
+<p><span style="font-size: 16px;">鉴于上述问题，各种Web服务器都不约而同地提供了数个ClassPath路径供用户存放第三方类库，这些路径一般以&ldquo;lib&rdquo;或&ldquo;classes&rdquo;命名。以Tomcat为例，有3组目录（&ldquo;/common/* &rdquo;、&ldquo;/server/* &rdquo;和&ldquo;/shared/* &rdquo;）可以存放Java类库，另外还可以加上Web应用程序自身的目录&ldquo;/WEB-INF/* &rdquo;，一共4组，把Java类库放置在这些目录中的含义分别如下：</span></p>
+<ul>
+<li><span style="font-size: 16px;">/common目录：类库可被Tomcat和所有的Web应用程序共同使用。</span></li>
+<li><span style="font-size: 16px;">/server目录：类库可被Tomcat使用，对所有的Web应用程序都不可见。</span></li>
+<li><span style="font-size: 16px;">/shared目录：类库可被所有的Web应用程序共同使用，但对Tomcat自己不可见。</span></li>
+<li><span style="font-size: 16px;">/WebApp/WEB-INF目录：类库仅仅可以被此Web应用程序使用，对Tomcat和其他Web应用程序都不可见。</span></li>
+</ul>
+<p><span style="font-size: 16px;">为了支持这套目录结构，并对目录里的类库进行加载和隔离，Tomcat采用如下经典的双亲委派模型来实现了多个类加载器：</span></p>
+<p><span style="font-size: 16px;"><img class="origin_image zh-lightbox-thumb lazy" src="./images/深入理解JVM，类加载器3.png" alt="" width="481" data-caption="" data-size="normal" data-rawwidth="481" data-rawheight="670" data-original="https://pic2.zhimg.com/v2-81732653b2f0b31b864c3c8f5efb01cd_r.jpg" data-actualsrc="https://pic2.zhimg.com/v2-81732653b2f0b31b864c3c8f5efb01cd_b.jpg" data-lazy-status="ok" /></span></p>
+<p><span style="font-size: 16px;">CommonClassLoader、CatalinaClassLoader、SharedClassLoader和WebappClassLoader是Tomcat自己定义的类加载器，它们分别加载/common/* 、/server/*、/shared/**和/WebApp/WEB-INF/*中的Java类库。其中WebApp类加载器和JSP类加载器通常会存在多个实例，每一个Web应用程序对应一个WebApp类加载器，每一个JSP文件对应一个JSP类加载器。</span></p>
+<p><span style="font-size: 16px;">CommonClassLoader能加载的类都可以被CatalinaClassLoader和SharedClassLoader使用，而CatalinaClassLoader和SharedClassLoader自己能加载的类则与对方相互隔离。WebAppClassLoader可以使用SharedClassLoader加载到的类，但各个WebAppClassLoader实例之间相互隔离。而JasperLoader的加载范围仅是这个JSP文件编译出来的那一个Class，它出现的目的就是被丢弃。当服务器检测到JSP文件被修改时，会替换掉目前的JasperLoader的实例，并通过再建立一个新的JSP类加载器来实现JSP文件的HotSwap功能。</span></p>
+<p><span style="font-size: 16px;">特殊场景</span></p>
+<p><span style="font-size: 16px;">前文提到过一个场景，如果有5个Web应用程序都是用Spring来进行组织和管理的话，可以把Spring放到Common或Shared目录下让这些程序共享。Spring要对用户程序的类进行管理，自然要能访问到用户程序的类，而用户程序放在/WebApp/WEB-INF目录中，这时就需要破坏双亲委派模型，使用线程上下文类加载器来完成这一工作了。</span></p>
+<h3><span style="font-size: 16px;">OSGi：类加载器的灵活运用</span></h3>
+<p><span style="font-size: 16px;">OSGi（Open Service Gateway Initiative）是OSGi联盟制定的一个基于Java语言的动态模块化规范，现在成为了Java&ldquo;事实上&rdquo;的模块化标准。它为开发人员提供了面向服务和基于组件的运行环境，并提供标准的方式用来管理软件的生命周期。OSGi 已经被实现和部署在很多产品上，在开源社区也得到了广泛的支持，其中最为著名的应用莫过于大家都很熟悉的Eclipse IDE。</span></p>
+<p><span style="font-size: 16px;">OSGi 中的每个模块（bundle）都包含&nbsp;Java Package和Class。模块可以声明它所依赖的需要导入（import）的其它模块的 Java 包和类（通过&nbsp;Import-Package），也可以声明导出（export）自己的包和类，供其它模块使用（通过&nbsp;Export-Package）。也就是说需要能够隐藏和共享一个模块中的某些 Java 包和类。这是通过 OSGi 特有的类加载器机制来实现的。</span></p>
+<p><span style="font-size: 16px;">OSGi 中的每个模块都有对应的一个类加载器，它负责加载模块自己包含的 Java 包和类。当它需要加载 Java 核心库的类时（以 java开头的包和类），它会代理给父类加载器（通常是启动类加载器）来完成。当它需要加载所导入的 Java 类时，它会代理给导出此 Java 类的模块来完成加载。模块也可以显式的声明某些 Java 包和类，必须由父类加载器来加载。只需要设置系统属性&nbsp;<code>org.osgi.framework.bootdelegation</code>的值即可。</span></p>
+<p><span style="font-size: 16px;">假设有两个模块 bundleA 和 bundleB，它们都有自己对应的类加载器 ClassLoaderA 和 ClassLoaderB。在 bundleA 中包含类 com.bundleA.Sample，并且该类被声明为导出的，也就是说可以被其它模块所使用的。</span></p>
+<p><span style="font-size: 16px;">bundleB 声明了导入 bundleA 提供的类&nbsp;<code>com.bundleA.Sample</code>，并包含一个类&nbsp;<code>com.bundleB.NewSample</code>继承自&nbsp;<code>com.bundleA.Sample</code>。在 bundleB 启动的时候，其类加载器 classLoaderB 需要加载类&nbsp;<code>com.bundleB.NewSample</code>，进而需要加载类&nbsp;<code>com.bundleA.Sample</code>。</span></p>
+<p><span style="font-size: 16px;">由于 bundleB 声明了类&nbsp;<code>com.bundleA.Sample</code>是导入的，classLoaderB 把加载类&nbsp;<code>com.bundleA.Sample</code>的工作代理给导出该类的 bundleA 的类加载器 ClassLoaderA。ClassLoaderA 在其模块内部查找类&nbsp;<code>com.bundleA.Sample</code>并定义它，所得到的类&nbsp;<code>com.bundleA.Sample</code>实例就可以被所有声明导入了此类的模块使用。</span></p>
+<p><span style="font-size: 16px;">对于以 java开头的类，都是由父类加载器来加载的。</span></p>
+<p><span style="font-size: 16px;">如果声明了系统属性&nbsp;<code>org.osgi.framework.bootdelegation=com.example.core.*</code>，那么对于包&nbsp;<code>com.example.core</code>中的类，都是由父类加载器来完成的。</span></p>
+<p><span style="font-size: 16px;">OSGi 模块的这种类加载器结构，使得一个类的不同版本可以共存在 Java 虚拟机中，带来了很大的灵活性。不过它的这种不同，也会给开发人员带来一些麻烦，尤其当模块需要使用第三方提供的库的时候。下面提供几条比较好的建议：</span></p>
+<ul>
+<ul>
+<li><span style="font-size: 16px;">如果一个类库只有一个模块使用，把该类库的 jar 包放在模块中，在 Bundle-ClassPath中指明即可。</span></li>
+<li><span style="font-size: 16px;">如果一个类库被多个模块共用，可以为这个类库单独的创建一个模块，把其它模块需要用到的 Java 包声明为导出的。其它模块声明导入这些类。</span></li>
+<li><span style="font-size: 16px;">如果类库提供了 SPI 接口，并且利用线程上下文类加载器来加载 SPI 实现的 Java 类，有可能会找不到 Java 类。如果出现了 NoClassDefFoundError异常，首先检查当前线程的上下文类加载器是否正确。通过&nbsp;<code>Thread.currentThread().getContextClassLoader()</code>就可以得到该类加载器。该类加载器应该是该模块对应的类加载器。如果不是的话，可以首先通过&nbsp;<code>class.getClassLoader()</code>来得到模块对应的类加载器，再通过&nbsp;<code>Thread.currentThread().setContextClassLoader()</code>来设置当前线程的上下文类加载器。</span></li>
+</ul>
+</ul>
+<p><span style="font-size: 16px;">&nbsp;</span></p>
+<blockquote>
+<p><span style="font-size: 16px; color: #ff0000;">本人免费整理了Java高级资料，涵盖了Java、Redis、MongoDB、MySQL、Zookeeper、Spring Cloud、Dubbo高并发分布式等教程，一共30G，需要自己领取。</span><br /><span style="font-size: 16px;"><span style="color: #ff0000;">传送门：</span><a class=" wrap external" href="https://link.zhihu.com/?target=https%3A//links.jianshu.com/go%3Fto%3Dhttps%253A%252F%252Flink.zhihu.com%252F%253Ftarget%253Dhttps%25253A%252F%252Fmp.weixin.qq.com%252Fs%252FJzddfH-7yNudmkjT0IRL8Q" rel="nofollow noreferrer" target="_blank" data-za-detail-view-id="1043">https://mp.weixin.qq.com/s/JzddfH-7yNudmkjT0IRL8Q</a></span></p>
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

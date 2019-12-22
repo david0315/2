@@ -1,0 +1,1277 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （三）----- Mapper映射的解析过程' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （三）----- Mapper映射的解析过程</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11743442.html</div><br>
+    <p>上一篇我们讲解到mapperElement方法用来解析mapper，我们这篇文章具体来看看mapper.xml的解析过程</p>
+<h2 class="title-article">mappers配置方式</h2>
+<p>mappers 标签下有许多 mapper 标签，每一个 mapper 标签中配置的都是一个独立的映射配置文件的路径，配置方式有以下几种。</p>
+<h3>接口信息进行配置</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;mappers&gt;
+    &lt;mapper <span style="color: #0000ff;">class</span>="org.mybatis.mappers.UserMapper"/&gt;
+    &lt;mapper <span style="color: #0000ff;">class</span>="org.mybatis.mappers.ProductMapper"/&gt;
+    &lt;mapper <span style="color: #0000ff;">class</span>="org.mybatis.mappers.ManagerMapper"/&gt;
+&lt;/mappers&gt;</code></pre>
+
+<p><strong>注意：</strong>这种方式必须保证接口名（例如UserMapper）和xml名（UserMapper.xml）相同，还必须在同一个包中。因为是通过获取mapper中的class属性，拼接上.xml来读取UserMapper.xml，如果xml文件名不同或者不在同一个包中是无法读取到xml的。</p>
+<h3>相对路径进行配置</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;mappers&gt;
+    &lt;mapper resource="org/mybatis/mappers/UserMapper.xml"/&gt;
+    &lt;mapper resource="org/mybatis/mappers/ProductMapper.xml"/&gt;
+    &lt;mapper resource="org/mybatis/mappers/ManagerMapper.xml"/&gt;
+&lt;/mappers&gt;</code></pre>
+
+<p><strong>注意：</strong>这种方式不用保证同接口同包同名。但是要保证xml中的namespase和对应的接口名相同。</p>
+<h3>绝对路径进行配置</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;mappers&gt;
+    &lt;mapper url="file:///var/mappers/UserMapper.xml"/&gt;
+    &lt;mapper url="file:///var/mappers/ProductMapper.xml"/&gt;
+    &lt;mapper url="file:///var/mappers/ManagerMapper.xml"/&gt;
+&lt;/mappers&gt;</code></pre>
+
+<h3>接口所在包进行配置</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;mappers&gt;
+    &lt;<span style="color: #0000ff;">package</span> name="org.mybatis.mappers"/&gt;
+&lt;/mappers&gt;</code></pre>
+
+<p>这种方式和第一种方式要求一致，保证接口名（例如UserMapper）和xml名（UserMapper.xml）相同，还必须在同一个包中。</p>
+<p><strong>注意：</strong>以上所有的配置都要保证xml中的namespase和对应的接口名相同。</p>
+<p>我们以packae属性为例详细分析一下:</p>
+<h2>mappers解析入口方法</h2>
+<p>接上一篇文章最后部分，我们来看看mapperElement方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> mapperElement(XNode parent) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">包扫描的形式</span>
+            <span style="color: #0000ff;">if</span> ("package"<span style="color: #000000;">.equals(child.getName())) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 &lt;package&gt; 节点中的 name 属性</span>
+                String mapperPackage = child.getStringAttribute("name"<span style="color: #000000;">);
+                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 从指定包中查找 所有的 mapper 接口，并根据 mapper 接口解析映射配置</span>
+</strong><span style="color: #000000;"><strong>                configuration.addMappers(mapperPackage);</strong>
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 resource/url/class 等属性</span>
+                String resource = child.getStringAttribute("resource"<span style="color: #000000;">);
+                String url </span>= child.getStringAttribute("url"<span style="color: #000000;">);
+                String mapperClass </span>= child.getStringAttribute("class"<span style="color: #000000;">);
+
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> resource 不为空，且其他两者为空，则从指定路径中加载配置</span>
+                <span style="color: #0000ff;">if</span> (resource != <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    ErrorContext.instance().resource(resource);
+                    InputStream inputStream </span>=<span style="color: #000000;"> Resources.getResourceAsStream(resource);
+                    XMLMapperBuilder mapperParser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, resource, configuration.getSqlFragments());
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析映射文件</span>
+<span style="color: #000000;">                    mapperParser.parse();
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> url 不为空，且其他两者为空，则通过 url 加载配置</span>
+                } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url != <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    ErrorContext.instance().resource(url);
+                    InputStream inputStream </span>=<span style="color: #000000;"> Resources.getUrlAsStream(url);
+                    XMLMapperBuilder mapperParser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, url, configuration.getSqlFragments());
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析映射文件</span>
+<span style="color: #000000;">                    mapperParser.parse();
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> mapperClass 不为空，且其他两者为空，则通过 mapperClass 解析映射配置</span>
+                } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    Class</span>&lt;?&gt; mapperInterface =<span style="color: #000000;"> Resources.classForName(mapperClass);
+                    configuration.addMapper(mapperInterface);
+                } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("A mapper element may only specify a url, resource or class, but not more than one."<span style="color: #000000;">);
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>在 MyBatis 中，共有四种加载映射文件或信息的方式。第一种是从文件系统中加载映射文件；第二种是通过 URL 的方式加载和解析映射文件；第三种是通过 mapper 接口加载映射信息，映射信息可以配置在注解中，也可以配置在映射文件中。最后一种是通过包扫描的方式获取到某个包下的所有类，并使用第三种方式为每个类解析映射信息。</p>
+<p>我们先看下以packae扫描的形式，看下configuration.addMappers(mapperPackage)方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addMappers(String packageName) {
+    mapperRegistry.addMappers(packageName);
+}</span></code></pre>
+
+<p>我们看一下MapperRegistry的addMappers方法:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addMappers(String packageName) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #008000;">//</span><span style="color: #008000;">传入包名和Object.class类型</span>
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">this</span>.addMappers(packageName, Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> addMappers(String packageName, Class&lt;?&gt;<span style="color: #000000;"> superType) {
+</span><span style="color: #008080;"> 7</span>     ResolverUtil&lt;Class&lt;?&gt;&gt; resolverUtil = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ResolverUtil();
+</span><span style="color: #008080;"> 8</span>     <span style="color: #008000;">/*</span>
+<span style="color: #008080;"> 9</span> <span style="color: #008000;">     * 查找包下的父类为 Object.class 的类。
+</span><span style="color: #008080;">10</span> <span style="color: #008000;">     * 查找完成后，查找结果将会被缓存到resolverUtil的内部集合中。上一篇文章我们已经看过这部分的源码，不再累述了
+</span><span style="color: #008080;">11</span>      <span style="color: #008000;">*/</span> 
+<span style="color: #008080;">12</span>     resolverUtil.find(<span style="color: #0000ff;">new</span><span style="color: #000000;"> IsA(superType), packageName);
+</span><span style="color: #008080;">13</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 获取查找结果</span>
+<span style="color: #008080;">14</span>     Set&lt;Class&lt;? <span style="color: #0000ff;">extends</span> Class&lt;?&gt;&gt;&gt; mapperSet =<span style="color: #000000;"> resolverUtil.getClasses();
+</span><span style="color: #008080;">15</span>     Iterator i$ =<span style="color: #000000;"> mapperSet.iterator();
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span>     <span style="color: #0000ff;">while</span><span style="color: #000000;">(i$.hasNext()) {
+</span><span style="color: #008080;">18</span>         Class&lt;?&gt; mapperClass =<span style="color: #000000;"> (Class)i$.next();
+</span><span style="color: #008080;">19</span>         <span style="color: #008000;">//</span><span style="color: #008000;">我们具体看这个方法</span>
+<span style="color: #008080;">20</span>        <strong> <span style="color: #0000ff;">this</span><span style="color: #000000;">.addMapper(mapperClass);
+</span></strong><span style="color: #008080;">21</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">22</span> 
+<span style="color: #008080;">23</span> }</code></pre>
+
+<p>其实就是通过<span style="font-family: 'Courier New'; font-size: 12px;">&nbsp;VFS（虚拟文件系统）获取指定包下的所有文件的Class，也就是所有的Mapper接口，然后遍历每个Mapper接口进行解析，接下来就和第一种配置方式（</span>接口信息进行配置）一样的流程了，接下来我们来看看 基于 XML 的映射文件的解析过程，可以看到先创建一个XMLMapperBuilder，再调用其parse()方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parse() {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 检测映射文件是否已经被解析过</span>
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">configuration.isResourceLoaded(resource)) {
+</span><span style="color: #008080;"> 4</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 mapper 节点</span>
+<span style="color: #008080;"> 5</span>         <strong>configurationElement(parser.evalNode("/mapper"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;"> 6</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 添加资源路径到&ldquo;已解析资源集合&rdquo;中</span>
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">        configuration.addLoadedResource(resource);
+</span><span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 通过命名空间绑定 Mapper 接口</span>
+<span style="color: #008080;"> 9</span> <strong><span style="color: #000000;">        bindMapperForNamespace();
+</span></strong><span style="color: #008080;">10</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span> <span style="color: #000000;">    parsePendingResultMaps();
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    parsePendingCacheRefs();
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">    parsePendingStatements();
+</span><span style="color: #008080;">15</span> }</code></pre>
+
+<p>我们重点关注第5行和第9行的逻辑，也就是<strong>configurationElement和</strong><strong>bindMapperForNamespace方法</strong></p>
+<h2 id="autoid-2-0-0">解析映射文件</h2>
+<p>在 MyBatis 映射文件中，可以配置多种节点。比如 &lt;cache&gt;，&lt;resultMap&gt;，&lt;sql&gt; 以及 &lt;select | insert | update | delete&gt; 等。下面我们来看一个映射文件配置示例。</p>
+<src class="cnblogs_code">
+<pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd"&gt;
+&lt;mapper namespace="mapper.EmployeeMapper"&gt;
+    &lt;cache/&gt;
+    
+    &lt;resultMap id="baseMap" type="entity.Employee"&gt;
+        &lt;result property="id" column="id" jdbcType="INTEGER"&gt;&lt;/result&gt;
+        &lt;result property="name" column="name" jdbcType="VARCHAR"&gt;&lt;/result&gt;
+    &lt;/resultMap&gt;
+    
+    &lt;sql id="table"&gt;<span style="color: #000000;">
+        employee
+    </span>&lt;/sql&gt;
+    
+    &lt;select id="getAll" resultMap="baseMap"&gt;<span style="color: #000000;">
+        select </span>* from  &lt;include refid="table"/&gt;  WHERE id =<span style="color: #000000;"> #{id}
+    </span>&lt;/select&gt;
+    
+    &lt;!-- &lt;insert|update|delete/&gt; --&gt;
+&lt;/mapper&gt;</code></pre>
+
+<p>接着来看看configurationElement解析mapper.xml中的内容。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> configurationElement(XNode context) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 获取 mapper 命名空间，如 mapper.EmployeeMapper</span>
+<span style="color: #008080;"> 4</span>       <strong>  String namespace = context.getStringAttribute("namespace"<span style="color: #000000;">);
+</span></strong><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">if</span> (namespace == <span style="color: #0000ff;">null</span> || namespace.equals(""<span style="color: #000000;">)) {
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Mapper's namespace cannot be empty"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 设置命名空间到 builderAssistant 中</span>
+<span style="color: #008080;">10</span> <span style="color: #000000;">        builderAssistant.setCurrentNamespace(namespace);
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;cache-ref&gt; 节点</span>
+<span style="color: #008080;">13</span>         cacheRefElement(context.evalNode("cache-ref"<span style="color: #000000;">));
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;cache&gt; 节点</span>
+<span style="color: #008080;">16</span>        <strong> cacheElement(context.evalNode("cache"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;">17</span> 
+<span style="color: #008080;">18</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 已废弃配置，这里不做分析</span>
+<span style="color: #008080;">19</span>         parameterMapElement(context.evalNodes("/mapper/parameterMap"<span style="color: #000000;">));
+</span><span style="color: #008080;">20</span> 
+<span style="color: #008080;">21</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;resultMap&gt; 节点</span>
+<span style="color: #008080;">22</span>        <strong> resultMapElements(context.evalNodes("/mapper/resultMap"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;">23</span> 
+<span style="color: #008080;">24</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;sql&gt; 节点</span>
+<span style="color: #008080;">25</span>        <strong> sqlElement(context.evalNodes("/mapper/sql"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;">26</span> 
+<span style="color: #008080;">27</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;select&gt;、&lt;insert&gt;、&lt;update&gt;、&lt;delete&gt; 节点</span>
+<span style="color: #008080;">28</span>        <strong> buildStatementFromContext(context.evalNodes("select|insert|update|delete"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;">29</span>     } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;">30</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error parsing Mapper XML. The XML location is '" + resource + "'. Cause: " +<span style="color: #000000;"> e, e);
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">32</span> }</code></pre>
+
+<p>接下来我们就对其中关键的方法进行详细分析</p>
+<h3 id="autoid-2-1-0">解析 cache 节点</h3>
+<p>MyBatis 提供了一、二级缓存，其中一级缓存是 SqlSession 级别的，默认为开启状态。二级缓存配置在映射文件中，使用者需要显示配置才能开启。如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;cache/&gt;</code></pre>
+
+<p>也可以使用第三方缓存</p>
+<src class="cnblogs_code">
+<pre><code>&lt;cache type="org.mybatis.caches.redis.RedisCache"/&gt;</code></pre>
+
+<p>其中有一些属性可以选择</p>
+<src class="cnblogs_code">
+<pre><code>&lt;cache eviction="LRU"  flushInterval="60000"  size="512" readOnly="true"/&gt;</code></pre>
+
+<ol>
+<li>根据数据的历史访问记录来进行淘汰数据，其核心思想是&ldquo;如果数据最近被访问过，那么将来被访问的几率也更高&rdquo;</li>
+<li>缓存的容量为 512 个对象引用</li>
+<li>缓存每隔60秒刷新一次</li>
+<li>缓存返回的对象是写安全的，即在外部修改对象不会影响到缓存内部存储对象</li>
+</ol>
+<p>下面我们来分析一下缓存配置的解析逻辑，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> cacheElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取type属性，如果type没有指定就用默认的PERPETUAL(早已经注册过的别名的PerpetualCache)</span>
+        String type = context.getStringAttribute("type", "PERPETUAL"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据type从早已经注册的别名中获取对应的Class,PERPETUAL对应的Class是PerpetualCache.class
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果我们写了type属性，如type="org.mybatis.caches.redis.RedisCache"，这里将会得到RedisCache.class</span>
+        Class&lt;? <span style="color: #0000ff;">extends</span> Cache&gt; typeClass =<span style="color: #000000;"> typeAliasRegistry.resolveAlias(type);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取淘汰方式，默认为LRU(早已经注册过的别名的LruCache)，最近最少使用到的先淘汰</span>
+        String eviction = context.getStringAttribute("eviction", "LRU"<span style="color: #000000;">);
+        Class</span>&lt;? <span style="color: #0000ff;">extends</span> Cache&gt; evictionClass =<span style="color: #000000;"> typeAliasRegistry.resolveAlias(eviction);
+        Long flushInterval </span>= context.getLongAttribute("flushInterval"<span style="color: #000000;">);
+        Integer size </span>= context.getIntAttribute("size"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">boolean</span> readWrite = !context.getBooleanAttribute("readOnly", <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">boolean</span> blocking = context.getBooleanAttribute("blocking", <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取子节点配置</span>
+        Properties props =<span style="color: #000000;"> context.getChildrenAsProperties();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建缓存对象</span>
+<span style="color: #000000;"><strong>        builderAssistant.useNewCache(typeClass, evictionClass, flushInterval, size, readWrite, blocking, props);</strong>
+    }
+}
+
+</span><span style="color: #0000ff;">public</span> &lt;T&gt; Class&lt;T&gt;<span style="color: #000000;"> resolveAlias(String string) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">if</span> (string == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 转换成小写</span>
+            String key =<span style="color: #000000;"> string.toLowerCase(Locale.ENGLISH);
+            Class value;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果没有设置type属性，则这里传过来的是PERPETUAL，能从别名缓存中获取到PerpetualCache.class</span>
+            <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.TYPE_ALIASES.containsKey(key)) {
+                value </span>= (Class)<span style="color: #0000ff;">this</span><span style="color: #000000;">.TYPE_ALIASES.get(key);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">如果是设置了自定义的type，则在别名缓存中是获取不到的，直接通过类加载，加载自定义的type，如RedisCache.class</span>
+                value =<span style="color: #000000;"> Resources.classForName(string);
+            }
+
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> value;
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException var4) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> TypeException("Could not resolve type alias '" + string + "'.  Cause: " +<span style="color: #000000;"> var4, var4);
+    }
+}</span></code></pre>
+
+<p>缓存的构建封装在 BuilderAssistant 类的 useNewCache 方法中,我们来看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> Cache useNewCache(Class&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> typeClass,
+    Class</span>&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> evictionClass,Long flushInterval,
+    Integer size,</span><span style="color: #0000ff;">boolean</span> readWrite,<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> blocking,Properties props) {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 使用建造模式构建缓存实例</span>
+    Cache cache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> CacheBuilder(currentNamespace)
+        .implementation(valueOrDefault(typeClass, PerpetualCache.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">))
+        .addDecorator(valueOrDefault(evictionClass, LruCache.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">))
+        .clearInterval(flushInterval)
+        .size(size)
+        .readWrite(readWrite)
+        .blocking(blocking)
+        .properties(props)
+        .build();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加缓存到 Configuration 对象中</span>
+<span style="color: #000000;">    configuration.addCache(cache);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 currentCache 属性，即当前使用的缓存</span>
+    currentCache =<span style="color: #000000;"> cache;
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cache;
+}</span></code></pre>
+
+<p>上面使用了建造模式构建 Cache 实例，我们跟下去看看。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Cache build() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置默认的缓存类型（PerpetualCache）和缓存装饰器（LruCache）</span>
+<span style="color: #000000;">    setDefaultImplementations();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过反射创建缓存</span>
+    Cache cache =<span style="color: #000000;"> newBaseCacheInstance(implementation, id);
+    setCacheProperties(cache);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 仅对内置缓存 PerpetualCache 应用装饰器</span>
+    <span style="color: #0000ff;">if</span> (PerpetualCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(cache.getClass())) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 遍历装饰器集合，应用装饰器</span>
+        <span style="color: #0000ff;">for</span> (Class&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> decorator : decorators) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过反射创建装饰器实例</span>
+            cache =<span style="color: #000000;"> newCacheDecoratorInstance(decorator, cache);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置属性值到缓存实例中</span>
+<span style="color: #000000;">            setCacheProperties(cache);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 应用标准的装饰器，比如 LoggingCache、SynchronizedCache</span>
+        cache =<span style="color: #000000;"> setStandardDecorators(cache);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (!LoggingCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">.isAssignableFrom(cache.getClass())) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 应用具有日志功能的缓存装饰器</span>
+        cache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LoggingCache(cache);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cache;
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setDefaultImplementations() {
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.implementation == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">设置默认缓存类型为PerpetualCache</span>
+        <strong><span style="color: #0000ff;">this</span>.implementation = PerpetualCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">;
+        </span></strong><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.decorators.isEmpty()) {
+            </span><span style="color: #0000ff;">this</span>.decorators.add(LruCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> Cache newBaseCacheInstance(Class&lt;? <span style="color: #0000ff;">extends</span> Cache&gt;<span style="color: #000000;"> cacheClass, String id) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获取构造器</span>
+    Constructor cacheConstructor = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getBaseCacheConstructor(cacheClass);
+
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过构造器实例化Cache</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> (Cache)cacheConstructor.newInstance(id);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var5) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> CacheException("Could not instantiate cache implementation (" + cacheClass + "). Cause: " +<span style="color: #000000;"> var5, var5);
+    }
+}</span></code></pre>
+
+<p>如上就创建好了一个Cache的实例，然后把它添加到Configuration中，并且设置到currentCache属性中，这个属性后面还要使用，也就是Cache实例后面还要使用，我们后面再看。</p>
+<h3 id="autoid-2-1-2">解析 resultMap 节点</h3>
+<p>resultMap 主要用于映射结果。通过 resultMap 和自动映射，可以让 MyBatis 帮助我们完成 ResultSet &rarr; Object 的映射。下面开始分析 resultMap 配置的解析过程。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> resultMapElements(List&lt;XNode&gt; list) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 遍历 &lt;resultMap&gt; 节点列表</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode resultMapNode : list) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 resultMap 节点</span>
+<span style="color: #000000;">            resultMapElement(resultMapNode);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IncompleteElementException e) {
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> ResultMap resultMapElement(XNode resultMapNode) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">return</span> resultMapElement(resultMapNode, Collections.&lt;ResultMapping&gt;<span style="color: #000000;">emptyList());
+}
+
+</span><span style="color: #0000ff;">private</span> ResultMap resultMapElement(XNode resultMapNode, List&lt;ResultMapping&gt; additionalResultMappings) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    ErrorContext.instance().activity(</span>"processing " +<span style="color: #000000;"> resultMapNode.getValueBasedIdentifier());
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 id 和 type 属性</span>
+    String id = resultMapNode.getStringAttribute("id"<span style="color: #000000;">, resultMapNode.getValueBasedIdentifier());
+    String type </span>= resultMapNode.getStringAttribute("type"<span style="color: #000000;">,
+        resultMapNode.getStringAttribute(</span>"ofType"<span style="color: #000000;">,
+            resultMapNode.getStringAttribute(</span>"resultType"<span style="color: #000000;">,
+                resultMapNode.getStringAttribute(</span>"javaType"<span style="color: #000000;">))));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 extends 和 autoMapping</span>
+    String extend = resultMapNode.getStringAttribute("extends"<span style="color: #000000;">);
+    Boolean autoMapping </span>= resultMapNode.getBooleanAttribute("autoMapping"<span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 type 属性对应的类型</span>
+    Class&lt;?&gt; typeClass =<span style="color: #000000;"> resolveClass(type);
+    Discriminator discriminator </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建ResultMapping集合，对应resultMap子节点的id和result节点</span>
+ <strong>   List&lt;ResultMapping&gt; resultMappings = <span style="color: #0000ff;">new</span> ArrayList&lt;ResultMapping&gt;</strong><span style="color: #000000;"><strong>();</strong>
+    resultMappings.addAll(additionalResultMappings);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取并遍历 &lt;resultMap&gt; 的子节点列表</span>
+    List&lt;XNode&gt; resultChildren =<span style="color: #000000;"> resultMapNode.getChildren();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode resultChild : resultChildren) {
+        </span><span style="color: #0000ff;">if</span> ("constructor"<span style="color: #000000;">.equals(resultChild.getName())) {
+            processConstructorElement(resultChild, typeClass, resultMappings);
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ("discriminator"<span style="color: #000000;">.equals(resultChild.getName())) {
+            discriminator </span>=<span style="color: #000000;"> processDiscriminatorElement(resultChild, typeClass, resultMappings);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+
+            List</span>&lt;ResultFlag&gt; flags = <span style="color: #0000ff;">new</span> ArrayList&lt;ResultFlag&gt;<span style="color: #000000;">();
+            </span><span style="color: #0000ff;">if</span> ("id"<span style="color: #000000;">.equals(resultChild.getName())) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加 ID 到 flags 集合中</span>
+<span style="color: #000000;">                flags.add(ResultFlag.ID);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 id 和 result 节点，将id或result节点生成相应的 ResultMapping，将ResultMapping添加到resultMappings集合中</span>
+<span style="color: #000000;"><strong>            resultMappings.add(buildResultMappingFromContext(resultChild, typeClass, flags));</strong>
+        }
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建ResultMapResolver对象</span>
+   <strong> ResultMapResolver resultMapResolver = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ResultMapResolver(builderAssistant, id, typeClass, extend,
+        discriminator, resultMappings, autoMapping);
+    </span></strong><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 根据前面获取到的信息构建 ResultMap 对象</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> resultMapResolver.resolve();</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IncompleteElementException e) {
+        configuration.addIncompleteResultMap(resultMapResolver);
+        </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> e;
+    }
+}</span></code></pre>
+
+<p id="autoid-2-1-3"><strong>解析 id 和 result 节点</strong></p>
+<p>在 &lt;resultMap&gt; 节点中，子节点 &lt;id&gt; 和 &lt;result&gt; 都是常规配置，比较常见。我们来看看解析过程</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> ResultMapping buildResultMappingFromContext(XNode context, Class&lt;?&gt; resultType, List&lt;ResultFlag&gt; flags) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    String property;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据节点类型获取 name 或 property 属性</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (flags.contains(ResultFlag.CONSTRUCTOR)) {
+        property </span>= context.getStringAttribute("name"<span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        property </span>= context.getStringAttribute("property"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取其他各种属性</span>
+    String column = context.getStringAttribute("column"<span style="color: #000000;">);
+    String javaType </span>= context.getStringAttribute("javaType"<span style="color: #000000;">);
+    String jdbcType </span>= context.getStringAttribute("jdbcType"<span style="color: #000000;">);
+   <strong> String nestedSelect </strong></span><strong>= context.getStringAttribute("select"<span style="color: #000000;">);
+    
+    </span></strong><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 解析 resultMap 属性，该属性出现在 &lt;association&gt; 和 &lt;collection&gt; 节点中。
+     * 若这两个节点不包含 resultMap 属性，则调用 processNestedResultMappings 方法,递归调用resultMapElement解析&lt;association&gt; 和 &lt;collection&gt;的嵌套节点，生成resultMap，并返回resultMap.getId();
+     * 如果包含resultMap属性，则直接获取其属性值，这个属性值对应一个resultMap节点
+     </span><span style="color: #008000;">*/</span><strong><span style="color: #000000;">
+    String nestedResultMap </span>= context.getStringAttribute("resultMap", processNestedResultMappings(context, Collections.&lt;ResultMapping&gt;</strong><span style="color: #000000;"><strong>emptyList()));</strong>
+    
+    String notNullColumn </span>= context.getStringAttribute("notNullColumn"<span style="color: #000000;">);
+    String columnPrefix </span>= context.getStringAttribute("columnPrefix"<span style="color: #000000;">);
+    String typeHandler </span>= context.getStringAttribute("typeHandler"<span style="color: #000000;">);
+    String resultSet </span>= context.getStringAttribute("resultSet"<span style="color: #000000;">);
+    String foreignColumn </span>= context.getStringAttribute("foreignColumn"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">boolean</span> lazy = "lazy".equals(context.getStringAttribute("fetchType", configuration.isLazyLoadingEnabled() ? "lazy" : "eager"<span style="color: #000000;">));
+
+    Class</span>&lt;?&gt; javaTypeClass =<span style="color: #000000;"> resolveClass(javaType);
+    Class</span>&lt;? <span style="color: #0000ff;">extends</span> TypeHandler&lt;?&gt;&gt; typeHandlerClass = (Class&lt;? <span style="color: #0000ff;">extends</span> TypeHandler&lt;?&gt;&gt;<span style="color: #000000;">) resolveClass(typeHandler);
+    JdbcType jdbcTypeEnum </span>=<span style="color: #000000;"> resolveJdbcType(jdbcType);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建 ResultMapping 对象</span>
+    <span style="color: #0000ff;">return</span><span style="color: #000000;"><strong> builderAssistant.buildResultMapping</strong>(resultType, property, column, javaTypeClass, jdbcTypeEnum, nestedSelect,
+        nestedResultMap, notNullColumn, columnPrefix, typeHandlerClass, flags, resultSet, foreignColumn, lazy);
+}</span></code></pre>
+
+<p>看processNestedResultMappings解析&lt;association&gt; 和 &lt;collection&gt; 节点中的子节点，并返回ResultMap.id</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> String processNestedResultMappings(XNode context, List&lt;ResultMapping&gt; resultMappings) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (("<strong>association</strong>".equals(context.getName()) || "<strong>collection</strong>".equals(context.getName()) || "case".equals(context.getName())) &amp;&amp; context.getStringAttribute("select") == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        ResultMap resultMap </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.resultMapElement(context, resultMappings);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> resultMap.getId();
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p><strong>只要此节点是</strong>（<strong>association或者</strong><strong>collection）并且select为空,就说明是嵌套查询，那如果select不为空呢？那说明是延迟加载此节点的信息，并不属于嵌套查询，但是有可能有多个<strong>association或者<strong>collection，有一个设置为延迟加载也就是select属性不为空，有一个没有设置延迟加载，那说明resultMap中有嵌套查询的ResultMapping，也有延迟加载的ResultMapping，这个在后面结果集映射时会用到。</strong></strong></strong></p>
+<p>下面以 &lt;association&gt; 节点为例，演示该节点的两种配置方式，分别如下：</p>
+<p>第一种配置方式是通过 resultMap 属性引用其他的 &lt;resultMap&gt; 节点，配置如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;resultMap id="articleResult" type="Article"&gt;
+    &lt;id property="id" column="id"/&gt;
+    &lt;result property="title" column="article_title"/&gt;
+    &lt;!-- 引用 authorResult，此时为嵌套查询 --&gt;
+    &lt;association property="article_author" column="article_author_id" javaType="Author" resultMap="authorResult"/&gt;
+    &lt;!-- 引用 authorResult，此时为延迟查询 --&gt;
+    &lt;association property="article_author" column="article_author_id" javaType="Author" select="authorResult"/&gt;
+&lt;/resultMap&gt;
+
+&lt;resultMap id="authorResult" type="Author"&gt;
+    &lt;id property="id" column="author_id"/&gt;
+    &lt;result property="name" column="author_name"/&gt;
+&lt;/resultMap&gt;</code></pre>
+
+<p>第二种配置方式是采取 resultMap 嵌套的方式进行配置，如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;resultMap id="articleResult" type="Article"&gt;
+    &lt;id property="id" column="id"/&gt;
+    &lt;result property="title" column="article_title"/&gt;
+    &lt;!-- resultMap 嵌套 --&gt;
+    &lt;association property="article_author" javaType="Author"&gt;
+        &lt;id property="id" column="author_id"/&gt;
+        &lt;result property="name" column="author_name"/&gt;
+    &lt;/association&gt;
+&lt;/resultMap&gt;</code></pre>
+
+<p>第二种配置，&lt;association&gt; 的子节点是一些结果映射配置，这些结果配置最终也会被解析成 ResultMap。</p>
+<p>下面分析 ResultMapping 的构建过程。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> ResultMapping buildResultMapping(Class&lt;?&gt; resultType, String property, String column, Class&lt;?&gt;<span style="color: #000000;"> javaType,JdbcType jdbcType, 
+    String nestedSelect, String nestedResultMap, String notNullColumn, String columnPrefix,Class</span>&lt;? <span style="color: #0000ff;">extends</span> TypeHandler&lt;?&gt;&gt;<span style="color: #000000;"> typeHandler, 
+    List</span>&lt;ResultFlag&gt; flags, String resultSet, String foreignColumn, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> lazy) {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> resultType：即 &lt;resultMap type="xxx"/&gt; 中的 type 属性
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> property：即 &lt;result property="xxx"/&gt; 中的 property 属性</span>
+    Class&lt;?&gt; javaTypeClass =<span style="color: #000000;"> resolveResultJavaType(resultType, property, javaType);
+
+    TypeHandler</span>&lt;?&gt; typeHandlerInstance =<span style="color: #000000;"> resolveTypeHandler(javaTypeClass, typeHandler);
+
+    List</span>&lt;ResultMapping&gt; composites =<span style="color: #000000;"> parseCompositeColumnName(column);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过建造模式构建 ResultMapping</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> ResultMapping</strong>.Builder(configuration, property, column, javaTypeClass)
+        .jdbcType(jdbcType)
+       <strong> .nestedQueryId(applyCurrentNamespace(nestedSelect, </strong></span><strong><span style="color: #0000ff;">true</span><span style="color: #000000;">))
+        .nestedResultMapId(applyCurrentNamespace(nestedResultMap, </span><span style="color: #0000ff;">true</span></strong><span style="color: #000000;"><strong>))</strong>
+        .resultSet(resultSet)
+        .typeHandler(typeHandlerInstance)
+        .flags(flags </span>== <span style="color: #0000ff;">null</span> ? <span style="color: #0000ff;">new</span> ArrayList&lt;ResultFlag&gt;<span style="color: #000000;">() : flags)
+        .composites(composites)
+        .notNullColumns(parseMultipleColumnNames(notNullColumn))
+        .columnPrefix(columnPrefix)
+        .foreignColumn(foreignColumn)
+        .lazy(lazy)
+        .build();
+}
+
+</span><span style="color: #0000ff;">private</span> Class&lt;?&gt; resolveResultJavaType(Class&lt;?&gt; resultType, String property, Class&lt;?&gt;<span style="color: #000000;"> javaType) {
+    </span><span style="color: #0000ff;">if</span> (javaType == <span style="color: #0000ff;">null</span> &amp;&amp; property != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">获取ResultMap中的type属性的元类，如&lt;resultMap id="user" type="java.model.User"/&gt; 中User的元类</span>
+            MetaClass metaResultType = MetaClass.forClass(resultType, <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getReflectorFactory());
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">&lt;result property="name" javaType="String"/&gt;,如果result中没有设置javaType，则获取元类属性对那个的类型</span>
+           <strong> javaType =</strong><span style="color: #000000;"><strong> metaResultType.getSetterType(property);</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var5) {
+            ;
+        }
+    }
+
+    </span><span style="color: #0000ff;">if</span> (javaType == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        javaType </span>= Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> javaType;
+}
+    
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ResultMapping build() {
+    resultMapping.flags </span>=<span style="color: #000000;"> Collections.unmodifiableList(resultMapping.flags);
+    resultMapping.composites </span>=<span style="color: #000000;"> Collections.unmodifiableList(resultMapping.composites);
+    resolveTypeHandler();
+    validate();
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> resultMapping;
+}</span></code></pre>
+
+<p>我们来看看ResultMapping类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"><strong> ResultMapping</strong> {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Configuration configuration;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String property;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String column;
+    </span><span style="color: #0000ff;">private</span> Class&lt;?&gt;<span style="color: #000000;"> javaType;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> JdbcType jdbcType;
+    </span><span style="color: #0000ff;">private</span> TypeHandler&lt;?&gt;<span style="color: #000000;"> typeHandler;
+    </span><strong><span style="color: #0000ff;">private</span><span style="color: #000000;"> String nestedResultMapId;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String nestedQueryId;
+    </span></strong><span style="color: #0000ff;">private</span> Set&lt;String&gt;<span style="color: #000000;"> notNullColumns;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String columnPrefix;
+    </span><span style="color: #0000ff;">private</span> List&lt;ResultFlag&gt;<span style="color: #000000;"> flags;
+    </span><span style="color: #0000ff;">private</span> List&lt;ResultMapping&gt;<span style="color: #000000;"> composites;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String resultSet;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String foreignColumn;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> lazy;
+
+    ResultMapping() {
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<p>我们看到ResultMapping中有属性<strong style="font-family: 'Courier New'; font-size: 12px;">nestedResultMapId表示嵌套查询和</strong><strong style="font-family: 'Courier New'; font-size: 12px;">nestedQueryId表示延迟查询</strong></p>
+<p>ResultMapping就是和ResultMap中子节点id和result对应</p>
+<src class="cnblogs_code">
+<pre><code>&lt;id column="wi_id" jdbcType="INTEGER"  property="id" /&gt;
+&lt;result column="warrant_no" jdbcType="String"  jdbcType="CHAR" property="warrantNo" /&gt;</code></pre>
+
+<p id="autoid-2-1-3"><strong>ResultMap 对象构建</strong></p>
+<p>前面的分析我们知道了&lt;id&gt;，&lt;result&gt; 等节点最终都被解析成了 ResultMapping。并且封装到了<strong>resultMappings集合中，</strong>紧接着要做的事情是构建 ResultMap，关键代码在<strong>resultMapResolver.resolve()：</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ResultMap resolve() {
+    </span><span style="color: #0000ff;">return</span> assistant.addResultMap(<span style="color: #0000ff;">this</span>.id, <span style="color: #0000ff;">this</span>.type, <span style="color: #0000ff;">this</span>.extend, <span style="color: #0000ff;">this</span>.discriminator, <span style="color: #0000ff;">this</span>.resultMappings, <span style="color: #0000ff;">this</span><span style="color: #000000;">.autoMapping);
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ResultMap addResultMap(
+    String id, Class</span>&lt;?&gt;<span style="color: #000000;"> type, String extend, Discriminator discriminator,
+    List</span>&lt;ResultMapping&gt;<span style="color: #000000;"> resultMappings, Boolean autoMapping) {
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 为 ResultMap 的 id 和 extend 属性值拼接命名空间</span>
+    id = applyCurrentNamespace(id, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    extend </span>= applyCurrentNamespace(extend, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+
+    </span><span style="color: #0000ff;">if</span> (extend != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">configuration.hasResultMap(extend)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IncompleteElementException("Could not find a parent resultmap with id '" + extend + "'"<span style="color: #000000;">);
+        }
+        ResultMap resultMap </span>=<span style="color: #000000;"> configuration.getResultMap(extend);
+        List</span>&lt;ResultMapping&gt; extendedResultMappings = <span style="color: #0000ff;">new</span> ArrayList&lt;ResultMapping&gt;<span style="color: #000000;">(resultMap.getResultMappings());
+        extendedResultMappings.removeAll(resultMappings);
+        
+        </span><span style="color: #0000ff;">boolean</span> declaresConstructor = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (ResultMapping resultMapping : resultMappings) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (resultMapping.getFlags().contains(ResultFlag.CONSTRUCTOR)) {
+                declaresConstructor </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            }
+        }
+        
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (declaresConstructor) {
+            Iterator</span>&lt;ResultMapping&gt; extendedResultMappingsIter =<span style="color: #000000;"> extendedResultMappings.iterator();
+            </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (extendedResultMappingsIter.hasNext()) {
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (extendedResultMappingsIter.next().getFlags().contains(ResultFlag.CONSTRUCTOR)) {
+                    extendedResultMappingsIter.remove();
+                }
+            }
+        }
+        resultMappings.addAll(extendedResultMappings);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建 ResultMap</span>
+  <strong>  ResultMap resultMap = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ResultMap.Builder(configuration, id, type, resultMappings, autoMapping)
+        .discriminator(discriminator)
+        .build();
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 将创建好的ResultMap加入configuration中</span>
+<strong><span style="color: #000000;">    configuration.addResultMap(resultMap);
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> resultMap;
+}</span></code></pre>
+
+<p>我们先看看<strong>ResultMap</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ResultMap {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String id;
+    </span><span style="color: #0000ff;">private</span> Class&lt;?&gt;<span style="color: #000000;"> type;
+    </span><span style="color: #0000ff;">private</span> List&lt;ResultMapping&gt;<span style="color: #000000;"> resultMappings;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">用于存储 &lt;id&gt; 节点对应的 ResultMapping 对象</span>
+    <span style="color: #0000ff;">private</span> List&lt;ResultMapping&gt;<span style="color: #000000;"> idResultMappings;
+    </span><span style="color: #0000ff;">private</span> List&lt;ResultMapping&gt;<span style="color: #000000;"> constructorResultMappings;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">用于存储 &lt;id&gt; 和 &lt;result&gt; 节点对应的 ResultMapping 对象</span>
+    <span style="color: #0000ff;">private</span> List&lt;ResultMapping&gt;<span style="color: #000000;"> propertyResultMappings;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">用于存储 所有&lt;id&gt;、&lt;result&gt; 节点 column 属性</span>
+    <span style="color: #0000ff;">private</span> Set&lt;String&gt;<span style="color: #000000;"> mappedColumns;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Discriminator discriminator;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasNestedResultMaps;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasNestedQueries;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Boolean autoMapping;
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ResultMap() {
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<p>再来看看通过建造模式构建 ResultMap 实例</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ResultMap build() {
+    </span><span style="color: #0000ff;">if</span> (resultMap.id == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("ResultMaps must have an id"<span style="color: #000000;">);
+    }
+    resultMap.mappedColumns </span>= <span style="color: #0000ff;">new</span> HashSet&lt;String&gt;<span style="color: #000000;">();
+    resultMap.mappedProperties </span>= <span style="color: #0000ff;">new</span> HashSet&lt;String&gt;<span style="color: #000000;">();
+    resultMap.idResultMappings </span>= <span style="color: #0000ff;">new</span> ArrayList&lt;ResultMapping&gt;<span style="color: #000000;">();
+    resultMap.constructorResultMappings </span>= <span style="color: #0000ff;">new</span> ArrayList&lt;ResultMapping&gt;<span style="color: #000000;">();
+    resultMap.propertyResultMappings </span>= <span style="color: #0000ff;">new</span> ArrayList&lt;ResultMapping&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">final</span> List&lt;String&gt; constructorArgNames = <span style="color: #0000ff;">new</span> ArrayList&lt;String&gt;<span style="color: #000000;">();
+
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (ResultMapping resultMapping : resultMap.resultMappings) {
+        </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+         * resultMapping.getNestedQueryId()不为空，表示当前resultMap是中有需要延迟查询的属性
+         * resultMapping.getNestedResultMapId()不为空，表示当前resultMap是一个嵌套查询
+         * 有可能当前ResultMapp既是一个嵌套查询，又存在延迟查询的属性
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        resultMap.hasNestedQueries </span>= resultMap.hasNestedQueries || resultMapping.getNestedQueryId() != <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        resultMap.hasNestedResultMaps </span>=  resultMap.hasNestedResultMaps || (resultMapping.getNestedResultMapId() != <span style="color: #0000ff;">null</span> &amp;&amp; resultMapping.getResultSet() == <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+
+        </span><span style="color: #0000ff;">final</span> String column =<span style="color: #000000;"> resultMapping.getColumn();
+        </span><span style="color: #0000ff;">if</span> (column != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 colum 转换成大写，并添加到 mappedColumns 集合中</span>
+<span style="color: #000000;">            resultMap.mappedColumns.add(column.toUpperCase(Locale.ENGLISH));
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (resultMapping.isCompositeResult()) {
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (ResultMapping compositeResultMapping : resultMapping.getComposites()) {
+                </span><span style="color: #0000ff;">final</span> String compositeColumn =<span style="color: #000000;"> compositeResultMapping.getColumn();
+                </span><span style="color: #0000ff;">if</span> (compositeColumn != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    resultMap.mappedColumns.add(compositeColumn.toUpperCase(Locale.ENGLISH));
+                }
+            }
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加属性 property 到 mappedProperties 集合中</span>
+        <span style="color: #0000ff;">final</span> String property =<span style="color: #000000;"> resultMapping.getProperty();
+        </span><span style="color: #0000ff;">if</span> (property != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            resultMap.mappedProperties.add(property);
+        }
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (resultMapping.getFlags().contains(ResultFlag.CONSTRUCTOR)) {
+            resultMap.constructorResultMappings.add(resultMapping);
+            </span><span style="color: #0000ff;">if</span> (resultMapping.getProperty() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                constructorArgNames.add(resultMapping.getProperty());
+            }
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加 resultMapping 到 propertyResultMappings 中</span>
+<span style="color: #000000;">            resultMap.propertyResultMappings.add(resultMapping);
+        }
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (resultMapping.getFlags().contains(ResultFlag.ID)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加 resultMapping 到 idResultMappings 中</span>
+<span style="color: #000000;">            resultMap.idResultMappings.add(resultMapping);
+        }
+    }
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (resultMap.idResultMappings.isEmpty()) {
+        resultMap.idResultMappings.addAll(resultMap.resultMappings);
+    }
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">constructorArgNames.isEmpty()) {
+        </span><span style="color: #0000ff;">final</span> List&lt;String&gt; actualArgNames =<span style="color: #000000;"> argNamesOfMatchingConstructor(constructorArgNames);
+        </span><span style="color: #0000ff;">if</span> (actualArgNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error in result map '" +<span style="color: #000000;"> resultMap.id
+                </span>+ "'. Failed to find a constructor in '"
+                + resultMap.getType().getName() + "' by arg names " +<span style="color: #000000;"> constructorArgNames
+                </span>+ ". There might be more info in debug log."<span style="color: #000000;">);
+        }
+        Collections.sort(resultMap.constructorResultMappings, </span><span style="color: #0000ff;">new</span> Comparator&lt;ResultMapping&gt;<span style="color: #000000;">() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> compare(ResultMapping o1, ResultMapping o2) {
+                </span><span style="color: #0000ff;">int</span> paramIdx1 =<span style="color: #000000;"> actualArgNames.indexOf(o1.getProperty());
+                </span><span style="color: #0000ff;">int</span> paramIdx2 =<span style="color: #000000;"> actualArgNames.indexOf(o2.getProperty());
+                </span><span style="color: #0000ff;">return</span> paramIdx1 -<span style="color: #000000;"> paramIdx2;
+            }
+        });
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将以下这些集合变为不可修改集合</span>
+    resultMap.resultMappings =<span style="color: #000000;"> Collections.unmodifiableList(resultMap.resultMappings);
+    resultMap.idResultMappings </span>=<span style="color: #000000;"> Collections.unmodifiableList(resultMap.idResultMappings);
+    resultMap.constructorResultMappings </span>=<span style="color: #000000;"> Collections.unmodifiableList(resultMap.constructorResultMappings);
+    resultMap.propertyResultMappings </span>=<span style="color: #000000;"> Collections.unmodifiableList(resultMap.propertyResultMappings);
+    resultMap.mappedColumns </span>=<span style="color: #000000;"> Collections.unmodifiableSet(resultMap.mappedColumns);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> resultMap;
+}</span></code></pre>
+
+<p>主要做的事情就是将 ResultMapping 实例及属性分别存储到不同的集合中。</p>
+<h3 id="autoid-2-1-3">解析 sql 节点</h3>
+<p>&lt;sql&gt; 节点用来定义一些可重用的 SQL 语句片段，比如表名，或表的列名等。在映射文件中，我们可以通过 &lt;include&gt; 节点引用 &lt;sql&gt; 节点定义的内容。</p>
+<src class="cnblogs_code">
+<pre><code>&lt;sql id="table"&gt;<span style="color: #000000;">
+    user
+</span>&lt;/sql&gt;
+
+&lt;select id="findOne" resultType="Article"&gt;<span style="color: #000000;">
+    SELECT </span>* FROM &lt;include refid="table"/&gt; WHERE id =<span style="color: #000000;"> #{id}
+</span>&lt;/select&gt;</code></pre>
+
+<p>下面分析一下 sql 节点的解析过程，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> sqlElement(List&lt;XNode&gt; list) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (configuration.getDatabaseId() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 sqlElement 解析 &lt;sql&gt; 节点</span>
+<span style="color: #000000;">        sqlElement(list, configuration.getDatabaseId());
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 再次调用 sqlElement，不同的是，这次调用，该方法的第二个参数为 null</span>
+    sqlElement(list, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> sqlElement(List&lt;XNode&gt; list, String requiredDatabaseId) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode context : list) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 id 和 databaseId 属性</span>
+        String databaseId = context.getStringAttribute("databaseId"<span style="color: #000000;">);
+        String id </span>= context.getStringAttribute("id"<span style="color: #000000;">);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> id = currentNamespace + "." + id</span>
+        id = builderAssistant.applyCurrentNamespace(id, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测当前 databaseId 和 requiredDatabaseId 是否一致</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (databaseIdMatchesCurrent(id, databaseId, requiredDatabaseId)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 &lt;id, XNode&gt; 键值对缓存到XMLMapperBuilder对象的 sqlFragments 属性中，以供后面的sql语句使用</span>
+<span style="color: #000000;">            sqlFragments.put(id, context);
+        }
+    }
+}</span></code></pre>
+
+<h3>解析select|insert|update|delete节点</h3>
+<p>&nbsp;&lt;select&gt;、&lt;insert&gt;、&lt;update&gt; 以及 &lt;delete&gt; 等节点统称为 SQL 语句节点，其解析过程在buildStatementFromContext方法中：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> buildStatementFromContext(List&lt;XNode&gt;<span style="color: #000000;"> list) {
+    </span><span style="color: #0000ff;">if</span> (configuration.getDatabaseId() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用重载方法构建 Statement</span>
+<span style="color: #000000;">        buildStatementFromContext(list, configuration.getDatabaseId());
+    }
+    buildStatementFromContext(list, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> buildStatementFromContext(List&lt;XNode&gt;<span style="color: #000000;"> list, String requiredDatabaseId) {
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode context : list) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 XMLStatementBuilder 建造类</span>
+        <span style="color: #0000ff;">final</span> XMLStatementBuilder statementParser = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLStatementBuilder(configuration, builderAssistant, context, requiredDatabaseId);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 解析sql节点，将其封装到 Statement 对象中，并将解析结果存储到 configuration 的 mappedStatements 集合中
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            statementParser.parseStatementNode();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IncompleteElementException e) {
+            configuration.addIncompleteStatement(statementParser);
+        }
+    }
+}</span></code></pre>
+
+<p>我们继续看&nbsp;statementParser.parseStatementNode();</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parseStatementNode() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 id 和 databaseId 属性</span>
+    String id = context.getStringAttribute("id"<span style="color: #000000;">);
+    String databaseId </span>= context.getStringAttribute("databaseId"<span style="color: #000000;">);
+
+    </span><span style="color: #0000ff;">if</span> (!databaseIdMatchesCurrent(id, databaseId, <span style="color: #0000ff;">this</span><span style="color: #000000;">.requiredDatabaseId)) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取各种属性</span>
+    Integer fetchSize = context.getIntAttribute("fetchSize"<span style="color: #000000;">);
+    Integer timeout </span>= context.getIntAttribute("timeout"<span style="color: #000000;">);
+    String parameterMap </span>= context.getStringAttribute("parameterMap"<span style="color: #000000;">);
+    String parameterType </span>= context.getStringAttribute("parameterType"<span style="color: #000000;">);
+    Class</span>&lt;?&gt; parameterTypeClass =<span style="color: #000000;"> resolveClass(parameterType);
+    String resultMap </span>= context.getStringAttribute("resultMap"<span style="color: #000000;">);
+    String resultType </span>= context.getStringAttribute("resultType"<span style="color: #000000;">);
+    String lang </span>= context.getStringAttribute("lang"<span style="color: #000000;">);
+    LanguageDriver langDriver </span>=<span style="color: #000000;"> getLanguageDriver(lang);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过别名解析 resultType 对应的类型</span>
+    Class&lt;?&gt; resultTypeClass =<span style="color: #000000;"> resolveClass(resultType);
+    String resultSetType </span>= context.getStringAttribute("resultSetType"<span style="color: #000000;">);
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 Statement 类型，默认为 PREPARED</span>
+    StatementType statementType = StatementType.valueOf(context.getStringAttribute("statementType"<span style="color: #000000;">, StatementType.PREPARED.toString()));
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 ResultSetType</span>
+    ResultSetType resultSetTypeEnum =<span style="color: #000000;"> resolveResultSetType(resultSetType);
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 获取节点的名称，比如 &lt;select&gt; 节点名称为 select</span>
+    String nodeName =<span style="color: #000000;"> context.getNode().getNodeName();
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 根据节点名称解析 SqlCommandType</span>
+    SqlCommandType sqlCommandType =<span style="color: #000000;"> SqlCommandType.valueOf(nodeName.toUpperCase(Locale.ENGLISH));
+    </span><span style="color: #0000ff;">boolean</span> isSelect = sqlCommandType ==<span style="color: #000000;"> SqlCommandType.SELECT;
+    </span><span style="color: #0000ff;">boolean</span> flushCache = context.getBooleanAttribute("flushCache", !<span style="color: #000000;">isSelect);
+    </span><span style="color: #0000ff;">boolean</span> useCache = context.getBooleanAttribute("useCache"<span style="color: #000000;">, isSelect);
+    </span><span style="color: #0000ff;">boolean</span> resultOrdered = context.getBooleanAttribute("resultOrdered", <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 &lt;include&gt; 节点</span>
+    XMLIncludeTransformer includeParser = <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> XMLIncludeTransformer(configuration, builderAssistant);
+    includeParser.applyIncludes(context.getNode());</strong>
+
+    processSelectKeyNodes(id, parameterTypeClass, langDriver);
+
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 SQL 语句</span>
+    SqlSource sqlSource =</strong><span style="color: #000000;"><strong> langDriver.createSqlSource(configuration, context, parameterTypeClass);</strong>
+    String resultSets </span>= context.getStringAttribute("resultSets"<span style="color: #000000;">);
+    String keyProperty </span>= context.getStringAttribute("keyProperty"<span style="color: #000000;">);
+    String keyColumn </span>= context.getStringAttribute("keyColumn"<span style="color: #000000;">);
+
+    KeyGenerator keyGenerator;
+    String keyStatementId </span>= id +<span style="color: #000000;"> SelectKeyGenerator.SELECT_KEY_SUFFIX;
+    keyStatementId </span>= builderAssistant.applyCurrentNamespace(keyStatementId, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (configuration.hasKeyGenerator(keyStatementId)) {
+        keyGenerator </span>=<span style="color: #000000;"> configuration.getKeyGenerator(keyStatementId);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        keyGenerator </span>= context.getBooleanAttribute("useGeneratedKeys"<span style="color: #000000;">,
+            configuration.isUseGeneratedKeys() </span>&amp;&amp; SqlCommandType.INSERT.equals(sqlCommandType)) ?<span style="color: #000000;"> Jdbc3KeyGenerator.INSTANCE : NoKeyGenerator.INSTANCE;
+    }
+
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 构建 MappedStatement 对象，并将该对象存储到 Configuration 的 mappedStatements 集合中
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;"><strong>
+    builderAssistant.addMappedStatement</strong>(id, sqlSource, statementType, sqlCommandType,
+        fetchSize, timeout, parameterMap, parameterTypeClass, resultMap, resultTypeClass,
+        resultSetTypeEnum, flushCache, useCache, resultOrdered,
+        keyGenerator, keyProperty, keyColumn, databaseId, langDriver, resultSets);
+}</span></code></pre>
+
+<p>我们主要来分析下面几个重要的方法：</p>
+<ol>
+<li>解析 &lt;include&gt; 节点</li>
+<li>解析 SQL，获取 SqlSource</li>
+<li>构建 MappedStatement 实例</li>
+</ol>
+<p id="autoid-2-1-5"><strong>解析 &lt;include&gt; 节点</strong></p>
+<p>先来看一个include的例子</p>
+<src class="cnblogs_code">
+<pre><code>&lt;mapper namespace="java.mybaits.dao.UserMapper"&gt;
+    &lt;sql id="table"&gt;<span style="color: #000000;">
+        user
+    </span>&lt;/sql&gt;
+
+    &lt;select id="findOne" resultType="User"&gt;<span style="color: #000000;">
+        SELECT  </span>* FROM  &lt;include refid="table"/&gt; WHERE id =<span style="color: #000000;"> #{id}
+    </span>&lt;/select&gt;
+&lt;/mapper&gt;</code></pre>
+
+<p>&lt;include&gt; 节点的解析逻辑封装在 applyIncludes 中，该方法的代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> applyIncludes(Node source) {
+    Properties variablesContext </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+    Properties configurationVariables </span>=<span style="color: #000000;"> configuration.getVariables();
+    </span><span style="color: #0000ff;">if</span> (configurationVariables != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 configurationVariables 中的数据添加到 variablesContext 中</span>
+<span style="color: #000000;">        variablesContext.putAll(configurationVariables);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用重载方法处理 &lt;include&gt; 节点</span>
+    applyIncludes(source, variablesContext, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>继续看&nbsp;applyIncludes 方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> applyIncludes(Node source, <span style="color: #0000ff;">final</span> Properties variablesContext, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> included) {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第一个条件分支</span>
+    <span style="color: #0000ff;">if</span> (source.getNodeName().equals("include"<span style="color: #000000;">)) {
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取 &lt;sql&gt; 节点。</span>
+        Node toInclude = findSqlFragment(getStringAttribute(source, "refid"<span style="color: #000000;">), variablesContext);
+
+        Properties toIncludeContext </span>=<span style="color: #000000;"> getVariablesContext(source, variablesContext);
+
+        applyIncludes(toInclude, toIncludeContext, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+
+        </span><span style="color: #0000ff;">if</span> (toInclude.getOwnerDocument() !=<span style="color: #000000;"> source.getOwnerDocument()) {
+            toInclude </span>= source.getOwnerDocument().importNode(toInclude, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 &lt;select&gt;节点中的 &lt;include&gt; 节点替换为 &lt;sql&gt; 节点</span>
+<span style="color: #000000;">        source.getParentNode().replaceChild(toInclude, source);
+        </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (toInclude.hasChildNodes()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 &lt;sql&gt; 中的内容插入到 &lt;sql&gt; 节点之前</span>
+<span style="color: #000000;">            toInclude.getParentNode().insertBefore(toInclude.getFirstChild(), toInclude);
+        }
+
+        </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+         * 前面已经将 &lt;sql&gt; 节点的内容插入到 dom 中了，
+         * 现在不需要 &lt;sql&gt; 节点了，这里将该节点从 dom 中移除
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        toInclude.getParentNode().removeChild(toInclude);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第二个条件分支</span>
+    } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (source.getNodeType() ==<span style="color: #000000;"> Node.ELEMENT_NODE) {
+        </span><span style="color: #0000ff;">if</span> (included &amp;&amp; !<span style="color: #000000;">variablesContext.isEmpty()) {
+            NamedNodeMap attributes </span>=<span style="color: #000000;"> source.getAttributes();
+            </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; attributes.getLength(); i++<span style="color: #000000;">) {
+                Node attr </span>=<span style="color: #000000;"> attributes.item(i);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将 source 节点属性中的占位符 ${} 替换成具体的属性值</span>
+<span style="color: #000000;">                attr.setNodeValue(PropertyParser.parse(attr.getNodeValue(), variablesContext));
+            }
+        }
+        
+        NodeList children </span>=<span style="color: #000000;"> source.getChildNodes();
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; children.getLength(); i++<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 递归调用</span>
+<span style="color: #000000;">            applyIncludes(children.item(i), variablesContext, included);
+        }
+        
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第三个条件分支</span>
+    } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (included &amp;&amp; source.getNodeType() == Node.TEXT_NODE &amp;&amp; !<span style="color: #000000;">variablesContext.isEmpty()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将文本（text）节点中的属性占位符 ${} 替换成具体的属性值</span>
+<span style="color: #000000;">        source.setNodeValue(PropertyParser.parse(source.getNodeValue(), variablesContext));
+    }
+}</span></code></pre>
+
+<p>我们先来看一下 applyIncludes 方法第一次被调用时的状态，source为&lt;select&gt; 节点，节点类型：ELEMENT_NODE，此时会进入第二个分支，获取到获取 &lt;select&gt; 子节点列表，遍历子节点列表，将子节点作为参数，进行递归调用applyIncludes ，此时可获取到的子节点如下：</p>
+<table>
+<thead>
+<tr class="header"><th>编号</th><th>子节点</th><th>类型</th><th>描述</th></tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>SELECT * FROM</td>
+<td>TEXT_NODE</td>
+<td>文本节点</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>&lt;include refid="table"/&gt;</td>
+<td>ELEMENT_NODE</td>
+<td>普通节点</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>WHERE id = #{id}</td>
+<td>TEXT_NODE</td>
+<td>文本节点</td>
+</tr>
+</tbody>
+</table>
+<p>接下来要做的事情是遍历列表，然后将子节点作为参数进行递归调用。第一个子节点调用applyIncludes方法，source为 SELECT * FROM 节点，节点类型：TEXT_NODE，进入分支三，没有${}，不会替换，则节点一结束返回，什么都没有做。第二个节点调用applyIncludes方法，此时source为 &lt;include refid="table"/&gt;节点，节点类型：ELEMENT_NODE，进入分支一，通过refid找到&nbsp;sql 节点，也就是toInclude节点，然后执行source.getParentNode().replaceChild(toInclude, source);，直接将&lt;include refid="table"/&gt;节点的父节点，也就是&lt;select&gt; 节点中的当前&lt;include &gt;节点替换成&nbsp;&lt;sql&gt; 节点，然后调用toInclude.getParentNode().insertBefore(toInclude.getFirstChild(), toInclude);，将 &lt;sql&gt; 中的内容插入到 &lt;sql&gt; 节点之前，也就是将user插入到&nbsp;&lt;sql&gt; 节点之前，现在不需要 &lt;sql&gt; 节点了，最后将该节点从 dom 中移除</p>
+<p><strong>创建SqlSource</strong></p>
+<p>创建SqlSource在createSqlSource方法中</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> SqlSource createSqlSource(Configuration configuration, XNode script, Class&lt;?&gt;<span style="color: #000000;"> parameterType) {
+    XMLScriptBuilder builder </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLScriptBuilder(configuration, script, parameterType);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> builder.parseScriptNode();
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> -☆- XMLScriptBuilder</span>
+<span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSource parseScriptNode() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 SQL 语句节点</span>
+    MixedSqlNode rootSqlNode =<span style="color: #000000;"> parseDynamicTags(context);
+    SqlSource sqlSource </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据 isDynamic 状态创建不同的 SqlSource</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isDynamic) {
+        sqlSource </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> DynamicSqlSource(configuration, rootSqlNode);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        sqlSource </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RawSqlSource(configuration, rootSqlNode, parameterType);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> sqlSource;
+}</span></code></pre>
+
+<p>继续跟进parseDynamicTags</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;"> 该方法用于初始化 nodeHandlerMap 集合，该集合后面会用到 </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> initNodeHandlerMap() {
+    nodeHandlerMap.put(</span>"trim", <span style="color: #0000ff;">new</span><span style="color: #000000;"> TrimHandler());
+    nodeHandlerMap.put(</span>"where", <span style="color: #0000ff;">new</span><span style="color: #000000;"> WhereHandler());
+    nodeHandlerMap.put(</span>"set", <span style="color: #0000ff;">new</span><span style="color: #000000;"> SetHandler());
+    nodeHandlerMap.put(</span>"foreach", <span style="color: #0000ff;">new</span><span style="color: #000000;"> ForEachHandler());
+    nodeHandlerMap.put(</span>"if", <span style="color: #0000ff;">new</span><span style="color: #000000;"> IfHandler());
+    nodeHandlerMap.put(</span>"choose", <span style="color: #0000ff;">new</span><span style="color: #000000;"> ChooseHandler());
+    nodeHandlerMap.put(</span>"when", <span style="color: #0000ff;">new</span><span style="color: #000000;"> IfHandler());
+    nodeHandlerMap.put(</span>"otherwise", <span style="color: #0000ff;">new</span><span style="color: #000000;"> OtherwiseHandler());
+    nodeHandlerMap.put(</span>"bind", <span style="color: #0000ff;">new</span><span style="color: #000000;"> BindHandler());
+}
+    
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> MixedSqlNode parseDynamicTags(XNode node) {
+    List</span>&lt;SqlNode&gt; contents = <span style="color: #0000ff;">new</span> ArrayList&lt;SqlNode&gt;<span style="color: #000000;">();
+    NodeList children </span>=<span style="color: #000000;"> node.getNode().getChildNodes();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 遍历子节点</span>
+    <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; children.getLength(); i++<span style="color: #000000;">) {
+        XNode child </span>=<span style="color: #000000;"> node.newXNode(children.item(i));
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果节点是TEXT_NODE类型</span>
+        <span style="color: #0000ff;">if</span> (child.getNode().getNodeType() == Node.CDATA_SECTION_NODE || child.getNode().getNodeType() ==<span style="color: #000000;"> Node.TEXT_NODE) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取文本内容</span>
+            String data = child.getStringBody(""<span style="color: #000000;">);
+            TextSqlNode textSqlNode </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> TextSqlNode(data);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 若文本中包含 ${} 占位符，会被认为是动态节点</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (textSqlNode.isDynamic()) {
+                contents.add(textSqlNode);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 isDynamic 为 true</span>
+                isDynamic = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 StaticTextSqlNode</span>
+                contents.add(<span style="color: #0000ff;">new</span><span style="color: #000000;"> StaticTextSqlNode(data));
+            }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> child 节点是 ELEMENT_NODE 类型，比如 &lt;if&gt;、&lt;where&gt; 等</span>
+        } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (child.getNode().getNodeType() ==<span style="color: #000000;"> Node.ELEMENT_NODE) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取节点名称，比如 if、where、trim 等</span>
+            String nodeName =<span style="color: #000000;"> child.getNode().getNodeName();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据节点名称获取 NodeHandler，也就是上面注册的nodeHandlerMap</span>
+            NodeHandler handler =<span style="color: #000000;"> nodeHandlerMap.get(nodeName);
+            </span><span style="color: #0000ff;">if</span> (handler == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Unknown element &lt;" + nodeName + "&gt; in SQL statement."<span style="color: #000000;">);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 处理 child 节点，生成相应的 SqlNode</span>
+<span style="color: #000000;">            handler.handleNode(child, contents);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 isDynamic 为 true</span>
+            isDynamic = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> MixedSqlNode(contents);
+}</span></code></pre>
+
+<p>对于if、trim、where等这些动态节点，是通过对应的handler来解析的，如下</p>
+<src class="cnblogs_code">
+<pre><code>handler.handleNode(child, contents);</code></pre>
+
+<p>该代码用于处理动态 SQL 节点，并生成相应的 SqlNode。下面来简单分析一下 WhereHandler 的代码。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;"> 定义在 XMLScriptBuilder 中 </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">class</span> WhereHandler <span style="color: #0000ff;">implements</span><span style="color: #000000;"> NodeHandler {
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> WhereHandler() {
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> handleNode(XNode nodeToHandle, List&lt;SqlNode&gt;<span style="color: #000000;"> targetContents) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 parseDynamicTags 解析 &lt;where&gt; 节点</span>
+        MixedSqlNode mixedSqlNode =<span style="color: #000000;"> parseDynamicTags(nodeToHandle);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 WhereSqlNode</span>
+        WhereSqlNode where = <span style="color: #0000ff;">new</span><span style="color: #000000;"> WhereSqlNode(configuration, mixedSqlNode);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加到 targetContents</span>
+<span style="color: #000000;">        targetContents.add(where);
+    }
+}</span></code></pre>
+
+<p>我们已经将 XML 配置解析了 SqlSource，下面我们看看MappedStatement的构建。</p>
+<p><strong>构建MappedStatement</strong></p>
+<p>SQL 语句节点可以定义很多属性，这些属性和属性值最终存储在 MappedStatement 中。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> MappedStatement addMappedStatement(
+    String id, SqlSource sqlSource, StatementType statementType, 
+    SqlCommandType sqlCommandType,Integer fetchSize, Integer timeout, 
+    String parameterMap, Class</span>&lt;?&gt;<span style="color: #000000;"> parameterType,String resultMap, 
+    Class</span>&lt;?&gt; resultType, ResultSetType resultSetType, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> flushCache,
+    </span><span style="color: #0000ff;">boolean</span> useCache, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> resultOrdered, KeyGenerator keyGenerator, 
+    String keyProperty,String keyColumn, String databaseId, 
+    LanguageDriver lang, String resultSets) {
+
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (unresolvedCacheRef) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IncompleteElementException("Cache-ref not yet resolved"<span style="color: #000000;">);
+    }
+　　</span><span style="color: #008000;">//</span><span style="color: #008000;"> 拼接上命名空间，如 &lt;select id="findOne" resultType="User"&gt;，则id=java.mybaits.dao.UserMapper.findOne</span>
+    id = applyCurrentNamespace(id, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">boolean</span> isSelect = sqlCommandType ==<span style="color: #000000;"> SqlCommandType.SELECT;
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建建造器，设置各种属性</span>
+    MappedStatement.Builder statementBuilder = <span style="color: #0000ff;">new</span><span style="color: #000000;"> MappedStatement.Builder(configuration, id, sqlSource, sqlCommandType)
+        .resource(resource).fetchSize(fetchSize).timeout(timeout)
+        .statementType(statementType).keyGenerator(keyGenerator)
+        .keyProperty(keyProperty).keyColumn(keyColumn).databaseId(databaseId)
+        .lang(lang).resultOrdered(resultOrdered).resultSets(resultSets)
+       <strong> .resultMaps(getStatementResultMaps(resultMap, resultType, id))</strong>
+        .flushCacheRequired(valueOrDefault(flushCache, </span>!<span style="color: #000000;">isSelect))
+        .resultSetType(resultSetType).useCache(valueOrDefault(useCache, isSelect))
+        .cache(currentCache);</span><span style="color: #008000;">//</span><span style="color: #008000;">这里用到了前面解析&lt;cache&gt;节点时创建的Cache对象，设置到MappedStatement对象里面的cache属性中
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取或创建 ParameterMap</span>
+    ParameterMap statementParameterMap =<span style="color: #000000;"> getStatementParameterMap(parameterMap, parameterType, id);
+    </span><span style="color: #0000ff;">if</span> (statementParameterMap != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        statementBuilder.parameterMap(statementParameterMap);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建 MappedStatement</span>
+    MappedStatement statement =<span style="color: #000000;"> statementBuilder.build();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加 MappedStatement 到 configuration 的 mappedStatements 集合中
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过UserMapper代理对象调用findOne方法时，就可以拼接UserMapper接口名java.mybaits.dao.UserMapper和findOne方法找到id=java.mybaits.dao.UserMapper的MappedStatement，然后执行对应的sql语句</span>
+<span style="color: #000000;">    configuration.addMappedStatement(statement);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> statement;
+}</span></code></pre>
+
+<p>这里我们要注意，MappedStatement对象中有一个cache属性，将前面解析&lt;cache&gt;节点时创建的Cache对象，设置到MappedStatement对象里面的cache属性中，以备后面二级缓存使用，我们后面专门来讲这一块。</p>
+<p>我们还要注意一个地方，.resultMaps(getStatementResultMaps(resultMap, resultType, id))，设置MappedStatement的resultMaps，我们来看看是怎么获取resultMap的</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> List&lt;ResultMap&gt; getStatementResultMaps(String resultMap, Class&lt;?&gt;<span style="color: #000000;"> resultType, String statementId) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">拼接上当前nameSpace</span>
+    resultMap = <span style="color: #0000ff;">this</span>.applyCurrentNamespace(resultMap, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个集合</span>
+    List&lt;ResultMap&gt; resultMaps = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayList();
+    </span><span style="color: #0000ff;">if</span> (resultMap != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过,分隔字符串，一般resultMap只会是一个，不会使用逗号</span>
+        String[] resultMapNames = resultMap.split(","<span style="color: #000000;">);
+        String[] arr$ </span>=<span style="color: #000000;"> resultMapNames;
+        </span><span style="color: #0000ff;">int</span> len$ =<span style="color: #000000;"> resultMapNames.length;
+
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i$ = 0; i$ &lt; len$; ++<span style="color: #000000;">i$) {
+            String resultMapName </span>=<span style="color: #000000;"> arr$[i$];
+
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">从configuration中通过resultMapName获取ResultMap对象加入到resultMaps中</span>
+                resultMaps.add(<span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getResultMap(resultMapName.trim()));
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IllegalArgumentException var11) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IncompleteElementException("Could not find result map " +<span style="color: #000000;"> resultMapName, var11);
+            }
+        }
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resultType != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        ResultMap inlineResultMap </span>= (<span style="color: #0000ff;">new</span> org.apache.ibatis.mapping.ResultMap.Builder(<span style="color: #0000ff;">this</span>.configuration, statementId + "-Inline", resultType, <span style="color: #0000ff;">new</span> ArrayList(), (Boolean)<span style="color: #0000ff;">null</span><span style="color: #000000;">)).build();
+        resultMaps.add(inlineResultMap);
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> resultMaps;
+}</span></code></pre>
+
+<p>从configuration中获取到ResultMap并设置到MappedStatement中，当查询结束后，就可以拿到ResultMap进行结果映射，这个在后面讲</p>
+<h3 id="autoid-2-1-6">Mapper 接口绑定</h3>
+<p>映射文件解析完成后，我们需要通过命名空间将绑定 mapper 接口，看看具体绑定的啥</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> bindMapperForNamespace() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取映射文件的命名空间</span>
+    String namespace =<span style="color: #000000;"> builderAssistant.getCurrentNamespace();
+    </span><span style="color: #0000ff;">if</span> (namespace != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        Class</span>&lt;?&gt; boundType = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据命名空间解析 mapper 类型</span>
+            boundType =<span style="color: #000000;"> Resources.classForName(namespace);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException e) {
+        }
+        </span><span style="color: #0000ff;">if</span> (boundType != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测当前 mapper 类是否被绑定过</span>
+            <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">configuration.hasMapper(boundType)) {
+                configuration.addLoadedResource(</span>"namespace:" +<span style="color: #000000;"> namespace);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 绑定 mapper 类</span>
+<span style="color: #000000;">                configuration.addMapper(boundType);
+            }
+        }
+    }
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> Configuration</span>
+<span style="color: #0000ff;">public</span> &lt;T&gt; <span style="color: #0000ff;">void</span> addMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过 MapperRegistry 绑定 mapper 类</span>
+<span style="color: #000000;">    mapperRegistry.addMapper(type);
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> MapperRegistry</span>
+<span style="color: #0000ff;">public</span> &lt;T&gt; <span style="color: #0000ff;">void</span> addMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (type.isInterface()) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (hasMapper(type)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Type " + type + " is already known to the MapperRegistry."<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">boolean</span> loadCompleted = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 将 type 和 MapperProxyFactory 进行绑定，MapperProxyFactory 可为 mapper 接口生成代理类
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            knownMappers.put(type, </span><span style="color: #0000ff;">new</span> MapperProxyFactory&lt;T&gt;<span style="color: #000000;">(type));
+            
+            MapperAnnotationBuilder parser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MapperAnnotationBuilder(config, type);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析注解中的信息</span>
+<span style="color: #000000;">            parser.parse();
+            loadCompleted </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">loadCompleted) {
+                knownMappers.remove(type);
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>其实就是获取当前映射文件的命名空间，并获取其Class，也就是获取每个Mapper接口，然后为每个Mapper接口创建一个代理类工厂，new MapperProxyFactory&lt;T&gt;(type)，并放进&nbsp;knownMappers 这个HashMap中，我们来看看这个MapperProxyFactory</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MapperProxyFactory&lt;T&gt;<span style="color: #000000;"> {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存放Mapper接口Class</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Class&lt;T&gt;<span style="color: #000000;"> mapperInterface;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;Method, MapperMethod&gt; methodCache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ConcurrentHashMap();
+
+    </span><span style="color: #0000ff;">public</span> MapperProxyFactory(Class&lt;T&gt;<span style="color: #000000;"> mapperInterface) {
+        </span><span style="color: #0000ff;">this</span>.mapperInterface =<span style="color: #000000;"> mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Class&lt;T&gt;<span style="color: #000000;"> getMapperInterface() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Map&lt;Method, MapperMethod&gt;<span style="color: #000000;"> getMethodCache() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> T newInstance(MapperProxy&lt;T&gt;<span style="color: #000000;"> mapperProxy) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">生成mapperInterface的代理类</span>
+        <span style="color: #0000ff;">return</span> Proxy.newProxyInstance(<span style="color: #0000ff;">this</span>.mapperInterface.getClassLoader(), <span style="color: #0000ff;">new</span> Class[]{<span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface}, mapperProxy);
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> T newInstance(SqlSession sqlSession) {
+        MapperProxy</span>&lt;T&gt; mapperProxy = <span style="color: #0000ff;">new</span> MapperProxy(sqlSession, <span style="color: #0000ff;">this</span>.mapperInterface, <span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache);
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.newInstance(mapperProxy);
+    }
+}</span></code></pre>
+
+<p>这一块我们后面文章再来看是如何调用的。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

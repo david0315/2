@@ -1,0 +1,167 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修分布式监控CAT服务端的本地部署' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>分布式监控CAT服务端的本地部署</center></div><div class='banquan'>原文出处:本文由博客园博主万猫学社提供。<br/>
+原文连接:https://www.cnblogs.com/heihaozi/p/11762894.html</div><br>
+    <h3 id="一cat简介">一、CAT简介</h3>
+<p><img src="./images/分布式监控CAT服务端的本地部署0.png" alt="CAT" /></p>
+<blockquote>
+<p>CAT（Central Application Tracking），是美团点评基于 Java 开发的一套开源的分布式实时监控系统。美团点评基础架构部希望在基础存储、高性能通信、大规模在线访问、服务治理、实时监控、容器化及集群智能调度等领域提供业界领先的、统一的解决方案，CAT 目前在美团点评的产品定位是应用层的统一监控组件，在中间件（RPC、数据库、缓存、MQ 等）框架中得到广泛应用，为各业务线提供系统的性能指标、健康状况、实时告警等服务。</p>
+</blockquote>
+<h3 id="二部署环境">二、部署环境</h3>
+<ul>
+<li>Windows 7</li>
+<li>CAT 3.0</li>
+<li>Java 8</li>
+<li>Tomcat 8.5</li>
+<li>Maven 3</li>
+<li>MySQL 5.7</li>
+<li>内网IP：192.168.1.111</li>
+</ul>
+<h3 id="三开始部署">三、开始部署</h3>
+<h4 id="下载cat源码">1.下载CAT源码</h4>
+<pre><code><code>git clone https://github.com/dianping/cat.git</code></code></pre>
+<h4 id="初始化数据库">2.初始化数据库</h4>
+<p>在MySQL中创建cat数据库，然后执行<code>script/Cat.sql</code>中的SQL语句。</p>
+<h4 id="创建配置文件">3.创建配置文件</h4>
+<p>在Tomcat所在的盘中创建<code>/data/appdatas/cat</code>文件夹，然后创建<code>/data/appdatas/cat/client.xml</code>文件，写入如下内容：</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;config mode=&quot;client&quot;&gt;
+    &lt;servers&gt;
+        &lt;server ip=&quot;192.168.1.111&quot; port=&quot;2280&quot; http-port=&quot;8080&quot;/&gt;
+    &lt;/servers&gt;
+&lt;/config&gt;</code></code></pre>
+<p>其中，192.168.1.111改为你电脑的内网IP，2280是默认的CAT服务端接受数据的端口，不允许修改，http-port是Tomcat启动的端口，默认是8080，建议使用默认端口。</p>
+<p>再创建<code>/data/appdatas/cat/datasources.xml</code>文件，写入如下内容：</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;data-sources&gt;
+    &lt;data-source id=&quot;cat&quot;&gt;
+        &lt;maximum-pool-size&gt;3&lt;/maximum-pool-size&gt;
+        &lt;connection-timeout&gt;1s&lt;/connection-timeout&gt;
+        &lt;idle-timeout&gt;10m&lt;/idle-timeout&gt;
+        &lt;statement-cache-size&gt;1000&lt;/statement-cache-size&gt;
+        &lt;properties&gt;
+            &lt;driver&gt;com.mysql.jdbc.Driver&lt;/driver&gt;
+            &lt;url&gt;&lt;![CDATA[jdbc:mysql://192.168.1.111:3306/cat]]&gt;&lt;/url&gt;  &lt;!-- 请替换为真实数据库URL及Port  --&gt;
+            &lt;user&gt;root&lt;/user&gt;  &lt;!-- 请替换为真实数据库用户名  --&gt;
+            &lt;password&gt;root&lt;/password&gt;  &lt;!-- 请替换为真实数据库密码  --&gt;
+            &lt;connectionProperties&gt;&lt;![CDATA[useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;socketTimeout=120000]]&gt;&lt;/connectionProperties&gt;
+        &lt;/properties&gt;
+    &lt;/data-source&gt;
+&lt;/data-sources&gt;</code></code></pre>
+<p>其中，需要替换的有：数据库IP、port、用户名和密码。</p>
+<h4 id="cat的war部署">4.CAT的war部署</h4>
+<p>使用Maven构建AT的war：</p>
+<pre><code><code>mvn clean install -DskipTests</code></code></pre>
+<p>构建成功后，将<code>cat-home/target/cat-alpha-3.0.0.war</code>重命名为<code>cat.war</code>，复制到Tomcat的webapps下，启动tomcat。</p>
+<h4 id="修改路由配置">5.修改路由配置</h4>
+<p>访问<code>http://192.168.1.111:8080/cat/s/config?op=routerConfigUpdate</code>，默认用户名：admin 默认密码：admin，修改客户端路由配置：</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;router-config backup-server=&quot;192.168.1.111&quot; backup-server-port=&quot;2280&quot;&gt;
+   &lt;default-server id=&quot;192.168.1.111&quot; weight=&quot;1.0&quot; port=&quot;2280&quot; enable=&quot;true&quot;/&gt;
+   &lt;network-policy id=&quot;default&quot; title=&quot;默认&quot; block=&quot;false&quot; server-group=&quot;default_group&quot;&gt;
+   &lt;/network-policy&gt;
+   &lt;server-group id=&quot;default_group&quot; title=&quot;default-group&quot;&gt;
+      &lt;group-server id=&quot;192.168.1.111&quot;/&gt;
+   &lt;/server-group&gt;
+   &lt;domain id=&quot;cat&quot;&gt;
+      &lt;group id=&quot;default&quot;&gt;
+         &lt;server id=&quot;192.168.1.111&quot; port=&quot;2280&quot; weight=&quot;1.0&quot;/&gt;
+      &lt;/group&gt;
+   &lt;/domain&gt;
+&lt;/router-config&gt;</code></code></pre>
+<p>配置说明：</p>
+<ul>
+<li>backup-server属性：设置为当前服务器对外IP地址，端口固定为2280</li>
+<li>default-server属性：定义可跳转的路由地址，可以设置多个。default-server的id属性配置可路由的cat-home服务IP地址，端口固定为2280;若需要禁用路由地址，可把enable设置为false</li>
+<li>network-policy 这边可以配置多个不同网段，表示这个网段使用server-group的cat节点，这里面的作用主要是当多机房部署cat的时候，可以将cat分为多个多个子集群，然后多个子集群处理不同的客户端，避免跨专线访问</li>
+<li>domain id=cat 这部分主要是定制路由，当发现一些项目数据量特别大，或者其他场景，可以将这些domain的监控请求单独隔离处理</li>
+</ul>
+<h4 id="修改服务端配置">6.修改服务端配置</h4>
+<p>访问<code>http://192.168.1.111:8080/cat/s/config?op=serverConfigUpdate</code>，修改服务端配置：</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;server-config&gt;
+   &lt;server id=&quot;default&quot;&gt;
+      &lt;properties&gt;
+         &lt;property name=&quot;local-mode&quot; value=&quot;false&quot;/&gt;
+         &lt;property name=&quot;job-machine&quot; value=&quot;true&quot;/&gt;
+         &lt;property name=&quot;send-machine&quot; value=&quot;false&quot;/&gt;
+         &lt;property name=&quot;alarm-machine&quot; value=&quot;true&quot;/&gt;
+         &lt;property name=&quot;hdfs-enabled&quot; value=&quot;false&quot;/&gt;
+         &lt;property name=&quot;remote-servers&quot; value=&quot;192.168.1.111:8080&quot;/&gt;
+      &lt;/properties&gt;
+      &lt;storage local-base-dir=&quot;/data/appdatas/cat/bucket/&quot; max-hdfs-storage-time=&quot;15&quot; local-report-storage-time=&quot;2&quot; local-logivew-storage-time=&quot;1&quot; har-mode=&quot;true&quot; upload-thread=&quot;5&quot;&gt;
+         &lt;hdfs id=&quot;dump&quot; max-size=&quot;128M&quot; server-uri=&quot;hdfs://127.0.0.1/&quot; base-dir=&quot;/user/cat/dump&quot;/&gt;
+         &lt;harfs id=&quot;dump&quot; max-size=&quot;128M&quot; server-uri=&quot;har://127.0.0.1/&quot; base-dir=&quot;/user/cat/dump&quot;/&gt;
+         &lt;properties&gt;
+            &lt;property name=&quot;hadoop.security.authentication&quot; value=&quot;false&quot;/&gt;
+            &lt;property name=&quot;dfs.namenode.kerberos.principal&quot; value=&quot;hadoop/dev80.hadoop@testserver.com&quot;/&gt;
+            &lt;property name=&quot;dfs.cat.kerberos.principal&quot; value=&quot;cat@testserver.com&quot;/&gt;
+            &lt;property name=&quot;dfs.cat.keytab.file&quot; value=&quot;/data/appdatas/cat/cat.keytab&quot;/&gt;
+            &lt;property name=&quot;java.security.krb5.realm&quot; value=&quot;value1&quot;/&gt;
+            &lt;property name=&quot;java.security.krb5.kdc&quot; value=&quot;value2&quot;/&gt;
+         &lt;/properties&gt;
+      &lt;/storage&gt;
+      &lt;consumer&gt;
+         &lt;long-config default-url-threshold=&quot;1000&quot; default-sql-threshold=&quot;100&quot; default-service-threshold=&quot;50&quot;&gt;
+            &lt;domain name=&quot;cat&quot; url-threshold=&quot;500&quot; sql-threshold=&quot;500&quot;/&gt;
+            &lt;domain name=&quot;OpenPlatformWeb&quot; url-threshold=&quot;100&quot; sql-threshold=&quot;500&quot;/&gt;
+         &lt;/long-config&gt;
+      &lt;/consumer&gt;
+   &lt;/server&gt;
+   &lt;server id=&quot;192.168.1.111&quot;&gt;
+      &lt;properties&gt;
+         &lt;property name=&quot;job-machine&quot; value=&quot;true&quot;/&gt;
+         &lt;property name=&quot;send-machine&quot; value=&quot;false&quot;/&gt;
+         &lt;property name=&quot;alarm-machine&quot; value=&quot;true&quot;/&gt;
+      &lt;/properties&gt;
+   &lt;/server&gt;
+&lt;/server-config&gt;</code></code></pre>
+<p>配置说明：<br />
+server节点：代表一台机器的配置。如果id为default，代表默认配置；如果id为ip，代表该台服务器的配置</p>
+<ul>
+<li>local-mode : 定义服务是否为本地模式（开发模式），在生产环境时，设置为false,启动远程监听模式。默认为 false;</li>
+<li>hdfs-machine : 定义是否启用HDFS存储方式，默认为 false；</li>
+<li>job-machine : 定义当前服务是否为报告工作机（开启生成汇总报告和统计报告的任务，只需要一台服务机开启此功能），默认为 false；</li>
+<li>alarm-machine : 定义当前服务是否为报警机（开启各类报警监听，只需要一台服务机开启此功能），默认为 false；</li>
+<li>send-machine : 定义当前服务告警是否发送（当时为了解决测试环境开启告警线程，但是最后告警不通知，此配置后续会逐步去除，建议alarm-machine开启为true的时候，这个同步为true）</li>
+</ul>
+<p>storage节点: 定义数据存储配置信息</p>
+<ul>
+<li>local-report-storage-time : 定义本地报告存放时长，单位为（天）</li>
+<li>local-logivew-storage-time : 定义本地日志存放时长，单位为（天）</li>
+<li>local-base-dir : 定义本地数据存储目录</li>
+<li>hdfs : 定义HDFS配置信息，便于直接登录系统</li>
+<li>server-uri : 定义HDFS服务地址</li>
+<li>console : 定义服务控制台信息</li>
+<li>remote-servers : 定义HTTP服务列表，（远程监听端同步更新服务端信息即取此值）</li>
+<li>ldap : 定义LDAP配置信息（这个可以忽略）</li>
+<li>ldapUrl : 定义LDAP服务地址（这个可以忽略）</li>
+</ul>
+<p>重新启动Tomcat。</p>
+<h3 id="四验证">四、验证</h3>
+<p>访问<code>http://192.168.1.111:8080/cat/r</code>，点击“State”，可以看到“CAT服务端正常”和CAT一些基本状态，如下图：</p>
+<p><img src="./images/分布式监控CAT服务端的本地部署1.png" /></p>
+<p>点击“Transaction”，CAT自身的监控信息，如下图：</p>
+<p><img src="./images/分布式监控CAT服务端的本地部署2.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

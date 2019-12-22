@@ -1,0 +1,193 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java接口统一样式返回模板' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java接口统一样式返回模板</center></div><div class='banquan'>原文出处:本文由博客园博主web_bird提供。<br/>
+原文连接:https://www.cnblogs.com/zhiyouwu/p/11765407.html</div><br>
+    <h1 id="java接口统一样式返回模板">Java接口统一样式返回模板</h1>
+<h2 id="背景">背景</h2>
+<p>在进行接口开发时，一般需要一个固定的返回样式，成功和失败的时候，都按照这种格式来进行统一的返回，这样，在与其他人进行接口之间的联调时不会显得很杂乱无章。而这种固定的格式如果放在Java的每个接口单独处理时，又会在接口开发时很繁琐，所以这个时候可以采用封装一个实体类，统一返回固定模板格式的内容。</p>
+<h2 id="封装模板">封装模板</h2>
+<p>先看一下没有封装之前，接口代码和返回格式：</p>
+<pre><code><code>/**
+ * 用户修改
+ * @return 返回修改的用户信息
+ */
+@PutMapping(value = &quot;update&quot;)
+public User update(@RequestBody User user) {
+        User updatedUser = userService.update(user);
+        return updatedUser;
+}</code></code></pre>
+<pre><code><code>{
+    &quot;userId&quot;: &quot;0d67cfa7-f6a1-46b6-8e5a-b605afc98c44&quot;,
+    &quot;username&quot;: &quot;ww&quot;,
+    &quot;password&quot;: &quot;123456&quot;,
+    &quot;status&quot;: 0,
+    &quot;createTime&quot;: 310863886132307,
+    &quot;updateTime&quot;: 312955781619836
+}</code></code></pre>
+<p>很显然，这种原始的内容返回虽然很直观，但是如果在发生错误的时候，那么接口的返回就比较的不自然了，甚至会将底层的错误对外暴露，下面介绍下一个简单的统一接口样式的封装：</p>
+<h3 id="枚举类responsecode定义返回码code及提示信息msg">枚举类ResponseCode：定义返回码code及提示信息msg</h3>
+<p>我们先定义一个枚举类，用于封装返回的code码和提示信息msg，当然也可以封装其他的信息，比如状态status，这个可以根据自己的项目自由选择。</p>
+<pre><code><code>package com.server.config;
+
+/**
+ * @Package com.server.config
+ * @Author wuzy
+ * @Date 2019/10/30 14:47
+ * @Version V1.0
+ * @Description: code码封装枚举类
+ */
+
+public enum ResponseCode {
+    /** 成功 */
+    SUCCESS(&quot;200&quot;, &quot;成功&quot;),
+
+    /** 操作失败 */
+    ERROR(&quot;500&quot;, &quot;操作失败&quot;);
+
+    private ResponseCode(String value, String msg){
+        this.val = value;
+        this.msg = msg;
+    }
+
+    public String val() {
+        return val;
+    }
+
+    public String msg() {
+        return msg;
+    }
+
+    private String val;
+    private String msg;
+}
+</code></code></pre>
+<h3 id="封装类resultdata-定义codemsg及数据data">封装类ResultData： 定义code、msg及数据data</h3>
+<p>再定义一个封装类ResultData，该类用于接口返回时的统一格式封装，这里，我们定义了三个属性，分别为状态码code，提示消息msg以及返回的数据data。下面是具体的代码：</p>
+<pre><code><code>package com.server.config;
+
+import lombok.Data;
+
+/**
+ * @Package com.server.config
+ * @Author wuzy
+ * @Date 2019/10/30 14:38
+ * @Version V1.0
+ * @Description: 返回样式封装
+ */
+@Data
+public class ResultData {
+
+    private String code;
+
+    private String msg;
+
+    private Object data;
+
+    public static ResultData success(Object data) {
+       return resultData(ResponseCode.SUCCESS.val(), ResponseCode.SUCCESS.msg(), data);
+    }
+
+    public static ResultData success(Object data, String msg) {
+        return resultData(ResponseCode.SUCCESS.val(), msg, data);
+    }
+
+    public static ResultData fail(String code, String msg) {
+        return resultData(code, msg, null);
+    }
+
+    public static ResultData fail(String code, String msg, Object data) {
+        return resultData(code, msg, data);
+    }
+
+    private static ResultData resultData(String code, String msg, Object data) {
+        ResultData resultData = new ResultData();
+        resultData.setCode(code);
+        resultData.setMsg(msg);
+        resultData.setData(data);
+        return resultData;
+    }
+}
+</code></code></pre>
+<blockquote>
+<p>可以根据自己项目的需求进行方法、属性等内容的扩展。</p>
+</blockquote>
+<h3 id="测试实例">测试实例</h3>
+<p>这里，我们使用UserController中的save()方法进行测试，查看其添加了统一样式之后的效果，先看下该方法：</p>
+<pre><code><code>    /**
+     * 用户保存
+     * @return 返回保存的用户信息
+     */
+    @PostMapping(value = &quot;save&quot;)
+    @ApiOperation(value = &quot;保存用户信息&quot;, notes = &quot;保存用户的详细信息&quot;)
+    public ResultData save(@RequestBody User user) {
+        try {
+            User savedUser = null;
+            if (user != null) {
+                if (StringUtils.isEmpty(user.getUserId())) {
+                    user.setUserId(UUID.randomUUID().toString());
+                }
+                savedUser = userService.save(user);
+                                // int i = 1/0;   // 测试异常现象时放开这行代码
+            }
+            return ResultData.success(savedUser);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResultData.fail(ResponseCode.ERROR.val(), &quot;用户保存过程中发生异常,请检查！&quot;);
+        }
+    }</code></code></pre>
+<p>先看一下成功（也就是调用success方法）的情况</p>
+<pre><code><code>{
+  &quot;code&quot;: &quot;200&quot;,
+  &quot;msg&quot;: &quot;成功&quot;,
+  &quot;data&quot;:  {
+      &quot;userId&quot;: &quot;0d67cfa7-f6a1-46b6-8e5a-b605afc98c44&quot;,
+      &quot;username&quot;: &quot;ww&quot;,
+      &quot;password&quot;: &quot;123456&quot;,
+      &quot;status&quot;: 0,
+      &quot;createTime&quot;: 310863886132307,
+      &quot;updateTime&quot;: 312955781619836
+    }
+}</code></code></pre>
+<p>再看一下发生异常或者保存失败时候的错误提示信息，这里使用1/0的异常来测试，结果如下：</p>
+<pre><code><code>{
+  &quot;code&quot;: &quot;500&quot;,
+  &quot;msg&quot;: &quot;用户保存过程中发生异常,请检查！&quot;,
+  &quot;data&quot;: null
+}</code></code></pre>
+<p>到这里，基本上关于接口样式的模板也就介绍完了，如有不准确的地方，请留言多多指教。</p>
+<h2 id="微信公众号-源码湾">微信公众号： 源码湾</h2>
+<p>欢迎关注本人微信公众号： 源码湾。 本公众号将不定期进行相关源码及相关开发技术的分享，共同成长，共同进步～</p>
+<p><img src="./images/Java接口统一样式返回模板0.png" /></p>
+<hr />
+<h3 id="blog">Blog:</h3>
+<ul>
+<li>简书： https://www.jianshu.com/u/91378a397ffe</li>
+<li>csdn： https://blog.csdn.net/ZhiyouWu</li>
+<li>开源中国： https://my.oschina.net/u/3204088</li>
+<li>掘金： https://juejin.im/user/5b5979efe51d451949094265</li>
+<li>博客园： https://www.cnblogs.com/zhiyouwu/</li>
+<li>微信公众号： 源码湾</li>
+<li>微信： WZY1782357529 (欢迎沟通交流)</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

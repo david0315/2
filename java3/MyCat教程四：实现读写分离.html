@@ -1,0 +1,140 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修MyCat教程四：实现读写分离' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>MyCat教程四：实现读写分离</center></div><div class='banquan'>原文出处:本文由博客园博主HG-93提供。<br/>
+原文连接:https://www.cnblogs.com/cxydmx/p/11734507.html</div><br>
+    <p>本文我们来给大家介绍下通过MyCat来实现MySQL的读写分离操作</p>
+<p><br><br />
+<h1><a name="t0"></a><a id="MyCat_1"></a>MyCat读写分离</h1><br />
+<h2><a name="t1"></a><a id="_2"></a>一、读写分离配置</h2><br />
+<p>  前面我们已经介绍过了mysql的主从同步和mycat的安装及相关配置文件的介绍，现在我们来配置下具体的<code>读写分离</code>操作。</p><br />
+<h3><a name="t2"></a><a id="11__4"></a>1.1 创建物理表</h3><br />
+<p>  我们现在<code>master</code>库中创建一张<code>t_user</code>表,因为主从的关系，<code>slave</code>中也会同步创建该表。<br><br />
+<img src="./images/MyCat教程四：实现读写分离0.png" alt="在这里插入图片描述"></p><br />
+<h3><a name="t3"></a><a id="11_schemaxml_7"></a>1.1 schema.xml配置</h3><br />
+<pre><code><code class="prism language-xml has-numbering" onclick="mdcp.copyCode(event)" style="position: unset;"><span class="token prolog">&lt;?xml version=&quot;1.0&quot;?&gt;</span><br />
+<span class="token doctype">&lt;!DOCTYPE mycat:schema SYSTEM &quot;schema.dtd&quot;&gt;</span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span><span class="token namespace">mycat:</span>schema</span> <span class="token attr-name"><span class="token namespace">xmlns:</span>mycat</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span><a href="http://io.mycat/" class="uri">http://io.mycat/</a><span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>schema</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>TESTDB<span class="token punctuation">&quot;</span></span> <span class="token attr-name">checkSQLschema</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>false<span class="token punctuation">&quot;</span></span> <span class="token attr-name">sqlMaxLimit</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>100<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>table</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>t_user<span class="token punctuation">&quot;</span></span> <span class="token attr-name">primaryKey</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>ID<span class="token punctuation">&quot;</span></span> <span class="token attr-name">type</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>global<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataNode</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn1<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>schema</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataNode</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>dn1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dataHost</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">database</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>demo1<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>dataHost</span> <span class="token attr-name">name</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>localhost1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">maxCon</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1000<span class="token punctuation">&quot;</span></span> <span class="token attr-name">minCon</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>10<span class="token punctuation">&quot;</span></span> <span class="token attr-name">balance</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1<span class="token punctuation">&quot;</span></span><br />
+<span class="token attr-name">writeType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>0<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dbType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>mysql<span class="token punctuation">&quot;</span></span> <span class="token attr-name">dbDriver</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>native<span class="token punctuation">&quot;</span></span> <span class="token attr-name">switchType</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">slaveThreshold</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>100<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>heartbeat</span><span class="token punctuation">&gt;</span></span>select user()<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>heartbeat</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>writeHost</span> <span class="token attr-name">host</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>hostM1<span class="token punctuation">&quot;</span></span> <span class="token attr-name">url</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>192.168.88.180:3306<span class="token punctuation">&quot;</span></span> <span class="token attr-name">user</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>root<span class="token punctuation">&quot;</span></span><br />
+<span class="token attr-name">password</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>123456<span class="token punctuation">&quot;</span></span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>readHost</span> <span class="token attr-name">host</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>hostS2<span class="token punctuation">&quot;</span></span> <span class="token attr-name">url</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>192.168.88.181:3306<span class="token punctuation">&quot;</span></span> <span class="token attr-name">user</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>root<span class="token punctuation">&quot;</span></span> <span class="token attr-name">password</span><span class="token attr-value"><span class="token punctuation">=</span><span class="token punctuation">&quot;</span>123456<span class="token punctuation">&quot;</span></span> <span class="token punctuation">/&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>writeHost</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>dataHost</span><span class="token punctuation">&gt;</span></span><br />
+<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span><span class="token namespace">mycat:</span>schema</span><span class="token punctuation">&gt;</span></span><br />
+<src class="hljs-button {2}" data-title="复制"></code></code></pre><br />
+<p><code>注意</code>：</p><br />
+<ol><br />
+<li>schema中的name <code>TESTDB</code> 没变</li><br />
+<li>table中的是逻辑表的名称,所以和物理表同名’t_user’</li><br />
+<li>dataNode中的database表示的是物理数据库名称<code>demo1</code></li><br />
+<li>balance的值要设置为<code>1</code>否则查询会读取不到从库的数据</li><br />
+<li>writeHost中的url表示<code>写</code>库的地址</li><br />
+<li>readHost表示配置读库的信息</li><br />
+<li>user属性对应的应该是<code>server.xml</code>中配置的账号</li><br />
+</ol></p>
+<src class="table-box"><table>
+<thead>
+<tr>
+<th>balance的值</th>
+<th align="left">描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td align="left">不开启读写分离机制，所有读操作都发送到当前可用的 writeHost 上</td>
+</tr>
+<tr>
+<td>1</td>
+<td align="left">全部的 readHost 与 stand by writeHost(分库中没有参与写操作的) 参与 select 语句的负载均衡</td>
+</tr>
+<tr>
+<td>2</td>
+<td align="left">所有读操作都随机的在 writeHost、 readhost 上分发。</td>
+</tr>
+<tr>
+<td>3</td>
+<td align="left">所有读请求随机的分发到 writeHost 对应的 readhost 执行,writerHost 不负担读压力</td>
+</tr>
+</tbody>
+</table>
+<h3><a name="t4"></a><a id="12_serverxml_43"></a>1.2 server.xml配置</h3>
+<p>  本案例中server.xml文件不需要修改，如果在schema.xml中中将<code>TESTDB</code>修改了那么在server.xml文件中对应的也需要修改</p>
+<h3><a name="t5"></a><a id="13_rulexml_45"></a>1.3 rule.xml配置</h3>
+<p>  在读写分离中不需要修改rule.xml文件</p>
+<h2><a name="t6"></a><a id="MyCat_49"></a>二、MyCat启动</h2>
+<p>  通过前面的介绍我们已经安装好了MyCat，现在我们先启动MyCat,MyCat的启动脚本位于<code>bin</code>目录下,常用的命令</p>
+<src class="table-box"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th align="left">命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>启动</td>
+<td align="left">./bin/mycat start</td>
+</tr>
+<tr>
+<td>停止</td>
+<td align="left">./bin/mycat stop</td>
+</tr>
+<tr>
+<td>重启</td>
+<td align="left">./bin/mycat restart</td>
+</tr>
+<tr>
+<td>查询状态</td>
+<td align="left">./bin/mycat status</td>
+</tr>
+</tbody>
+</table>
+<p><img src="./images/MyCat教程四：实现读写分离1.png" alt="在这里插入图片描述"></p>
+<h2><a name="t7"></a><a id="_63"></a>三、测试读写分离</h2>
+<h3><a name="t8"></a><a id="31_MyCat_64"></a>3.1 客户端连接MyCat</h3>
+<p>  我们可以通过客户端来连接MyCat操作，客户端可以是<code>Navicat</code>或者<code>DataGrip</code>,本文通过Navicat来连接，注意连接的端口为<code>8066</code></p>
+<p><img src="./images/MyCat教程四：实现读写分离2.png" alt="在这里插入图片描述"><br>
+<img src="./images/MyCat教程四：实现读写分离3.png" alt="在这里插入图片描述"></p>
+<h3><a name="t9"></a><a id="32__69"></a>3.2 写数据测试</h3>
+<p>  我们通过mycat连接来执行<code>insert</code>语句，来查看是否会写入到物理库中。</p>
+<p><img src="./images/MyCat教程四：实现读写分离4.png" alt="在这里插入图片描述"></p>
+<p>如上，通过对MyCat的逻辑库的写操作，真实的写入到了物理库中。</p>
+<h3><a name="t10"></a><a id="33__76"></a>3.3 读数据测试</h3>
+<p>  接下来我们看下<code>读</code>操作，为了演示读操作，我们直接在<code>slave</code>中手动插入一条数据，这样主库和从库中的数据就不一样了，这时我们通过MyCat来查询数据，通过查询的结果就能判断出查询的数据到底是哪个库的数据了。具体操作如下：</p>
+<p><img src="./images/MyCat教程四：实现读写分离5.png" alt="在这里插入图片描述"></p>
+<p>通过上面的演示验证了我们通过MyCat配置的<code>读写分离</code>是成功的！<br>
+<br>好了本文到此，下篇我们介绍MyCat的分库分表操作。</p>
+
+<p><br></p>
+<hr>
+<p><font color="Darkorange" size="4px"><b>关注微信公众号【<a style="text-decoration:none" href="http://mp.weixin.qq.com/s?__biz=MzU0OTg3ODQxNA==&mid=100000173&idx=1&sn=1af862786cc9126634f630a5d4d37d17&chksm=7ba86e4c4cdfe75aa0ce43095cbc2babff63affb0a5e18b5e8ff6a8f6fdc4b4bc129d6e7af10#rd">程序员的梦想</a>】，专注于Java，SpringBoot，SpringCloud，微服务，Docker以及前后端分离等全栈技术。</b></font></p>
+<p><img src="./images/MyCat教程四：实现读写分离6.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

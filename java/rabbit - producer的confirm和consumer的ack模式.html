@@ -1,0 +1,100 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修rabbit - producer的confirm和consumer的ack模式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>rabbit - producer的confirm和consumer的ack模式</center></div><div class='banquan'>原文出处:本文由博客园博主神牛003提供。<br/>
+原文连接:https://www.cnblogs.com/wangrudong003/p/11436990.html</div><br>
+    <p>本篇和大家分享的是关于rabbit的生产和消费方的一些实用的操作；正如文章标题，主要内容如producer的confirm和consumer的ack，这两者使用的模式都是用来保证数据完整性，防止数据丢失。</p>
+<ul>
+<li>producer的confirm模式</li>
+<li data-spm-anchor-id="a2c4e.11153940.0.i7.760e759b3JhBFo">consumer的ack模式</li>
+</ul>
+<h1 id="1" data-spm-anchor-id="a2c4e.11153940.0.i8.760e759b3JhBFo">producer的confirm模式</h1>
+<p>首先，有这样一种业务场景1：a系统在做活动前，需要给用户的手机发送一条活动内容短信希望用户来参加，因为用户量有点大，所以通过往短信mq中插入数据方式，让短信服务来消费mq发短信；</p>
+<p>此时插入mq消息的服务为了保证给所有用户发消息，并且要在短时间内插入完成(因此用到了异步插入方式(快速))，我们就需要知道每次插入mq是否成功，如果不成功那我们可以收集失败的信息后补发(因此confirm模式排上了用场)；如图设计：</p>
+<p><img src="./images/rabbit - producer的confirm和consumer的ack模式0.png" alt="" /></p>
+<p>&nbsp;在springboot中可以使用基于amqp封装的工厂类来开启confirm模式，然后通过RabbitTemplate模板来设置回调函数，如下代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #808080;">///</span><span style="color: #008000;">region producer生产 - confirm模式</span>
+<span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> RabbitTemplate getRabbitTemplate(RabbitTemplate.ConfirmCallback confirmCallback) {
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.getRabbitTemplate(<span style="color: #0000ff;">this</span><span style="color: #000000;">.connectionFactory(), confirmCallback);
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> RabbitTemplate getRabbitTemplate(CachingConnectionFactory connectionFactory, RabbitTemplate.ConfirmCallback confirmCallback) {
+</span><span style="color: #008080;"> 8</span>         RabbitTemplate template = <span style="color: #0000ff;">new</span><span style="color: #000000;"> RabbitTemplate(connectionFactory);
+</span><span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;">product开启confirm模式</span>
+<span style="color: #008080;">10</span>         connectionFactory.setPublisherConfirms(<span style="color: #0000ff;">true</span><span style="color: #000000;">);
+</span><span style="color: #008080;">11</span>         <span style="color: #008000;">//</span><span style="color: #008000;">设置confirm回调处理</span>
+<span style="color: #008080;">12</span> <span style="color: #000000;">        template.setConfirmCallback(confirmCallback);
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> template;
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">15</span>     <span style="color: #808080;">///</span><span style="color: #008000;">endregion</span></code></pre>
+
+<p>这里通过RabbitTemplate.ConfirmCallback函数编程来传递我们自定义的回调方法，如下收集confirm返回的结果信息：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>         RabbitUtil rabbitUtil = <span style="color: #0000ff;">new</span> RabbitUtil(<span style="color: #0000ff;">this</span><span style="color: #000000;">.getFirstNode().getLink());
+</span><span style="color: #008080;">2</span>         RabbitTemplate template = rabbitUtil.getRabbitTemplate((a, b, c) -&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;">3</span>             System.<span style="color: #0000ff;">out</span>.println(<span style="color: #800000;">"</span><span style="color: #800000;">firstNodeTpl - ConfirmCallback的Id：</span><span style="color: #800000;">"</span> + a.getId() + <span style="color: #800000;">"</span><span style="color: #800000;">；状态：</span><span style="color: #800000;">"</span> + b + <span style="color: #800000;">"</span><span style="color: #800000;">；信息：</span><span style="color: #800000;">"</span> +<span style="color: #000000;"> c);
+</span><span style="color: #008080;">4</span>         });</code></pre>
+
+<p>最后再通过RabbitTemplate实例的convertAndSend方法发送mq信息，我们能够在日志中看到如下记录的信息：</p>
+<p><img src="./images/rabbit - producer的confirm和consumer的ack模式1.png" alt="" /></p>
+<p>这里的状态true：表示send成功，false：表示send失败；通常false的时候信息c会有响应的错误提示，这里把网络断开，如下错误提示：</p>
+<p><img src="./images/rabbit - producer的confirm和consumer的ack模式2.png" alt="" /></p>
+<h1 id="2" data-spm-anchor-id="a2c4e.11153940.0.i14.760e759b3JhBFo">consumer的ack模式</h1>
+<p>再来，有这样一种场景2：短信服务去消费mq队列信息时，倘若服务调用的运营商发送短信接口异常了(短信运营商接口欠费)，我们此时的短信是发送失败的，用户也收不到短信，但是在默认(默认开启ack)前提下mq消息已经被消费了rabbit中没有记录了(kafka例外)；想要mq消息在业务逻辑异常时还存在，那么可以使用ack方式；</p>
+<p><img src="./images/rabbit - producer的confirm和consumer的ack模式3.png" alt="" /></p>
+<p>在springboot中可以使用基于amqp封装的工厂类关闭自动ack模式，改为手动ack方式；只有当业务代码流程走完后，最后通过代码设置ack标识，来通知rabbit消息可以丢弃了；如果设置了手动模式后，又没有提交ack标识，那么mq中的消息一直存在无法释放(每次consumer消费后，rabbit会把noack的消息重复放入队列中)：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #808080;">///</span><span style="color: #008000;">region consumer监听 - 手动ack</span>
+<span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> SimpleRabbitListenerContainerFactory listenerContainerFactory() {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.listenerContainerFactory(<span style="color: #0000ff;">this</span><span style="color: #000000;">.connectionFactory());
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> SimpleRabbitListenerContainerFactory listenerContainerFactory(ConnectionFactory connectionFactory) {
+</span><span style="color: #008080;"> 7</span>         SimpleRabbitListenerContainerFactory factory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleRabbitListenerContainerFactory();
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">        factory.setConnectionFactory(connectionFactory);
+</span><span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;">代码手动ack</span>
+<span style="color: #008080;">10</span> <span style="color: #000000;">        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+</span><span style="color: #008080;">11</span>         <span style="color: #008000;">//</span><span style="color: #008000;">开启消费者数量</span>
+<span style="color: #008080;">12</span>         factory.setConcurrentConsumers(<span style="color: #800080;">2</span><span style="color: #000000;">);
+</span><span style="color: #008080;">13</span>         <span style="color: #008000;">//</span><span style="color: #008000;">每次接受数据量，默认250</span>
+<span style="color: #008080;">14</span>         factory.setPrefetchCount(<span style="color: #800080;">300</span><span style="color: #000000;">);
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">17</span>     <span style="color: #808080;">///</span><span style="color: #008000;">endregion</span></code></pre>
+
+<p>通过连接工厂设置手动ack方式，然后获取mq消息后，走完正常业务逻辑，最后再手动通知ack释放消息，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>     @RabbitListener(containerFactory = <span style="color: #800000;">"</span><span style="color: #800000;">firstNodeListener</span><span style="color: #800000;">"</span>, queues = {<span style="color: #800000;">"</span><span style="color: #800000;">${shenniu.rabbits.firstNode.queue}</span><span style="color: #800000;">"</span><span style="color: #000000;">})
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> firstNodeListener(String msg, Channel channel, Message message) {
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">4</span>             <span style="color: #0000ff;">long</span> deliverTag =<span style="color: #000000;"> message.getMessageProperties().getDeliveryTag();
+</span><span style="color: #008080;">5</span>             System.<span style="color: #0000ff;">out</span>.println(<span style="color: #800000;">"</span><span style="color: #800000;">firstNodeListener - 消费消息 [</span><span style="color: #800000;">"</span> + deliverTag + <span style="color: #800000;">"</span><span style="color: #800000;">] - </span><span style="color: #800000;">"</span> +<span style="color: #000000;"> msg);
+</span><span style="color: #008080;">6</span>             channel.basicAck(deliverTag, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+</span><span style="color: #008080;">7</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+</span><span style="color: #008080;">8</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">9</span>     }</code></pre>
+
+<p>这里ack主要根据mq消息的唯一编号(deliverTag)来通知；如果我们不设置ack确认，那么消息状态会是这样如下rabbit管理后台：</p>
+<p><img src="./images/rabbit - producer的confirm和consumer的ack模式4.png" alt="" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,246 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot 2.0 + InfluxDB+ Sentinel 实时监控数据存储' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot 2.0 + InfluxDB+ Sentinel 实时监控数据存储</center></div><div class='banquan'>原文出处:本文由博客园博主小柒2012提供。<br/>
+原文连接:https://www.cnblogs.com/smallSevens/p/11576263.html</div><br>
+    <p><img src="./images/SpringBoot 2.0 + InfluxDB+ Sentinel 实时监控数据存储0.png" /></p>
+<h2 id="前言">前言</h2>
+<p>阿里巴巴提供的控制台只是用于演示 Sentinel 的基本能力和工作流程，并没有依赖生产环境中所必需的组件，比如持久化的后端数据库、可靠的配置中心等。目前 Sentinel 采用内存态的方式存储监控和规则数据，监控最长存储时间为 5 分钟，控制台重启后数据丢失。</p>
+<h2 id="企业版">企业版</h2>
+<p>这里推荐一下阿里云的官方版，AHAS Sentinel 控制台 是 Sentinel 控制台的阿里云上版本，提供企业级的控制台服务，包括：</p>
+<ul>
+<li>实时请求链路查看</li>
+<li>还有各种酷炫的监控图表</li>
+<li>可靠的实时监控和历史监控数据查询，无需自行存储、拉取</li>
+<li>动态规则管理/推送，无需自行配置外部数据源</li>
+</ul>
+<p>免费版，可以提供 5 个节点的免费额度。开通专业版即可享受不限量节点额度。</p>
+<p>专业版没有实例连接限制，开通后每天前5个限流降级节点不计费，超出部分按3元/天/实例收取相应的费用。</p>
+<h2 id="思路">思路</h2>
+<p>官方文档也提供了思路，若需要监控数据持久化的功能，可以自行扩展实现 MetricsRepository 接口（0.2.0 版本），然后注册成 Spring Bean 并在相应位置通过 @Qualifier 注解指定对应的 bean name 即可。MetricsRepository 接口定义了以下功能：</p>
+<ul>
+<li><p>save 与 saveAll：存储对应的监控数据</p></li>
+<li><p>queryByAppAndResourceBetween：查询某段时间内的某个应用的某个资源的监控数据</p></li>
+<li><p>listResourcesOfApp：查询某个应用下的所有资源</p></li>
+</ul>
+<p>其中默认的监控数据类型为 MetricEntity，包含应用名称、时间戳、资源名称、异常数、请求通过数、请求拒绝数、平均响应时间等信息。</p>
+<p>对于监控数据的存储，用户需要根据自己的存储精度，来考虑如何存储这些监控数据。显然我们要使用目前最流行的时序数据库<code>InfluxDB</code>解决方案，不要问什么？闭眼享受就可以了。</p>
+<h2 id="选型">选型</h2>
+<p><code>InfluxDB</code>是一个开源分布式时序、事件和指标数据库。使用 Go 语言编写，无需外部依赖。</p>
+<p>应用：性能监控，应用程序指标，物联网传感器数据和实时分析等的后端存储。</p>
+<ul>
+<li><p>强大的类SQL语法</p></li>
+<li><p>内置http支持，使用http读写</p></li>
+<li><p>基于事件：它支持任意的事件数据</p></li>
+<li><p>无结构（无模式）：可以是任意数量的列</p></li>
+<li><p>可度量性：你可以实时对大量数据进行计算</p></li>
+<li><p>持续高并发写入、无更新、数据压缩存储、低查询延时</p></li>
+<li><p>支持min, max, sum, count, mean, median 等一系列函数</p></li>
+<li><p>基于时间序列，支持与时间有关的相关函数（如最大，最小，求和等）</p></li>
+</ul>
+<h2 id="改造">改造</h2>
+<h4 id="influxdb-安装">InfluxDB 安装</h4>
+<p>首先你得先有个 Influxdb 数据库，建议使用 Docker 方式安装，更多可以参考文末链接。</p>
+<p>需要注意的是，从1.1.0版开始不推荐使用管理员界面，并将在1.3.0版中删除。默认情况下禁用。如果需要，仍可以通过设置如下环境变量来启用它。</p>
+<p>以下端口很重要，并由<code>InfluxDB</code>使用。</p>
+<ul>
+<li>8086 HTTP API端口</li>
+<li>8083 管理员界面端口（如果已启用，1.7.8貌似启用也不好使），官方推荐使用<code>chronograf</code></li>
+</ul>
+<p><img src="./images/SpringBoot 2.0 + InfluxDB+ Sentinel 实时监控数据存储1.png" /></p>
+<p>通过该命令, 生成默认配置文件:</p>
+<pre><code><code>docker run --rm influxdb influxd config &gt; influxdb.conf</code></code></pre>
+<p>创建并运行容器：</p>
+<pre><code><code>docker run -d \
+        -p 8086:8086 \
+        -p 8083:8083 \
+        -e INFLUXDB_ADMIN_ENABLED=true \
+        -v $PWD/data:/var/lib/influxdb/ \
+        -v $PWD/config/influxdb.conf:/etc/influxdb/influxdb.conf:ro \
+        --name influx \
+        influxdb -config /etc/influxdb/influxdb.conf</code></code></pre>
+<p>生产环境一定要开启权限验证，修改 influxdb.conf 配置：</p>
+<pre><code><code>[http]
+  enabled = true
+  bind-address = &quot;:8086&quot;
+  auth-enabled = true # 鉴权</code></code></pre>
+<p>创建用户：</p>
+<pre><code><code># 进入容器
+docker exec -it influx  /bin/sh
+# 连接
+influx
+# 创建用户
+CREATE USER admin with PASSWORD &#39;admin&#39; WITH ALL PRIVILEGES</code></code></pre>
+<p>退出重新登录：</p>
+<pre><code><code># 用户密码登录
+influx -username admin -password admin
+# 创建数据库
+CREATE DATABASE sentinel_log</code></code></pre>
+<h4 id="sentinel-控制台改造">Sentinel 控制台改造</h4>
+<p>pom.xml引入 influxdb 官方开源工具包：</p>
+<pre><code><code>&lt;dependency&gt;
+     &lt;groupId&gt;org.influxdb&lt;/groupId&gt;
+     &lt;artifactId&gt;influxdb-java&lt;/artifactId&gt;
+     &lt;version&gt;2.15&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>配置文件引入：</p>
+<pre><code><code># 自行替换 API 地址:端口
+spring.influx.url=http://127.0.0.1:8086
+spring.influx.user=admin
+spring.influx.password=admin
+spring.influx.database=sentinel_log</code></code></pre>
+<p>配置数据源：</p>
+<pre><code><code>/**
+ * InfluxDb 配置
+ * 创建者 爪哇笔记
+ * 网址 https://blog.52itstyle.vip
+ */
+@Configuration
+public class InfluxDbConfig {
+
+    @Value(&quot;${spring.influx.url:&#39;&#39;}&quot;)
+    private String influxDBUrl;
+
+    @Value(&quot;${spring.influx.user:&#39;&#39;}&quot;)
+    private String userName;
+
+    @Value(&quot;${spring.influx.password:&#39;&#39;}&quot;)
+    private String password;
+
+    @Value(&quot;${spring.influx.database:&#39;&#39;}&quot;)
+    private String database;
+
+    @Bean
+    public InfluxDB influxDB(){
+        InfluxDB influxDB = InfluxDBFactory.connect(influxDBUrl, userName, password);
+        try {
+            /**
+             * 异步插入：
+             * enableBatch这里第一个是point的个数，第二个是时间，单位毫秒
+             * point的个数和时间是联合使用的，如果满100条或者2000毫秒
+             * 满足任何一个条件就会发送一次写的请求。
+             */
+            influxDB.setDatabase(database)
+                    .enableBatch(100,2000, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            influxDB.setRetentionPolicy(&quot;autogen&quot;);
+        }
+        influxDB.setLogLevel(InfluxDB.LogLevel.BASIC);
+        return influxDB;
+    }
+}</code></code></pre>
+<p>实现 MetricsRepository 接口，重写实现：</p>
+<pre><code><code>/**
+ * 数据CURD
+ * 创建者 爪哇笔记
+ * 网址 https://blog.52itstyle.vip
+ */
+@Component(&quot;inInfluxdbMetricsRepository&quot;)
+public class InInfluxdbMetricsRepository implements MetricsRepository&lt;MetricEntity&gt; {
+
+    @Autowired
+    public InfluxDB influxDB;
+
+    @Override
+    public synchronized void save(MetricEntity metric) {
+       //省略代码，太长了，参考内存写法，参考 saveAll 这里是单条插入
+    }
+
+    @Override
+    public synchronized void saveAll(Iterable&lt;MetricEntity&gt; metrics) {
+        if (metrics == null) {
+            return;
+        }
+        BatchPoints batchPoints = BatchPoints.builder()
+                .tag(&quot;async&quot;, &quot;true&quot;)
+                .consistency(InfluxDB.ConsistencyLevel.ALL)
+                .build();
+        metrics.forEach(metric-&gt;{
+            Point point = Point
+                    .measurement(&quot;sentinelInfo&quot;)
+                    //这里使用微妙、如果还有覆盖数据就使用纳秒，保证 time 和 tag 唯一就可以
+                    .time(System.currentTimeMillis(), TimeUnit.MICROSECONDS)
+                    .tag(&quot;app&quot;,metric.getApp())//tag 数据走索引
+                    .addField(&quot;gmtCreate&quot;, metric.getGmtCreate().getTime())
+                    .addField(&quot;gmtModified&quot;, metric.getGmtModified().getTime())
+                    .addField(&quot;timestamp&quot;, metric.getTimestamp().getTime())
+                    .addField(&quot;resource&quot;, metric.getResource())
+                    .addField(&quot;passQps&quot;, metric.getPassQps())
+                    .addField(&quot;successQps&quot;, metric.getSuccessQps())
+                    .addField(&quot;blockQps&quot;, metric.getBlockQps())
+                    .addField(&quot;exceptionQps&quot;, metric.getExceptionQps())
+                    .addField(&quot;rt&quot;, metric.getRt())
+                    .addField(&quot;count&quot;, metric.getCount())
+                    .addField(&quot;resourceCode&quot;, metric.getResourceCode())
+                    .build();
+            batchPoints.point(point);
+        });
+        //批量插入
+        influxDB.write(batchPoints);
+    }
+
+    @Override
+    public synchronized List&lt;MetricEntity&gt; queryByAppAndResourceBetween(String app, String resource, long startTime, long endTime) {
+       //省略代码，太长了，参考内存写法
+    }
+
+    @Override
+    public synchronized List&lt;String&gt; listResourcesOfApp(String app) {
+       //省略代码，太长了，参考内存写法
+    }
+}</code></code></pre>
+<p>分别修改 <code>MetricFetcher</code> 和 <code>MetricController</code>中 <code>metricStore</code> 的注入方式，使用 <code>Influxdb</code> 实现：</p>
+<pre><code><code>/**
+ * 注入
+ * 创建者 爪哇笔记
+ * 网址 https://blog.52itstyle.vip
+ */
+@Autowired
+@Qualifier(&quot;inInfluxdbMetricsRepository&quot;)
+private MetricsRepository&lt;MetricEntity&gt; metricStore;</code></code></pre>
+<p>配置完成后，我们重启控制台，然后访问客户端项目，如果控制台打印以下数据，说明配置成功：</p>
+<pre><code><code>2019-09-21 19:47:25 [sentinel-dashboard-metrics-fetchWorker-thread-2] INFO  okhttp3.OkHttpClient - --&gt; POST http://118.190.247.102:8086/write?db=sentinel_log&amp;precision=n&amp;consistency=all (486-byte body)
+2019-09-21 19:47:25 [sentinel-dashboard-metrics-fetchWorker-thread-2] INFO  okhttp3.OkHttpClient - &lt;-- 204 No Content http://118.190.247.102:8086/write?db=sentinel_log&amp;precision=n&amp;consistency=all (46ms, 0-byte body)
+</code></code></pre>
+<p>多访问几次客户端项目，然后登陆控制台查看，出现以下效果，说明改造成功：</p>
+<p><img src="./images/SpringBoot 2.0 + InfluxDB+ Sentinel 实时监控数据存储2.png" /></p>
+<p>注意事项：</p>
+<ul>
+<li><p>官方前端并没有实现按照时间范围的查询搜索，需要自行实现</p></li>
+<li><p>官方控制台实时监控默认查询的是最近一分钟的热点资源排行，见方法 <code>listResourcesOfApp</code></p></li>
+<li><p>官方控制台实时监控右侧 Table 默认查询的是最近五分钟的热点访问详情，见方法 <code>queryTopResourceMetric</code></p></li>
+</ul>
+<h2 id="小结">小结</h2>
+<p>对于官方五分钟的阉割版，时序数据库实现的流控数据存储，对于生产环境还是很有帮助的，比如实时数据分析，热点资源、监控预警等等。小伙伴们还可以根据实际生产需求结合<code>Chronograf</code>、<code>Grafana</code> 做出更炫酷的大屏监控。</p>
+<h2 id="源码">源码</h2>
+<p><a href="https://gitee.com/52itstyle/sentinel-dashboard" class="uri" title="https://gitee.com/52itstyle/sentinel-dashboard">https://gitee.com/52itstyle/sentinel-dashboard</a></p>
+<h2 id="参考">参考</h2>
+<p><a href="https://blog.52itstyle.vip/archives/4460/" class="uri" title="https://blog.52itstyle.vip/archives/4460/">https://blog.52itstyle.vip/archives/4460/</a></p>
+<p><a href="https://hub.docker.com/_/influxdb" class="uri" title="https://hub.docker.com/_/influxdb">https://hub.docker.com/_/influxdb</a></p>
+<p>https://hub.docker.com/_/chronograf</p>
+<p>https://github.com/influxdata/influxdb-java</p>
+<p>https://github.com/influxdata/influxdb-python</p>
+<p>https://help.aliyun.com/document_detail/97578.htm</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

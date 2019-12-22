@@ -1,0 +1,165 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring5源码解析1-从启动容器开始' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring5源码解析1-从启动容器开始</center></div><div class='banquan'>原文出处:本文由博客园博主Coder小黑提供。<br/>
+原文连接:https://www.cnblogs.com/coderxiaohei/p/11629736.html</div><br>
+    <h2 id="从启动容器开始">从启动容器开始</h2>
+<p>最简单的启动spring的代码如下：</p>
+<pre><code><code>@Configuration
+@ComponentScan
+public class AppConfig {
+}
+
+public class Main {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext(AppConfig.class);
+        context.close();
+    }
+}</code></code></pre>
+<p>先来看一下<code>AnnotationConfigApplicationContext</code>类的UML图，留个印象。</p>
+<p><img src="./images/Spring5源码解析1-从启动容器开始0.png" alt="AnnotationConfigApplicationContext" /></p>
+<p>点开<code>AnnotationConfigApplicationContext(AppConfig.class);</code>方法查看源码：</p>
+<pre><code><code>public AnnotationConfigApplicationContext(Class&lt;?&gt;... annotatedClasses) {
+    //调用默认无参构造器,里面有一大堆初始化逻辑
+    this();
+
+    //把传入的Class进行注册,Class既可以有@Configuration注解,也可以没有@Configuration注解
+    //怎么注册? 委托给了 org.springframework.context.annotation.AnnotatedBeanDefinitionReader.register 方法进行注册
+    // 传入Class 生成  BeanDefinition , 然后通过 注册到 BeanDefinitionRegistry
+    register(annotatedClasses);
+
+    //刷新容器上下文
+    refresh();
+}</code></code></pre>
+<p>该构造器允许我们传入一个或者多个class对象。class对象可以是被<code>@Configuration</code>标注的，也可以是一个普通的Java 类。</p>
+<p>有参构造器调用了无参构造器，点开源码：</p>
+<pre><code><code>public AnnotationConfigApplicationContext() {
+    //隐式调用父类构造器,初始化beanFactory,具体实现类为DefaultListableBeanFactory
+    super(); // 这个代码是笔者添加的，方便定位到super方法
+
+    //创建 AnnotatedBeanDefinitionReader,
+    //创建时会向传入的 BeanDefinitionRegistry 中 注册 注解配置相关的 processors 的 BeanDefinition
+    this.reader = new AnnotatedBeanDefinitionReader(this);
+
+    this.scanner = new ClassPathBeanDefinitionScanner(this);
+}</code></code></pre>
+<p>初始化子类时会先初始化父类，会默认调用父类无参构造器。<code>AnnotationConfigApplicationContext</code>继承了<code>GenericApplicationContext</code>，在<code>GenericApplicationContext</code>的无参构造器中，创建了<code>BeanFactory</code>的具体实现类<code>DefaultListableBeanFactory</code>。spring中的<code>BeanFactory</code>就是在这里被实例化的，并且使用<code>DefaultListableBeanFactory</code>做的<code>BeanFactory</code>的默认实现。</p>
+<pre><code><code>public GenericApplicationContext() {
+    this.beanFactory = new DefaultListableBeanFactory();
+}</code></code></pre>
+<p><img src="./images/Spring5源码解析1-从启动容器开始1.png" alt="DefaultListableBeanFactory" /></p>
+<p><code>AnnotationConfigApplicationContext</code>的构造器中还创建了两个对象：<code>AnnotatedBeanDefinitionReader</code> 和 <code>ClassPathBeanDefinitionScanner</code>。</p>
+<p>先说<code>scanner</code>的作用，通过查看源码可以发现，这个<code>scanner</code>只有在手动调用<code>AnnotationConfigApplicationContext</code>的一些方法的时候才会被使用（通过后面的源码探究也可以发现，spring并不是使用这个<code>scanner</code>来扫描包获取Bean的）。</p>
+<p><img src="./images/Spring5源码解析1-从启动容器开始2.png" alt="scanner" /></p>
+<p>创建<code>AnnotatedBeanDefinitionReader</code>对象。spring在创建<code>reader</code>的时候把<code>this</code>当做了参数传给了构造器。也就是说，<code>reader</code>对象里面包含了一个<code>this</code>对象，也就是<code>AnnotationConfigApplicationContext</code>对象。<code>AnnotationConfigApplicationContext</code> 实现了<code>BeanDefinitionRegistry</code>接口。点开<code>this.reader = new AnnotatedBeanDefinitionReader(this);</code>源码：</p>
+<pre><code><code>public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry) {
+    this(registry, getOrCreateEnvironment(registry));
+}</code></code></pre>
+<p>从传入的<code>BeanDefinitionRegistry</code>对象，也就是<code>AnnotationConfigApplicationContext</code>对象中获取<code>Environment</code>（共用同一个<code>Environment</code>），然后又接着调用另一个构造器。点开源码：</p>
+<pre><code><code>public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry, Environment environment) {
+    Assert.notNull(registry, &quot;BeanDefinitionRegistry must not be null&quot;);
+    Assert.notNull(environment, &quot;Environment must not be null&quot;);
+    this.registry = registry;
+    this.conditionEvaluator = new ConditionEvaluator(registry, environment, null);
+    //在 BeanDefinitionRegistry 中注册 注解配置相关的 processors
+    AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
+}</code></code></pre>
+<p>在这个构造器中，执行了一个非常重要的方法<code>AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);</code>，顾名思义，spring通过这个方法注册了解析注解配置相关的处理器。点开源码：</p>
+<pre><code><code>public static void registerAnnotationConfigProcessors(BeanDefinitionRegistry registry) {
+    registerAnnotationConfigProcessors(registry, null);
+}
+//再点开源码
+public static Set&lt;BeanDefinitionHolder&gt; registerAnnotationConfigProcessors(
+        BeanDefinitionRegistry registry, @Nullable Object source) {
+
+    DefaultListableBeanFactory beanFactory = unwrapDefaultListableBeanFactory(registry);
+    if (beanFactory != null) {
+        if (!(beanFactory.getDependencyComparator() instanceof AnnotationAwareOrderComparator)) {
+            beanFactory.setDependencyComparator(AnnotationAwareOrderComparator.INSTANCE);
+        }
+        if (!(beanFactory.getAutowireCandidateResolver() instanceof ContextAnnotationAutowireCandidateResolver)) {
+            beanFactory.setAutowireCandidateResolver(new ContextAnnotationAutowireCandidateResolver());
+        }
+    }
+
+    Set&lt;BeanDefinitionHolder&gt; beanDefs = new LinkedHashSet&lt;&gt;(8);
+
+    if (!registry.containsBeanDefinition(CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+        //org.springframework.context.annotation.internalConfigurationAnnotationProcessor - ConfigurationClassPostProcessor.class
+        //这个类非常的重要,它是一个 BeanDefinitionRegistryPostProcessor
+        RootBeanDefinition def = new RootBeanDefinition(ConfigurationClassPostProcessor.class);
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, CONFIGURATION_ANNOTATION_PROCESSOR_BEAN_NAME));
+    }
+
+    if (!registry.containsBeanDefinition(AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+        RootBeanDefinition def = new RootBeanDefinition(AutowiredAnnotationBeanPostProcessor.class);
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME));
+    }
+
+    // Check for JSR-250 support, and if present add the CommonAnnotationBeanPostProcessor.
+    if (jsr250Present &amp;&amp; !registry.containsBeanDefinition(COMMON_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+        RootBeanDefinition def = new RootBeanDefinition(CommonAnnotationBeanPostProcessor.class);
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, COMMON_ANNOTATION_PROCESSOR_BEAN_NAME));
+    }
+
+    // Check for JPA support, and if present add the PersistenceAnnotationBeanPostProcessor.
+    if (jpaPresent &amp;&amp; !registry.containsBeanDefinition(PERSISTENCE_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+        RootBeanDefinition def = new RootBeanDefinition();
+        try {
+            def.setBeanClass(ClassUtils.forName(PERSISTENCE_ANNOTATION_PROCESSOR_CLASS_NAME,
+                    AnnotationConfigUtils.class.getClassLoader()));
+        } catch (ClassNotFoundException ex) {
+            throw new IllegalStateException(
+                    &quot;Cannot load optional framework class: &quot; + PERSISTENCE_ANNOTATION_PROCESSOR_CLASS_NAME, ex);
+        }
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, PERSISTENCE_ANNOTATION_PROCESSOR_BEAN_NAME));
+    }
+
+    if (!registry.containsBeanDefinition(EVENT_LISTENER_PROCESSOR_BEAN_NAME)) {
+        RootBeanDefinition def = new RootBeanDefinition(EventListenerMethodProcessor.class);
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, EVENT_LISTENER_PROCESSOR_BEAN_NAME));
+    }
+
+    if (!registry.containsBeanDefinition(EVENT_LISTENER_FACTORY_BEAN_NAME)) {
+        RootBeanDefinition def = new RootBeanDefinition(DefaultEventListenerFactory.class);
+        def.setSource(source);
+        beanDefs.add(registerPostProcessor(registry, def, EVENT_LISTENER_FACTORY_BEAN_NAME));
+    }
+
+    return beanDefs;
+}</code></code></pre>
+<ol>
+<li>该方法从传入的<code>BeanDefinitionRegistry</code>对象，也就是<code>AnnotationConfigApplicationContext</code>对象中获取到<code>DefaultListableBeanFactory</code>对象。</li>
+<li>为获取的<code>DefaultListableBeanFactory</code>对象设置属性</li>
+<li>往<code>DefaultListableBeanFactory</code>对象中注册<code>BeanDefinition</code>，注册的是一些spring内置的PostProcessor的<code>BeanDefinition</code>（关于<code>BeanDefinition</code>的介绍下期在讲）。注意，此时只是注册<code>BeanDefinition</code>，并没有实例化bean。默认情况下，执行完该方法后，spring容器中所注册的<code>BeanDefinition</code>为：</li>
+</ol>
+<p><img src="./images/Spring5源码解析1-从启动容器开始3.png" alt="((AnnotationConfigApplicationContext) registry).beanFactory.beanDefinitionMap" /></p>
+<hr />
+<p>源码学习笔记：https://github.com/shenjianeng/spring-code-study</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

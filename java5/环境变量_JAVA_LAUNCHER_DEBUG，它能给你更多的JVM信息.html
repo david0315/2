@@ -1,0 +1,67 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11495492.html</div><br>
+    <h3 id="关于环境">关于环境:</h3>
+<p>本文中的实战都是在docker容器中进行的，容器的出处请参照<a href="http://blog.csdn.net/boling_cavalry/article/details/70243954">《在docker上编译openjdk8》</a>一文，里面详细的说明了如何构造镜像和启动容器。</p>
+<p>在上一篇文章<a href="http://blog.csdn.net/boling_cavalry/article/details/70557537">《修改，编译，GDB调试openjdk8源码(docker环境下)》</a>中，我们分析了虚拟机启动的代码，在阅读JLI_Launch函数的时候，发现调用了InitLauncher函数，如下图红框部分：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息0.png" alt="这里写图片描述" /></p>
+<p>这个InitLauncher函数有何作用？展开后发现里面调用了JLI_SetTraceLauncher函数，而JLI_SetTraceLauncher函数的源码如下：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息1.png" alt="这里写图片描述" /></p>
+<p>很简单，如果环境变量&quot;_JAVA_LAUNCHER_DEBUG&quot;的值不等于0，就将_launcher_debug的值设置为1。</p>
+<p>_launcher_debug有什么用呢？我们看看/usr/local/openjdk/jdk/src/share/bin/jli_util.c文件中的JLI_TraceLauncher方法:</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息2.png" alt="这里写图片描述" /></p>
+<p>原来如此，只要_launcher_debug等于1，JLI_TraceLauncher方法在执行的时候就不会提前返回，而是把入参的信息做格式化再打印出来，在openjdk目录下全局搜索JLI_TraceLauncher函数，发现调用的地方还真不少呢，如下图，9个文件里都有调用：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息3.png" alt="这里写图片描述" /></p>
+<p>在容器中执行<font color="red">vi /etc/profile</font>命令，在内容的最底部新增两行脚本：</p>
+<pre><code><code>_JAVA_LAUNCHER_DEBUG=1
+export _JAVA_LAUNCHER_DEBUG</code></code></pre>
+<p>如下图：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息4.png" alt="这里写图片描述" /></p>
+<p>在执行以下命令使配置生效：</p>
+<pre><code><code>source /etc/profile</code></code></pre>
+<p>现在回到目录<font color="blue">/usr/local/openjdk/build/linux-x86_64-normal-server-slowdebug/jdk/bin</font>，执行<font color="blue">./java -version</font>，会发现输出的内容比以前丰富了很多，如下图，<font color="red">红框内是修改/etc/profile之前的输出，其他的全是新增的内容，</font>这些新增的内容都是通过JLI_TraceLauncher输出的，以前由于没有环境变量_JAVA_LAUNCHER_DEBUG导致不输出，现在可以全部看到了：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息5.png" alt="这里写图片描述" /></p>
+<p>虽然已通过设置环境变量_JAVA_LAUNCHER_DEBUG看到了更多的信息，但似乎意犹未尽，不如我们改一点openjdk源码，亲自调用一下JLI_TraceLauncher函数试试。</p>
+<p>首先我们修改/usr/local/openjdk/jdk/src/share/bin/java.c，在JavaMain函数中，找到下面这一行：<br />
+<img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息6.png" alt="这里写图片描述" /></p>
+<p>在上面红框位置的下面增加一行代码<font color="blue">JLI_TraceLauncher(&quot;static main method execute success (from boling_cavalry)&quot;);</font></p>
+<p>这样代码的意思是在class类的main函数执行完毕后，输出一段文本信息<font color="red">&quot;static main method execute success (from boling_cavalry)&quot;</font></p>
+<p>修改后如下图：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息7.png" alt="这里写图片描述" /></p>
+<p>现在回到/usr/local/openjdk目录下，执行以下两个命令开始编译openjdk源码：</p>
+<pre><code><code>./configure --with-debug-level=slowdebug
+make all ZIP_DEBUGINFO_FILES=0 DISABLE_HOTSPOT_OS_VERSION_CHECK=OK CONF=linux-x86_64-normal-server-slowdebug</code></code></pre>
+<p>jdk构建成功后，我们新建一个类Hello.java，在此位置新建：/usr/local/openjdk/build/linux-x86_64-normal-server-slowdebug/jdk/bin，这个类很简单：</p>
+<pre class="java"><code>public class Hello{
+        public static void main(String[] args){
+                System.out.println(&quot;hello world!&quot;);
+        }
+}</code></code></pre>
+<p>在这个目录下执行./javac Hello.java生成Hello.class文件，再执行./java Hello，得到的输出如下：</p>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息8.png" alt="这里写图片描述" /></p>
+<p>红框中就是class中的输出以及我们修改openjdk源码添加的输出，达到我们的预期目的了，现在自定义的日志再加上<a href="_http://blog.csdn.net/boling_cavalry/article/details/70557537">上一章</a>的GDB断点，可以帮助我们可以更好的阅读和实践openjdk源码，探索神秘的JVM。</p>
+<h3 id="欢迎关注我的公众号">欢迎关注我的公众号</h3>
+<p><img src="./images/环境变量_JAVA_LAUNCHER_DEBUG，它能给你更多的JVM信息9.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

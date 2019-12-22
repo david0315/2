@@ -1,0 +1,219 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud学习笔记(6)：使用Zuul构建服务网关' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud学习笔记(6)：使用Zuul构建服务网关</center></div><div class='banquan'>原文出处:本文由博客园博主布禾卡斐先生提供。<br/>
+原文连接:https://www.cnblogs.com/seve/p/11551546.html</div><br>
+    <h3 id="简介">简介</h3>
+<p>Zuul是Netflix提供的一个开源的API网关服务器，SpringCloud对Zuul进行了整合和增强。服务网关Zuul聚合了所有微服务接口，并统一对外暴露，外部客户端只需与服务网关交互即可。相对于内部服务而言，能够防止其被外部客户端直接访问而暴露服务的敏感信息，起到了保护作用。除此之外，Zuul还可以实现身份认证、数据监控、动态路由等功能。</p>
+<h3 id="项目介绍">项目介绍</h3>
+<ol>
+<li>sc-parent，父模块(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-eureka，注册中心(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-provider，提供者(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-gateway，服务网关</li>
+</ol>
+<h3 id="使用zuul构建服务网关">使用Zuul构建服务网关</h3>
+<h4 id="在父模块下创建子模块项目sc-gatewaypom.xml">1.在父模块下创建子模块项目sc-gateway，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-gateway&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-zuul&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类gateway.gatewayapplication">2.创建启动类gateway.GatewayApplication：</h4>
+<pre><code><code>package gateway;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.zuul.EnableZuulProxy;
+
+@SpringBootApplication
+@EnableZuulProxy
+public class GatewayApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(GatewayApplication.class, args);
+    }
+}</code></code></pre>
+<h4 id="enablezuulproxyh和enablezuulserver">@EnableZuulProxyh和@EnableZuulServer：</h4>
+<ol>
+<li><p>@EnableZuulProxy是@EnableZuulServer的超集，@EnableZuulProxy包含@EnableZuulServer导入的所有过滤器。</p></li>
+<li><p>@EnableZuulProxy使用反向代理，@EnableZuulServer不使用任何代理。</p></li>
+</ol>
+<h4 id="创建application.yml">3.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 8088
+
+spring:
+  application:
+    name: sc-gateway
+    
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8080/eureka/  
+
+zuul:
+  routes:
+    sc-provider: /sp/** #将serviceId为sc-provider的服务映射到/sp/**路径</code></code></pre>
+<h4 id="测试">4.测试</h4>
+<p>依次启动注册中心sc-eureka、提供者sc-provider、网关sc-gateway，以下是通过Zuul访问提供者和直接访问提供者的结果：<br />
+<img src="./images/SpringCloud学习笔记(6)：使用Zuul构建服务网关0.png" /></p>
+<h3 id="其他常用配置">其他常用配置</h3>
+<h4 id="忽略指定服务">1.忽略指定服务</h4>
+<pre><code><code>zuul:
+  ignored-services: serviceId1,serviceId2 #忽略服务serviceId1,serviceId2</code></code></pre>
+<h4 id="忽略所有服务只代理指定的服务">2.忽略所有服务，只代理指定的服务</h4>
+<pre><code><code>zuul:
+  ignored-services: &#39;*&#39; #*为忽略所有服务，只代理sc-provider服务
+  routes:
+    sc-provider: /sp/** </code></code></pre>
+<h4 id="指定访问路径前缀设置之后只能通过带前缀访问">3.指定访问路径前缀，设置之后只能通过带前缀访问</h4>
+<pre><code><code>zuul:
+  prefix: /yc 
+  routes:
+    sc-provider: /sp/** </code></code></pre>
+<h4 id="指定服务的url">4.指定服务的url</h4>
+<pre><code><code>zuul:
+  routes:
+    sc-provider:
+      path: /sp/**
+      url: http://localhost:8081 #指定服务sc-provider的url，不从Eureka注册中心获取。</code></code></pre>
+<p><font color="red">这种配置方式不会作为HystrixCommand执行，也不会使用Ribbon来平衡多个url的负载。要实现这些目标，可以使用静态服务器列表(listOfServers)或者指定serviceId。</font></p>
+<h4 id="指定敏感header防止敏感header外泄">5.指定敏感Header,防止敏感Header外泄</h4>
+<pre><code><code>zuul:
+  routes:
+    sc-provider:
+      path: /sp/**
+      sensitiveHeaders: Cookie,Set-Cookie,Authorization #将会覆盖全局zuul.sensitiveHeaders的值
+      url: http://localhost:8081</code></code></pre>
+<p>如果要设置全局的敏感Header可以设置zuul.sensitiveHeaders的值。Cookie,Set-Cookie,Authorization为sensitiveHeaders的默认值，如果不想设置敏感header，可以把sensitiveHeaders设置成空列表：</p>
+<pre><code><code>zuul:
+  routes:
+    sc-provider:
+      path: /sp/**
+      sensitiveHeaders: 
+      url: http://localhost:8081</code></code></pre>
+<h4 id="忽略header">6.忽略Header</h4>
+<pre><code><code>zuul:
+  ignoredHeaders: Header1, Header2 #Header1和Header2将不会传播到其他的微服务中</code></code></pre>
+<h3 id="zuul的路由端点">Zuul的路由端点</h3>
+<p>当@EnableZuulProxy和Spring Boot Actuator配合使用时，Zuul会暴露一个路由管理端点/routes，通过这个路由端点可以查看到Zuul当前映射的路由列表信息。</p>
+<h4 id="修改sc-gateway的pom.xml新增spring-boot-actuator依赖">1.修改sc-gateway的pom.xml，新增Spring Boot Actuator依赖：</h4>
+<pre><code><code>    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+    &lt;/dependency&gt;</code></code></pre>
+<h4 id="修改sc-gateway的application.yml开启routes端点的访问">2.修改sc-gateway的application.yml，开启/routes端点的访问：</h4>
+<pre><code><code>management:
+  endpoints:
+    web:
+      exposure:
+        include: &#39;routes&#39;</code></code></pre>
+<h4 id="访问routes端点">3.访问/routes端点</h4>
+<p>依次启动注册中心sc-eureka、提供者sc-provider、网关sc-gateway，然后访问http://localhost:8088/actuator/routes/details，显示路由列表信息如下：</p>
+<p><img src="./images/SpringCloud学习笔记(6)：使用Zuul构建服务网关1.png" /></p>
+<h3 id="zuul过滤器">Zuul过滤器</h3>
+<p>Zuul的核心是一系列过滤器，它们能够在HTTP请求和响应路由期间执行一系列操作。Zuul提供了一个框架来动态读取、编译和运行这些过滤器，过滤器之间不直接通信，它们通过对每个请求惟一的RequestContext共享数据。</p>
+<h4 id="zuul过滤器类型">1.Zuul过滤器类型</h4>
+<ul>
+<li>PRE Filters：在请求路由到具体的服务之前执行。</li>
+<li>ROUTING Filters：用于将请求路由到微服务。</li>
+<li>POST Filters：在请求路由到微服务之后执行。</li>
+<li>ERROR Filters：在其他阶段发生错误时执行。</li>
+</ul>
+<h4 id="zuul过滤器特性">2.Zuul过滤器特性</h4>
+<ul>
+<li>Type：Zuul过滤器的类型，决定过滤器在请求的哪个阶段起作用。</li>
+<li>Execution Order：规定过滤器的执行顺序，值越小，越先执行。</li>
+<li>Criteria：Filter执行所需的条件。</li>
+<li>Action：如果满足条件，则执行的操作。</li>
+</ul>
+<h4 id="zuul请求生命周期图">3.Zuul请求生命周期图</h4>
+<p><img src="./images/SpringCloud学习笔记(6)：使用Zuul构建服务网关2.png" /></p>
+<h4 id="自定义zuul过滤器">4.自定义Zuul过滤器</h4>
+<p>新建类gateway.filter.MyZuulFilter：</p>
+<pre><code><code>package gateway.filter;
+import javax.servlet.http.HttpServletRequest;
+import com.netflix.zuul.ZuulFilter;
+import com.netflix.zuul.context.RequestContext;
+import com.netflix.zuul.exception.ZuulException;
+
+public class MyZuulFilter extends ZuulFilter{
+    
+    /**
+     * 具体执行逻辑
+     */
+    @Override
+    public Object run() throws ZuulException {
+        RequestContext ctx = RequestContext.getCurrentContext();
+        HttpServletRequest request = ctx.getRequest();
+        if (request.getParameter(&quot;name&quot;) != null) {
+            System.out.println(&quot;你好，&quot; + request.getParameter(&quot;name&quot;));
+        }
+        return null;
+    }
+
+    /**
+     * 判断你该过滤器是否要执行
+     */
+    @Override
+    public boolean shouldFilter() {
+        return true;
+    }
+
+    /**
+     * 过滤器执行顺序
+     */
+    @Override
+    public int filterOrder() {
+        return 1;
+    }
+
+    /**
+     * 过滤器类型
+     */
+    @Override
+    public String filterType() {
+        return &quot;pre&quot;;
+    }
+}</code></code></pre>
+<p>启动类GatewayApplication中添加配置：</p>
+<pre><code><code>    @Bean
+    public MyZuulFilter MyZuulFilter(){
+        return new MyZuulFilter();
+    }</code></code></pre>
+<p>依次启动注册中心sc-eureka、提供者sc-provider、网关sc-gateway，然后访问http://localhost:8088/sp/book/list?name=小明，MyZuulFilter过滤器将会执行，控制台输出：你好，小明。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

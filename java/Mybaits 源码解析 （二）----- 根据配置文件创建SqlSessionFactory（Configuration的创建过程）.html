@@ -1,0 +1,977 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （二）----- 根据配置文件创建SqlSessionFactory（Configuration的创建过程）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （二）----- 根据配置文件创建SqlSessionFactory（Configuration的创建过程）</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11743430.html</div><br>
+    <p>我们使用mybatis操作数据库都是通过SqlSession的API调用，而创建SqlSession是通过SqlSessionFactory。下面我们就看看SqlSessionFactory的创建过程。</p>
+<h2 id="autoid-3-0-0">配置文件解析入口</h2>
+<p>我们看看第一篇文章中的测试方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+</span><span style="color: #008080;"> 2</span>     String resource = "mybatis-config.xml"<span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>     InputStream inputStream =<span style="color: #000000;"> Resources.getResourceAsStream(resource);
+</span><span style="color: #008080;"> 4</span>     <strong>SqlSessionFactory sqlSessionFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlSessionFactoryBuilder().build(inputStream);
+</span></strong><span style="color: #008080;"> 5</span>     SqlSession sqlSession =<span style="color: #000000;"> sqlSessionFactory.openSession();
+</span><span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 7</span>         Employee employeeMapper = sqlSession.getMapper(Employee.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;"> 8</span>          List&lt;Employee&gt; all =<span style="color: #000000;"> employeeMapper.getAll();
+</span><span style="color: #008080;"> 9</span>          <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Employee item : all)
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            System.out.println(item);
+</span><span style="color: #008080;">11</span>     } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        sqlSession.close();
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">14</span> }</code></pre>
+
+<p>首先，我们使用 MyBatis 提供的工具类 Resources 加载配置文件，得到一个输入流。然后再通过 SqlSessionFactoryBuilder 对象的<code>build</code>方法构建 SqlSessionFactory 对象。所以这里的 build 方法是我们分析配置文件解析过程的入口方法。我们看看build里面是代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionFactory build(InputStream inputStream) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用重载方法</span>
+    <span style="color: #0000ff;">return</span> build(inputStream, <span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionFactory build(InputStream inputStream, String environment, Properties properties) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建配置文件解析器</span>
+        XMLConfigBuilder parser = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLConfigBuilder(inputStream, environment, properties);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 parser.parse() 方法解析配置文件，生成 Configuration 对象</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> build(parser.parse());</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error building SqlSession."<span style="color: #000000;">, e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        inputStream.close();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Intentionally ignore. Prefer previous error.</span>
+<span style="color: #000000;">        }
+    }
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionFactory build(Configuration config) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 DefaultSqlSessionFactory，将解析配置文件后生成的Configuration传入</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultSqlSessionFactory(config);
+}</span></code></pre>
+
+<p>SqlSessionFactory是通过SqlSessionFactoryBuilder的build方法创建的，build方法内部是通过一个XMLConfigBuilder对象解析mybatis-config.xml文件生成一个Configuration对象。XMLConfigBuilder从名字可以看出是解析Mybatis配置文件的，其实它是继承了一个父类BaseBuilder，其每一个子类多是以XMLXXXXXBuilder命名的，也就是其子类都对应解析一种xml文件或xml文件中一种元素。</p>
+<p><img src="./images/Mybaits 源码解析 （二）----- 根据配置文件创建SqlSessionFactory（Configuration的创建过程）0.png" alt="" /></p>
+<p>我们看看XMLConfigBuilder的构造方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> XMLConfigBuilder(XPathParser parser, String environment, Properties props) {
+    </span><strong><span style="color: #0000ff;">super</span>(<span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> Configuration());</strong>
+    ErrorContext.instance().resource(</span>"SQL Mapper Configuration"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.setVariables(props);
+    </span><span style="color: #0000ff;">this</span>.parsed = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">this</span>.environment =<span style="color: #000000;"> environment;
+    </span><span style="color: #0000ff;">this</span>.parser =<span style="color: #000000;"> parser;
+}</span></code></pre>
+
+<p>可以看到调用了父类的构造方法，并传入一个new Configuration()对象，这个对象也就是最终的Mybatis配置对象</p>
+<p>我们先来看看其基类BaseBuilder</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> BaseBuilder {
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Configuration configuration;
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> TypeAliasRegistry typeAliasRegistry;
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> TypeHandlerRegistry typeHandlerRegistry;
+ 
+  </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> BaseBuilder(Configuration configuration) {
+    </span><span style="color: #0000ff;">this</span>.configuration =<span style="color: #000000;"> configuration;
+    </span><span style="color: #0000ff;">this</span>.typeAliasRegistry = <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getTypeAliasRegistry();
+    </span><span style="color: #0000ff;">this</span>.typeHandlerRegistry = <span style="color: #0000ff;">this</span><span style="color: #000000;">.configuration.getTypeHandlerRegistry();
+  }
+  ....
+}</span></code></pre>
+
+<p>BaseBuilder中只有三个成员变量,而typeAliasRegistry和typeHandlerRegistry都是直接从Configuration的成员变量获得的，接着我们看看Configuration这个类</p>
+<p>Configuration类位于mybatis包的org.apache.ibatis.session目录下，其属性就是对应于mybatis的全局配置文件mybatis-config.xml的配置，将XML配置中的内容解析赋值到Configuration对象中。</p>
+<p>由于XML配置项有很多，所以Configuration类的属性也很多。先来看下Configuration对于的XML配置文件示例：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;    
+
+&lt;!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN" "http://mybatis.org/dtd/mybatis-3-config.dtd"&gt;    
+&lt;!-- 全局配置顶级节点 --&gt;
+&lt;configuration&gt;    
+     
+     &lt;!-- 属性配置,读取properties中的配置文件 --&gt;
+    &lt;properties resource="db.propertis"&gt;
+       &lt;property name="XXX" value="XXX"/&gt;
+    &lt;/properties&gt;
+    
+    &lt;!-- 类型别名 --&gt;
+    &lt;typeAliases&gt;
+       &lt;!-- 在用到User类型的时候,可以直接使用别名,不需要输入User类的全部路径 --&gt;
+       &lt;typeAlias type="com.luck.codehelp.entity.User" alias="user"/&gt;
+    &lt;/typeAliases&gt;
+
+    &lt;!-- 类型处理器 --&gt;
+    &lt;typeHandlers&gt;
+        &lt;!-- 类型处理器的作用是完成JDBC类型和java类型的转换,mybatis默认已经由了很多类型处理器,正常无需自定义--&gt;
+    &lt;/typeHandlers&gt;
+    
+    &lt;!-- 对象工厂 --&gt;
+    &lt;!-- mybatis创建结果对象的新实例时,会通过对象工厂来完成，mybatis有默认的对象工厂，正常无需配置 --&gt;
+    &lt;objectFactory type=""&gt;&lt;/objectFactory&gt;
+    
+    &lt;!-- 插件 --&gt;
+    &lt;plugins&gt;
+        &lt;!-- 可以自定义拦截器通过plugin标签加入 --&gt;
+       &lt;plugin interceptor="com.lucky.interceptor.MyPlugin"&gt;&lt;/plugin&gt;
+    &lt;/plugins&gt;
+    
+    &lt;!-- 全局配置参数 --&gt;
+    &lt;settings&gt;   
+        &lt;setting name="cacheEnabled" value="false" /&gt;   
+        &lt;setting name="useGeneratedKeys" value="true" /&gt;&lt;!-- 是否自动生成主键 --&gt;
+        &lt;setting name="defaultExecutorType" value="REUSE" /&gt;   
+        &lt;setting name="lazyLoadingEnabled" value="true"/&gt;&lt;!-- 延迟加载标识 --&gt;
+        &lt;setting name="aggressiveLazyLoading" value="true"/&gt;&lt;!--有延迟加载属性的对象是否延迟加载 --&gt;
+        &lt;setting name="multipleResultSetsEnabled" value="true"/&gt;&lt;!-- 是否允许单个语句返回多个结果集 --&gt;
+        &lt;setting name="useColumnLabel" value="true"/&gt;&lt;!-- 使用列标签而不是列名 --&gt;
+        &lt;setting name="autoMappingBehavior" value="PARTIAL"/&gt;&lt;!-- 指定mybatis如何自动映射列到字段属性;NONE:自动映射;PARTIAL:只会映射结果没有嵌套的结果;FULL:可以映射任何复杂的结果 --&gt;
+        &lt;setting name="defaultExecutorType" value="SIMPLE"/&gt;&lt;!-- 默认执行器类型 --&gt;
+        &lt;setting name="defaultFetchSize" value=""/&gt;
+        &lt;setting name="defaultStatementTimeout" value="5"/&gt;&lt;!-- 驱动等待数据库相应的超时时间 ,单位是秒--&gt;
+        &lt;setting name="safeRowBoundsEnabled" value="false"/&gt;&lt;!-- 是否允许使用嵌套语句RowBounds --&gt;
+        &lt;setting name="safeResultHandlerEnabled" value="true"/&gt;
+        &lt;setting name="mapUnderscoreToCamelCase" value="false"/&gt;&lt;!-- 下划线列名是否自动映射到驼峰属性：如user_id映射到userId --&gt;
+        &lt;setting name="localCacheScope" value="SESSION"/&gt;&lt;!-- 本地缓存（session是会话级别） --&gt;
+        &lt;setting name="jdbcTypeForNull" value="OTHER"/&gt;&lt;!-- 数据为空值时,没有特定的JDBC类型的参数的JDBC类型 --&gt;
+        &lt;setting name="lazyLoadTriggerMethods" value="equals,clone,hashCode,toString"/&gt;&lt;!-- 指定触发延迟加载的对象的方法 --&gt;
+        &lt;setting name="callSettersOnNulls" value="false"/&gt;&lt;!--如果setter方法或map的put方法，如果检索到的值为null时，数据是否有用  --&gt;
+        &lt;setting name="logPrefix" value="XXXX"/&gt;&lt;!-- mybatis日志文件前缀字符串 --&gt;
+        &lt;setting name="logImpl" value="SLF4J"/&gt;&lt;!-- mybatis日志的实现类 --&gt;
+        &lt;setting name="proxyFactory" value="CGLIB"/&gt;&lt;!-- mybatis代理工具 --&gt;
+    &lt;/settings&gt;  
+
+    &lt;!-- 环境配置集合 --&gt;
+    &lt;environments <span style="color: #0000ff;">default</span>="development"&gt;    
+        &lt;environment id="development"&gt;    
+            &lt;transactionManager type="JDBC"/&gt;&lt;!-- 事务管理器 --&gt;
+            &lt;dataSource type="POOLED"&gt;&lt;!-- 数据库连接池 --&gt;    
+                &lt;property name="driver" value="com.mysql.jdbc.Driver" /&gt;    
+                &lt;property name="url" value="jdbc:mysql://localhost:3306/test?useUnicode=true&amp;amp;characterEncoding=UTF-8" /&gt;    
+                &lt;property name="username" value="root" /&gt;    
+                &lt;property name="password" value="root" /&gt;    
+            &lt;/dataSource&gt;    
+        &lt;/environment&gt;    
+    &lt;/environments&gt;    
+    
+    &lt;!-- mapper文件映射配置 --&gt;
+    &lt;mappers&gt;    
+        &lt;mapper resource="com/luck/codehelp/mapper/UserMapper.xml"/&gt;    
+    &lt;/mappers&gt;    
+&lt;/configuration&gt;</code></pre>
+
+<p>而对于XML的配置，Configuration类的属性是和XML配置对应的。Configuration类属性如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Configuration {
+  </span><span style="color: #0000ff;">protected</span> Environment environment;<span style="color: #008000;">//</span><span style="color: #008000;">运行环境</span>
+
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> safeRowBoundsEnabled = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> safeResultHandlerEnabled = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> mapUnderscoreToCamelCase = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> aggressiveLazyLoading = <span style="color: #0000ff;">true</span>; <span style="color: #008000;">//</span><span style="color: #008000;">true：有延迟加载属性的对象被调用时完全加载任意属性;false：每个属性按需要加载</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> multipleResultSetsEnabled = <span style="color: #0000ff;">true</span>;<span style="color: #008000;">//</span><span style="color: #008000;">是否允许多种结果集从一个单独的语句中返回</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> useGeneratedKeys = <span style="color: #0000ff;">false</span>;<span style="color: #008000;">//</span><span style="color: #008000;">是否支持自动生成主键</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> useColumnLabel = <span style="color: #0000ff;">true</span>;<span style="color: #008000;">//</span><span style="color: #008000;">是否使用列标签</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> cacheEnabled = <span style="color: #0000ff;">true</span>;<span style="color: #008000;">//</span><span style="color: #008000;">是否使用缓存标识</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> callSettersOnNulls = <span style="color: #0000ff;">false</span>;<span style="color: #008000;">//
+</span>  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> useActualParamName = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+
+  </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> String logPrefix;
+  </span><span style="color: #0000ff;">protected</span> Class &lt;? <span style="color: #0000ff;">extends</span> Log&gt;<span style="color: #000000;"> logImpl;
+  </span><span style="color: #0000ff;">protected</span> Class &lt;? <span style="color: #0000ff;">extends</span> VFS&gt;<span style="color: #000000;"> vfsImpl;
+  </span><span style="color: #0000ff;">protected</span> LocalCacheScope localCacheScope =<span style="color: #000000;"> LocalCacheScope.SESSION;
+  </span><span style="color: #0000ff;">protected</span> JdbcType jdbcTypeForNull =<span style="color: #000000;"> JdbcType.OTHER;
+  </span><span style="color: #0000ff;">protected</span> Set&lt;String&gt; lazyLoadTriggerMethods = <span style="color: #0000ff;">new</span> HashSet&lt;String&gt;(Arrays.asList(<span style="color: #0000ff;">new</span> String[] { "equals", "clone", "hashCode", "toString"<span style="color: #000000;"> }));
+  </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Integer defaultStatementTimeout;
+  </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Integer defaultFetchSize;
+  </span><span style="color: #0000ff;">protected</span> ExecutorType defaultExecutorType =<span style="color: #000000;"> ExecutorType.SIMPLE;
+  </span><span style="color: #0000ff;">protected</span> AutoMappingBehavior autoMappingBehavior = AutoMappingBehavior.PARTIAL;<span style="color: #008000;">//</span><span style="color: #008000;">指定mybatis如果自动映射列到字段和属性,PARTIAL会自动映射简单的没有嵌套的结果,FULL会自动映射任意复杂的结果</span>
+  <span style="color: #0000ff;">protected</span> AutoMappingUnknownColumnBehavior autoMappingUnknownColumnBehavior =<span style="color: #000000;"> AutoMappingUnknownColumnBehavior.NONE;
+
+  </span><span style="color: #0000ff;">protected</span> Properties variables = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+  </span><span style="color: #0000ff;">protected</span> ReflectorFactory reflectorFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultReflectorFactory();
+  </span><span style="color: #0000ff;">protected</span> ObjectFactory objectFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultObjectFactory();
+  </span><span style="color: #0000ff;">protected</span> ObjectWrapperFactory objectWrapperFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultObjectWrapperFactory();
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> lazyLoadingEnabled = <span style="color: #0000ff;">false</span>;<span style="color: #008000;">//</span><span style="color: #008000;">是否延时加载，false则表示所有关联对象即使加载,true表示延时加载</span>
+  <span style="color: #0000ff;">protected</span> ProxyFactory proxyFactory = <span style="color: #0000ff;">new</span> JavassistProxyFactory(); <span style="color: #008000;">//</span><span style="color: #008000;"> #224 Using internal Javassist instead of OGNL</span>
+
+  <span style="color: #0000ff;">protected</span><span style="color: #000000;"> String databaseId;
+
+  </span><span style="color: #0000ff;">protected</span> Class&lt;?&gt;<span style="color: #000000;"> configurationFactory;
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> MapperRegistry mapperRegistry = <span style="color: #0000ff;">new</span> MapperRegistry(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> InterceptorChain interceptorChain = <span style="color: #0000ff;">new</span><span style="color: #000000;"> InterceptorChain();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> TypeHandlerRegistry typeHandlerRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TypeHandlerRegistry();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> TypeAliasRegistry typeAliasRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TypeAliasRegistry();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> LanguageDriverRegistry languageRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LanguageDriverRegistry();
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, MappedStatement&gt; mappedStatements = <span style="color: #0000ff;">new</span> StrictMap&lt;MappedStatement&gt;("Mapped Statements collection"<span style="color: #000000;">);
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, Cache&gt; caches = <span style="color: #0000ff;">new</span> StrictMap&lt;Cache&gt;("Caches collection"<span style="color: #000000;">);
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, ResultMap&gt; resultMaps = <span style="color: #0000ff;">new</span> StrictMap&lt;ResultMap&gt;("Result Maps collection"<span style="color: #000000;">);
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, ParameterMap&gt; parameterMaps = <span style="color: #0000ff;">new</span> StrictMap&lt;ParameterMap&gt;("Parameter Maps collection"<span style="color: #000000;">);
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, KeyGenerator&gt; keyGenerators = <span style="color: #0000ff;">new</span> StrictMap&lt;KeyGenerator&gt;("Key Generators collection"<span style="color: #000000;">);
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Set&lt;String&gt; loadedResources = <span style="color: #0000ff;">new</span> HashSet&lt;String&gt;(); <span style="color: #008000;">//</span><span style="color: #008000;">已经加载过的resource(mapper)</span>
+  <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, XNode&gt; sqlFragments = <span style="color: #0000ff;">new</span> StrictMap&lt;XNode&gt;("XML fragments parsed from previous mappers"<span style="color: #000000;">);
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Collection&lt;XMLStatementBuilder&gt; incompleteStatements = <span style="color: #0000ff;">new</span> LinkedList&lt;XMLStatementBuilder&gt;<span style="color: #000000;">();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Collection&lt;CacheRefResolver&gt; incompleteCacheRefs = <span style="color: #0000ff;">new</span> LinkedList&lt;CacheRefResolver&gt;<span style="color: #000000;">();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Collection&lt;ResultMapResolver&gt; incompleteResultMaps = <span style="color: #0000ff;">new</span> LinkedList&lt;ResultMapResolver&gt;<span style="color: #000000;">();
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Collection&lt;MethodResolver&gt; incompleteMethods = <span style="color: #0000ff;">new</span> LinkedList&lt;MethodResolver&gt;<span style="color: #000000;">();
+
+  </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> Map&lt;String, String&gt; cacheRefMap = <span style="color: #0000ff;">new</span> HashMap&lt;String, String&gt;<span style="color: #000000;">();
+  
+  </span><span style="color: #008000;">//</span><span style="color: #008000;">其他方法略</span>
+}</code></pre>
+
+<p>加载的过程是SqlSessionFactoryBuilder根据xml配置的文件流，通过XMLConfigBuilder的parse方法进行解析得到一个Configuration对象，我们再看看其构造函数</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span><span style="color: #000000;"> Configuration() {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">this</span>.safeRowBoundsEnabled = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">this</span>.safeResultHandlerEnabled = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">this</span>.mapUnderscoreToCamelCase = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">this</span>.aggressiveLazyLoading = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">this</span>.multipleResultSetsEnabled = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">this</span>.useGeneratedKeys = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">this</span>.useColumnLabel = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">this</span>.cacheEnabled = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">10</span>     <span style="color: #0000ff;">this</span>.callSettersOnNulls = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">11</span>     <span style="color: #0000ff;">this</span>.localCacheScope =<span style="color: #000000;"> LocalCacheScope.SESSION;
+</span><span style="color: #008080;">12</span>     <span style="color: #0000ff;">this</span>.jdbcTypeForNull =<span style="color: #000000;"> JdbcType.OTHER;
+</span><span style="color: #008080;">13</span>     <span style="color: #0000ff;">this</span>.lazyLoadTriggerMethods = <span style="color: #0000ff;">new</span> HashSet(Arrays.asList("equals", "clone", "hashCode", "toString"<span style="color: #000000;">));
+</span><span style="color: #008080;">14</span>     <span style="color: #0000ff;">this</span>.defaultExecutorType =<span style="color: #000000;"> ExecutorType.SIMPLE;
+</span><span style="color: #008080;">15</span>     <span style="color: #0000ff;">this</span>.autoMappingBehavior =<span style="color: #000000;"> AutoMappingBehavior.PARTIAL;
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">this</span>.autoMappingUnknownColumnBehavior =<span style="color: #000000;"> AutoMappingUnknownColumnBehavior.NONE;
+</span><span style="color: #008080;">17</span>     <span style="color: #0000ff;">this</span>.variables = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+</span><span style="color: #008080;">18</span>     <span style="color: #0000ff;">this</span>.reflectorFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultReflectorFactory();
+</span><span style="color: #008080;">19</span>     <span style="color: #0000ff;">this</span>.objectFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultObjectFactory();
+</span><span style="color: #008080;">20</span>     <span style="color: #0000ff;">this</span>.objectWrapperFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultObjectWrapperFactory();
+</span><span style="color: #008080;">21</span>     <span style="color: #0000ff;">this</span>.mapperRegistry = <span style="color: #0000ff;">new</span> MapperRegistry(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+</span><span style="color: #008080;">22</span>     <span style="color: #0000ff;">this</span>.lazyLoadingEnabled = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">23</span>     <span style="color: #0000ff;">this</span>.proxyFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> JavassistProxyFactory();
+</span><span style="color: #008080;">24</span>     <span style="color: #0000ff;">this</span>.interceptorChain = <span style="color: #0000ff;">new</span><span style="color: #000000;"> InterceptorChain();
+</span><span style="color: #008080;">25</span>     <span style="color: #0000ff;">this</span>.typeHandlerRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TypeHandlerRegistry();
+</span><span style="color: #008080;">26</span>     <strong><span style="color: #0000ff;">this</span>.typeAliasRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> TypeAliasRegistry();
+</span></strong><span style="color: #008080;">27</span>     <span style="color: #0000ff;">this</span>.languageRegistry = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LanguageDriverRegistry();
+</span><span style="color: #008080;">28</span>     <span style="color: #0000ff;">this</span>.mappedStatements = <span style="color: #0000ff;">new</span> Configuration.StrictMap("Mapped Statements collection"<span style="color: #000000;">);
+</span><span style="color: #008080;">29</span>     <span style="color: #0000ff;">this</span>.caches = <span style="color: #0000ff;">new</span> Configuration.StrictMap("Caches collection"<span style="color: #000000;">);
+</span><span style="color: #008080;">30</span>     <span style="color: #0000ff;">this</span>.resultMaps = <span style="color: #0000ff;">new</span> Configuration.StrictMap("Result Maps collection"<span style="color: #000000;">);
+</span><span style="color: #008080;">31</span>     <span style="color: #0000ff;">this</span>.parameterMaps = <span style="color: #0000ff;">new</span> Configuration.StrictMap("Parameter Maps collection"<span style="color: #000000;">);
+</span><span style="color: #008080;">32</span>     <span style="color: #0000ff;">this</span>.keyGenerators = <span style="color: #0000ff;">new</span> Configuration.StrictMap("Key Generators collection"<span style="color: #000000;">);
+</span><span style="color: #008080;">33</span>     <span style="color: #0000ff;">this</span>.loadedResources = <span style="color: #0000ff;">new</span><span style="color: #000000;"> HashSet();
+</span><span style="color: #008080;">34</span>     <span style="color: #0000ff;">this</span>.sqlFragments = <span style="color: #0000ff;">new</span> Configuration.StrictMap("XML fragments parsed from previous mappers"<span style="color: #000000;">);
+</span><span style="color: #008080;">35</span>     <span style="color: #0000ff;">this</span>.incompleteStatements = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedList();
+</span><span style="color: #008080;">36</span>     <span style="color: #0000ff;">this</span>.incompleteCacheRefs = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedList();
+</span><span style="color: #008080;">37</span>     <span style="color: #0000ff;">this</span>.incompleteResultMaps = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedList();
+</span><span style="color: #008080;">38</span>     <span style="color: #0000ff;">this</span>.incompleteMethods = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedList();
+</span><span style="color: #008080;">39</span>     <span style="color: #0000ff;">this</span>.cacheRefMap = <span style="color: #0000ff;">new</span><span style="color: #000000;"> HashMap();
+</span><span style="color: #008080;">40</span>     <strong><span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("JDBC", JdbcTransactionFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">41</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("MANAGED", ManagedTransactionFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">42</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("JNDI", JndiDataSourceFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">43</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("POOLED", PooledDataSourceFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">44</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("UNPOOLED", UnpooledDataSourceFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">45</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("PERPETUAL", PerpetualCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">46</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("FIFO", FifoCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">47</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("LRU", LruCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">48</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("SOFT", SoftCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">49</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("WEAK", WeakCache.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">50</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("DB_VENDOR", VendorDatabaseIdProvider.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">51</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("XML", XMLLanguageDriver.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">52</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("RAW", RawLanguageDriver.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">53</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("SLF4J", Slf4jImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">54</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("COMMONS_LOGGING", JakartaCommonsLoggingImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">55</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("LOG4J", Log4jImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">56</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("LOG4J2", Log4j2Impl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">57</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("JDK_LOGGING", Jdk14LoggingImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">58</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("STDOUT_LOGGING", StdOutImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">59</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("NO_LOGGING", NoLoggingImpl.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">60</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("CGLIB", CglibProxyFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">61</span>     <span style="color: #0000ff;">this</span>.typeAliasRegistry.registerAlias("JAVASSIST", JavassistProxyFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">62</span>     <span style="color: #0000ff;">this</span>.languageRegistry.setDefaultDriverClass(XMLLanguageDriver.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span><span style="color: #008080;">63</span>     <span style="color: #0000ff;">this</span>.languageRegistry.register(RawLanguageDriver.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+</span></strong><span style="color: #008080;">64</span> }</code></pre>
+
+<p>我们看到第26行<strong>this.typeAliasRegistry = new TypeAliasRegistry();，并且第40到61行向&nbsp;</strong><strong>typeAliasRegistry 注册了很多别名，我们看看<strong>TypeAliasRegistry</strong></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TypeAliasRegistry {
+    </span><strong><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;String, Class&lt;?&gt;&gt; TYPE_ALIASES = <span style="color: #0000ff;">new</span><span style="color: #000000;"> HashMap();
+
+    </span></strong><span style="color: #0000ff;">public</span><span style="color: #000000;"> TypeAliasRegistry() {
+        </span><span style="color: #0000ff;">this</span>.registerAlias("string", String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("byte", Byte.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("long", Long.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("short", Short.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("int", Integer.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("integer", Integer.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("double", Double.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("float", Float.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("boolean", Boolean.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("byte[]", Byte[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("long[]", Long[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("short[]", Short[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("int[]", Integer[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("integer[]", Integer[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("double[]", Double[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("float[]", Float[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("boolean[]", Boolean[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_byte"<span style="color: #000000;">, Byte.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_long"<span style="color: #000000;">, Long.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_short"<span style="color: #000000;">, Short.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_int"<span style="color: #000000;">, Integer.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_integer"<span style="color: #000000;">, Integer.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_double"<span style="color: #000000;">, Double.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_float"<span style="color: #000000;">, Float.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_boolean"<span style="color: #000000;">, Boolean.TYPE);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_byte[]", <span style="color: #0000ff;">byte</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_long[]", <span style="color: #0000ff;">long</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_short[]", <span style="color: #0000ff;">short</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_int[]", <span style="color: #0000ff;">int</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_integer[]", <span style="color: #0000ff;">int</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_double[]", <span style="color: #0000ff;">double</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_float[]", <span style="color: #0000ff;">float</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("_boolean[]", <span style="color: #0000ff;">boolean</span>[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("date", Date.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("decimal", BigDecimal.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("bigdecimal", BigDecimal.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("biginteger", BigInteger.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("object", Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("date[]", Date[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("decimal[]", BigDecimal[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("bigdecimal[]", BigDecimal[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("biginteger[]", BigInteger[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("object[]", Object[].<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("map", Map.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("hashmap", HashMap.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("list", List.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("arraylist", ArrayList.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("collection", Collection.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("iterator", Iterator.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.registerAlias("ResultSet", ResultSet.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerAliases(String packageName) {
+        </span><span style="color: #0000ff;">this</span>.registerAliases(packageName, Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<p>其实TypeAliasRegistry里面有一个<strong>HashMap，</strong>并且在TypeAliasRegistry的构造器中注册很多别名到这个hashMap中，好了，到现在我们只是创建了一个&nbsp;XMLConfigBuilder，在其构造器中我们创建了一个&nbsp;Configuration 对象，接下来我们看看将mybatis-config.xml解析成Configuration中对应的属性，也就是<strong>parser.parse()</strong>方法：</p>
+<p><strong>XMLConfigBuilder</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">public</span><span style="color: #000000;"> Configuration parse() {
+</span><span style="color: #008080;">2</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (parsed) {
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Each XMLConfigBuilder can only be used once."<span style="color: #000000;">);
+</span><span style="color: #008080;">4</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">5</span>     parsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">6</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 解析配置</span>
+<span style="color: #008080;">7</span>     <strong>parseConfiguration(parser.evalNode("/configuration"<span style="color: #000000;">));
+</span></strong><span style="color: #008080;">8</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> configuration;
+</span><span style="color: #008080;">9</span> }</code></pre>
+
+<p>我们看看第7行，注意一个 xpath 表达式 -&nbsp;<code>/configuration</code>。这个表达式代表的是 MyBatis 的<code>&lt;configuration/&gt;</code>标签，这里选中这个标签，并传递给<code>parseConfiguration</code>方法。我们继续跟下去。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> parseConfiguration(XNode root) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 properties 配置</span>
+       <strong> propertiesElement(root.evalNode("properties"<span style="color: #000000;">));
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 settings 配置，并将其转换为 Properties 对象</span>
+        <strong>Properties settings = settingsAsProperties(root.evalNode("settings"<span style="color: #000000;">));
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 加载 vfs</span>
+<span style="color: #000000;">        loadCustomVfs(settings);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 typeAliases 配置</span>
+       <strong> typeAliasesElement(root.evalNode("typeAliases"<span style="color: #000000;">));
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 plugins 配置</span>
+      <strong>  pluginElement(root.evalNode("plugins"<span style="color: #000000;">));
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 objectFactory 配置</span>
+        objectFactoryElement(root.evalNode("objectFactory"<span style="color: #000000;">));
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 objectWrapperFactory 配置</span>
+        objectWrapperFactoryElement(root.evalNode("objectWrapperFactory"<span style="color: #000000;">));
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 reflectorFactory 配置</span>
+        reflectorFactoryElement(root.evalNode("reflectorFactory"<span style="color: #000000;">));
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> settings 中的信息设置到 Configuration 对象中</span>
+<strong><span style="color: #000000;">        settingsElement(settings);
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 environments 配置</span>
+        <strong>environmentsElement(root.evalNode("environments"<span style="color: #000000;">));
+
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 databaseIdProvider，获取并设置 databaseId 到 Configuration 对象</span>
+        databaseIdProviderElement(root.evalNode("databaseIdProvider"<span style="color: #000000;">));
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 typeHandlers 配置</span>
+        typeHandlerElement(root.evalNode("typeHandlers"<span style="color: #000000;">));
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 mappers 配置</span>
+       <strong> mapperElement(root.evalNode("mappers"</strong><span style="color: #000000;"><strong>));</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error parsing SQL Mapper Configuration. Cause: " +<span style="color: #000000;"> e, e);
+    }
+}</span></code></pre>
+
+<h2>解析 properties 配置</h2>
+<p>先来看一下 properties 节点的配置内容。如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;properties resource="db.properties"&gt;
+    &lt;property name="username" value="root"/&gt;
+    &lt;property name="password" value="123456"/&gt;
+&lt;/properties&gt;</code></pre>
+
+<p>我为 properties 节点配置了一个 resource 属性，以及两个子节点。接着我们看看propertiesElement的逻辑</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> propertiesElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 propertis 的子节点，并将这些节点内容转换为属性对象 Properties</span>
+        Properties defaults =<span style="color: #000000;"> context.getChildrenAsProperties();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 propertis 节点中的 resource 和 url 属性值</span>
+        String resource = context.getStringAttribute("resource"<span style="color: #000000;">);
+        String url </span>= context.getStringAttribute("url"<span style="color: #000000;">);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 两者都不用空，则抛出异常</span>
+        <span style="color: #0000ff;">if</span> (resource != <span style="color: #0000ff;">null</span> &amp;&amp; url != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("The properties element cannot specify both a URL and a resource based property file reference.  Please specify one or the other."<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">if</span> (resource != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 从文件系统中加载并解析属性文件</span>
+<span style="color: #000000;">            defaults.putAll(Resources.getResourceAsProperties(resource));
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (url != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过 url 加载并解析属性文件</span>
+<span style="color: #000000;">            defaults.putAll(Resources.getUrlAsProperties(url));
+        }
+        Properties vars </span>=<span style="color: #000000;"> configuration.getVariables();
+        </span><span style="color: #0000ff;">if</span> (vars != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            defaults.putAll(vars);
+        }
+        parser.setVariables(defaults);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将属性值设置到 configuration 中</span>
+<span style="color: #000000;">        configuration.setVariables(defaults);
+    }
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Properties getChildrenAsProperties() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个Properties对象</span>
+    Properties properties = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取并遍历子节点</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : getChildren()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 property 节点的 name 和 value 属性</span>
+        String name = child.getStringAttribute("name"<span style="color: #000000;">);
+        String value </span>= child.getStringAttribute("value"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (name != <span style="color: #0000ff;">null</span> &amp;&amp; value != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置属性到属性对象中</span>
+<span style="color: #000000;">            properties.setProperty(name, value);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> properties;
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> -☆- XNode</span>
+<span style="color: #0000ff;">public</span> List&lt;XNode&gt;<span style="color: #000000;"> getChildren() {
+    List</span>&lt;XNode&gt; children = <span style="color: #0000ff;">new</span> ArrayList&lt;XNode&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取子节点列表</span>
+    NodeList nodeList =<span style="color: #000000;"> node.getChildNodes();
+    </span><span style="color: #0000ff;">if</span> (nodeList != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0, n = nodeList.getLength(); i &lt; n; i++<span style="color: #000000;">) {
+            Node node </span>=<span style="color: #000000;"> nodeList.item(i);
+            </span><span style="color: #0000ff;">if</span> (node.getNodeType() ==<span style="color: #000000;"> Node.ELEMENT_NODE) {
+                children.add(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> XNode(xpathParser, node, variables));
+            }
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> children;
+}</span></code></pre>
+
+<p>解析properties主要分三个步骤：</p>
+<ol>
+<li>解析 properties 节点的子节点，并将解析结果设置到 Properties 对象中。</li>
+<li>从文件系统或通过网络读取属性配置，这取决于 properties 节点的 resource 和 url 是否为空。</li>
+<li>将解析出的属性对象设置到 XPathParser 和 Configuration 对象中。</li>
+</ol>
+<p>需要注意的是，propertiesElement 方法是先解析 properties 节点的子节点内容，后再从文件系统或者网络读取属性配置，并将所有的属性及属性值都放入到 defaults 属性对象中。这就会存在同名属性覆盖的问题，也就是从文件系统，或者网络上读取到的属性及属性值会覆盖掉 properties 子节点中同名的属性和及值。</p>
+<h2 id="autoid-3-2-0">解析 settings 配置</h2>
+<h3 id="autoid-3-3-0">settings 节点的解析过程</h3>
+<p>下面先来看一个settings比较简单的配置，如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;settings&gt;
+    &lt;setting name="cacheEnabled" value="true"/&gt;
+    &lt;setting name="lazyLoadingEnabled" value="true"/&gt;
+    &lt;setting name="autoMappingBehavior" value="PARTIAL"/&gt;
+&lt;/settings&gt;</code></pre>
+
+<p>接着来看看settingsAsProperties</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> Properties settingsAsProperties(XNode context) {
+    </span><span style="color: #0000ff;">if</span> (context == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> Properties();
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 settings 子节点中的内容，解析成Properties，getChildrenAsProperties 方法前面已分析过</span>
+    Properties props =<span style="color: #000000;"> context.getChildrenAsProperties();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 Configuration 类的&ldquo;元信息&rdquo;对象</span>
+    MetaClass metaConfig = MetaClass.forClass(Configuration.<span style="color: #0000ff;">class</span><span style="color: #000000;">, localReflectorFactory);
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Object key : props.keySet()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测 Configuration 中是否存在相关属性，不存在则抛出异常</span>
+        <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">metaConfig.hasSetter(String.valueOf(key))) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("The setting " + key + " is not known.  Make sure you spelled it correctly (case sensitive)."<span style="color: #000000;">);
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> props;
+}</span></code></pre>
+
+<h3 id="autoid-3-3-3">设置 settings 配置到 Configuration 中</h3>
+<p>接着我们看看将 settings 配置设置到 Configuration 对象中的过程。如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> settingsElement(Properties props) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 autoMappingBehavior 属性，默认值为 PARTIAL</span>
+    configuration.setAutoMappingBehavior(AutoMappingBehavior.valueOf(props.getProperty("autoMappingBehavior", "PARTIAL"<span style="color: #000000;">)));
+    configuration.setAutoMappingUnknownColumnBehavior(AutoMappingUnknownColumnBehavior.valueOf(props.getProperty(</span>"autoMappingUnknownColumnBehavior", "NONE"<span style="color: #000000;">)));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 cacheEnabled 属性，默认值为 true</span>
+    configuration.setCacheEnabled(booleanValueOf(props.getProperty("cacheEnabled"), <span style="color: #0000ff;">true</span><span style="color: #000000;">));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 省略部分代码
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析默认的枚举处理器</span>
+    Class&lt;? <span style="color: #0000ff;">extends</span> TypeHandler&gt; typeHandler = (Class&lt;? <span style="color: #0000ff;">extends</span> TypeHandler&gt;)resolveClass(props.getProperty("defaultEnumTypeHandler"<span style="color: #000000;">));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置默认枚举处理器</span>
+<span style="color: #000000;">    configuration.setDefaultEnumTypeHandler(typeHandler);
+    configuration.setCallSettersOnNulls(booleanValueOf(props.getProperty(</span>"callSettersOnNulls"), <span style="color: #0000ff;">false</span><span style="color: #000000;">));
+    configuration.setUseActualParamName(booleanValueOf(props.getProperty(</span>"useActualParamName"), <span style="color: #0000ff;">true</span><span style="color: #000000;">));
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 省略部分代码</span>
+}</code></pre>
+
+<p>上面代码处理调用 Configuration 的 setter 方法</p>
+<h2 id="autoid-3-4-0">解析 typeAliases 配置</h2>
+<p>在 MyBatis 中，可以为我们自己写的有些类定义一个别名。这样在使用的时候，我们只需要输入别名即可，无需再把全限定的类名写出来。在 MyBatis 中，我们有两种方式进行别名配置。第一种是仅配置包名，让 MyBatis 去扫描包中的类型，并根据类型得到相应的别名</p>
+<src class="cnblogs_code">
+<pre><code>&lt;typeAliases&gt;
+    &lt;<span style="color: #0000ff;">package</span> name="com.mybatis.model"/&gt;
+&lt;/typeAliases&gt;</code></pre>
+
+<p>第二种方式是通过手动的方式，明确为某个类型配置别名。这种方式的配置如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;typeAliases&gt;
+    &lt;typeAlias alias="employe" type="com.mybatis.model.Employe" /&gt;
+    &lt;typeAlias type="com.mybatis.model.User" /&gt;
+&lt;/typeAliases&gt;</code></pre>
+
+<p>下面我们来看一下两种不同的别名配置是怎样解析的。代码如下：</p>
+<p><strong>XMLConfigBuilder</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> typeAliasesElement(XNode parent) {
+    </span><span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 从指定的包中解析别名和类型的映射</span>
+            <span style="color: #0000ff;">if</span> (<strong>"package"</strong><span style="color: #000000;"><strong>.equals(child.getName())</strong>) {
+               <strong> String typeAliasPackage </strong></span><strong>= child.getStringAttribute("name"<span style="color: #000000;">);
+                configuration.getTypeAliasRegistry().registerAliases(typeAliasPackage);
+                
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 从 typeAlias 节点中解析别名和类型的映射</span>
+            } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 alias 和 type 属性值，alias 不是必填项，可为空</span>
+              <strong>  String alias = child.getStringAttribute("alias"<span style="color: #000000;">);
+                String type </span>= child.getStringAttribute("type"<span style="color: #000000;">);
+                </span></strong><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加载 type 对应的类型</span>
+                    Class&lt;?&gt; clazz =<span style="color: #000000;"> Resources.classForName(type);
+
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 注册别名到类型的映射</span>
+                    <span style="color: #0000ff;">if</span> (alias == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                        typeAliasRegistry.registerAlias(clazz);
+                    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                       <strong> typeAliasRegistry.registerAlias(alias, clazz);</strong>
+                    }
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException e) {
+                    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Error registering typeAlias for '" + alias + "'. Cause: " +<span style="color: #000000;"> e, e);
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>我们看到通过包扫描和手动注册时通过子节点名称是否package来判断的</p>
+<h3 id="autoid-3-5-0">从 typeAlias 节点中解析并注册别名</h3>
+<p>在别名的配置中，<code>type</code>属性是必须要配置的，而<code>alias</code>属性则不是必须的。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;String, Class&lt;?&gt;&gt; TYPE_ALIASES = <span style="color: #0000ff;">new</span> HashMap&lt;String, Class&lt;?&gt;&gt;<span style="color: #000000;">();
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> registerAlias(Class&lt;?&gt;<span style="color: #000000;"> type) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取全路径类名的简称</span>
+    String alias =<span style="color: #000000;"> type.getSimpleName();
+    Alias aliasAnnotation </span>= type.getAnnotation(Alias.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> (aliasAnnotation != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 从注解中取出别名</span>
+        alias =<span style="color: #000000;"> aliasAnnotation.value();
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用重载方法注册别名和类型映射</span>
+<span style="color: #000000;">    registerAlias(alias, type);
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> registerAlias(String alias, Class&lt;?&gt;<span style="color: #000000;"> value) {
+    </span><span style="color: #0000ff;">if</span> (alias == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> TypeException("The parameter alias cannot be null"<span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将别名转成小写</span>
+    String key =<span style="color: #000000;"> alias.toLowerCase(Locale.ENGLISH);
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 如果 TYPE_ALIASES 中存在了某个类型映射，这里判断当前类型与映射中的类型是否一致，
+     * 不一致则抛出异常，不允许一个别名对应两种类型
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">if</span> (TYPE_ALIASES.containsKey(key) &amp;&amp; TYPE_ALIASES.get(key) != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #000000;">TYPE_ALIASES.get(key).equals(value)) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> TypeException(
+            </span>"The alias '" + alias + "' is already mapped to the value '" + TYPE_ALIASES.get(key).getName() + "'."<span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 缓存别名到类型映射</span>
+<span style="color: #000000;">    TYPE_ALIASES.put(key, value);
+}</span></code></pre>
+
+<p>若用户为明确配置 alias 属性，MyBatis 会使用类名的小写形式作为别名。比如，全限定类名com.mybatis.model.User的别名为user。若类中有@Alias注解，则从注解中取值作为别名。</p>
+<h3 id="autoid-3-5-1">从指定的包中解析并注册别名</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerAliases(String packageName) {
+    registerAliases(packageName, <strong>Object.</strong></span><strong><span style="color: #0000ff;">class</span></strong><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> registerAliases(String packageName, Class&lt;?&gt;<span style="color: #000000;"> superType) {
+    ResolverUtil</span>&lt;Class&lt;?&gt;&gt; resolverUtil = <span style="color: #0000ff;">new</span> ResolverUtil&lt;Class&lt;?&gt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+     * 查找包下的父类为 Object.class 的类。
+     * 查找完成后，查找结果将会被缓存到resolverUtil的内部集合中。
+     </span><span style="color: #008000;">*/</span><strong><span style="color: #000000;"> 
+    resolverUtil.find(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ResolverUtil.IsA(superType), packageName);
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 获取查找结果</span>
+    <strong>Set&lt;Class&lt;? <span style="color: #0000ff;">extends</span> Class&lt;?&gt;&gt;&gt; typeSet =<span style="color: #000000;"> resolverUtil.getClasses();
+    </span></strong><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> type : typeSet) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 忽略匿名类，接口，内部类</span>
+       <strong> <span style="color: #0000ff;">if</span> (!type.isAnonymousClass() &amp;&amp; !type.isInterface() &amp;&amp; !<span style="color: #000000;">type.isMemberClass()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 为类型注册别名 </span>
+</strong><span style="color: #000000;"><strong>            registerAlias(type);
+        }</strong>
+    }
+}</span></code></pre>
+
+<p>主要分为两个步骤：</p>
+<ol>
+<li>查找指定包下的所有类</li>
+<li>遍历查找到的类型集合，为每个类型注册别名</li>
+</ol>
+<p>我们看看查找指定包下的所有类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> Set&lt;Class&lt;? <span style="color: #0000ff;">extends</span> T&gt;&gt; matches = <span style="color: #0000ff;">new</span><span style="color: #000000;"> HashSet();
+
+</span><span style="color: #0000ff;">public</span> ResolverUtil&lt;T&gt;<span style="color: #000000;"> find(ResolverUtil.Test test, String packageName) {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">将包名转换成文件路径</span>
+    String path = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getPackagePath(packageName);
+
+    </span></strong><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过 VFS（虚拟文件系统）获取指定包下的所有文件的路径名，<strong>比如com/mybatis/model/Employe.class</strong></span>
+      <strong>  List&lt;String&gt; children =</strong><span style="color: #000000;"><strong> VFS.getInstance().list(path);</strong>
+        Iterator i$ </span>=<span style="color: #000000;"> children.iterator();
+
+        </span><span style="color: #0000ff;">while</span><span style="color: #000000;">(i$.hasNext()) {
+            String child </span>=<span style="color: #000000;"> (String)i$.next();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">以.class结尾的文件就加入到Set集合中</span>
+            <span style="color: #0000ff;">if</span> (child.endsWith(".class"<span style="color: #000000;">)) {
+                </span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.addIfMatching(test, child);</strong>
+            }
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException var7) {
+        log.error(</span>"Could not read package: " +<span style="color: #000000;"> packageName, var7);
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}
+
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> String getPackagePath(String packageName) {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">将包名转换成文件路径</span>
+    <span style="color: #0000ff;">return</span> packageName == <span style="color: #0000ff;">null</span> ? <span style="color: #0000ff;">null</span> : packageName.replace('.', '/'</strong><span style="color: #000000;"><strong>);</strong>
+}
+
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addIfMatching(ResolverUtil.Test test, String fqn) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">将路径名转成全限定的类名，通过类加载器加载类名，比如com.mybatis.model.Employe.class</span>
+        String externalName = fqn.substring(0, fqn.indexOf(46)).replace('/', '.'</strong><span style="color: #000000;"><strong>);</strong>
+        ClassLoader loader </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getClassLoader();
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (log.isDebugEnabled()) {
+            log.debug(</span>"Checking to see if class " + externalName + " matches criteria [" + test + "]"<span style="color: #000000;">);
+        }
+
+        <strong>Class</strong></span><strong>&lt;?&gt; type =<span style="color: #000000;"> loader.loadClass(externalName);
+        </span></strong><span style="color: #0000ff;">if</span><span style="color: #000000;"> (test.matches(type)) {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">加入到matches集合中</span>
+            <span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.matches.add(type);</strong>
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var6) {
+        log.warn(</span>"Could not examine class '" + fqn + "'" + " due to a " + var6.getClass().getName() + " with message: " +<span style="color: #000000;"> var6.getMessage());
+    }
+
+}</span></code></pre>
+
+<p>主要有以下几步：</p>
+<ol>
+<li>通过 VFS（虚拟文件系统）获取指定包下的所有文件的路径名，比如&nbsp;<strong>com/mybatis/model/Employe.class</strong></li>
+<li>筛选以<code>.class</code>结尾的文件名</li>
+<li>将路径名转成全限定的类名，通过类加载器加载类名</li>
+<li>对类型进行匹配，若符合匹配规则，则将其放入内部集合中</li>
+</ol>
+<p>这里我们要注意，在前面我们分析Configuration对象的创建时，就已经默认注册了很多别名，可以回到文章开头看看。</p>
+<h2 id="autoid-3-5-3">解析 plugins 配置</h2>
+<p>插件是 MyBatis 提供的一个拓展机制，通过插件机制我们可在 SQL 执行过程中的某些点上做一些自定义操作。比喻分页插件，在SQL执行之前动态拼接语句，我们后面会单独来讲插件机制，先来了解插件的配置。如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;plugins&gt;
+    &lt;plugin interceptor="com.github.pagehelper.PageInterceptor"&gt;
+        &lt;property name="helperDialect" value="mysql"/&gt;
+    &lt;/plugin&gt;
+&lt;/plugins&gt;</code></pre>
+
+<p>解析过程分析如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> pluginElement(XNode parent) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+            String interceptor </span>= child.getStringAttribute("interceptor"<span style="color: #000000;">);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取配置信息</span>
+            Properties properties =<span style="color: #000000;"> child.getChildrenAsProperties();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析拦截器的类型，并创建拦截器</span>
+            Interceptor interceptorInstance =<span style="color: #000000;"> (Interceptor) resolveClass(interceptor).newInstance();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置属性</span>
+<span style="color: #000000;">            interceptorInstance.setProperties(properties);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加拦截器到 Configuration 中</span>
+<span style="color: #000000;">            configuration.addInterceptor(interceptorInstance);
+        }
+    }
+}</span></code></pre>
+
+<p>首先是获取配置，然后再解析拦截器类型，并实例化拦截器。最后向拦截器中设置属性，并将拦截器添加到 Configuration 中。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> pluginElement(XNode parent) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+            String interceptor </span>= child.getStringAttribute("interceptor"<span style="color: #000000;">);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取配置信息</span>
+            Properties properties =<span style="color: #000000;"> child.getChildrenAsProperties();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析拦截器的类型，并实例化拦截器</span>
+            Interceptor interceptorInstance =<span style="color: #000000;"> (Interceptor) resolveClass(interceptor).newInstance();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置属性</span>
+<span style="color: #000000;">            interceptorInstance.setProperties(properties);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加拦截器到 Configuration 中</span>
+<span style="color: #000000;">            configuration.addInterceptor(interceptorInstance);
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addInterceptor(Interceptor interceptor) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">添加到Configuration的interceptorChain属性中</span>
+    <span style="color: #0000ff;">this</span><span style="color: #000000;">.interceptorChain.addInterceptor(interceptor);
+}</span></code></pre>
+
+<p>我们来看看InterceptorChain</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> InterceptorChain {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> List&lt;Interceptor&gt; interceptors = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayList();
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> InterceptorChain() {
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object pluginAll(Object target) {
+        Interceptor interceptor;
+        </span><span style="color: #0000ff;">for</span>(Iterator i$ = <span style="color: #0000ff;">this</span>.interceptors.iterator(); i$.hasNext(); target =<span style="color: #000000;"> interceptor.plugin(target)) {
+            interceptor </span>=<span style="color: #000000;"> (Interceptor)i$.next();
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> target;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addInterceptor(Interceptor interceptor) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.interceptors.add(interceptor);
+    }
+
+    </span><span style="color: #0000ff;">public</span> List&lt;Interceptor&gt;<span style="color: #000000;"> getInterceptors() {
+        </span><span style="color: #0000ff;">return</span> Collections.unmodifiableList(<span style="color: #0000ff;">this</span><span style="color: #000000;">.interceptors);
+    }
+}</span></code></pre>
+
+<p>实际上是一个&nbsp;interceptors 集合，关于插件的原理我们后面再讲。</p>
+<h2 id="autoid-3-6-0">解析 environments 配置</h2>
+<p>在 MyBatis 中，事务管理器和数据源是配置在 environments 中的。它们的配置大致如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;environments <span style="color: #0000ff;">default</span>="development"&gt;
+    &lt;environment id="development"&gt;
+        <strong>&lt;transactionManager type="JDBC"/&gt;
+        &lt;dataSource type="POOLED"&gt;</strong>
+            &lt;property name="driver" value="${jdbc.driver}"/&gt;
+            &lt;property name="url" value="${jdbc.url}"/&gt;
+            &lt;property name="username" value="${jdbc.username}"/&gt;
+            &lt;property name="password" value="${jdbc.password}"/&gt;
+        &lt;/dataSource&gt;
+    &lt;/environment&gt;
+&lt;/environments&gt;</code></pre>
+
+<p>我们来看看environmentsElement方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> environmentsElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (environment == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 default 属性</span>
+            environment = context.getStringAttribute("default"<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : context.getChildren()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 id 属性</span>
+            String id = child.getStringAttribute("id"<span style="color: #000000;">);
+            </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 检测当前 environment 节点的 id 与其父节点 environments 的属性 default 
+             * 内容是否一致，一致则返回 true，否则返回 false
+             * 将其default属性值与子元素environment的id属性值相等的子元素设置为当前使用的Environment对象
+             </span><span style="color: #008000;">*/</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isSpecifiedEnvironment(id)) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将environment中的transactionManager标签转换为TransactionFactory对象</span>
+              <strong>  TransactionFactory txFactory = transactionManagerElement(child.evalNode("transactionManager"<span style="color: #000000;">));
+                </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 将environment中的dataSource标签转换为DataSourceFactory对象</span>
+             <strong>   DataSourceFactory dsFactory = dataSourceElement(child.evalNode("dataSource"<span style="color: #000000;">));
+                </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 DataSource 对象</span>
+             <strong>   DataSource dataSource =</strong><span style="color: #000000;"><strong> dsFactory.getDataSource();</strong>
+                Environment.Builder environmentBuilder </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Environment.Builder(id)
+                  <strong>  .transactionFactory(txFactory)
+                    .dataSource(dataSource);
+                </strong></span><span style="color: #008000;">//</span><span style="color: #008000;"> 构建 Environment 对象，并设置到 configuration 中</span>
+<span style="color: #000000;"><strong>                configuration.setEnvironment(environmentBuilder.build());</strong>
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>看看TransactionFactory和&nbsp;DataSourceFactory的获取</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> TransactionFactory transactionManagerElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        String type </span>= context.getStringAttribute("type"<span style="color: #000000;">);
+        Properties props </span>=<span style="color: #000000;"> context.getChildrenAsProperties();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过别名获取Class,并实例化</span>
+        TransactionFactory factory = <strong>(TransactionFactory)<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.resolveClass(type).newInstance()</strong>;
+        factory.setProperties(props);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Environment declaration requires a TransactionFactory."<span style="color: #000000;">);
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> DataSourceFactory dataSourceElement(XNode context) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (context != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        String type </span>= context.getStringAttribute("type"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过别名获取Class,并实例化</span>
+        Properties props =<span style="color: #000000;"> context.getChildrenAsProperties();
+        DataSourceFactory factory </span>= <strong>(DataSourceFactory)<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.resolveClass(type).newInstance()</strong>;
+        factory.setProperties(props);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> factory;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("Environment declaration requires a DataSourceFactory."<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p><strong>&lt;transactionManager type="JDBC"/&gt;</strong>中type有"JDBC"、"MANAGED"这两种配置，而我们前面Configuration中默认注册的别名中有对应的JdbcTransactionFactory.class、ManagedTransactionFactory.class这两个TransactionFactory</p>
+<p><strong> &lt;dataSource type="POOLED"&gt;</strong>中type有"JNDI"、"POOLED"、"UNPOOLED"这三种配置，默认注册的别名中有对应的JndiDataSourceFactory.class、PooledDataSourceFactory.class、UnpooledDataSourceFactory.class这三个DataSourceFactory</p>
+<p>而我们的environment配置中<strong>transactionManager type="JDBC"和<strong>dataSource type="POOLED"，则生成的<strong>transactionManager为JdbcTransactionFactory，DataSourceFactory为PooledDataSourceFactory</strong></strong></strong></p>
+<p>我们来看看PooledDataSourceFactory和UnpooledDataSourceFactory</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> UnpooledDataSourceFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> DataSourceFactory {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String DRIVER_PROPERTY_PREFIX = "driver."<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DRIVER_PROPERTY_PREFIX_LENGTH = "driver."<span style="color: #000000;">.length();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建UnpooledDataSource实例</span>
+    <span style="color: #0000ff;">protected</span> DataSource dataSource = <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnpooledDataSource();
+    
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> DataSource getDataSource() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.dataSource;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+<span style="color: #000000;">}
+ 
+</span><span style="color: #008000;">//</span><span style="color: #008000;">继承UnpooledDataSourceFactory</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> PooledDataSourceFactory <span style="color: #0000ff;">extends</span><span style="color: #000000;"> UnpooledDataSourceFactory {
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> PooledDataSourceFactory() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建PooledDataSource实例</span>
+        <span style="color: #0000ff;">this</span>.dataSource = <span style="color: #0000ff;">new</span><span style="color: #000000;"> PooledDataSource();
+    }
+}</span></code></pre>
+
+<p>我们发现&nbsp;UnpooledDataSourceFactory 创建的dataSource是&nbsp;UnpooledDataSource，PooledDataSourceFactory创建的&nbsp;dataSource是PooledDataSource</p>
+<h2 id="autoid-3-8-5">解析 mappers 配置</h2>
+<p>mapperElement方法会将mapper标签内的元素转换成MapperProxyFactory产生的代理类，和与mapper.xml文件的绑定，我们下一篇文章会详解介绍这个方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> mapperElement(XNode parent) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">if</span> (parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+      </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (XNode child : parent.getChildren()) {
+        </span><span style="color: #0000ff;">if</span> ("package"<span style="color: #000000;">.equals(child.getName())) {
+          String mapperPackage </span>= child.getStringAttribute("name"<span style="color: #000000;">);
+          configuration.addMappers(mapperPackage);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+          String resource </span>= child.getStringAttribute("resource"<span style="color: #000000;">);
+          String url </span>= child.getStringAttribute("url"<span style="color: #000000;">);
+          String mapperClass </span>= child.getStringAttribute("class"<span style="color: #000000;">);
+          </span><span style="color: #0000ff;">if</span> (resource != <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            ErrorContext.instance().resource(resource);
+            InputStream inputStream </span>=<span style="color: #000000;"> Resources.getResourceAsStream(resource);
+            XMLMapperBuilder mapperParser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, resource, configuration.getSqlFragments());
+            mapperParser.parse();
+          } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url != <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            ErrorContext.instance().resource(url);
+            InputStream inputStream </span>=<span style="color: #000000;"> Resources.getUrlAsStream(url);
+            XMLMapperBuilder mapperParser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> XMLMapperBuilder(inputStream, configuration, url, configuration.getSqlFragments());
+            mapperParser.parse();
+          } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resource == <span style="color: #0000ff;">null</span> &amp;&amp; url == <span style="color: #0000ff;">null</span> &amp;&amp; mapperClass != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            Class</span>&lt;?&gt; mapperInterface =<span style="color: #000000;"> Resources.classForName(mapperClass);
+            configuration.addMapper(mapperInterface);
+          } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BuilderException("A mapper element may only specify a url, resource or class, but not more than one."<span style="color: #000000;">);
+          }
+        }
+      }
+    }
+}</span></code></pre>
+
+<h2>创建DefaultSqlSessionFactory</h2>
+<p>到此为止XMLConfigBuilder的parse方法中的重要步骤都过了一遍了，然后返回的就是一个完整的Configuration对象了，最后通过SqlSessionFactoryBuilder的build的重载方法创建了一个SqlSessionFactory实例DefaultSqlSessionFactory，我们来看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionFactory build(Configuration config) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建DefaultSqlSessionFactory实例</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultSqlSessionFactory(config);
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultSqlSessionFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> SqlSessionFactory {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Configuration configuration;
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">只是将configuration设置为其属性</span>
+    <span style="color: #0000ff;">public</span><span style="color: #000000;"> DefaultSqlSessionFactory(Configuration configuration) {
+        </span><span style="color: #0000ff;">this</span>.configuration =<span style="color: #000000;"> configuration;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,225 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Java必修课】ArrayList与HashSet的contains方法性能比较（JMH性能测试）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Java必修课】ArrayList与HashSet的contains方法性能比较（JMH性能测试）</center></div><div class='banquan'>原文出处:本文由博客园博主南瓜慢说提供。<br/>
+原文连接:https://www.cnblogs.com/larrydpk/p/11729208.html</div><br>
+    <h1 id="简介">1 简介</h1>
+<p>在日常开发中，<code>ArrayList</code>和<code>HashSet</code>都是Java中很常用的集合类。</p>
+<ul>
+<li><code>ArrayList</code>是<code>List</code>接口最常用的实现类；</li>
+<li><code>HashSet</code>则是保存唯一元素<code>Set</code>的实现。</li>
+</ul>
+<p>本文主要对两者共有的方法<code>contains()</code>做一个简单的讨论，主要是性能上的对比，并用<code>JMH(ava Microbenchmark Harness)</code>进行测试比较。</p>
+<h1 id="先看jmh测试结果">2 先看JMH测试结果</h1>
+<p>我们使用一个由OpenJDK/Oracle里面开发了Java编译器的大牛们所开发的<code>Micro Benchmark Framework</code>来测试。下面简单展示一下使用过程。</p>
+<h2 id="maven导入相关依赖">2.1 Maven导入相关依赖</h2>
+<p>导入<code>JMH</code>的相关依赖，可以去官网查看最新版本：</p>
+<pre><code><code>&lt;dependencies&gt;
+  &lt;dependency&gt;
+    &lt;groupId&gt;org.openjdk.jmh&lt;/groupId&gt;
+    &lt;artifactId&gt;jmh-core&lt;/artifactId&gt;
+    &lt;version&gt;${openjdk.jmh.version}&lt;/version&gt;
+  &lt;/dependency&gt;
+  &lt;dependency&gt;
+    &lt;groupId&gt;org.openjdk.jmh&lt;/groupId&gt;
+    &lt;artifactId&gt;jmh-generator-annprocess&lt;/artifactId&gt;
+    &lt;version&gt;${openjdk.jmh.version}&lt;/version&gt;
+  &lt;/dependency&gt;
+&lt;/dependencies&gt;
+
+&lt;properties&gt;
+  &lt;openjdk.jmh.version&gt;1.19&lt;/openjdk.jmh.version&gt;
+&lt;/properties&gt;</code></code></pre>
+<h2 id="创建测试相关的类">2.2 创建测试相关的类</h2>
+<h3 id="集合储存对象的类">2.2.1 集合储存对象的类</h3>
+<p>因为要测试集合类的方法，所以我们创建一个类来表示集合所储存的对象。如下：</p>
+<pre class="java"><code>@Data
+@AllArgsConstructor(staticName = &quot;of&quot;)
+public class Student {
+    private Long id;
+    private String name;
+}</code></code></pre>
+<h3 id="jmh测试类">2.2.2 JMH测试类</h3>
+<p>接下来我们就来写测试性能对比的类，代码如下：</p>
+<pre class="java"><code>@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+public class ContainsPerformanceTest {
+    @State(Scope.Thread)
+    public static class MyState {
+        private Set&lt;Student&gt; studentSet = new HashSet&lt;&gt;();
+        private List&lt;Student&gt; studentList = new ArrayList&lt;&gt;();
+        private Student targetStudent = Student.of(99L, &quot;Larry&quot;);
+
+        @Setup(Level.Trial)
+        public void prepare() {
+            long MAX_COUNT = 10000;
+            for (long i = 0; i &lt; MAX_COUNT; i++) {
+                studentSet.add(Student.of(i, &quot;MQ&quot;));
+                studentList.add(Student.of(i, &quot;MQ&quot;));
+            }
+            studentList.add(targetStudent);
+            studentSet.add(targetStudent);
+        }
+    }
+
+    @Benchmark
+    public boolean arrayList(MyState state) {
+        return state.studentList.contains(state.targetStudent);
+    }
+
+    @Benchmark
+    public boolean hashSet(MyState state) {
+        return state.studentSet.contains(state.targetStudent);
+    }
+
+    public static void main(String[] args) throws Exception {
+        Options options = new OptionsBuilder()
+                .include(ContainsPerformanceTest.class.getSimpleName())
+                .threads(6)
+                .forks(1)
+                .warmupIterations(3)
+                .measurementIterations(6)
+                .shouldFailOnError(true)
+                .shouldDoGC(true)
+                .build();
+        new Runner(options).run();
+    }
+}</code></code></pre>
+<p>测试类注解说明：</p>
+<ul>
+<li>@BenchmarkMode：表示进行Benchmark时使用的模式；<code>AverageTime</code>表示测试调用的平均时间。</li>
+<li>@OutputTimeUnit：测试的度量时间单位；<code>NANOSECONDS</code>表示使用纳秒为单位。</li>
+<li>@State：接受一个<code>Scope</code>参数表示状态的共享范围；<code>Scope.Thread</code>表示每个线程独享。</li>
+<li>@Setup：执行Benchmark前执行，类似于<code>JUnit</code>的<code>@BeforeAll</code>。</li>
+<li>@Benchmark：进行Benchmark的对象，类似于<code>JUnit</code>的<code>@Test</code>。</li>
+</ul>
+<p>测试类启动参数<code>Options</code>说明：</p>
+<ul>
+<li>include：benchmark所在的类名；</li>
+<li>threads：每个进程中的测试线程数；</li>
+<li>fork：进程数，如果为3，则JMH会fork出3个进程来测试；</li>
+<li>warmupIterations：预热的迭代次数，</li>
+<li>measurementIterations：实际测量的迭代次数。</li>
+</ul>
+<h2 id="测试结果">2.3 测试结果</h2>
+<p>设置好参数后，就可以跑测试了。测试结果如下：</p>
+<pre class="bash"><code># Benchmark: ContainsPerformanceTest.arrayList
+
+# Run progress: 0.00% complete, ETA 00:00:18
+# Fork: 1 of 1
+# Warmup Iteration   1: 42530.408 ±(99.9%) 2723.999 ns/op
+# Warmup Iteration   2: 17841.988 ±(99.9%) 1882.026 ns/op
+# Warmup Iteration   3: 18561.513 ±(99.9%) 2021.506 ns/op
+Iteration   1: 18499.568 ±(99.9%) 2126.172 ns/op
+Iteration   2: 18975.407 ±(99.9%) 2004.509 ns/op
+Iteration   3: 19386.851 ±(99.9%) 2248.536 ns/op
+Iteration   4: 19279.722 ±(99.9%) 2102.846 ns/op
+Iteration   5: 19796.495 ±(99.9%) 1974.987 ns/op
+Iteration   6: 21363.962 ±(99.9%) 2175.961 ns/op
+
+
+Result &quot;ContainsPerformanceTest.arrayList&quot;:
+  19550.334 ±(99.9%) 2771.595 ns/op [Average]
+  (min, avg, max) = (18499.568, 19550.334, 21363.962), stdev = 988.377
+  CI (99.9%): [16778.739, 22321.929] (assumes normal distribution)
+
+
+# Benchmark: ContainsPerformanceTest.hashSet
+
+# Run progress: 50.00% complete, ETA 00:00:16
+# Fork: 1 of 1
+# Warmup Iteration   1: 10.662 ±(99.9%) 0.209 ns/op
+# Warmup Iteration   2: 11.177 ±(99.9%) 1.077 ns/op
+# Warmup Iteration   3: 9.467 ±(99.9%) 1.462 ns/op
+Iteration   1: 9.540 ±(99.9%) 0.535 ns/op
+Iteration   2: 9.388 ±(99.9%) 0.365 ns/op
+Iteration   3: 10.604 ±(99.9%) 1.008 ns/op
+Iteration   4: 9.361 ±(99.9%) 0.154 ns/op
+Iteration   5: 9.366 ±(99.9%) 0.458 ns/op
+Iteration   6: 9.274 ±(99.9%) 0.237 ns/op
+
+
+Result &quot;ContainsPerformanceTest.hashSet&quot;:
+  9.589 ±(99.9%) 1.415 ns/op [Average]
+  (min, avg, max) = (9.274, 9.589, 10.604), stdev = 0.505
+  CI (99.9%): [8.174, 11.004] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:32
+
+Benchmark                          Mode  Cnt      Score      Error  Units
+ContainsPerformanceTest.arrayList  avgt    6  19550.334 ± 2771.595  ns/op
+ContainsPerformanceTest.hashSet    avgt    6      9.589 ±    1.415  ns/op</code></code></pre>
+<p>经过测试，发现两者耗时差异极大，<code>ArrayList</code>大概是20K纳秒，而<code>HashSet</code>则10纳秒左右。两者完全不在一个数量级上。</p>
+<h1 id="源码分析">3 源码分析</h1>
+<p>通过测试得知两者差异极大，就小窥一下源码分析分析。</p>
+<h2 id="arraylist的contains">3.1 ArrayList的contains()</h2>
+<p><code>ArrayList</code>的底层使用数组作为数据存储，当给定一个<code>Object</code>去判断是否存在，需要去遍历数组，与每个元素对比。</p>
+<pre class="java"><code>public boolean contains(Object o) {
+  return indexOf(o) &gt;= 0;
+}
+public int indexOf(Object o) {
+  if (o == null) {
+    for (int i = 0; i &lt; size; i++)
+      if (elementData[i]==null)
+        return i;
+  } else {
+    for (int i = 0; i &lt; size; i++)
+      if (o.equals(elementData[i]))
+        return i;
+  }
+  return -1;
+}</code></code></pre>
+<p>从源码可以发现，<code>contains()</code>方法是通过调用<code>indexOf()</code>来判断的，而后者就是需要遍历数组，直到找到那个与入参相等的元素才会停止。因为，<code>ArrayList</code>的<code>contains()</code>方法的时间复杂度为<em>O(n)</em>，也就是说，时间取决于长度，而且是正比的关系。</p>
+<h2 id="hashset的contains">3.2 HashSet的contains()</h2>
+<p><code>HashSet</code>底层是通过<code>HashMap</code>来实现的，而<code>HashMap</code>的底层结构为<strong>数组+链表</strong>，<code>JDK 8</code>后改为<strong>数组+链表+红黑树</strong>。</p>
+<p><code>HashMap</code>的相关代码如下：</p>
+<pre class="java"><code>public boolean containsKey(Object key) {
+  return getNode(hash(key), key) != null;
+}
+final Node&lt;K,V&gt; getNode(int hash, Object key) {
+  Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; first, e; int n; K k;
+  if ((tab = table) != null &amp;&amp; (n = tab.length) &gt; 0 &amp;&amp;
+      (first = tab[(n - 1) &amp; hash]) != null) {
+    if (first.hash == hash &amp;&amp; // always check first node
+        ((k = first.key) == key || (key != null &amp;&amp; key.equals(k))))
+      return first;
+    if ((e = first.next) != null) {
+      if (first instanceof TreeNode)
+        return ((TreeNode&lt;K,V&gt;)first).getTreeNode(hash, key);
+      do {
+        if (e.hash == hash &amp;&amp;
+            ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+          return e;
+      } while ((e = e.next) != null);
+    }
+  }
+  return null;
+}</code></code></pre>
+<p>首先通过获取Hash值来找，如果Hash值相等且对象也相等，则找到。一般来说，在<code>hashCode()</code>方法实现没问题的情况下，发生Hash冲突的情况是比较少。所以可以认为，大部分情况下，<code>contains()</code>的时间复杂度为<em>O(1)</em>，元素个数不影响其速度。如果发生Hash冲突，在链表长度小于8时，时间复杂度为<em>O(n)</em>；在链表大于8时，转化为红黑树，时间复杂度为<em>O(logn)</em>。</p>
+<p>一般地，我们认为，<code>HashSet/HashMap</code>的查找的时间复杂度为<em>O(1)</em>。</p>
+<h1 id="总结">4 总结</h1>
+<p>通过<code>JMH</code>测试我们发现<code>ArrayList</code>和<code>HashSet</code>的<code>contains()</code>方法性能差异很大。经过源码分析得知，<code>ArrayList</code>对应的时间复杂度为<em>O(n)</em>，而<code>HashSet</code>的时间度为<em>O(1)</em>。</p>
+<hr />
+<p>欢迎关注公众号&lt;<strong>南瓜慢说</strong>&gt;，将持续为你更新...</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,380 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修高并发下浏览量入库设计' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>高并发下浏览量入库设计</center></div><div class='banquan'>原文出处:本文由博客园博主风尘博客提供。<br/>
+原文连接:https://www.cnblogs.com/vandusty/p/11415882.html</div><br>
+    <h3 id="一背景">一、背景</h3>
+<blockquote>
+<p>文章浏览量统计，low的做法是：用户每次浏览，前端会发送一个<code>GET</code>请求获取一篇文章详情时，会把这篇文章的浏览量<code>+1</code>，存进数据库里。</p>
+</blockquote>
+<h4 id="这么做有几个问题">1.1 这么做，有几个问题：</h4>
+<ol>
+<li>在GET请求的业务逻辑里进行了数据的写操作！</li>
+<li>并发高的话，数据库压力太大；</li>
+<li>同时，如果文章做了缓存和搜索引擎如<code>ElasticSearch</code>的存储，同步更新缓存和<code>ElasticSearch</code>更新同步更新太耗时，不更新就会导致数据不一致性。</li>
+</ol>
+<h4 id="解决方案">1.2 解决方案</h4>
+<ul>
+<li><code>HyperLogLog</code></li>
+</ul>
+<p><code>HyperLogLog</code>是<code>Probabilistic data Structures</code>的一种，这类数据结构的基本大的思路就是使用统计概率上的算法，牺牲数据的精准性来节省内存的占用空间及提升相关操作的性能。</p>
+<ul>
+<li>设计思路</li>
+</ul>
+<ol>
+<li>为保证真实的博文浏览量，根据用户访问的<code>ip</code>和文章<code>id</code>,进行唯一校验，即同一个用户多次访问同一篇文章，改文章访问量只增加1；</li>
+<li>将用户的浏览量用<code>opsForHyperLogLog().add(key,value)</code>的存储在<code>Redis</code>中，在半夜浏览量低的时候，通过定时任务，将浏览量更新至数据库中。</li>
+</ol>
+<h3 id="二-手把手实现">二、 手把手实现</h3>
+<h4 id="项目配置">2.1 项目配置</h4>
+<ul>
+<li><code>sql</code></li>
+</ul>
+<pre><code><code>DROP TABLE IF EXISTS `article`;
+
+CREATE TABLE `article` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT &#39;主键&#39;,
+  `title` varchar(100) NOT NULL COMMENT &#39;标题&#39;,
+  `content` varchar(1024) NOT NULL COMMENT &#39;内容&#39;,
+  `url` varchar(100) NOT NULL COMMENT &#39;地址&#39;,
+    `views` bigint(20) NOT NULL COMMENT &#39;浏览量&#39;,
+  `create_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT &#39;创建时间&#39;,
+  PRIMARY KEY (`id`)
+) ENGINE=INNODB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
+
+INSERT INTO article VALUES(1,&#39;测试文章&#39;,&#39;content&#39;,&#39;url&#39;,10,NULL);</code></code></pre>
+<blockquote>
+<p>插入了一条数据，并设计访问量已经为10了，便于测试。</p>
+</blockquote>
+<ul>
+<li>项目依赖<code>pom.xml</code></li>
+</ul>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-aop&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-test&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;!--mysql--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;mysql&lt;/groupId&gt;
+    &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;!-- mybatis --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.mybatis.spring.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;mybatis-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.3.2&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- redis --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-data-redis&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.apache.commons&lt;/groupId&gt;
+    &lt;artifactId&gt;commons-pool2&lt;/artifactId&gt;
+    &lt;version&gt;2.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- lombok--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.projectlombok&lt;/groupId&gt;
+    &lt;artifactId&gt;lombok&lt;/artifactId&gt;
+    &lt;optional&gt;true&lt;/optional&gt;
+&lt;/dependency&gt;</code></code></pre>
+<ul>
+<li><code>application.yml</code></li>
+</ul>
+<pre class="yml"><code>spring:
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://47.98.178.84:3306/dev
+    username: dev
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: 47.98.178.84
+    port: 6379
+    database: 1
+    password: password
+    timeout: 60s  # 连接超时时间，2.0 中该参数的类型为Duration，这里在配置的时候需要指明单位
+    # 连接池配置，2.0中直接使用jedis或者lettuce配置连接池（使用lettuce，依赖中必须包含commons-pool2包）
+    lettuce:
+      pool:
+        # 最大空闲连接数
+        max-idle: 500
+        # 最小空闲连接数
+        min-idle: 50
+        # 等待可用连接的最大时间，负数为不限制
+        max-wait:  -1s
+        # 最大活跃连接数，负数为不限制
+        max-active: -1
+
+
+# mybatis
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+#  type-aliases-package: cn.van.redis.view.entity</code></code></pre>
+<h4 id="浏览量的切面设计">2.2 浏览量的切面设计</h4>
+<ul>
+<li>自定义一个注解，用于新增文章浏览量到<code>Redis</code>中</li>
+</ul>
+<pre class="java"><code>@Target({ElementType.PARAMETER, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface PageView {
+    /**
+     * 描述
+     */
+    String description()  default &quot;&quot;;
+}</code></code></pre>
+<ul>
+<li>切面处理</li>
+</ul>
+<pre><code><code> @Aspect
+@Configuration
+@Slf4j
+public class PageViewAspect {
+
+    @Autowired
+    private RedisUtils redisUtil;
+
+    /**
+     * 切入点
+     */
+    @Pointcut(&quot;@annotation(cn.van.redis.view.annotation.PageView)&quot;)
+    public void PageViewAspect() {
+
+    }
+
+    /**
+     * 切入处理
+     * @param joinPoint
+     * @return
+     */
+    @Around(&quot;PageViewAspect()&quot;)
+    public  Object around(ProceedingJoinPoint joinPoint) {
+        Object[] object = joinPoint.getArgs();
+        Object articleId = object[0];
+        log.info(&quot;articleId:{}&quot;, articleId);
+        Object obj = null;
+        try {
+            String ipAddr = IpUtils.getIpAddr();
+            log.info(&quot;ipAddr:{}&quot;, ipAddr);
+            String key = &quot;articleId_&quot; + articleId;
+            // 浏览量存入redis中
+            Long num = redisUtil.add(key,ipAddr);
+            if (num == 0) {
+                log.info(&quot;该ip:{},访问的浏览量已经新增过了&quot;, ipAddr);
+            }
+            obj = joinPoint.proceed();
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        return obj;
+    }
+}</code></code></pre>
+<ul>
+<li>工具类<code>RedisUtils.java</code></li>
+</ul>
+<pre class="java"><code> @Component
+public  class RedisUtils {
+
+    @Resource
+    private RedisTemplate&lt;String, Object&gt; redisTemplate;
+
+    /**
+     * 删除缓存
+     * @param key 可以传一个值 或多个
+     */
+    public void del(String... key) {
+        redisTemplate.delete(key[0]);
+    }
+
+    /**
+     * 计数
+     * @param key
+     * @param value
+     */
+    public Long add(String key, Object... value) {
+        return redisTemplate.opsForHyperLogLog().add(key,value);
+    }
+    /**
+     * 获取总数
+     * @param key
+     */
+    public Long size(String key) {
+        return redisTemplate.opsForHyperLogLog().size(key);
+    }
+
+}</code></code></pre>
+<ul>
+<li>工具类 <code>IpUtils.java</code></li>
+</ul>
+<blockquote>
+<p>该工具类我在<code>Mac</code>下测试没问题，<code>Windows</code>下如果有问题，请反馈给我</p>
+</blockquote>
+<pre class="java"><code> @Slf4j
+public class IpUtils {
+
+    public static String getIpAddr() {
+        try {
+            Enumeration&lt;NetworkInterface&gt; allNetInterfaces = NetworkInterface.getNetworkInterfaces();
+            InetAddress ip = null;
+            while (allNetInterfaces.hasMoreElements()) {
+                NetworkInterface netInterface = (NetworkInterface) allNetInterfaces.nextElement();
+                if (netInterface.isLoopback() || netInterface.isVirtual() || !netInterface.isUp()) {
+                    continue;
+                } else {
+                    Enumeration&lt;InetAddress&gt; addresses = netInterface.getInetAddresses();
+                    while (addresses.hasMoreElements()) {
+                        ip = addresses.nextElement();
+                        if (ip != null &amp;&amp; ip instanceof Inet4Address) {
+                            log.info(&quot;获取到的ip地址：{}&quot;, ip.getHostAddress());
+                            return ip.getHostAddress();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error(&quot;获取ip地址失败，{}&quot;,e);
+        }
+        return null;
+    }
+}</code></code></pre>
+<h4 id="同步任务articleviewtask.java">2.3 同步任务<code>ArticleViewTask.java</code></h4>
+<blockquote>
+<p><code>ArticleService.java</code>里面的代码比较简单，详见文末源码。</p>
+</blockquote>
+<pre class="java"><code>@Component
+@Slf4j
+public class ArticleViewTask {
+
+    @Resource
+    private RedisUtils redisUtil;
+    @Resource
+    ArticleService articleService;
+
+    // 每天凌晨一点执行
+    @Scheduled(cron = &quot;0 0 1 * * ? &quot;)
+    @Transactional(rollbackFor=Exception.class)
+    public void createHyperLog() {
+        log.info(&quot;浏览量入库开始&quot;);
+
+        List&lt;Long&gt; list = articleService.getAllArticleId();
+        list.forEach(articleId -&gt;{
+            // 获取每一篇文章在redis中的浏览量，存入到数据库中
+            String key  = &quot;articleId_&quot;+articleId;
+            Long view = redisUtil.size(key);
+            if(view&gt;0){
+                ArticleDO articleDO = articleService.getById(articleId);
+                Long views = view + articleDO.getViews();
+                articleDO.setViews(views);
+                int num = articleService.updateArticleById(articleDO);
+                if (num != 0) {
+                    log.info(&quot;数据库更新后的浏览量为：{}&quot;, views);
+                    redisUtil.del(key);
+                }
+            }
+        });
+        log.info(&quot;浏览量入库结束&quot;);
+    }
+
+}</code></code></pre>
+<h4 id="测试接口pagecontroller.java">2.4 测试接口<code>PageController.java</code></h4>
+<pre class="java"><code>@RestController
+@Slf4j
+public class PageController {
+
+    @Autowired
+    private ArticleService articleService;
+
+    @Autowired
+    private RedisUtils redisUtil;
+
+    /**
+     * 访问一篇文章时，增加其浏览量:重点在的注解
+     * @param articleId：文章id
+     * @return
+     */
+    @PageView
+    @RequestMapping(&quot;/{articleId}&quot;)
+    public String getArticle(@PathVariable(&quot;articleId&quot;) Long articleId) {
+        try{
+            ArticleDO blog = articleService.getById(articleId);
+            log.info(&quot;articleId = {}&quot;, articleId);
+            String key = &quot;articleId_&quot;+articleId;
+            Long view = redisUtil.size(key);
+            log.info(&quot;redis 缓存中浏览数：{}&quot;, view);
+            //直接从缓存中获取并与之前的数量相加
+            Long views = view + blog.getViews();
+            log.info(&quot;文章总浏览数：{}&quot;, views);
+        } catch (Throwable e) {
+            return  &quot;error&quot;;
+        }
+        return  &quot;success&quot;;
+    }
+}</code></code></pre>
+<blockquote>
+<p>这里，具体的<code>Service</code>中的方法因为都被我放在<code>Controller</code>中处理了，所以就是剩下简单的<code>Mapper</code>调用了，这里就不浪费时间了，详见文末源码。（按理说，这些逻辑处理，应该放在<code>Service</code>处理的，请按实际情况优化）</p>
+</blockquote>
+<h3 id="三-测试">三、 测试</h3>
+<p>启动项目，测试访问量，先请求<a href="http://localhost:8080/1" class="uri">http://localhost:8080/1</a>,日志打印如下：</p>
+<pre class="xml"><code>2019-03-2623:50:50.047  INFO 2970 --- [nio-8080-exec-1]  cn.van.redis.view.aspect.PageViewAspect  : articleId:1
+2019-03-2623:50:50.047  INFO 2970 --- [nio-8080-exec-1] cn.van.redis.view.utils.IpUtils          : 获取到的ip地址：192.168.1.104
+2019-03-2623:50:50.047  INFO 2970 --- [nio-8080-exec-1] cn.van.redis.view.aspect.PageViewAspect  : ipAddr:192.168.1.104
+2019-03-2623:50:50.139  INFO 2970 --- [nio-8080-exec-1] io.lettuce.core.EpollProvider            : Starting without optional epoll library
+2019-03-2623:50:50.140  INFO 2970 --- [nio-8080-exec-1] io.lettuce.core.KqueueProvider           : Starting without optional kqueue library
+2019-03-2623:50:50.349  INFO 2970 --- [nio-8080-exec-1] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2019-03-2623:50:50.833  INFO 2970 --- [nio-8080-exec-1] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2019-03-2623:50:50.872  INFO 2970 --- [nio-8080-exec-1] c.v.r.v.web.controller.PageController    : articleId = 1
+2019-03-2623:50:50.899  INFO 2970 --- [nio-8080-exec-1] c.v.r.v.web.controller.PageController    : redis 缓存中浏览数：1
+2019-03-2623:50:50.900  INFO 2970 --- [nio-8080-exec-1] c.v.r.v.web.controller.PageController    : 文章总浏览数：11</code></code></pre>
+<p>观察一下，数据库，访问量确实没有增加，本机再次访问，发现，日志打印如下:</p>
+<pre class="xml"><code>2019-03-2623:51:14.658  INFO 2970 --- [nio-8080-exec-3] 
+cn.van.redis.view.aspect.PageViewAspect  : articleId:1
+2019-03-2623:51:14.658  INFO 2970 --- [nio-8080-exec-3] cn.van.redis.view.utils.IpUtils          : 获取到的ip地址：192.168.1.104
+2019-03-2623:51:14.658  INFO 2970 --- [nio-8080-exec-3] cn.van.redis.view.aspect.PageViewAspect  : ipAddr:192.168.1.104
+2019-03-2623:51:14.692  INFO 2970 --- [nio-8080-exec-3] cn.van.redis.view.aspect.PageViewAspect  : 该ip:192.168.1.104,访问的浏览量已经新增过了
+2019-03-2623:51:14.752  INFO 2970 --- [nio-8080-exec-3] c.v.r.v.web.controller.PageController    : articleId = 1
+2019-03-2623:51:14.760  INFO 2970 --- [nio-8080-exec-3] c.v.r.v.web.controller.PageController    : redis 缓存中浏览数：1
+2019-03-2623:51:14.761  INFO 2970 --- [nio-8080-exec-3] c.v.r.v.web.controller.PageController    : 文章总浏览数：11</code></code></pre>
+<ul>
+<li>定时任务触发，日志打印如下</li>
+</ul>
+<pre class="xml"><code>2019-03-27 01:00:00.265  INFO 2974 --- [   scheduling-1] cn.van.redis.view.task.ArticleViewTask   : 浏览量入库开始
+2019-03-27 01:00:00.448  INFO 2974 --- [   scheduling-1] io.lettuce.core.EpollProvider            : Starting without optional epoll library
+2019-03-27 01:00:00.449  INFO 2974 --- [   scheduling-1] io.lettuce.core.KqueueProvider           : Starting without optional kqueue library
+2019-03-27 01:00:00.663  INFO 2974 --- [   scheduling-1] cn.van.redis.view.task.ArticleViewTask   : 数据库更新后的浏览量为：11
+2019-03-27 01:00:00.682  INFO 2974 --- [   scheduling-1] cn.van.redis.view.task.ArticleViewTask   : 浏览量入库结束</code></code></pre>
+<p>观察一下数据库，发现数据库中的浏览量增加到<code>11</code>，同时，<code>Redis</code>中的浏览量没了，说明成功！</p>
+<h3 id="四-源码及说明">四、 源码及说明</h3>
+<h4 id="源码地址">4.1 源码地址</h4>
+<p><a href="https://github.com/vanDusty/SpringBoot-Home/tree/master/springboot-demo-redis/redis-pageviews">Github 示例代码</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

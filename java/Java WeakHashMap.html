@@ -1,0 +1,150 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java WeakHashMap' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java WeakHashMap</center></div><div class='banquan'>原文出处:本文由博客园博主xindoo提供。<br/>
+原文连接:https://www.cnblogs.com/xindoo/p/11421734.html</div><br>
+    <p>作为一个java开发者肯定都知道且使用HashMap，但估计大部分人都不太知道WeakHashMap。从类定义上来看，它和普通的HashMap一样，继承了AbstractMap类和实现了Map接口，也就是说它有着与HashMap差不多的功能。那么既然jdk已经提供了HashMap，为什么还要再提供一个WeakHashMap呢？ 黑格尔曾经说过，存在必合理，接下来我们来看下为什么有WeakHashMap。<br />
+　　先来想象一下你因为某种需求需要一个Cache，你肯定会面临一个问题，就是所有数据不可能都放到Cache里，或者放到Cache里性价比太低了。这个时候你可能很快就想到了各种Cache数据过期策略，目前也有一些优秀的包提供了功能丰富的Cache，比如Google的Guava Cache，它支持数据定期过期、LRU、LFU等策略，但它任然有可能会导致有用的数据被淘汰，没用的数据迟迟不淘汰（如果策略使用得当的情况下这都是小概率事件）。<br />
+　　如果我现在说有种机制，可以让你Cache里不用的key数据自动清理掉，用的还留着，没有误杀也没有漏杀你信不信！没错WeakHashMap就是能实现这种功能的东西，这也是它和普通的HashMap不同的地方——它有自清理的机制。<br />
+　　如果让你实现一种自清理的HashMap，你怎么做？ 我的做法肯定是想办法先知道某个Key肯定没有在用了，然后清理到HashMap中对应的K-V。在JVM里一个对象没用了是指没有任何其他有用对象直接或者间接执行它，具体点就是在GC过程中它是GCRoots不可达的。 Jvm提供了一种机制能让我们感知到一个对象是否已经变成了垃圾对象，这就是WeakReference，不了解WeakReference的可以看下我上一篇介绍博客<a href="https://xindoo.blog.csdn.net/article/details/87868480">Java弱引用(WeakReferences)</a>。<br />
+　　某个WeakReference对象所指向的对象如果被判定为垃圾对象，Jvm会将该WeakReference对象放到一个ReferenceQueue里，我们只要看下这个Queue里的内容就知道某个对象还有没有用了。 WeakHashMap就是这么做的，所以这里的Weak是指WeakReference。接下来让我们看下它的代码，看它具体是怎么实现的。<br />
+　　</p>
+<h3 id="源码分析">源码分析</h3>
+<pre><code><code>    private static final int DEFAULT_INITIAL_CAPACITY = 16;
+    private static final int MAXIMUM_CAPACITY = 1 &lt;&lt; 30;
+    private static final float DEFAULT_LOAD_FACTOR = 0.75f;</code></code></pre>
+<p>　　和普通HashMap一样，WeakHashMap也有一些默认值，比如默认容量是16，最大容量2^30，使用超过75%它就会自动扩容。</p>
+<h4 id="entry">Entry</h4>
+<pre><code><code>private static class Entry&lt;K,V&gt; extends WeakReference&lt;Object&gt; implements Map.Entry&lt;K,V&gt; {
+        V value;
+        final int hash;
+        Entry&lt;K,V&gt; next;
+        
+        Entry(Object key, V value,
+              ReferenceQueue&lt;Object&gt; queue,
+              int hash, Entry&lt;K,V&gt; next) {
+            super(key, queue);
+            this.value = value;
+            this.hash  = hash;
+            this.next  = next;
+        }
+        /*
+        * 其他代码  
+        */
+}</code></code></pre>
+<p>　　它的Entry和普通HashMap的Entry最大的不同是它继承了WeakReference，然后把Key做成了弱引用（注意只有Key没有Value），然后传入了一个ReferenceQueue，这就让它能在某个key失去所有强引用的时候感知到。<br />
+　　</p>
+<h4 id="put">put</h4>
+<pre><code><code>    public V put(K key, V value) {
+        Object k = maskNull(key);
+        int h = hash(k);
+        Entry&lt;K,V&gt;[] tab = getTable();
+        int i = indexFor(h, tab.length);
+
+        for (Entry&lt;K,V&gt; e = tab[i]; e != null; e = e.next) {
+            if (h == e.hash &amp;&amp; eq(k, e.get())) {
+                V oldValue = e.value;
+                if (value != oldValue)
+                    e.value = value;
+                return oldValue;
+            }
+        }
+
+        modCount++;
+        Entry&lt;K,V&gt; e = tab[i];
+        tab[i] = new Entry&lt;&gt;(k, value, queue, h, e);
+        if (++size &gt;= threshold)
+            resize(tab.length * 2);
+        return null;
+    }</code></code></pre>
+<p>　　put方法也很简单，用key的hashcode在tab中定位，然后判断是否是已经存在的key，已经存在就替换旧值，否则就新建Entry，遇到多个不同的key有同样的hashCode就采用开链的方式解决hash冲突。注意这里和HashMap不太一样的地方，HashMap会在链表太长的时候对链表做树化，把单链表转换为红黑树，防止极端情况下hashcode冲突导致的性能问题，但在WeakHashMap中没有树化。<br />
+　　同样，在size大于阈值的时候，WeakHashMap也对做resize的操作，也就是把tab扩大一倍。WeakHashMap中的resize比HashMap中的resize要简单好懂些，但没HashMap中的resize优雅。WeakHashMap中resize有另外一个额外的操作，就是expungeStaleEntries()，就是对tab中的死对象做清理，稍后会详细介绍。</p>
+<h4 id="get">get</h4>
+<pre><code><code>    public V get(Object key) {
+        Object k = maskNull(key);
+        int h = hash(k);
+        Entry&lt;K,V&gt;[] tab = getTable();
+        int index = indexFor(h, tab.length);
+        Entry&lt;K,V&gt; e = tab[index];
+        while (e != null) {
+            if (e.hash == h &amp;&amp; eq(k, e.get()))
+                return e.value;
+            e = e.next;
+        }
+        return null;
+    }</code></code></pre>
+<p>　　get方法就没什么特别的了，因为Entry里存了hash值和key的值，所以只要用indexFor定位到tab中的位置，然后遍历一下单链表就知道了。</p>
+<h4 id="expungestaleentries">expungeStaleEntries</h4>
+<pre><code><code>    private void expungeStaleEntries() {
+        for (Object x; (x = queue.poll()) != null; ) {
+            synchronized (queue) {
+                @SuppressWarnings(&quot;unchecked&quot;)
+                    Entry&lt;K,V&gt; e = (Entry&lt;K,V&gt;) x;
+                int i = indexFor(e.hash, table.length);
+
+                Entry&lt;K,V&gt; prev = table[i];
+                Entry&lt;K,V&gt; p = prev;
+                while (p != null) {
+                    Entry&lt;K,V&gt; next = p.next;
+                    if (p == e) {
+                        if (prev == e)
+                            table[i] = next;
+                        else
+                            prev.next = next;
+                        // Must not null out e.next;
+                        // stale entries may be in use by a HashIterator
+                        e.value = null; // Help GC
+                        size--;
+                        break;
+                    }
+                    prev = p;
+                    p = next;
+                }
+            }
+        }
+    }</code></code></pre>
+<p>　　expungeStaleEntries就是WeakHashMap的核心了，它承担着Map中死对象的清理工作。原理就是依赖WeakReference和ReferenceQueue的特性。在每个WeakHashMap都有个ReferenceQueue queue，在Entry初始化的时候也会将queue传给WeakReference，这样当某个可以key失去所有强应用之后，其key对应的WeakReference对象会被放到queue里，有了queue就知道需要清理哪些Entry里。这里也是整个WeakHashMap里唯一加了同步的地方。<br />
+　　除了上文说的到resize中调用了expungeStaleEntries()，size()中也调用了这个清理方法。另外 getTable()也调了，这就意味着几乎所有其他方法都间接调用了清理。</p>
+<h4 id="其他">其他</h4>
+<p>　　除了上述几个和HashMap不太一样的地方外，WeakHashMap也提供了其他HashMap所有的方法，比如像remove、clean、putAll、entrySet…… 功能上几乎可以完全替代HashMap，但WeakHashMap也有一些自己的缺陷。</p>
+<h3 id="缺陷">缺陷</h3>
+<h4 id="非线程安全">1.非线程安全</h4>
+<p>　　关键修改方法没有提供任何同步，多线程环境下肯定会导致数据不一致的情况，所以使用时需要多注意。</p>
+<h4 id="单纯作为map没有hashmap好">2.单纯作为Map没有HashMap好</h4>
+<p>　　HashMap在Jdk8做了好多优化，比如单链表在过长时会转化为红黑树，降低极端情况下的操作复杂度。但WeakHashMap没有相应的优化，有点像jdk8之前的HashMap版本。<br />
+　　</p>
+<h4 id="不能自定义referencequeue">3.不能自定义ReferenceQueue</h4>
+<p>　　WeakHashMap构造方法中没法指定自定的ReferenceQueue，如果用户想用ReferenceQueue做一些额外的清理工作的话就行不通了。如果即想用WeakHashMap的功能，也想用ReferenceQueue，貌似得自己实现一套新的WeakHashMap了。</p>
+<h3 id="用途">用途</h3>
+<p>　　这里列举几个我所知道的WeakHashMap的使用场景。</p>
+<h4 id="阿里arthas">1.<a href="https://github.com/alibaba/arthas">阿里Arthas</a></h4>
+<p>　　在阿里开源的Java诊断工具中使用了WeakHashMap做类-字节码的缓存。</p>
+<pre><code><code> // 类-字节码缓存
+    private final static Map&lt;Class&lt;?&gt;/*Class*/, byte[]/*bytes of Class*/&gt; classBytesCache
+            = new WeakHashMap&lt;Class&lt;?&gt;, byte[]&gt;();</code></code></pre>
+<h4 id="cache">2.Cache</h4>
+<p>　　WeakHashMap这种自清理的机制，非常适合做缓存了。</p>
+<h4 id="threadlocalmap">3.ThreadLocalMap</h4>
+<p>　　ThreadLocal中用ThreadLocalMap存储Thread对象，虽然ThreadLocalMap和WeakHashMap不是一个东西，但ThreadLocalMap也利用到了WeakReference的特性，功能用途很类似，所以我很好奇为什么ThreadLocalMap不直接用WeakHashMap呢！<br />
+版权声明：本文为博主原创文章，转载请注明出处。 博客地址：<a href="https://xindoo.blog.csdn.net/" class="uri">https://xindoo.blog.csdn.net/</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

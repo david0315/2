@@ -1,0 +1,221 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringMVC运行原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringMVC运行原理</center></div><div class='banquan'>原文出处:本文由博客园博主Arebirth提供。<br/>
+原文连接:https://www.cnblogs.com/arebirth/p/springmvcexecutereal.html</div><br>
+    <p><img src="./images/SpringMVC运行原理0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<hr />
+<p>按照上边的执行流程图，我们可以看出一个SpringMVC整体的一个执行轮廓，下面我们具体来分析下</p>
+<p>&nbsp;</p>
+<p><strong>首先服务器接收到一个请求，匹配并调用了我们的前端控制器（DispatcherServlet）也叫中央处理器的请求路径，在web.xml文件中配置，我们来看下配置文件</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>springmvc<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span>org.springframework.web.servlet.DispatcherServlet<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">init-param</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">param-name</span><span style="color: #0000ff;">&gt;</span>contextConfigLocation<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">param-name</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">param-value</span><span style="color: #0000ff;">&gt;</span>classpath:springmvc.xml<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">param-value</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">init-param</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>1<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>springmvc<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name&gt;</span><span style="color: #0000ff;"><br /></span>　　&lt;!-- / 代表匹配所有除了jsp文件的请求 --&gt;
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>/<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p><strong>因为DispatcherServlet实际上是间接的继承了我们的HttpServlet，所以它就相当于一个Servlet，SpringMVC帮我们封装好的一个Servlet，下面是继承体系</strong></p>
+<p><img src="./images/SpringMVC运行原理1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>&nbsp;所以说，当来了一个请求后，WEB容器将把请求交给我们的DispatcherServlet进行处理</strong></p>
+<p><strong>DispatcherServlet接收到请求后，会把我们的请求信息交给HandlerMapping处理器映射器进行处理</strong></p>
+<p><strong>HandlerMapping根据请求的URL信息去查找匹配的URL的Handler，如果查找成，并返回一个执行链，下面来看下底层执行代码</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;"> protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+        Iterator var2 = this.handlerMappings.iterator();
+
+        HandlerExecutionChain handler;
+        do {
+            if (!var2.hasNext()) {
+                return null;
+            }
+
+            HandlerMapping hm = (HandlerMapping)var2.next();
+            if (this.logger.isTraceEnabled()) {
+                this.logger.trace("Testing handler map [" + hm + "] in DispatcherServlet with name '" + this.getServletName() + "'");
+            }
+
+            handler = hm.getHandler(request);//根据request对象获取handler，获取到的话将返回一个对象，没有的话将返回null  有兴趣童鞋自行深入查看
+        } while(handler == null);//如果handler为null继续执行循环
+
+        return handler;
+    }</span></code></pre>
+
+<p><strong>如果没有找到的话将执行以下代码</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;"> protected void noHandlerFound(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        if (pageNotFoundLogger.isWarnEnabled()) {
+            pageNotFoundLogger.warn("No mapping found for HTTP request with URI [" + getRequestUri(request) + "] in DispatcherServlet with name '" + this.getServletName() + "'");
+        }
+
+        if (this.throwExceptionIfNoHandlerFound) {
+            ServletServerHttpRequest sshr = new ServletServerHttpRequest(request);
+            throw new NoHandlerFoundException(sshr.getMethod().name(), sshr.getServletRequest().getRequestURI(), sshr.getHeaders());
+        } else {
+            response.sendError(404);//响应404
+        }
+    }</span></code></pre>
+
+<p><strong>找到成功的情况下，DispatcherServlet再次请求 处理器适配器（HandlerAdapter）调用相应的Handler 进行处理返回 ModelAndView 给 DispatcherServlet，底层代码，粗略看下即可，不是重点</strong></p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doDispatch(HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        HttpServletRequest processedRequest </span>=<span style="color: #000000;"> request;
+        HandlerExecutionChain mappedHandler </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">boolean</span> multipartRequestParsed = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        WebAsyncManager asyncManager </span>=<span style="color: #000000;"> WebAsyncUtils.getAsyncManager(request);
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            ModelAndView mv </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            Exception dispatchException </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                processedRequest </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.checkMultipart(request);
+                multipartRequestParsed </span>= processedRequest !=<span style="color: #000000;"> request;
+                mappedHandler </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getHandler(processedRequest);
+                </span><span style="color: #0000ff;">if</span> (mappedHandler == <span style="color: #0000ff;">null</span> || mappedHandler.getHandler() == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.noHandlerFound(processedRequest, response);
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                }
+
+                HandlerAdapter ha </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getHandlerAdapter(mappedHandler.getHandler());
+                String method </span>=<span style="color: #000000;"> request.getMethod();
+                </span><span style="color: #0000ff;">boolean</span> isGet = "GET"<span style="color: #000000;">.equals(method);
+                </span><span style="color: #0000ff;">if</span> (isGet || "HEAD"<span style="color: #000000;">.equals(method)) {
+                    </span><span style="color: #0000ff;">long</span> lastModified =<span style="color: #000000;"> ha.getLastModified(request, mappedHandler.getHandler());
+                    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.logger.isDebugEnabled()) {
+                        </span><span style="color: #0000ff;">this</span>.logger.debug("Last-Modified value for [" + getRequestUri(request) + "] is: " +<span style="color: #000000;"> lastModified);
+                    }
+
+                    </span><span style="color: #0000ff;">if</span> ((<span style="color: #0000ff;">new</span> ServletWebRequest(request, response)).checkNotModified(lastModified) &amp;&amp;<span style="color: #000000;"> isGet) {
+                        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                    }
+                }
+
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">mappedHandler.applyPreHandle(processedRequest, response)) {
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                }
+
+                mv </span>=<span style="color: #000000;"> ha.handle(processedRequest, response, mappedHandler.getHandler()); //在这里边调用相应的Handler，并通过这个方法返回ModelAndModel给DispatcherServlet
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (asyncManager.isConcurrentHandlingStarted()) {
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                }
+
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.applyDefaultViewName(request, mv);
+                mappedHandler.applyPostHandle(processedRequest, response, mv);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var19) {
+                dispatchException </span>=<span style="color: #000000;"> var19;
+            }
+
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var20) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.triggerAfterCompletion(processedRequest, response, mappedHandler, var20);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Error var21) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.triggerAfterCompletionWithError(processedRequest, response, mappedHandler, var21);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (asyncManager.isConcurrentHandlingStarted()) {
+                </span><span style="color: #0000ff;">if</span> (mappedHandler != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    mappedHandler.applyAfterConcurrentHandlingStarted(processedRequest, response);
+                }
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (multipartRequestParsed) {
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.cleanupMultipart(processedRequest);
+            }
+
+        }
+
+    }</span></code></pre>
+
+<p><strong>然后DispatcherServlet将ModelAndView请求对应的ViewResolver（视图解析器）解析视图，然后返回具体的View，底层实现</strong></p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #0000ff;">protected</span> View resolveViewName(String viewName, Map&lt;String, Object&gt; model, Locale locale, HttpServletRequest request) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        Iterator var5 </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.viewResolvers.iterator();
+
+        View view;
+        </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">var5.hasNext()) {
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            }
+
+            ViewResolver viewResolver </span>=<span style="color: #000000;"> (ViewResolver)var5.next();
+            view </span>=<span style="color: #000000;"> viewResolver.resolveViewName(viewName, locale);
+        } </span><span style="color: #0000ff;">while</span>(view == <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> view;
+    }</span></code></pre>
+
+<p><strong>DispatcherServlet对View视图进行渲染，也就是把模型数据填充到视图里边，底层执行代码</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> render(ModelAndView mv, HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        Locale locale </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.localeResolver.resolveLocale(request);
+        response.setLocale(locale);
+        View view;
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (mv.isReference()) {
+            view </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.resolveViewName(mv.getViewName(), mv.getModelInternal(), locale, request);
+            </span><span style="color: #0000ff;">if</span> (view == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ServletException("Could not resolve view with name '" + mv.getViewName() + "' in servlet with name '" + <span style="color: #0000ff;">this</span>.getServletName() + "'"<span style="color: #000000;">);
+            }
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            view </span>=<span style="color: #000000;"> mv.getView();
+            </span><span style="color: #0000ff;">if</span> (view == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ServletException("ModelAndView [" + mv + "] neither contains a view name nor a " + "View object in servlet with name '" + <span style="color: #0000ff;">this</span>.getServletName() + "'"<span style="color: #000000;">);
+            }
+        }
+
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.logger.isDebugEnabled()) {
+            </span><span style="color: #0000ff;">this</span>.logger.debug("Rendering view [" + view + "] in DispatcherServlet with name '" + <span style="color: #0000ff;">this</span>.getServletName() + "'"<span style="color: #000000;">);
+        }
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            view.render(mv.getModelInternal(), request, response);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var7) {
+            </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.logger.isDebugEnabled()) {
+                </span><span style="color: #0000ff;">this</span>.logger.debug("Error rendering view [" + view + "] in DispatcherServlet with name '" + <span style="color: #0000ff;">this</span>.getServletName() + "'"<span style="color: #000000;">, var7);
+            }
+
+            </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> var7;
+        }
+    }</span></code></pre>
+
+<p><strong>最后DispatcherServlet将视图传递给前台</strong></p>
+<h3>&nbsp;</h3>
+<p><strong>PS：</strong></p>
+<p>Spring MVC核心组件：<br />&nbsp;&nbsp;&nbsp;&nbsp;1.DispatcherServlet(中央处理器)：将请求转发给控制器</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;2.Controller（控制器）：处理请求的控制器</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;3.HandlerMapping（映射处理器）：负责映射中央处理器转发给Controller时的映射策略</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;4.ModelAndView：服务器返回数据以及视图层的封装类</p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;5.ViewResolver（视图解析器）：解析具体的视图<br /><br /></p>
+<p>&nbsp;</p>
+<p>当用户发起请求后,执行DiapacherServlet,如果是JSP直接调用jsp页面.如果不是JSP,DiapacherServlet调用HandlerMapping判断请求URL是否合法,如果URL不存在报错,如果URL存在使用HandlerAdapter调用具体的HandlerMethod,当Handler执行完成后会返回ModelAndView,会被ViewResovler解析,调用具体的物理视图.<br />最终响应给客户端浏览器.</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

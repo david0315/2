@@ -1,0 +1,197 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java日志Log4j或者Logback的NDC和MDC功能' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java日志Log4j或者Logback的NDC和MDC功能</center></div><div class='banquan'>原文出处:本文由博客园博主兰仓若谷提供。<br/>
+原文连接:https://www.cnblogs.com/joyven/p/11776524.html</div><br>
+    <h1 id="ndc和mdc的区别">NDC和MDC的区别</h1>
+<p>Java中使用的日志的实现框架有很多种，常用的log4j和logback以及java.util.logging，而log4j是apache实现的一个开源日志组件（Wrapped implementations），logback是slf4j的原生实现（Native implementations）。需要说明的slf4j是Java简单日志的门面(The Simple Logging Facade for Java)，如果使用slf4j日志门面，必须要用到slf4j-api，而logback是直接实现的，所以不需要其他额外的转换以及转换带来的消耗，而slf4j要调用log4j的实现，就需要一个适配层，将log4j的实现适配到slf4j-api可调用的模式。</p>
+<p>说完基本的日志框架的区别之后，我们再看看NDC和MDC。</p>
+<p>不管是log4j还是logback，打印的日志要能体现出问题的所在，能够快速的定位到问题的症结，就必须携带上下文信息（context information），那么其存储该信息的两个重要的类就是NDC（Nested Diagnostic Context）和MDC（Mapped Diagnositc Context）。</p>
+<p>NDC采用栈的机制存储上下文，线程独立的，子线程会从父线程拷贝上下文。其调用方法如下：</p>
+<blockquote>
+<p>1.开始调用<br />
+NDC.push(message);</p>
+<p>2.删除栈顶消息<br />
+NDC.pop();</p>
+<p>3.清除全部的消息，必须在线程退出前显示的调用，否则会导致内存溢出。<br />
+NDC.remove();</p>
+<p>4.输出模板，注意是小写的[%x]<br />
+log4j.appender.stdout.layout.ConversionPattern=[%d{yyyy-MM-dd HH:mm:ssS}] [%x] : %m%n</p>
+</blockquote>
+<p>MDC采用Map的方式存储上下文，线程独立的，子线程会从父线程拷贝上下文。其调用方法如下：</p>
+<blockquote>
+<p>1.保存信息到上下文<br />
+MDC.put(key, value);</p>
+<p>2.从上下文获取设置的信息<br />
+MDC.get(key);</p>
+<p>3.清楚上下文中指定的key的信息<br />
+MDC.remove(key);</p>
+<p>4.清除所有<br />
+clear()</p>
+<p>5.输出模板，注意是大写[%X{key}]<br />
+log4j.appender.consoleAppender.layout.ConversionPattern = %-4r [%t] %5p %c %x - %m - %X{key}%n</p>
+</blockquote>
+<p>最后需要注意的是：</p>
+<ul>
+<li>Use %X Map中全部数据</li>
+<li>Use %X{key} 指定输出Map中的key的值</li>
+<li>Use %x 输出Stack中的全部内容</li>
+</ul>
+<h1 id="mdc的使用例子">MDC的使用例子</h1>
+<pre><code><code>//MdcUtils.java
+// import ...MdcConstants // 这个就是定义一个常量的类，定义了SERVER、SESSION_ID等
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+
+public class MdcUtils {
+
+    private final static Logger logger = LoggerFactory.getLogger(MdcUtils.class);
+
+    private static void put(String key, Object value) {
+        if (value != null) {
+            String val = value.toString();
+            if (StringUtils.isNoneBlank(key, val)) {
+                MDC.put(key, val);
+            }
+        }
+    }
+
+    public static String getServer() {
+        return MDC.get(MdcConstants.SERVER);
+    }
+
+    public static void putServer(String server) {
+        put(MdcConstants.SERVER, server);
+    }
+
+    public static String getSessionId() {
+        return MDC.get(MdcConstants.SESSION_ID);
+    }
+
+    public static void putSessionId(String sId) {
+        put(MdcConstants.SESSION_ID, sId);
+    }
+
+    public static void clear() {
+        MDC.clear();
+        logger.debug(&quot;mdc clear done.&quot;);
+    }
+}
+</code></code></pre>
+<p>上述工具类中MdcConstants是定义一个常量的类，定义了SERVER、SESSION_ID等，put方法就是调用了slf4j的MDC的put方法。其他方法类比。</p>
+<p>看看使用该工具类的具体方式：</p>
+<pre><code><code>// MdcClearInterceptor.java
+import ...MdcUtils; // 导入上面的工具类
+import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+
+public class MdcClearInterceptor extends HandlerInterceptorAdapter {
+    @Override
+    public void afterConcurrentHandlingStarted(HttpServletRequest request, HttpServletResponse response, Object handler)
+                    throws Exception {
+        MdcUtils.clear();
+    }
+}</code></code></pre>
+<p>在该拦截器中，重写了afterConcurrentHandlingStarted方法，该方法执行了工具类的clear方法，也就是通过调用slf4j的clear方法清除了本次会话上下文的日志信息。为什么要放在afterConcurrentHandlingStarted方法中呢？这恐怕得从springmvc的拦截器的实现说起。</p>
+<p>springmvc的拦截HandlerInterceptor接口定义了三个方法(代码如下)，具体说明在方法注释上：</p>
+<pre><code><code>public interface HandlerInterceptor {  
+    //在控制器方法调用前执行
+    //返回值为是否中断，true,表示继续执行（下一个拦截器或处理器）
+    //false则会中断后续的所有操作，所以我们需要使用response来响应请求
+    boolean preHandle(  
+            HttpServletRequest request, HttpServletResponse response,   
+            Object handler)   
+            throws Exception;  
+
+    //在控制器方法调用后，解析视图前调用，我们可以对视图和模型做进一步渲染或修改
+    void postHandle(  
+            HttpServletRequest request, HttpServletResponse response,   
+            Object handler, ModelAndView modelAndView)   
+            throws Exception;  
+    //整个请求完成，即视图渲染结束后调用，这个时候可以做些资源清理工作，或日志记录等
+    void afterCompletion(  
+            HttpServletRequest request, HttpServletResponse response,   
+            Object handler, Exception ex)  
+            throws Exception;  
+}  </code></code></pre>
+<p>很多时候，我们只需要上面这3个方法就够了，因为我们只需要继承<code>HandlerInterceptorAdapter</code>就可以了，HandlerInterceptorAdapter间接实现了HandlerInterceptor接口，并为HandlerInterceptor的三个方法做了空实现，因而更方便我们定制化自己的实现。</p>
+<p>相对于HandlerInterceptor，HandlerInterceptorAdapter多了一个实现方法<code>afterConcurrentHandlingStarted()</code>，它来自HandlerInterceptorAdapter的直接实现类<code>AsyncHandlerInterceptor</code>,AsyncHandlerInterceptor接口直接继承了HandlerInterceptor，并新添了afterConcurrentHandlingStarted()方法用于处理异步请求，当Controller中有异步请求方法的时候会触发该方法时，异步请求先支持preHandle、然后执行afterConcurrentHandlingStarted。异步线程完成之后执行preHandle、postHandle、afterCompletion。</p>
+<p>那至于这些可能用到的日志字段从什么地方赋值呢，也就是什么地方调用MDCUtils.put()方法呢？一般我们都会实现一个RequestHandlerInterceptor，在preHandler方法中处理日志字段即可。如下：</p>
+<pre><code><code>public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+        throws Exception {
+    if (DispatcherType.ASYNC.equals(request.getDispatcherType())) {
+        return true;
+    }
+    
+    // 开始保存信息到日志上下文
+    MdcUtils.putServer(request.getServerName());
+    String sId = request.getHeader(HeaderConstants.SESSION_ID);
+    MdcUtils.putSessionId(sId);
+
+    if (sessionWhiteList.contains(request.getPathInfo())) {
+        return true;
+    }
+
+    // TODO 处理其他业务
+}</code></code></pre>
+<p>还没完，就目前看，我们已经有两个自定义的拦截器实现了。怎么使用，才能将日志根据我们的意愿正确的打印呢？必然，拦截器是有顺序的，如果配置了多个拦截器，会形成一条拦截器链，执行顺序类似于AOP,前置拦截先定义的先执行，后置拦截和完结拦截（afterCompletion)后注册的后执行。</p>
+<p>Soga，我们需要清除上次请求的一些无用的信息，再次将我们的信息写入到MDC中（拦截器的配置在DispatcherServlet中），由于afterConcurrentHandlingStarted()方法需要异步请求触发，因此我们需要在web.xml的DispatchServlet配置增加<code>&lt;async-supported&gt;true&lt;/async-supported&gt;</code>配置。</p>
+<pre class="xml"><code>&lt;mvc:interceptors&gt;
+    &lt;bean class=&quot;com.xxx.handler.MdcClearInterceptor&quot;/&gt;
+    &lt;bean class=&quot;com.xxx.handler.RequestContextInterceptor&quot;/&gt;
+&lt;/mvc:interceptors&gt;</code></code></pre>
+<p>或者这样：</p>
+<pre class="xml"><code>&lt;mvc:interceptors&gt;
+    &lt;!-- 前置拦截器 --&gt;
+    &lt;mvc:interceptor&gt;
+        &lt;!-- 这里面还以增加一些拦截条件--&gt;
+        &lt;!--&lt;mvc:exclude-mapping path=&quot;/user/logout&quot;/&gt;--&gt;
+        &lt;!-- 用户退出登录请求 --&gt;
+        &lt;!-- &lt;mvc:exclude-mapping path=&quot;/home/&quot;/&gt; --&gt;
+        &lt;!--在home中定义了无须登录的方法请求，直接过滤拦截--&gt;
+        &lt;!-- &lt;mvc:mapping path=&quot;/**&quot;/&gt;--&gt;
+        &lt;bean class=&quot;com.xxx.handler.MdcClearInterceptor&quot;/&gt;
+    &lt;/mvc:interceptor&gt;
+
+    &lt;!-- 后置拦截器 --&gt;
+    &lt;mvc:interceptor&gt;
+        &lt;bean class=&quot;com.xxx.handler.RequestContextInterceptor&quot;/&gt;
+    &lt;/mvc:interceptor&gt;
+&lt;/mvc:interceptors&gt;
+</code></code></pre>
+<hr />
+<p>该文首发<a href="https://www.zhoujunwen.com/2017/java-log4j-logback-ndc-mdc-function">《虚怀若谷》</a>个人博客，转载前请务必署名，转载请标明出处。</p>
+<blockquote>
+<p>古之善为道者，微妙玄通，深不可识。夫唯不可识，故强为之容：<br />
+豫兮若冬涉川，犹兮若畏四邻，俨兮其若客，涣兮若冰之释，敦兮其若朴，旷兮其若谷，混兮其若浊。<br />
+孰能浊以静之徐清？孰能安以动之徐生？<br />
+保此道不欲盈。夫唯不盈，故能敝而新成。</p>
+</blockquote>
+<p>请关注我的微信公众号：<strong>下雨就像弹钢琴</strong>，Thanks♪(･ω･)ﾉ</p>
+<p><img src="./images/Java日志Log4j或者Logback的NDC和MDC功能0.png" alt="微信二维码" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

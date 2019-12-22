@@ -1,0 +1,120 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud常用组件超时总结' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud常用组件超时总结</center></div><div class='banquan'>原文出处:本文由博客园博主中本傻提供。<br/>
+原文连接:https://www.cnblogs.com/rgshare/p/spring_cloud_timeout_summary.html</div><br>
+    <p>&nbsp;本文以Spring Cloud Finchley.RELEASE版本为例。</p>
+<h1>RestTemplate超时时间</h1>
+<p>RestTemplate可以通过RestTemplateBuilderl来设置超时时间：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Bean
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> RestTemplate restTemplate(RestTemplateBuilder restTemplateBuilder) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> restTemplateBuilder
+            .setConnectTimeout(...)
+       .setReadTimeout(...)
+       .build();
+}</span></code></pre>
+
+<h1>Ribbon超时时间</h1>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">#全局超时配置
+ribbon:
+  ReadTimeout: 2000  #默认5s
+  ConnectTimeout: 1000 #默认2s
+
+#针对具体的服务配置
+service-id:
+  ribbon:
+    ReadTimeout: 1000
+    ConnectTimeout: 1000</span></code></pre>
+
+<p>详情见<a href="https://github.com/Netflix/ribbon/blob/master/ribbon-core/src/main/java/com/netflix/client/config/CommonClientConfigKey.java" target="_blank">默认配置列表</a>。</p>
+<h1>Feign超时时间</h1>
+<p>文档中没有详细介绍，但部分示例代码中包含了相关配置：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000 #默认10s
+        readTimeout: 5000 #默认60s
+        loggerLevel: basic</span></code></pre>
+
+<p>Feign的默认超时时间在<a href="https://github.com/OpenFeign/feign/blob/a25423c0233ea1f0b0da8802b60c128133a1e640/core/src/main/java/feign/Request.java#L125" target="_blank">Request.Options</a>中设置的。</p>
+<p>注意：如果在应用里同时使用Feign和Ribbon，那么超时时间配置以Feign的为主。</p>
+<h1>Hystrix超时时间</h1>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">hystrix:
+  command:
+    default:
+      execution:
+        timeout:
+          enabled: true #默认true
+        isolation:
+          thread:
+            timeoutInMilliseconds: 5000</span></code></pre>
+
+<p>Hystrix作为熔断器，通常其他组件一起使用时（如Ribbon）：</p>
+<src class="cnblogs_code">
+<pre><code>//伪代码调用方式<br />hystrix(retry(ribbon()))</code></pre>
+
+<p>此时需要将超时时间设置成比其他组件的长，否则重试机制将失效。</p>
+<h1>Zuul超时时间</h1>
+<p>由于Zuul（Spring Cloud）使用了Hystrix和Ribbon，所以它的超时配置是这2个部分的组合。 同时，如果配置了URL路由，而非通过服务的方式（不经Ribbon），还需要配置 zuul.host.connect-timeout-millis。以下是完整配置：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">zuul:
+  routes:
+    service-id:
+      path: /test/**
+      serviceId: SERVICE-ID
+    admin:
+      path: /admin/**
+      url: http://test.com/admin
+  host: #针对直接发起URL请求的超时配置（不经Ribbon）
+    max-total-connections: 5000
+    max-per-route-connections: 500
+
+#针对Hystrix的超时配置
+hystrix:
+  command:
+    default:
+      execution:
+        timeout:
+          enabled: true
+        isolation:
+          thread:
+            timeoutInMilliseconds: 5000
+
+#针对Ribbon的超时配置
+ribbon:
+  ReadTimeout: 1500
+  ConnectTimeout: 1000</span></code></pre>
+
+<p>如果错误地将Hystrix超时配置成2s，而Ribbon配置成5s，那么在每次请求都会看到类似于下面的警告：</p>
+<src class="cnblogs_code">
+<pre><code>2019-01-19 17:39:20.981 WARN 36568 --- [io-60362-exec-9] o.s.c.n.z.f.r.s.AbstractRibbonCommand : The Hystrix timeout of 2000ms for the command SERVICE-ID is set lower than the combination of the Ribbon read and connect timeout, 12000ms.</code></pre>
+
+<p><span style="font-size: 2em;">参考</span></p>
+<p><a href="https://xli1224.github.io/2017/09/22/configure-feign/" target="_blank">Feign Client 配置</a></p>
+<p><a href="http://www.itmuch.com/spring-cloud-sum/spring-cloud-timeout/" target="_blank">Spring Cloud各组件超时总结</a></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,93 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修一次容器化springboot程序OOM问题探险' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>一次容器化springboot程序OOM问题探险</center></div><div class='banquan'>原文出处:本文由博客园博主独行侠梦提供。<br/>
+原文连接:https://www.cnblogs.com/hyq0823/p/11564168.html</div><br>
+    <h4 id="背景">背景</h4>
+<p>运维人员反馈一个容器化的java程序每跑一段时间就会出现OOM问题，重启后，间隔大概两天后复现。</p>
+<h4 id="问题调查">问题调查</h4>
+<h6 id="一查日志">一查日志</h6>
+<p>由于是容器化部署的程序，登上主机后使用docker logs ContainerId查看输出日志，并没有发现任何异常输出。 使用docker stats查看容器使用的资源情况，分配了2G大小，也没有发现异常。</p>
+<h6 id="二缺失的工具">二缺失的工具</h6>
+<p>打算进入容器内部一探究竟,先使用docker ps 找到java程序的ContainerId<br />
+,再执行docker exec -it ContainerId /bin/bash进入容器。进入后，本想着使用jmap、jstack 等JVM分析命令来诊断，结果发现命令都不存在，显示如下：</p>
+<pre><code><code>bash: jstack: command not found
+bash: jmap: command not found
+bash: jps: command not found
+bash: jstat: command not found</code></code></pre>
+<p>突然意识到，可能打镜像的时候使用的是精简版的JDK，并没有这些jVM分析工具，但是这仍然不能阻止我们分析问题的脚步，此时docker cp命令就派上用场了，它的作用是：在容器和宿主机之间拷贝文件。这里使用的思路是：拷贝一个新的jdk到容器内部，目的是为了执行JVM分析命令，参照用法如下：</p>
+<pre><code><code>Usage:  docker cp [OPTIONS] CONTAINER:SRC_PATH DEST_PATH|-
+        docker cp [OPTIONS] SRC_PATH|- CONTAINER:DEST_PATH [flags]</code></code></pre>
+<p>有了JVM工具，我们就可以开始分析咯。</p>
+<h6 id="三查gc情况">三查GC情况</h6>
+<p>通过jstat查看gc情况</p>
+<pre><code><code> bin/jstat -gcutil 1 1s</code></code></pre>
+<p><img src="./images/一次容器化springboot程序OOM问题探险0.png" alt="file" /></p>
+<p>看样子没有什么问题，full gc也少。再看一下对象的占用情况，由于是容器内部，进程号为1，执行如下命令：</p>
+<pre><code><code>bin/jmap -histo 1 |more </code></code></pre>
+<p>发现ByteBuffer对象占用最高，这是异常点一。<br />
+<img src="./images/一次容器化springboot程序OOM问题探险1.png" alt="file" /></p>
+<h6 id="四查线程快照情况">四查线程快照情况</h6>
+<ul>
+<li>通过jstack查看线程快照情况。</li>
+</ul>
+<pre><code><code> bin/jstack -l 1 &gt; thread.txt</code></code></pre>
+<p>下载快照，这里推荐一个在线的线程快照分析网站。</p>
+<pre><code><code>https://gceasy.io</code></code></pre>
+<p><img src="./images/一次容器化springboot程序OOM问题探险2.png" alt="file" /></p>
+<p>上传后，发现创建的线程近2000个，且大多是TIMED_WAITING状态。感觉逐渐接近真相了。 点击详情发现有大量的kafka-producer-network-thread | producer-X 线程。如果是低版本则是大量的ProducerSendThread线程。(后续验证得知)，可以看出这个是kafka生产者创建的线程，如下是生产者发送模型：</p>
+<p><img src="./images/一次容器化springboot程序OOM问题探险3.png" alt="file" /></p>
+<p>根据生产者的发送模型，我们知道，这个sender线程主要做两个事，一是获取kafka集群的Metadata共享给多个生产者，二是把生产者送到本地消息队列中的数据，发送至远端集群。而本地消息队列底层的数据结构就是java NIO的ByteBuffer。</p>
+<p>这里发现了异常点二：创建过多kafka生产者。</p>
+<p>由于没有业务代码，决定写一个Demo程序来验证这个想法，定时2秒创建一个生产者对象，发送当前时间到kafka中，为了更好的观察，启动时指定jmx端口，使用jconsole来观察线程和内存情况,代码如下：</p>
+<pre><code><code>nohup java -jar -Djava.rmi.server.hostname=ip 
+ -Dcom.sun.management.jmxremote.port=18099
+ -Dcom.sun.management.jmxremote.rmi.port=18099
+ -Dcom.sun.management.jmxremote.ssl=false
+ -Dcom.sun.management.jmxremote.authenticate=false -jar
+ com.hyq.kafkaMultipleProducer-1.0.0.jar   2&gt;&amp;1 &amp;</code></code></pre>
+<p>连接jconsole后观察，发现线程数一直增长，使用内存也在逐渐增加,具体情况如下图：</p>
+<p><img src="./images/一次容器化springboot程序OOM问题探险4.png" alt="file" /></p>
+<h4 id="故障原因回顾">故障原因回顾</h4>
+<p>分析到这里，基本确定了，应该是业务代码中循环创建Producer对象导致的。<br />
+在kafka生产者发送模型中封装了 Java NIO中的 ByteBuffer 用来保存消息数据，ByteBuffer的创建是非常消耗资源的，尽管设计了BufferPool来复用，但也经不住每一条消息就创建一个buffer对象，这也就是为什么jmap显示ByteBuffer占用内存最多的原因。</p>
+<h4 id="总结">总结</h4>
+<p>在日常的故障定位中，多多使用JDK自带的工具，来帮助我们辅助定位问题。一些其他的知识点：<br />
+jmap -histo显示的对象含义：</p>
+<pre><code><code>[C 代表  char[]
+[S 代表 short[]
+[I 代表 int[]
+[B 代表 byte[]
+[[I 代表 int[][]</code></code></pre>
+<p>如果导出的dump文件过大，可以将MAT上传至服务器，分析完毕后，下载分析报告查看，命令为：</p>
+<pre><code><code>./mat/ParseHeapDump.sh active.dump  org.eclipse.mat.api:suspects
+org.eclipse.mat.api:overview org.eclipse.mat.api:top_components
+</code></code></pre>
+<p>可能尽快触发Full GC的几种方式</p>
+<pre><code><code>1) System.gc();或者Runtime.getRuntime().gc();
+
+2 ) jmap -histo:live或者jmap -dump:live。
+这个命令执行，JVM会先触发gc，然后再统计信息。
+3） 老生代内存不足的时候
+ </code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

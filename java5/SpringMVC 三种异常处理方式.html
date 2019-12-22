@@ -1,0 +1,99 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringMVC 三种异常处理方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringMVC 三种异常处理方式</center></div><div class='banquan'>原文出处:本文由博客园博主lbzhello提供。<br/>
+原文连接:https://www.cnblogs.com/lbzhello/p/spring-mvc-exception.html</div><br>
+    <h2 id="springmvc-三种异常处理方式">SpringMVC 三种异常处理方式</h2>
+<p>在 SpringMVC， SpringBoot 处理 web 请求时， 若遇到错误或者异常，返回给用户一个良好的错误信息比 Whitelabel Error Page 好的多。 SpringMVC 提供了三种异常处理方式， 良好的运用它们可以给用户提供可读的错误信息。</p>
+<h4 id="实现-handlerexceptionresolver">1. 实现 HandlerExceptionResolver</h4>
+<pre><code><code>public class AppHandlerExceptionResolver implements HandlerExceptionResolver {
+    @Override
+    public ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        ModelAndView mav = new ModelAndView();
+        mav.addObject(&quot;message&quot;, ex.getMessage());
+        // 可以设置视图名导向错误页面
+        mav.setViewName(&quot;/error&quot;);
+        // 直接返回视图
+        // 如果返回 null，则会调用下一个 HandlerExceptionResolver
+        return mav;
+    }
+}</code></code></pre>
+<p>然后配置一个 HandlerExceptionResolver</p>
+<pre><code><code>@Bean
+public AppHandlerExceptionResolver appHandlerExceptionResolver() {
+    return new AppHandlerExceptionResolver();
+}</code></code></pre>
+<p>HandlerExceptionResolver 的实现类会 catch 到 @Controller 方法执行时发生的异常，处理后返回 ModelAndView 作为结果视图，因此可以通过它来定制异常视图。</p>
+<p>HandlerExceptionResolver 只能捕获 @Controller 层发生的异常（包括 @Controller 调用 @Service 发生的异常），其他地方的异常，比如访问了一个不存在的路径，不会被 HandlerExceptionResolver 捕获，此时会跳到 ErrorController 处理， 下面会说到。</p>
+<h4 id="通过-controlleradvice-和-exceptionhandler-注解">2. 通过 @ControllerAdvice 和 @ExceptionHandler 注解</h4>
+<pre><code><code>// 可以配置拦截指定的类或者包等
+// @RestControllerAdvice 使 @ExceptionHandler 注解的方法默认具有 @ResponseBody 注解
+@RestControllerAdvice(basePackageClasses = HelloWorldController.class)
+public class AppExceptionHandlerAdvice {
+
+    // 配置拦截的错误类型
+    // 这里也可以返回 ModelAndView 导向错误视图
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;Object&gt; responseEntity(Exception e) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON_UTF8);
+        Map&lt;String, Object&gt; map = new HashMap&lt;&gt;();
+        map.put(&quot;status&quot;, 400);
+        map.put(&quot;message&quot;, e.getMessage());
+        // 直接返回结果
+        return new ResponseEntity&lt;&gt;(map, headers, HttpStatus.BAD_REQUEST);
+
+    }
+}</code></code></pre>
+<p>这种方式配置的异常处理由 HandlerExceptionResolver 的默认实现类 HandlerExceptionResolverComposite 处理，因此也只能捕获 @Controller 层的异常。</p>
+<p>@ExceptionHandler 可以返回 ModelAndView 定制异常视图。</p>
+<p>@ControllerAdvice 可以拦截特定的类，@ExceptionHandler 可以拦截特定的异常，因此可以更精确的配置异常处理逻辑。</p>
+<blockquote>
+<p>@ExceptionHandler 可以在 @Controller 类中声明，此时只能处理同一个类的异常</p>
+</blockquote>
+<h4 id="自定义-errorcontroller-bean">3. 自定义 ErrorController bean</h4>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/error&quot;)
+public class AppErrorController extends AbstractErrorController {
+
+    public AppErrorController(ErrorAttributes errorAttributes) {
+        super(errorAttributes);
+    }
+
+    @RequestMapping
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; error(HttpServletRequest request) {
+        Map&lt;String, Object&gt; body = getErrorAttributes(request, false);
+        HttpStatus status = getStatus(request);
+        // 返回响应体
+        return new ResponseEntity&lt;&gt;(body, status);
+    }
+
+    @Override
+    public String getErrorPath() {
+        return &quot;/error&quot;;
+    }
+}</code></code></pre>
+<p>如果没有配置 ErrorController, SpringBoot 会通过 ErrorMvcAutoConfiguration 自动配置一个，默认的实现类为 BasicErrorController。</p>
+<p>ErrorController 可以处理非 @Controller 层抛出的异常，例如常见的访问了一个不存在的路径。</p>
+<p>ErrorController 可以进行统一的错误处理，即让 HandlerExceptionResolver 返回的 ModelAndView 导向错误页面。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

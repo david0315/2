@@ -1,0 +1,240 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修netty源码解析(4.0)-26 ByteBuf内存池PoolArena-PoolSubpage' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>netty源码解析(4.0)-26 ByteBuf内存池PoolArena-PoolSubpage</center></div><div class='banquan'>原文出处:本文由博客园博主自带buff提供。<br/>
+原文连接:https://www.cnblogs.com/brandonli/p/11642434.html</div><br>
+    <p>　　PoolChunk用来分配大于或等于一个page的内存，如果需要小于一个page的内存，需要先从PoolChunk中分配一个page，然后再把一个page切割成多个子页-subpage，最后把内存以subpage为单位分配出去。PoolSubpage就是用来管理subpage的。</p>
+<p>　　一个page会被分割成若干个大小相同的subpage，subpage的的大小是elemSize。elemSize必须是16的整数倍，即必须满足elemSize &amp; 15 == 0。elemSize的取值范围是(16, pageSize-16)。多个elemSize相等的PoolSubpage组成一个双向链表，用于分配特定大小的subpage。</p>
+<p>　　Tiny和Small类型的内存，都是用subpage来分配。Tiny内存大小范围是[16, 512)，如果把大小不同的subpage按顺序排列，除最后一个外，任意一个subpage的elemSize+16等于下一个subpage的elemSize，可以用于分配Tiny内存的subpage有512&gt;&gt;4=32种。Small内存大小范围是[512, pageSize)，subpage的elemSize=512 * 2<sup>n</sup> = 2<sup>(9+n)</sup>， 可以用于分配Small内存的subpage有n种，n的最小值是0, 最大值由pageSize决定。</p>
+<p>　　已知:</p>
+<p>　　　　elemSize &lt; pageSize</p>
+<p>　　　　pageSize可以表示为2<sup>k</sup></p>
+<p>　　　　elemSize = 2<sup>9+n</sup></p>
+<p>　　=&gt; 2<sup>9+n</sup> &lt; 2<sup>k</sup></p>
+<p>　　=&gt; 9+n &lt; k</p>
+<p>　　=&gt; n &lt; k - 9</p>
+<p>　　=&gt; n的取值范围是(0, k - 9)</p>
+<p>　　上一章中分析过pageShifts, 它就是上面推导过程中使用的变量k。</p>
+<p>&nbsp;</p>
+<h2><strong>PoolArena中的PoolSubpage数组</strong></h2>
+<p>　　PoolArena维护了两个PoolSubpage表，都是以PoolSubpage&lt;T&gt;[]数组的形式保存：</p>
+<ul>
+<li>tinySubpagePools：用于分配Tiny内存，数组长度是521 &gt;&gt; 4 = 32。</li>
+<li>smallSubpagePools: 用于分配Small内存，数组长度是pageShifts - 9。</li>
+</ul>
+<p>　　PoolArean在构造方法中初始化这两个数组:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>         tinySubpagePools =<span style="color: #000000;"> newSubpagePoolArray(numTinySubpagePools);
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; tinySubpagePools.length; i ++<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 3</span>             tinySubpagePools[i] =<span style="color: #000000;"> newSubpagePoolHead(pageSize);
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>         numSmallSubpagePools = pageShifts - 9<span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span>         smallSubpagePools =<span style="color: #000000;"> newSubpagePoolArray(numSmallSubpagePools);
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; smallSubpagePools.length; i ++<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 9</span>             smallSubpagePools[i] =<span style="color: #000000;"> newSubpagePoolHead(pageSize);
+</span><span style="color: #008080;">10</span>         }</code></pre>
+
+<p>　　代码中的numTinySubpagePools=512&gt;&gt;4和numSmallSubpagePools=pageShifts - 9,分别是两个数组的长度。这两个数组保存的都是PoolSubpage双向链表的头节点，头节点不能用来分配内存。</p>
+<p>　　findSubpagePoolHead方法可以根据elemSize找到对应的PoolSubpage链表的头节点:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     PoolSubpage&lt;T&gt; findSubpagePoolHead(<span style="color: #0000ff;">int</span><span style="color: #000000;"> elemSize) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span><span style="color: #000000;"> tableIdx;
+</span><span style="color: #008080;"> 3</span>         PoolSubpage&lt;T&gt;<span style="color: #000000;">[] table;
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">if</span> (isTiny(elemSize)) { <span style="color: #008000;">//</span><span style="color: #008000;"> &lt; 512</span>
+<span style="color: #008080;"> 5</span>             tableIdx = elemSize &gt;&gt;&gt; 4<span style="color: #000000;">;
+</span><span style="color: #008080;"> 6</span>             table =<span style="color: #000000;"> tinySubpagePools;
+</span><span style="color: #008080;"> 7</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 8</span>             tableIdx = 0<span style="color: #000000;">;
+</span><span style="color: #008080;"> 9</span>             elemSize &gt;&gt;&gt;= 10<span style="color: #000000;">;
+</span><span style="color: #008080;">10</span>             <span style="color: #0000ff;">while</span> (elemSize != 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">11</span>                 elemSize &gt;&gt;&gt;= 1<span style="color: #000000;">;
+</span><span style="color: #008080;">12</span>                 tableIdx ++<span style="color: #000000;">;
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">14</span>             table =<span style="color: #000000;"> smallSubpagePools;
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> table[tableIdx];
+</span><span style="color: #008080;">18</span>     }</code></pre>
+
+<p>　　4-6行，如果是Tiny内存，计算elemSize在tinySubpagePools中的偏移量tableIdx。</p>
+<p>　　8-14行，如果是Normal内存，计算elemSize在smallSubpagePools中的偏移量tabIeIdx。计算tableIdx的算法是把elemSize无符号右移10位之后，找非0的最高位，在找的过程中累加tableIdx，找到之后及得到了正确的偏移量。这个算法还可以简化成log2(elemSize) - 9。</p>
+<p>　　17行，取出一个PoolSubpage链表头。</p>
+<p>　　</p>
+<h2>PoolSubpage初始化</h2>
+<p>　　在PoolChunk的allocateSubpage方法中，调用findSubpagePoolHead得到一个head，然后使用分配到的二叉树内存节点初始化一个PoolSubpage节点。一个能用来分配内存的PooSubpage节点可以调用构造方法或init方法进行初始化。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     PoolSubpage(PoolSubpage&lt;T&gt; head, PoolChunk&lt;T&gt; chunk, <span style="color: #0000ff;">int</span> memoryMapIdx, <span style="color: #0000ff;">int</span> runOffset, <span style="color: #0000ff;">int</span> pageSize, <span style="color: #0000ff;">int</span><span style="color: #000000;"> elemSize) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">this</span>.chunk =<span style="color: #000000;"> chunk;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">this</span>.memoryMapIdx =<span style="color: #000000;"> memoryMapIdx;
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">this</span>.runOffset =<span style="color: #000000;"> runOffset;
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">this</span>.pageSize =<span style="color: #000000;"> pageSize;
+</span><span style="color: #008080;"> 6</span>         bitmap = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">long</span>[pageSize &gt;&gt;&gt; 10]; <span style="color: #008000;">//</span><span style="color: #008000;"> pageSize / 16 / 64</span>
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">        init(head, elemSize);
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">    }</span><span style="color: #008080;"><br /></span></code></pre>
+
+<p>　　这个构造方法只是做了一些简单的属性初始化工作。第6行初始bitmap，它用bit位来记录每个subpage的使用情况，每个bit对应一个subpage，0表示subpage空闲，1表示subpage已经被分配出去。一个subpage的大小是elemSize，前面已经讲过，最小的elemSize=16,&nbsp; 那么一个page最多可分割成subpage的数量maxSubpageCount=pageSize/16=pageSize &gt;&gt; 4。bitmap是个long型的数字，每个long数据有64位，因此bitmap的最大长度只需要maxBitmapLength = maxSubpageCount / 64 = pageSize / 16 / 64 = pageSize &gt;&gt; 10就够用了。</p>
+<p>　　init方法的作用是根据elemSize计算出有效的bitmap长度bitmapLength，然后把bitmapLength范围内存的bit值都初始化为0。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">void</span> init(PoolSubpage&lt;T&gt; head, <span style="color: #0000ff;">int</span><span style="color: #000000;"> elemSize) {
+</span><span style="color: #008080;"> 2</span>         doNotDestroy = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">this</span>.elemSize =<span style="color: #000000;"> elemSize;
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">if</span> (elemSize != 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 5</span>             maxNumElems = numAvail = pageSize /<span style="color: #000000;"> elemSize;
+</span><span style="color: #008080;"> 6</span>             nextAvail = 0<span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span>             bitmapLength = maxNumElems &gt;&gt;&gt; 6<span style="color: #000000;">;
+</span><span style="color: #008080;"> 8</span>             <span style="color: #0000ff;">if</span> ((maxNumElems &amp; 63) != 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 9</span>                 bitmapLength ++<span style="color: #000000;">;
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>             <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; bitmapLength; i ++<span style="color: #000000;">) {
+</span><span style="color: #008080;">13</span>                 bitmap[i] = 0<span style="color: #000000;">;
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">        addToPool(head);
+</span><span style="color: #008080;">17</span>     }</code></pre>
+
+<p>　　第5行，初始subpage的最大数量maxNumElems和可用数量numAvail。</p>
+<p>　　第6行，初始化下一个可用subpage的索引。</p>
+<p>　　第7行, 计算bitmap的有效数量，bitmapLength = maxNumElems &gt;&gt;&gt; 6 = maxNumElems / 64。</p>
+<p>　　第8,9行，如果maxNumElems不是64的整数倍，bitmapLength需要额外加1。</p>
+<p>　　第12-14行，有效长度的bitmap值都设置成0。</p>
+<p>　　第16行, 把当前PoolSubpage节点添加到head后面。</p>
+<p>　　bitmap位的索引范围是[0, maxNumElems)。</p>
+<p>　　</p>
+<h2>分配一个subpage</h2>
+<p>　　PoolSubpage初始化完成之后，调用allocate可以分配一个subpage，返回的是一个long型的的handle，这个handle代表一块内存。handle的低32位memoryMapIdx，是PoolChunk中二叉树节点的索引；高32位bitmapIdx，是subpage在bitmap中对应位的索引。</p>
+<p>　　分配一个subpage有两个步骤:</p>
+<ol>
+<li>找到一个可用subpage的索引bitmapIdx</li>
+<li>把这个bitmapIdx在bitmap中对应的bit为置为1</li>
+</ol>
+<p>　　findNextAvail方法负责到底一个可用的subpage并返回它的bitmapIdx。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> findNextAvail() {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span>[] bitmap = <span style="color: #0000ff;">this</span><span style="color: #000000;">.bitmap;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> bitmapLength = <span style="color: #0000ff;">this</span><span style="color: #000000;">.bitmapLength;
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; bitmapLength; i ++<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">long</span> bits =<span style="color: #000000;"> bitmap[i];
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">if</span> (~bits != 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 7</span>                 <span style="color: #0000ff;">return</span><span style="color: #000000;"> findNextAvail0(i, bits);
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> findNextAvail0(<span style="color: #0000ff;">int</span> i, <span style="color: #0000ff;">long</span><span style="color: #000000;"> bits) {
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> maxNumElems = <span style="color: #0000ff;">this</span><span style="color: #000000;">.maxNumElems;
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> baseVal = i &lt;&lt; 6<span style="color: #000000;">;
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> j = 0; j &lt; 64; j ++<span style="color: #000000;">) {
+</span><span style="color: #008080;">18</span>             <span style="color: #0000ff;">if</span> ((bits &amp; 1) == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">19</span>                 <span style="color: #0000ff;">int</span> val = baseVal |<span style="color: #000000;"> j;
+</span><span style="color: #008080;">20</span>                 <span style="color: #0000ff;">if</span> (val &lt;<span style="color: #000000;"> maxNumElems) {
+</span><span style="color: #008080;">21</span>                     <span style="color: #0000ff;">return</span><span style="color: #000000;"> val;
+</span><span style="color: #008080;">22</span>                 } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">23</span>                     <span style="color: #0000ff;">break</span><span style="color: #000000;">;
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">26</span>             bits &gt;&gt;&gt;= 1<span style="color: #000000;">;
+</span><span style="color: #008080;">27</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">28</span>         <span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+</span><span style="color: #008080;">29</span>     }</code></pre>
+
+<p>　　第1-11行，变量bitmap数组，找到一个至少有一位是0的long数据。~bits != 0 说明bits中至少有一位是0。然后调用findNextAvail0找到bits中为0的最低位。</p>
+<p>　　第15行，计算bitmap数组中的索引i对应的bit索引baseVal = i &lt;&lt; 6 = i * 64。</p>
+<p>　　第17-27行，遍历bits的每个bit位，遇到为0的bit后在19计算回bitmpaIdx = baseVal | j，j表示bit位在long数据中bit索引。如果满足bitmapIdx &lt; maxNumElems在21返回。</p>
+<p>　　第28行，如果没找到可用的subpage, 返回-1。当maxNumElems不是64的整数倍时，bitmap数组中最后一个bits在~bits != 0的情况下可能已经没有subpage可用。</p>
+<p>　　</p>
+<p>　　allcate方法是分配supage的入口，它调用getNextAvail得到一个supage的bitmapIdx,&nbsp; getNextAvail在nextAvail属性为-1的时候，调用findNexAvail。然后把bitmapIdx对应的bit为置为1，最后返回handle。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">long</span><span style="color: #000000;"> allocate() {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">if</span> (elemSize == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 3</span>             <span style="color: #0000ff;">return</span> toHandle(0<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">if</span> (numAvail == 0 || !<span style="color: #000000;">doNotDestroy) {
+</span><span style="color: #008080;"> 7</span>             <span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span>         <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> bitmapIdx =<span style="color: #000000;"> getNextAvail();
+</span><span style="color: #008080;">11</span>         <span style="color: #0000ff;">int</span> q = bitmapIdx &gt;&gt;&gt; 6<span style="color: #000000;">;
+</span><span style="color: #008080;">12</span>         <span style="color: #0000ff;">int</span> r = bitmapIdx &amp; 63<span style="color: #000000;">;
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">assert</span> (bitmap[q] &gt;&gt;&gt; r &amp; 1) == 0<span style="color: #000000;">;
+</span><span style="color: #008080;">14</span>         bitmap[q] |= 1L &lt;&lt;<span style="color: #000000;"> r;
+</span><span style="color: #008080;">15</span> 
+<span style="color: #008080;">16</span>         <span style="color: #0000ff;">if</span> (-- numAvail == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">            removeFromPool();
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">19</span> 
+<span style="color: #008080;">20</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> toHandle(bitmapIdx);
+</span><span style="color: #008080;">21</span>     }</code></pre>
+
+<p>　　第10行，得到下一个可用的subpage在bitmap中的索引bitmapIdx。</p>
+<p>　　第11行，计算bitmapIdx在bitpmap数组中索引，q = bitmapIdx &gt;&gt;&gt; 6 = (int)(bitmapIdx/64)。</p>
+<p>　　第12行，计算bitmapIdx对应的bit在long数据中的位索引r，表示q对应的long数据的第r位就是。</p>
+<p>　　第14行，把bitmapIdx对应的bit为设置为1。</p>
+<p>　　第16,17行，把可用subpage数numAvail减1，如果numAvail==0表示当前PoolSubpage节点已经没有可用的subpage了，调用removeFromPool把它从链表中删除。</p>
+<p>　　第20行，把bitmapIdx转换成表示内存的handle，算法是:&nbsp; handle = 0x4000000000000000L | (long) bitmapIdx &lt;&lt; 32 | memoryMapIdx;</p>
+<p>　　</p>
+<h2>释放一个subpage</h2>
+<p>　　free方法实现了subpage释放的功能，和allocate相比要简单的多，它的主要工作是把bitmapIdx对应的bit为设置为0，还顺便做了一下清理善后工作。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">boolean</span> free(PoolSubpage&lt;T&gt; head, <span style="color: #0000ff;">int</span><span style="color: #000000;"> bitmapIdx) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">if</span> (elemSize == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 3</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">int</span> q = bitmapIdx &gt;&gt;&gt; 6<span style="color: #000000;">;
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">int</span> r = bitmapIdx &amp; 63<span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span>         <span style="color: #0000ff;">assert</span> (bitmap[q] &gt;&gt;&gt; r &amp; 1) != 0<span style="color: #000000;">;
+</span><span style="color: #008080;"> 8</span>         bitmap[q] ^= 1L &lt;&lt;<span style="color: #000000;"> r;
+</span><span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span> <span style="color: #000000;">        setNextAvail(bitmapIdx);
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>         <span style="color: #0000ff;">if</span> (numAvail ++ == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">            addToPool(head);
+</span><span style="color: #008080;">14</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span>         <span style="color: #0000ff;">if</span> (numAvail !=<span style="color: #000000;"> maxNumElems) {
+</span><span style="color: #008080;">18</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">19</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">20</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> Subpage not in use (numAvail == maxNumElems)</span>
+<span style="color: #008080;">21</span>             <span style="color: #0000ff;">if</span> (prev ==<span style="color: #000000;"> next) {
+</span><span style="color: #008080;">22</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> Do not remove if this subpage is the only one left in the pool.</span>
+<span style="color: #008080;">23</span>                 <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">25</span> 
+<span style="color: #008080;">26</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> Remove this subpage from the pool if there are other subpages left in the pool.</span>
+<span style="color: #008080;">27</span>             doNotDestroy = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">            removeFromPool();
+</span><span style="color: #008080;">29</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">31</span>     }</code></pre>
+
+<p>　　第5,6行，和allocate中解释过。</p>
+<p>　　第8行，把bitmapIdx对应的bit为置为0。</p>
+<p>　　第10行，把这个bitmapIdx赋值给nextAvail属性，这样在一次或多次调用free之后的第一次allocate调用就不会调用findNextAvail方法，可以提升allocate的性能。</p>
+<p>　　第12,13行，当前PoolSubpage节点中至少有一个可用的subpage，把当前节点添加到链表中。</p>
+<p>　　第27-29行，当前PooSubpage节点中所有分配出去的节点都全部还会来了，换言之，当前节点有回到bitmap初始化状态，把当前节点从链表中删除。</p>
+<p>&nbsp;&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

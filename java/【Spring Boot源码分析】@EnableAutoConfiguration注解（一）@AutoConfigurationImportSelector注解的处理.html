@@ -1,0 +1,372 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Spring Boot源码分析】@EnableAutoConfiguration注解（一）@AutoConfigurationImportSelector注解的处理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Spring Boot源码分析】@EnableAutoConfiguration注解（一）@AutoConfigurationImportSelector注解的处理</center></div><div class='banquan'>原文出处:本文由博客园博主沙木鱼提供。<br/>
+原文连接:https://www.cnblogs.com/desertfish/p/11637933.html</div><br>
+    <h2>一、概述</h2>
+<src>@EnableAutoConfiguration注解是Spring Boot中配置自动装载的总开关。本文将从@EnableAutoConfiguration入手，尝试通过源码分析增强对Spring Boot的理解。
+<src>&nbsp;
+<src>所用版本：Spring Boot 2.2.0.M5 + Spring Framework 5.2.0.RC1
+<src>&nbsp;
+<h3>1. 功能的实现：（Spring Boot部分）</h3>
+<src>
+<src>boot.autoconfigure.EnableAutoConfiguration注解
+<src>&nbsp; -&gt; @Import了一个AutoConfigurationImportSelector实例
+<src>&nbsp; -&gt; AutoConfigurationImportSelector类（implement&nbsp;<span style="background-color: #ffff00;">ImportSelector</span>），实现了<span style="background-color: #ffff00;">selectImports()</span>&nbsp;方法，用来筛选被@Import的Configuration类（减去exclude等）
+<p>&nbsp;</p>
+<h3>2. 接口的调度：（Spring部分）</h3>
+<src>context.annotation.ConfigurationClassParser类的parse() 方法
+<src>&nbsp; &nbsp; -&gt; 调用对应不同BeanDefinition类型的parse() 方法
+<src>&nbsp; &nbsp; |&nbsp; &nbsp;-&gt; 调用context.annotation.ConfigurationClassParser.doProcessConfigurationClass()方法处理ConfigurationClass
+<src>&nbsp; &nbsp; |&nbsp; &nbsp; &nbsp; &nbsp;-&gt; 调用<span style="background-color: #ffcc00;">processImports()</span>方法来处理所有@Import注解
+<src>&nbsp; &nbsp; |&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;-&gt; 遍历每个@Import标签，生成被注入的<span style="background-color: #ffff00;">ImportSelector子类</span>的实例
+<src>&nbsp; &nbsp; |&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;-&gt; 对于普通ImportSelector，调用其<span style="background-color: #ffff00;">selectImport()方法</span>，筛掉exclude的，再嵌套<span style="background-color: #ffcc00;">processImports()</span>，对需要被@Import的类的@Import注解进行处理
+<src>&nbsp; &nbsp; |&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;-&gt; 对于DefferedImportSelector，只加入deferredImportSelectors列表中
+<src>&nbsp; &nbsp; -&gt; 对defferedImportImportSelectors调用相应handler的process()方法进行处理
+<src>&nbsp; &nbsp; &nbsp; &nbsp; -&gt; 对DefferedImportImportSelector调用<span style="background-color: #ffcc00;">processImports()</span>
+<p>&nbsp;</p>
+<h3>3. 接口在框架中的位置：（其中一条路径，由顶向下）</h3>
+<src>【Spring Boot部分】
+<src>boot.SpringApplication.main() 或 ApplicationStarter.main()
+<src>boot.SpringApplication.run()
+<src>boot.SpringApplication.refreshContext()
+<src>boot.SpringApplication.refresh()
+<src>boot.web.servlet.context.ServletWebServerApplicationContext.refresh()
+<src>【Spring部分】
+<src>context.support.AbstractApplicationContext.refresh()
+<src>context.support.AbstractApplicationContext.invokeBeanFactoryPostProcessors()
+<src>context.support.PostPreprocessorRegistrationDelegate.invokeBeanFactoryPostProcessors()
+<src>context.annotation.ConfigurationClassPostProcessor.postProcessBeanFactory()
+<src>context.annotation.ConfigurationClassPostProcessor.processConfigBeanDefinitions()
+<src>context.annotation.ConfigurationClassParser.parse()&nbsp; <span style="color: #ff0000;">（正是上一小结所述接口）</span>
+<p><strong>&nbsp;</strong></p>
+<h2>二、源码细节</h2>
+<h3><strong>(SpringBoot) boot.autoconfigure.EnableAutoConfiguration注解</strong></h3>
+<src class="cnblogs_Highlighter">
+<pre><code>@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@AutoConfigurationPackage
+@Import(AutoConfigurationImportSelector.class) // 载入selector,识别AutoConfigutaion类并import
+public @interface EnableAutoConfiguration {
+	String ENABLED_OVERRIDE_PROPERTY = "spring.boot.enableautoconfiguration";
+	// @interface的参数,以方法形式声明
+	Class&lt;?&gt;[] exclude() default {};
+	String[] excludeName() default {};
+}
+</code></pre>
+
+<src>&nbsp;
+<src>@EnableAutoConfiguration注解有两个参数和一个属性变量。
+<src>注入了一个AutoConfigurationImportSelector类实例，看起来应该是用于筛选AutoConfiguration的Import的。
+<src>@AutoConfigurationPackage待以后另行分析。
+<p>&nbsp;</p>
+<h3><strong><strong>(SpringBoot)&nbsp;boot.</strong>autoconfigure.AutoConfigurationImportSelector类</strong></h3>
+<src class="cnblogs_Highlighter">
+<pre><code>    public class AutoConfigurationImportSelector implements DeferredImportSelector, BeanClassLoaderAware,
+		ResourceLoaderAware, BeanFactoryAware, EnvironmentAware, Ordered {
+    //......
+    @Override
+	public String[] selectImports(AnnotationMetadata annotationMetadata) {
+		// 如果AutoConfiguration没开,返回{}
+		if (!isEnabled(annotationMetadata)) {
+			return NO_IMPORTS;
+		}
+		// 将spring-autoconfigure-metadata.properties的键值对配置载入到PropertiesAutoConfigurationMetadata对象中并返回
+		AutoConfigurationMetadata autoConfigurationMetadata = AutoConfigurationMetadataLoader
+				.loadMetadata(this.beanClassLoader);
+        // 基于各种配置计算需要import的configuration和exclusion
+		AutoConfigurationEntry autoConfigurationEntry = getAutoConfigurationEntry(autoConfigurationMetadata,
+				annotationMetadata);
+		return StringUtils.toStringArray(autoConfigurationEntry.getConfigurations());
+	}
+            
+    // 判断AudoConfiguration是否开启
+	protected boolean isEnabled(AnnotationMetadata metadata) {
+		if (getClass() == AutoConfigurationImportSelector.class) {
+			// 如果配置文件中有"spring.boot.enableautoconfiguration",返回该字段的值;否则返回true
+			return getEnvironment().getProperty(EnableAutoConfiguration.ENABLED_OVERRIDE_PROPERTY, Boolean.class, true);
+		}
+		return true;
+	}
+            
+    protected AutoConfigurationEntry getAutoConfigurationEntry(AutoConfigurationMetadata autoConfigurationMetadata,
+			AnnotationMetadata annotationMetadata) {
+		if (!isEnabled(annotationMetadata)) {
+			return EMPTY_ENTRY;
+		}
+		// 获取注解的属性值
+		AnnotationAttributes attributes = getAttributes(annotationMetadata);
+		// 从META-INF/spring.factories文件中获取EnableAutoConfiguration所对应的configurations
+		List&lt;String&gt; configurations = getCandidateConfigurations(annotationMetadata, attributes);
+		// 去重,List转Set再转List
+		configurations = removeDuplicates(configurations);
+		// 从注解的exclude/excludeName属性中获取排除项
+		Set&lt;String&gt; exclusions = getExclusions(annotationMetadata, attributes);
+		// 对于不属于AutoConfiguration的exclude报错
+		checkExcludedClasses(configurations, exclusions);
+		// 从configurations去除exclusions
+		configurations.removeAll(exclusions);
+		// 由所有AutoConfigurationImportFilter类的实例再进行一次筛选,去
+		configurations = filter(configurations, autoConfigurationMetadata);
+		// 把AutoConfigurationImportEvent绑定在所有AutoConfigurationImportListener子类实例上
+		fireAutoConfigurationImportEvents(configurations, exclusions);
+		// 返回(configurations, exclusions)组
+		return new AutoConfigurationEntry(configurations, exclusions);
+	}
+    // ......
+}
+</code></pre>
+
+<p>&nbsp;</p>
+<src>可见selectImports()是AutoConfigurationImportSelector的核心函数，其核心功能就是获取spring.factories中EnableAutoConfiguration所对应的Configuration类列表，由@EnableAutoConfiguration注解中的exclude/excludeName参数筛选一遍，再由AutoConfigurationImportFilter类所有实例筛选一遍，得到最终的用于Import的configuration和exclusion。
+<src>该函数是被谁调用的呢？在org.springframework.context.annotation.ConfigurationClassParser类中被processImports()调用，而processImports()函数被doProcessConfigurationClass()调用。下面从doProcessConfigurationClass() 看起。
+<src>&nbsp;
+<src>&nbsp;
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.doProcessConfigurationClass()方法</strong></h3>
+<p>其中，configClass是一个ConfigurationClass实例，记录了bean name（返回的bean名）和meta data（配置数据）；sourceClass是简单封装后的有注解的类，主要方便对类的注解的使用，初始值是封装过的configClass。</p>
+<src>doProcessConfigurationClass()&nbsp;对ConfigurationClass进行了各种配置，包括process @ComponentScan, process @Bean, process @Import等等。如果该SourceClass有父类，返回父类，否则返回null。
+<p>&nbsp;</p>
+<src class="cnblogs_Highlighter">
+<pre><code>        @Nullable
+	protected final SourceClass doProcessConfigurationClass(ConfigurationClass configClass, SourceClass sourceClass)
+			throws IOException {
+		// ......
+		// Process any @Import annotations
+		processImports(configClass, sourceClass, getImports(sourceClass), true); 
+
+		// ......
+		// Process superclass, if any
+		if (sourceClass.getMetadata().hasSuperClass()) {
+			String superclass = sourceClass.getMetadata().getSuperClassName();
+			if (superclass != null &amp;&amp; !superclass.startsWith("java") &amp;&amp;
+					!this.knownSuperclasses.containsKey(superclass)) {
+				this.knownSuperclasses.put(superclass, configClass);
+				// Superclass found, return its annotation metadata and recurse
+				return sourceClass.getSuperClass();
+			}
+		}
+
+		// No superclass -&gt; processing is complete
+		return null;
+	}   
+</code></pre>
+
+<p>&nbsp;</p>
+<p>其中，processImports()方法的第三个参数中，getImports()方法嵌套的遍历了sourceClass的注解，搜集所有@Import注解的值，即被Import的类名集合。</p>
+<p>&nbsp;</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	private Set&lt;SourceClass&gt; getImports(SourceClass sourceClass) throws IOException {
+		Set&lt;SourceClass&gt; imports = new LinkedHashSet&lt;&gt;();
+		Set&lt;SourceClass&gt; visited = new LinkedHashSet&lt;&gt;();
+		collectImports(sourceClass, imports, visited);
+		return imports;
+	}
+
+	private void collectImports(SourceClass sourceClass, Set&lt;SourceClass&gt; imports, Set&lt;SourceClass&gt; visited)
+			throws IOException {
+        // 如果是头一次添加
+		if (visited.add(sourceClass)) {
+			for (SourceClass annotation : sourceClass.getAnnotations()) {
+				String annName = annotation.getMetadata().getClassName();
+                // 当前注解的类名是否是Import
+				if (!annName.equals(Import.class.getName())) { 
+                    // 嵌套遍历被Import的类
+					collectImports(annotation, imports, visited);
+				}
+			}
+            // 增加Import注解的值，即被Import的类名
+			imports.addAll(sourceClass.getAnnotationAttributes(Import.class.getName(), "value"));
+		}
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.processImports()方法</strong></h3>
+<p>processImports() 的第一个参数configClass，是上层函数processConfigurationClass()的唯一参数，即被处理的Configuration类。第二个参数currentSourceClass是configClass的SourceClass类封装。第三个参数是嵌套遍历出的所有需要被Import的类。第四个参数指定是否检查循环import。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	private void processImports(ConfigurationClass configClass, SourceClass currentSourceClass,
+			Collection&lt;SourceClass&gt; importCandidates, boolean checkForCircularImports) {
+
+		// ......
+				for (SourceClass candidate : importCandidates) {
+                    // 如果candidate（即被@Import的类）是ImportSelector的子类
+					if (candidate.isAssignable(ImportSelector.class)) {
+						// Candidate class is an ImportSelector -&gt; delegate to it to determine imports
+						Class&lt;?&gt; candidateClass = candidate.loadClass();
+                        // 生成candidate class（一个ImportSelector子类）的实例
+						ImportSelector selector = BeanUtils.instantiateClass(candidateClass, ImportSelector.class);
+                        // 将ImportSelector子类实例挂载为对应功能的Aware类（用于消息通知？）
+						ParserStrategyUtils.invokeAwareMethods(
+								selector, this.environment, this.resourceLoader, this.registry);
+                        // DeferredImportSelector是一种特殊的ImportSelector，这里单独处理
+						if (selector instanceof DeferredImportSelector) {
+                            // 挂到deferredImportSelectors列表上
+							this.deferredImportSelectorHandler.handle(configClass, (DeferredImportSelector) selector);
+						}
+						else {
+                            // 筛选符合要求的@Import的名字
+							String[] importClassNames = selector.selectImports(currentSourceClass.getMetadata());
+                            // 转换成名字对应的类的集合
+							Collection&lt;SourceClass&gt; importSourceClasses = asSourceClasses(importClassNames);
+                            // 嵌套判断被@Import的类是不是还有@Import注解
+							processImports(configClass, currentSourceClass, importSourceClasses, false);
+						}
+					}
+					// ......
+				}
+		// ......
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.DefferedImportSelectorHandler私有类</strong></h3>
+<p>deferredImportSelectors已被初始化为ArrayList&lt;&gt;()，因此全部走else分支。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>private class DeferredImportSelectorHandler {
+		@Nullable
+		private List&lt;DeferredImportSelectorHolder&gt; deferredImportSelectors = new ArrayList&lt;&gt;();
+
+		public void handle(ConfigurationClass configClass, DeferredImportSelector importSelector) {
+			DeferredImportSelectorHolder holder = new DeferredImportSelectorHolder(
+					configClass, importSelector); // 一个封装后的pair
+            // deferredImportSelectors被初始化为ArrayList&lt;&gt;()，所以if分支永远不会执行到？
+			if (this.deferredImportSelectors == null) { 
+				DeferredImportSelectorGroupingHandler handler = new DeferredImportSelectorGroupingHandler();
+				handler.register(holder); // 注册到DeferredImportSelectorGroupingHandler.configurationClasses中
+				handler.processGroupImports(); // -&gt; processImports()
+			}
+			else {
+                // 所有的DeferredImportSelector类实例都挂到deferredImportSelectors列表上
+				this.deferredImportSelectors.add(holder);
+			}
+		}
+        // ......
+}
+</code></pre>
+
+<p>　　</p>
+<src>那么deferredImportSelectors上挂载的DefferedImportSelector类是何时处理的呢？
+<src>doProcessConfigurationClass() 方法被processConfigurationClass() 调用，而processConfigurationClass() 被parse() 调用。可以看到在处理完所有的普通ImportSelector类后，即嵌套载入需要的被Import的类的实例之后，再统一处理DefferedImportSelector类。
+<src>&nbsp;
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.processConfigurationClass() 方法</strong></h3>
+<src>
+<src class="cnblogs_Highlighter">
+<pre><code>    protected void processConfigurationClass(ConfigurationClass configClass) throws IOException {
+        // ...
+
+        // Recursively process the configuration class and its superclass hierarchy.
+        SourceClass sourceClass = asSourceClass(configClass);
+        do {
+            // 如果sourceClass有父类会返回父类，否则返回null
+            sourceClass = doProcessConfigurationClass(configClass, sourceClass);
+        }
+        while (sourceClass != null);
+
+        this.configurationClasses.put(configClass, configClass);
+    }
+</code></pre>
+
+<p>　　</p>
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.parse() 方法</strong></h3>
+<src class="cnblogs_Highlighter">
+<pre><code>        public void parse(Set&lt;BeanDefinitionHolder&gt; configCandidates) {
+    	// 处理所有的ImportSelector类，其中DeferredImportSelector类只挂在deferredImportSelectorHandler列表上不处理，其他均处理，即嵌套遍历被Import的类
+		for (BeanDefinitionHolder holder : configCandidates) {
+			BeanDefinition bd = holder.getBeanDefinition();
+			try {
+				if (bd instanceof AnnotatedBeanDefinition) {
+					parse(((AnnotatedBeanDefinition) bd).getMetadata(), holder.getBeanName());
+				}
+				else if (bd instanceof AbstractBeanDefinition &amp;&amp; ((AbstractBeanDefinition) bd).hasBeanClass()) {
+					parse(((AbstractBeanDefinition) bd).getBeanClass(), holder.getBeanName());
+				}
+				else {
+					parse(bd.getBeanClassName(), holder.getBeanName());
+				}
+			}
+			catch (BeanDefinitionStoreException ex) {
+				throw ex;
+			}
+			catch (Throwable ex) {
+				throw new BeanDefinitionStoreException(
+						"Failed to parse configuration class [" + bd.getBeanClassName() + "]", ex);
+			}
+		}
+		
+    	// 处理deferredImportSelectorHandler上挂着的DeferredImportSelector类
+		this.deferredImportSelectorHandler.process();
+	}
+
+	protected final void parse(@Nullable String className, String beanName) throws IOException {
+		Assert.notNull(className, "No bean class name for configuration class bean definition");
+		MetadataReader reader = this.metadataReaderFactory.getMetadataReader(className);
+		processConfigurationClass(new ConfigurationClass(reader, beanName));
+	}
+
+	protected final void parse(Class&lt;?&gt; clazz, String beanName) throws IOException {
+		processConfigurationClass(new ConfigurationClass(clazz, beanName));
+	}
+
+	protected final void parse(AnnotationMetadata metadata, String beanName) throws IOException {
+		processConfigurationClass(new ConfigurationClass(metadata, beanName));
+	}
+</code></pre>
+
+<p>　　</p>
+
+<p>再来看看DeferredImportSelector实例是如何被处理的。</p>
+<p>&nbsp;</p>
+<h3><strong>(Spring) context.annotation.ConfigurationClassParser.DefferedImportSelectorHandler私有类</strong></h3>
+<p>和普通ConfigurationClass一样，DefferedImportSelector最后也是先注册到列表中，再依次嵌套处理，只不过在import前多了一个根据order排序。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	// 对@Order(...)进行排序
+	private static final Comparator&lt;DeferredImportSelectorHolder&gt; DEFERRED_IMPORT_COMPARATOR =
+			(o1, o2) -&gt; AnnotationAwareOrderComparator.INSTANCE.compare(o1.getImportSelector(), o2.getImportSelector());
+
+	private class DeferredImportSelectorHandler {
+    	// ...
+    	public void process() {
+			List&lt;DeferredImportSelectorHolder&gt; deferredImports = this.deferredImportSelectors;
+			this.deferredImportSelectors = null;
+			try {
+				if (deferredImports != null) {
+					DeferredImportSelectorGroupingHandler handler = new DeferredImportSelectorGroupingHandler();
+					deferredImports.sort(DEFERRED_IMPORT_COMPARATOR);
+                    // 添加到handler的configurationClasses列表中
+					deferredImports.forEach(handler::register);
+                    // 对handler中每个grouping的每个configClass，调用processImports()
+					handler.processGroupImports();
+				}
+			}
+			finally {
+				this.deferredImportSelectors = new ArrayList&lt;&gt;();
+			}
+		}
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>DONE.</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

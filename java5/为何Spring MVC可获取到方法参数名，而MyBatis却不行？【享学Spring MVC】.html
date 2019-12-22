@@ -1,0 +1,392 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11532689.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>胡适：多谈些问题，少聊些主义</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p><code>Spring MVC</code>和<code>MyBatis</code>作为当下最为流行的两个框架，大家平时开发中都在用。如果你往深了一步去思考，你应该会有这样的疑问：</p>
+<ul>
+<li>在使用<code>Spring MVC</code>的时候，你即使不使用注解，只要参数名和请求参数的key对应上了，就能自动完成数值的封装</li>
+<li>在使用<code>MyBatis</code>（接口模式）时，接口方法向xml里的SQL语句传参时，<code>必须（当然不是100%的必须，特殊情况此处不做考虑）</code>使用<code>@Param('')</code>指定key值，在SQL中才可以取到</li>
+</ul>
+<p>我敢相信这绝不是我一个人的疑问，因为我在第一次使用<code>MyBatis</code>的时候就产生过这个疑问并且也尝试过去掉<code>@Param</code>注解，因为我觉得一个名称让我写两次是有点多此一举的（我太懒了）。<br />
+和<code>Spring MVC</code>人性化处理比起来，当时觉得<code>MyBatis</code>对这块的处理简直弱爆了。费解了这么长时间，今天我终于可以解释这个现象了，来揭开它的面纱~</p>
+<h4 id="问题发现">问题发现</h4>
+<p><code>java</code>使用者都知道，<code>.java</code>文件属于源码文件，它需要经过了<code>javac</code>编译器编译为<code>.class</code>字节码文件才能被<code>JVM</code>执行的。<br />
+对<code>.class</code>字节码稍微有点了解的小伙伴应该也知道这一点：<code>Java</code>在编译的时候对于方法，<strong>默认是<code>不会</code>保留方法参数名</strong>，因此如果我们在运行期想从<code>.class</code>字节码里直接拿到方法的参数名是做不到的。</p>
+<p>如下案例，很明显就是获取不到真实参数名喽：</p>
+<pre><code><code>public static void main(String[] args) throws NoSuchMethodException {
+    Method method = Main.class.getMethod(&quot;test1&quot;, String.class, Integer.class);
+    int parameterCount = method.getParameterCount();
+    Parameter[] parameters = method.getParameters();
+
+    // 打印输出：
+    System.out.println(&quot;方法参数总数：&quot; + parameterCount);
+    Arrays.stream(parameters).forEach(p -&gt; System.out.println(p.getType() + &quot;----&quot; + p.getName()));
+}</code></code></pre>
+<p>打印内容：</p>
+<pre><code><code>方法参数总数：2
+class java.lang.String----arg0
+class java.lang.Integer----arg1</code></code></pre>
+<p>从结果中可以看到我们并不能获取到<strong>真实方法参数名</strong>（获取到的是无意义的<code>arg0、arg1</code>等），<strong>这个结果符合我们的理论知识以及预期</strong>。</p>
+<p>若你有一定技术敏感性，这个时候你应该有这样的疑问：在使用<code>Spring MVC</code>的时候，<code>Controller</code>的方法中不使用注解一样可以自动封装啊，形如这样：</p>
+<pre><code><code>@GetMapping(&quot;/test&quot;)
+public Object test(String name, Integer age) {
+    String value = name + &quot;---&quot; + age;
+    System.out.println(value);
+    return value;
+}</code></code></pre>
+<p>请求：<code>/test?name=fsx&amp;age=18</code>。控制台输出：</p>
+<pre><code><code>fsx---18</code></code></pre>
+<p>从结果中可见：看似办不到的case，<code>Spring MVC</code>竟然给做到了（获取到了方法参数名，进而完成封装），是不是有点不可思议？？？</p>
+<p><strong>再看此例（还原Spring MVC获取参数名的场景）：</strong></p>
+<pre><code><code>public static void main(String[] args) throws NoSuchMethodException {
+    Method method = Main.class.getMethod(&quot;test1&quot;, String.class, Integer.class);
+    MethodParameter nameParameter = new MethodParameter(method, 0);
+    MethodParameter ageParameter = new MethodParameter(method, 1);
+
+    // 打印输出：
+    // 使用Parameter输出
+    Parameter nameOriginParameter = nameParameter.getParameter();
+    Parameter ageOriginParameter = ageParameter.getParameter();
+    System.out.println(&quot;===================源生Parameter结果=====================&quot;);
+    System.out.println(nameOriginParameter.getType() + &quot;----&quot; + nameOriginParameter.getName());
+    System.out.println(ageOriginParameter.getType() + &quot;----&quot; + ageOriginParameter.getName());
+    System.out.println(&quot;===================MethodParameter结果=====================&quot;);
+    System.out.println(nameParameter.getParameterType() + &quot;----&quot; + nameParameter.getParameterName());
+    System.out.println(ageParameter.getParameterType() + &quot;----&quot; + ageParameter.getParameterName());
+    System.out.println(&quot;==============设置上ParameterNameDiscoverer后MethodParameter结果===============&quot;);
+    ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
+    nameParameter.initParameterNameDiscovery(parameterNameDiscoverer);
+    ageParameter.initParameterNameDiscovery(parameterNameDiscoverer);
+    System.out.println(nameParameter.getParameterType() + &quot;----&quot; + nameParameter.getParameterName());
+    System.out.println(ageParameter.getParameterType() + &quot;----&quot; + ageParameter.getParameterName());
+}</code></code></pre>
+<p>输出结果：</p>
+<pre><code><code>===================源生Parameter结果=====================
+class java.lang.String----arg0
+class java.lang.Integer----arg1
+===================MethodParameter结果=====================
+class java.lang.String----null
+class java.lang.Integer----null
+==============设置上ParameterNameDiscoverer后MethodParameter结果===============
+class java.lang.String----name
+class java.lang.Integer----age</code></code></pre>
+<p>从结果能看出来：<code>Spring MVC</code>借助<code>ParameterNameDiscoverer</code>完成了方法参数名的获取，进而完成数据封装。关于<code>ParameterNameDiscoverer</code>它的讲解，可先行参阅：<a href="https://blog.csdn.net/f641385712/article/details/88418195">【小家Spring】Spring标准处理组件大合集(ParameterNameDiscoverer、AutowireCandidateResolver、ResolvableType。。。)</a></p>
+<p>该问介绍了<code>ParameterNameDiscoverer</code>的基本使用和提供的能力，但并没有深入分析。那么本文就分析为何<code>Spring MVC</code>为何可以正确的解析到方法参数名称这个问题，从字节码角度深入分析其缘由~</p>
+<hr />
+<p>为了便于理解，先简单说说字节码中的两个概念：<strong><code>LocalVariableTable</code>和<code>LineNumberTable</code></strong>。它哥俩经常被拿出来一起说，当然本文关注的焦点是<code>LocalVariableTable</code>，但也借此机会一笔带过<code>LineNumberTable</code>。</p>
+<h5 id="linenumbertable">LineNumberTable</h5>
+<p>你是否曾经疑问过：<strong>线上程序抛出异常时显示的行号，为啥就恰好就是你源码的那一行呢</strong>？有这疑问是因为<code>JVM</code>执行的是<code>.class</code>文件，而该文件的行和<code>.java</code>源文件的行肯定是对应不上的，为何行号却能在<code>.java</code>文件里对应上？<br />
+这就是<code>LineNumberTable</code>它的作用了：<code>LineNumberTable属性存在于代码（字节码）属性中， 它建立了字节码偏移量到源代码行号之间的联系</code></p>
+<h5 id="localvariabletable">LocalVariableTable</h5>
+<p><strong><code>LocalVariableTable</code>属性建立了方法中的局部变量与源代码中的局部变量之间的对应关系。这个属性也是存在于代码（字节码）中~</strong><br />
+从名字可以看出来：它是<code>局部变量</code>的一个集合。描述了局部变量和描述符<strong>以及和源代码的对应关系</strong>。</p>
+<p>下面我使用<code>javac</code>和<code>javap</code>命令来演示一下这个情况：<br />
+<code>.java</code>源码如下：</p>
+<pre><code><code>package com.fsx.maintest;
+public class MainTest2 {
+    public String testArgName(String name,Integer age){
+        return null;
+    }
+}</code></code></pre>
+<blockquote>
+<p>说明：源码我都是顶头写的，所以请注意行号~</p>
+</blockquote>
+<p>使用<code>javac MainTest2.java</code>编译成<code>.class</code>字节码，然后使用<code>javap -verbose MainTest2.class</code>查看该字节码信息如下：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+从图中可看到，我红色标注出的行号和源码处完全一样，这就解答了我们上面的行号对应的疑问了：<code>LineNumberTable</code>它记录着在源代码处的行号。<br />
+<strong>Tips：此处并没有，并没有，并没有<code>LocalVariableTable</code>。</strong></p>
+<p>源码不变，我使用<code>javac -g MainTest2.java</code>来编译，再看看对应的字节码信息如下（注意和上面的区别）：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】1.png" alt="在这里插入图片描述" /><br />
+这里多了一个<code>LocalVariableTable</code>，即局部变量表，就记录着我们方法入参的形参名字。既然记录着了，这样我们就可以通过分析字节码信息来得到这个名称了~</p>
+<blockquote>
+<p>说明：javac的调试选项主要包含了三个子选项：<code>lines，source，vars</code><br />
+如果不使用-g来编译,只保留源文件和行号信息；如果使用-g来编译那就都有了~</p>
+</blockquote>
+<h5 id="和-parameters有什么区别">和<code>-parameters</code>有什么区别？？</h5>
+<p>知道<code>-g</code>编译参数的少，反倒对<code>Java8</code>新推出的<code>-parameters</code>知道的人更多一些。那么它和<code>-g</code>参数有什么区别呢？？？</p>
+<p>百闻不如一见，我比较喜欢自己搞个例子来说明问题，<code>.java</code>源代码如下：</p>
+<pre><code><code>import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+
+public class MainTest2 {
+
+    public static void main(String[] args) throws NoSuchMethodException {
+        Method method = MainTest2.class.getMethod(&quot;testArgName&quot;, String.class, Integer.class);
+        System.out.println(&quot;paramCount:&quot; + method.getParameterCount());
+        for (Parameter parameter : method.getParameters()) {
+            System.out.println(parameter.getType().getName() + &quot;--&gt;&quot; + parameter.getName());
+        }
+    }
+
+    public String testArgName(String name, Integer age) {
+        return null;
+    }
+}</code></code></pre>
+<p>下面分别用<code>javac、javac -g、javac -parameters</code>来编译后再执行，结果图如下：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】2.png" alt="在这里插入图片描述" /><br />
+从分别编译、再运行打印的结果图中看，结果以及他们的区别已经很清晰了，我就不再笔墨，有疑问的可以给我留言。</p>
+<p>另外附上<code>-parameters</code>编译后的字节码信息，方便你做分析对比：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】3.png" alt="在这里插入图片描述" /></p>
+<hr />
+<h2 id="获取方法参数名的3种方式介绍">==获取方法参数名的3种方式介绍==</h2>
+<p>虽然Java编译器默认情况下会抹去方法的参数名，但有上面介绍了字节码的相关知识可知，我们还是有方法来得到方法的参数名的。下面介绍3个方案，供以参考。</p>
+<h4 id="方法一使用-parameters">方法一：使用<code>-parameters</code></h4>
+<p>最为简单直接的方式，<code>Java8</code>源生支持：直接从<code>java.lang.reflect.Parameter</code>就能获取到，形如这样：</p>
+<pre><code><code>public class MainTest2 {
+
+    public static void main(String[] args) throws NoSuchMethodException {
+        Method method = MainTest2.class.getMethod(&quot;testArgName&quot;, String.class, Integer.class);
+        System.out.println(&quot;paramCount:&quot; + method.getParameterCount());
+        for (Parameter parameter : method.getParameters()) {
+            System.out.println(parameter.getType().getName() + &quot;--&gt;&quot; + parameter.getName());
+        }
+    }
+
+    public String testArgName(String name, Integer age) {
+        return null;
+    }
+}</code></code></pre>
+<p>输出：</p>
+<pre><code><code>paramCount:2
+java.lang.String--&gt;name
+java.lang.Integer--&gt;age</code></code></pre>
+<p><strong>当然，它有两个最大的弊端：</strong></p>
+<ol>
+<li>必须Java8或以上（由于java8已经普及率非常高了，所以这个还好）</li>
+<li>编译参数必须有<code>-parameters</code>（由于依赖编译参数，所以对迁移是不太友好的，这点比较致命）</li>
+</ol>
+<p><strong>指定<code>-parameters</code>编译参数的方式：</strong></p>
+<ol>
+<li>手动命令方式编译：<code>javac -parameters XXX.java</code></li>
+<li>IDE（以Idea为例）编译：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】4.png" alt="在这里插入图片描述" /></li>
+<li>Maven编译：通过<strong>编译插件</strong>指定，保证项目迁移的正确性（推荐）</li>
+</ol>
+<pre class="xml"><code>&lt;!-- 编译环境在1.8编译 且附加编译参数：-parameters--&gt;
+&lt;plugin&gt;
+    &lt;groupId&gt;org.apache.maven.plugins&lt;/groupId&gt;
+    &lt;artifactId&gt;maven-compiler-plugin&lt;/artifactId&gt;
+    &lt;version&gt;3.8.0&lt;/version&gt;
+    &lt;configuration&gt;
+        &lt;compilerArgs&gt;
+            &lt;arg&gt;-parameters&lt;/arg&gt;
+        &lt;/compilerArgs&gt;
+        &lt;source&gt;${java.version}&lt;/source&gt;
+        &lt;target&gt;${java.version}&lt;/target&gt;
+        &lt;compilerVersion&gt;${java.version}&lt;/compilerVersion&gt;
+        &lt;encoding&gt;${project.build.sourceEncoding}&lt;/encoding&gt;
+    &lt;/configuration&gt;
+&lt;/plugin&gt;</code></code></pre>
+<p>优点：简单方便<br />
+缺点：需要特别的指定<code>-parameters</code>，不太方便（<strong>当然使用maven编辑插件来指定是相对靠谱的方案且推荐使用</strong>）</p>
+<h4 id="方案二使用-g-javap命令">方案二：使用<code>-g</code> + <code>javap</code>命令</h4>
+<p>如上例子可以使用<code>javac -g</code>编译后，再使用<code>javap</code>获取到字节码信息，然后自己根据信息的格式把参数名提取出来（自己做、自己做、自己做）</p>
+<p>这无异于让你自己解析http协议一般，你愿意做吗？？？所以此办法虽为一种办法，但是显然不便采用</p>
+<h4 id="方案三借助asm推荐">方案三：借助<code>ASM</code>（推荐）</h4>
+<p>说到<code>ASM</code>，小伙伴们至少对这个名字应该是不陌生的。它是一个<code>Java</code>字节码操控框架，它能被用来动态生成类或者增强既有类的功能，<strong>它能够改变类行为，分析类信息，甚至能够根据用户要求生成新类。</strong></p>
+<p>对于<code>ASM</code>来说，<code>Java class</code>被描述为一棵树；使用 “Visitor”模式（导游模式）遍历整个二进制结构；事件驱动的处理方式使得用户只需要关注于对其编程有意义的部分（比如本文只关注方法参数，其它的不关心），而不必了解 Java 类文件格式的<strong>所有细节</strong>。</p>
+<h2 id="section">----</h2>
+<p><strong>ASM方式</strong>，它仍旧还是基于编译后的字节码做事的，正所谓<strong>巧妇难为无米之炊</strong>，所以它仍旧必须依赖于编译时的<code>LocalVariableTable</code>（-g 参数）。</p>
+<p>你可能会发问：我使用idea编译/maven编译都没有自己去指定-g参数啊，为什么也好使呢？你的疑问同样也是我的疑问，<strong>我至今也还没弄清楚更根本的原因，但是我可以说如下两个现象</strong>：</p>
+<ol>
+<li>idea默认使用的是javac编译器，编译出来的字节码是带有<code>LocalVariableTable</code>的。但你也可以关闭它，如下图：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】5.png" alt="在这里插入图片描述" /></li>
+<li>maven默认使用的也是javac编译，字节码也带有<code>LocalVariableTable</code>（但是maven编译时候的编译命令、参数等，我无法获知。恳请精通maven的同学指点~）</li>
+</ol>
+<h2 id="section-1">----</h2>
+<p><strong>小插曲：关于代理的科普（Proxy、CGLIB、Javassist、ASM ）：</strong></p>
+<ol>
+<li><code>ASM</code>：<code>Java</code>字节码开源操控框架。操纵的级别是底层JVM的<strong>汇编指令级别</strong>，这就要求使用者对class组织结构和JVM汇编指令有一定的了解，要求颇高。</li>
+<li><code>Javassist</code>：效果同上。相较于<code>ASM</code>它的特点是操作简单，并且速度还可以（当然没有ASM快）。<strong>重要的是：它并不要求你了解JVM指令/汇编指令~</strong></li>
+<li><code>Proxy</code>动态代理：动态生成（非提前编译好）代理类：<code>$Proxy0 extends Proxy implements MyInterface{ ... }</code>，这就决定了它只能对接口（或者实现接口的类）进行代理，<strong>单继承机制</strong>也决定了它不能对（抽象）类进行代理~</li>
+<li><p><code>CGLIB</code>：是一个<strong>基于ASM</strong>的强大的，高性能，高质量的字节码生成库。它可以在运行期扩展Java类与实现Java接口。</p>
+<h2 id="spring-aop以及hibernate对代理对象的创建中都使用了cglib">&gt; <code>Spring AOP</code>以及<code>Hibernate</code>对代理对象的创建中都使用了<code>CGLIB</code></h2></li>
+</ol>
+<p>前面文章有介绍过了直接使用<code>CGLIB</code>的<code>API</code>来操作字节码/生成代理对象，本文将简单演示一下直接使用<code>ASM</code>框架来操作的示例：</p>
+<h5 id="asm使用示例">ASM使用示例</h5>
+<p>首先导入<code>asm</code>依赖包：</p>
+<pre class="xml"><code>&lt;!-- https://mvnrepository.com/artifact/asm/asm --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;asm&lt;/groupId&gt;
+    &lt;artifactId&gt;asm&lt;/artifactId&gt;
+    &lt;version&gt;3.3.1&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<blockquote>
+<p>说明：asm现已升级到7.x版本了，并且GAV已变化。由于我对3.x熟悉点，所以此处我还是守旧吧~</p>
+</blockquote>
+<p>基于<code>ASM</code>提供工具方法<code>getMethodParamNames(Method)</code>，获取到任何一个<code>Method</code>的入参名称：</p>
+<pre><code><code>public class MainTest2 {
+
+    // 拿到指定的Method的入参名们（返回数组，按照顺序返回）
+    public static String[] getMethodParamNames(Method method) throws IOException {
+        String methodName = method.getName();
+        Class&lt;?&gt;[] methodParameterTypes = method.getParameterTypes();
+        int methodParameterCount = methodParameterTypes.length;
+        String className = method.getDeclaringClass().getName();
+        boolean isStatic = Modifier.isStatic(method.getModifiers());
+        String[] methodParametersNames = new String[methodParameterCount];
+
+
+        // 使用org.objectweb.asm.ClassReader来读取到此方法
+        ClassReader cr = new ClassReader(className);
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+
+
+        // 这一步是最红要的，开始visitor浏览了
+        // ClassAdapter是org.objectweb.asm.ClassVisitor的子类~~~~
+        cr.accept(new ClassAdapter(cw) {
+
+            // 因为此处我们只关心对方法的浏览，因此此处只需要复写此方法即可
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
+                final Type[] argTypes = Type.getArgumentTypes(desc);
+
+                // 只visitor方法名相同和参数类型都相同的方法~~~
+                if (!methodName.equals(name) || !matchTypes(argTypes, methodParameterTypes)) {
+                    return mv;
+                }
+
+                // 构造一个MethodVisitor返回 重写我们关心的方法visitLocalVariable~~~
+                return new MethodAdapter(mv) {
+
+                    //特别注意：如果是静态方法，第一个参数就是方法参数，非静态方法，则第一个参数是 this ,然后才是方法的参数
+                    @Override
+                    public void visitLocalVariable(String name, String desc, String signature, Label start, Label end, int index) {
+                        // 处理静态方法与否~~
+                        int methodParameterIndex = isStatic ? index : index - 1;
+                        if (0 &lt;= methodParameterIndex &amp;&amp; methodParameterIndex &lt; methodParameterCount) {
+                            methodParametersNames[methodParameterIndex] = name;
+                        }
+                        super.visitLocalVariable(name, desc, signature, start, end, index);
+                    }
+                };
+            }
+        }, 0);
+        return methodParametersNames;
+    }
+
+    /**
+     * 比较参数是否一致
+     */
+    private static boolean matchTypes(Type[] types, Class&lt;?&gt;[] parameterTypes) {
+        if (types.length != parameterTypes.length) {
+            return false;
+        }
+        for (int i = 0; i &lt; types.length; i++) {
+            if (!Type.getType(parameterTypes[i]).equals(types[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+}</code></code></pre>
+<p>运行案例：</p>
+<pre><code><code>public class MainTest2 {
+    
+    // 使用工具方法获取Method的入参名字~~~
+    public static void main(String[] args) throws SecurityException, NoSuchMethodException, IOException {
+        Method method = MainTest2.class.getDeclaredMethod(&quot;testArgName&quot;, String.class, Integer.class);
+        String[] methodParamNames = getMethodParamNames(method);
+
+        // 打印输出
+        System.out.println(StringUtils.arrayToCommaDelimitedString(methodParamNames));
+    }
+
+    private String testArgName(String name, Integer age) {
+        return null;
+    }
+}</code></code></pre>
+<p>输出：</p>
+<pre><code><code>name,age</code></code></pre>
+<p>效果复合预期，使用ASM拿到了我们期望的真实的方法参数名（没有指定任何编译参数哦）。使用基于ASM的方式，即使你是Java8以下的版本，都是能够正常获取到的，因为它并不依赖编译参数~~~</p>
+<p>==有了这些基础知识，那么书归正传，来解释文首的疑问：==</p>
+<h3 id="spring-mvc为何好使"><code>Spring MVC为何好使？</code></h3>
+<p><strong>首先使用上需明确</strong>：<code>Spring MVC</code>好使但它并不依赖于<code>-parameters</code>参数，也不依赖于<code>-g</code>这个编译参数，因为它是借助<code>ASM</code>来实现的~</p>
+<p><code>spring-core</code>中有个<code>ParameterNameDiscoverer</code>就是用来获取参数名的，底层用的是asm解析,<strong>但是接口方法的参数名无法得到</strong>,即只能是非接口类的方法参数名可以。<br />
+从文首的例子可以看出<code>Spring MVC</code>它最终依赖的是<code>DefaultParameterNameDiscoverer</code>去帮忙获取到入参名，看看这块代码：</p>
+<pre><code><code>// @since 4.0
+public class DefaultParameterNameDiscoverer extends PrioritizedParameterNameDiscoverer {
+
+    public DefaultParameterNameDiscoverer() {
+        if (!GraalDetector.inImageCode()) {
+            if (KotlinDetector.isKotlinReflectPresent()) {
+                addDiscoverer(new KotlinReflectionParameterNameDiscoverer());
+            }
+            addDiscoverer(new StandardReflectionParameterNameDiscoverer());
+            addDiscoverer(new LocalVariableTableParameterNameDiscoverer());
+        }
+    }
+}</code></code></pre>
+<p><code>DefaultParameterNameDiscoverer</code>它就是一个责任链模式的体现，靠它添加进来的实现类来处理，也就是这哥俩：<br />
+<strong><code>StandardReflectionParameterNameDiscoverer</code></strong>：依赖于<code>-parameters</code>才会有效（有java版本要求和编译参数要求）<br />
+<strong><code>LocalVariableTableParameterNameDiscoverer</code></strong>：基于<code>ASM</code>实现，无版本和编译参数要求~</p>
+<blockquote>
+<p>备注：<code>Spring</code>使用<code>ASM</code>无需额外导包，因为自给自足了：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】6.png" alt="在这里插入图片描述" /></p>
+</blockquote>
+<h3 id="mybatis为何不好使"><code>MyBatis为何不好使？</code></h3>
+<p>首先使用上需要明确这一点：<code>MyBatis</code>是<strong>通过接口</strong>跟SQL语句绑定然后生成代理类来实现的。</p>
+<p>既然有了强大的<code>ASM</code>，那么问题来了：难道<code>ASM</code>也帮不到<code>MyBatis</code>来简化开发？<br />
+看看我给的这个例子或许你就能明白了并不能怪<code>MyBatis</code>呀：</p>
+<pre><code><code>public class MainTest2 {
+    
+    // 使用工具方法获取Method的入参名字~~~
+    public static void main(String[] args) throws SecurityException, NoSuchMethodException, IOException {
+        Method method = MainTest2.class.getDeclaredMethod(&quot;testArgName&quot;, String.class, Integer.class);
+        String[] methodParamNames = getMethodParamNames(method);
+
+        // 打印输出
+        System.out.println(StringUtils.arrayToCommaDelimitedString(methodParamNames));
+    }
+}
+
+// 接口方法
+interface MyDemoInterface{
+    String testArgName(String name, Integer age);
+}</code></code></pre>
+<p>输出：</p>
+<pre><code><code>null,null</code></code></pre>
+<p><strong>可见即使强如<code>ASM</code>，也是木有办法直接获取到接口的形参名的。</strong><br />
+这是可以被理解的，因为接口方法不是实际方法，它的形参名是会被实现类覆盖的，所以接口方法的形参名意义不大~</p>
+<blockquote>
+<p>Tips：接口上的<code>default</code>方法和<code>static</code>方法的参数名是可以被正常获取到的，有兴趣的小伙伴可以自己动手试试~</p>
+</blockquote>
+<p>至于<code>ASM</code>为何<strong>对接口无效</strong>，其根本原因我展示一下字节码一看便清楚了：<br />
+<img src="./images/为何Spring MVC可获取到方法参数名，而MyBatis却不行？【享学Spring MVC】7.png" alt="在这里插入图片描述" /><br />
+因为抽象方法没有方法体，也就没有局部变量，自然也就没有局部变量表了，所以即使使用<code>ASM</code>也拿不到它的变量名~</p>
+<blockquote>
+<p>说明：在<code>Java8</code>后使用<code>-parameter</code>参数即使是接口，是可以直接通过Method获取到入参名的，这个对<code>MyBatis</code>是好用的。当然为了保证兼容性，个人建议还是乖乖使用@Param注解来指定吧~</p>
+</blockquote>
+<p><strong>至此，我有理由相信小伙伴是和我一样，彻底搞明白为何Spring MVC可以，但MyBatis却不可以这个疑问了吧~~~</strong></p>
+<h4 id="总结">总结</h4>
+<p>本文深入到字节码处分析了这个有可能也是困扰了你很久的问题（问题如题），希望为你答疑解惑了。同时也介绍了<code>ASM</code>的基本用法，或许对你后续理解别的框架会有所帮助~</p>
+<p>== <strong>若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞</strong> ==<br />
+== <strong>若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞</strong> ==</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

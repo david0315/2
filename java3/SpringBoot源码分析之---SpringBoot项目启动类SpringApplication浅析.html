@@ -1,0 +1,677 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot源码分析之---SpringBoot项目启动类SpringApplication浅析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot源码分析之---SpringBoot项目启动类SpringApplication浅析</center></div><div class='banquan'>原文出处:本文由博客园博主逸竹小站提供。<br/>
+原文连接:https://www.cnblogs.com/coder2017/p/11681975.html</div><br>
+    <h2 id="源码版本说明">源码版本说明</h2>
+<blockquote>
+<p>本文源码采用版本为<code>SpringBoot 2.1.0BUILD</code>,对应的<code>SpringFramework 5.1.0.RC1</code></p>
+</blockquote>
+<blockquote>
+<p>注意：本文只是从整体上梳理流程，不做具体深入分析</p>
+</blockquote>
+<h2 id="springboot入口类">SpringBoot入口类</h2>
+<pre><code><code>@SpringBootApplication 
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}</code></code></pre>
+<p>　　这是我们日常使用springboot开发见到次数最多的引导类了，完成这个类的编写，就完成了一个springboot项目的框架，springboot就回自动为我们完成一些默认配置，并帮我们初始化上下文容器，但细节我们是不知道的，下面我们就一起探索下<code>SpringApplication.run(DemoApplication .class, args);</code>这行代码背后的故事！</p>
+<h2 id="springapplication初始化阶段">SpringApplication初始化阶段</h2>
+<pre><code><code>public SpringApplication(Class&lt;?&gt;... primarySources) {
+    this(null, primarySources);
+}
+
+// 初始化准备阶段
+@SuppressWarnings({ &quot;unchecked&quot;, &quot;rawtypes&quot; })
+public SpringApplication(ResourceLoader resourceLoader, Class&lt;?&gt;... primarySources) {
+    this.resourceLoader = resourceLoader;
+    Assert.notNull(primarySources, &quot;PrimarySources must not be null&quot;);
+    // 参数初始化
+    this.primarySources = new LinkedHashSet&lt;&gt;(Arrays.asList(primarySources));
+    // 推断应用类型
+    this.webApplicationType = deduceWebApplicationType();
+    // 加载ApplicationContextInitializer系列初始化器（从spring.factories文件加载，并实例化和排序后存到this.initializers）
+    setInitializers((Collection) getSpringFactoriesInstances(
+            ApplicationContextInitializer.class));
+    // 加载ApplicationListener系列监听器（从spring.factories文件加载，并实例化和排序后存到this.listeners）
+    setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+    // 推断应用入口类（main函数所在类）
+    this.mainApplicationClass = deduceMainApplicationClass();
+}</code></code></pre>
+<h3 id="推断应用类型">推断应用类型</h3>
+<pre><code><code>// 推断应用类型
+this.webApplicationType = deduceWebApplicationType();</code></code></pre>
+<pre><code><code>private WebApplicationType deduceWebApplicationType() {
+    if (ClassUtils.isPresent(REACTIVE_WEB_ENVIRONMENT_CLASS, null)
+            &amp;&amp; !ClassUtils.isPresent(MVC_WEB_ENVIRONMENT_CLASS, null)
+            &amp;&amp; !ClassUtils.isPresent(JERSEY_WEB_ENVIRONMENT_CLASS, null)) {
+        return WebApplicationType.REACTIVE;
+    }
+    for (String className : WEB_ENVIRONMENT_CLASSES) {
+        if (!ClassUtils.isPresent(className, null)) {
+            return WebApplicationType.NONE;
+        }
+    }
+    return WebApplicationType.SERVLET;
+}</code></code></pre>
+<pre><code><code>private static final String REACTIVE_WEB_ENVIRONMENT_CLASS = &quot;org.springframework.&quot;
+        + &quot;web.reactive.DispatcherHandler&quot;;
+
+private static final String MVC_WEB_ENVIRONMENT_CLASS = &quot;org.springframework.&quot;
+        + &quot;web.servlet.DispatcherServlet&quot;;
+
+private static final String JERSEY_WEB_ENVIRONMENT_CLASS = &quot;org.glassfish.jersey.server.ResourceConfig&quot;;
+
+private static final String[] WEB_ENVIRONMENT_CLASSES = { &quot;javax.servlet.Servlet&quot;,
+        &quot;org.springframework.web.context.ConfigurableWebApplicationContext&quot; };</code></code></pre>
+<p>根据当前应用ClassPath下是否存在相关类，来确定应用类型。</p>
+<h3 id="加载applicationcontextinitializer系列初始化器">加载<code>ApplicationContextInitializer</code>系列初始化器</h3>
+<pre><code><code>// 加载ApplicationContextInitializer系列初始化器（从spring.factories文件加载，并实例化和排序后存到this.initializers）
+setInitializers((Collection) getSpringFactoriesInstances(
+        ApplicationContextInitializer.class));</code></code></pre>
+<pre><code><code>public void setInitializers(
+        Collection&lt;? extends ApplicationContextInitializer&lt;?&gt;&gt; initializers) {
+    this.initializers = new ArrayList&lt;&gt;();
+    this.initializers.addAll(initializers);
+}</code></code></pre>
+<pre><code><code>private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type) {
+    return getSpringFactoriesInstances(type, new Class&lt;?&gt;[] {});
+}</code></code></pre>
+<pre><code><code>private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type,
+        Class&lt;?&gt;[] parameterTypes, Object... args) {
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+    // Use names and ensure unique to protect against duplicates
+    Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(
+            SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes,
+            classLoader, args, names);
+    AnnotationAwareOrderComparator.sort(instances);
+    return instances;
+}</code></code></pre>
+<pre><code><code>@SuppressWarnings(&quot;unchecked&quot;)
+private &lt;T&gt; List&lt;T&gt; createSpringFactoriesInstances(Class&lt;T&gt; type,
+        Class&lt;?&gt;[] parameterTypes, ClassLoader classLoader, Object[] args,
+        Set&lt;String&gt; names) {
+    List&lt;T&gt; instances = new ArrayList&lt;&gt;(names.size());
+    for (String name : names) {
+        try {
+            Class&lt;?&gt; instanceClass = ClassUtils.forName(name, classLoader);
+            Assert.isAssignable(type, instanceClass);
+            Constructor&lt;?&gt; constructor = instanceClass
+                    .getDeclaredConstructor(parameterTypes);
+            T instance = (T) BeanUtils.instantiateClass(constructor, args);
+            instances.add(instance);
+        }
+        catch (Throwable ex) {
+            throw new IllegalArgumentException(
+                    &quot;Cannot instantiate &quot; + type + &quot; : &quot; + name, ex);
+        }
+    }
+    return instances;
+}</code></code></pre>
+<p>　　利用Spring工厂加载机制，实例化ApplicationContextInitializer接口的实现类，被加载的实现类都配置在<code>MATE-INF/spring.factories</code>文件中，<code>getSpringFactoriesInstances(Class&lt;T&gt; type,Class&lt;?&gt;[] parameterTypes, Object... args)</code>这个方法就负责加载配置类并实例化和排序后返回，后面监听器、异常收集器和Runner等也是通过这个类实现实例化对应实现类的。下面是<code>spring-boot-autoconfigure\src\main\resources\META-INF\spring.factories</code>文件的配置内容。</p>
+<pre class="factories"><code># Initializers
+org.springframework.context.ApplicationContextInitializer=\
+org.springframework.boot.autoconfigure.SharedMetadataReaderFactoryContextInitializer,\
+org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLoggingListener
+
+# Application Listeners
+org.springframework.context.ApplicationListener=\
+org.springframework.boot.autoconfigure.BackgroundPreinitializer
+
+# Auto Configuration Import Listeners
+org.springframework.boot.autoconfigure.AutoConfigurationImportListener=\
+org.springframework.boot.autoconfigure.condition.ConditionEvaluationReportAutoConfigurationImportListener
+
+# Auto Configuration Import Filters
+org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+org.springframework.boot.autoconfigure.condition.OnClassCondition
+
+# Auto Configure
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration,\
+org.springframework.boot.autoconfigure.aop.AopAutoConfiguration,\
+org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration,\
+org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration,\
+org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration,\
+org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration,\
+org.springframework.boot.autoconfigure.cloud.CloudAutoConfiguration,\
+org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration,\
+org.springframework.boot.autoconfigure.context.MessageSourceAutoConfiguration,\
+org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration,\
+org.springframework.boot.autoconfigure.couchbase.CouchbaseAutoConfiguration,\
+org.springframework.boot.autoconfigure.dao.PersistenceExceptionTranslationAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.cassandra.CassandraDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.cassandra.CassandraRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.couchbase.CouchbaseDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.couchbase.CouchbaseReactiveDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.couchbase.CouchbaseReactiveRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.couchbase.CouchbaseRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.ldap.LdapRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.mongo.MongoReactiveDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.mongo.MongoReactiveRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.neo4j.Neo4jRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.solr.SolrRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.rest.RepositoryRestMvcAutoConfiguration,\
+org.springframework.boot.autoconfigure.data.web.SpringDataWebAutoConfiguration,\
+org.springframework.boot.autoconfigure.elasticsearch.jest.JestAutoConfiguration,\
+org.springframework.boot.autoconfigure.elasticsearch.rest.RestClientAutoConfiguration,\
+org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,\
+org.springframework.boot.autoconfigure.freemarker.FreeMarkerAutoConfiguration,\
+org.springframework.boot.autoconfigure.gson.GsonAutoConfiguration,\
+org.springframework.boot.autoconfigure.h2.H2ConsoleAutoConfiguration,\
+org.springframework.boot.autoconfigure.hateoas.HypermediaAutoConfiguration,\
+org.springframework.boot.autoconfigure.hazelcast.HazelcastAutoConfiguration,\
+org.springframework.boot.autoconfigure.hazelcast.HazelcastJpaDependencyAutoConfiguration,\
+org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration,\
+org.springframework.boot.autoconfigure.http.codec.CodecsAutoConfiguration,\
+org.springframework.boot.autoconfigure.influx.InfluxDbAutoConfiguration,\
+org.springframework.boot.autoconfigure.info.ProjectInfoAutoConfiguration,\
+org.springframework.boot.autoconfigure.integration.IntegrationAutoConfiguration,\
+org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration,\
+org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,\
+org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration,\
+org.springframework.boot.autoconfigure.jdbc.JndiDataSourceAutoConfiguration,\
+org.springframework.boot.autoconfigure.jdbc.XADataSourceAutoConfiguration,\
+org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration,\
+org.springframework.boot.autoconfigure.jms.JmsAutoConfiguration,\
+org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration,\
+org.springframework.boot.autoconfigure.jms.JndiConnectionFactoryAutoConfiguration,\
+org.springframework.boot.autoconfigure.jms.activemq.ActiveMQAutoConfiguration,\
+org.springframework.boot.autoconfigure.jms.artemis.ArtemisAutoConfiguration,\
+org.springframework.boot.autoconfigure.groovy.template.GroovyTemplateAutoConfiguration,\
+org.springframework.boot.autoconfigure.jersey.JerseyAutoConfiguration,\
+org.springframework.boot.autoconfigure.jooq.JooqAutoConfiguration,\
+org.springframework.boot.autoconfigure.jsonb.JsonbAutoConfiguration,\
+org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration,\
+org.springframework.boot.autoconfigure.ldap.embedded.EmbeddedLdapAutoConfiguration,\
+org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration,\
+org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration,\
+org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration,\
+org.springframework.boot.autoconfigure.mail.MailSenderValidatorAutoConfiguration,\
+org.springframework.boot.autoconfigure.mongo.embedded.EmbeddedMongoAutoConfiguration,\
+org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration,\
+org.springframework.boot.autoconfigure.mongo.MongoReactiveAutoConfiguration,\
+org.springframework.boot.autoconfigure.mustache.MustacheAutoConfiguration,\
+org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,\
+org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration,\
+org.springframework.boot.autoconfigure.reactor.core.ReactorCoreAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration,\
+org.springframework.boot.autoconfigure.sendgrid.SendGridAutoConfiguration,\
+org.springframework.boot.autoconfigure.session.SessionAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration,\
+org.springframework.boot.autoconfigure.security.oauth2.client.reactive.ReactiveOAuth2ClientAutoConfiguration,\
+org.springframework.boot.autoconfigure.solr.SolrAutoConfiguration,\
+org.springframework.boot.autoconfigure.thymeleaf.ThymeleafAutoConfiguration,\
+org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration,\
+org.springframework.boot.autoconfigure.transaction.jta.JtaAutoConfiguration,\
+org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.client.RestTemplateAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.embedded.EmbeddedWebServerFactoryCustomizerAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.reactive.HttpHandlerAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.reactive.ReactiveWebServerFactoryAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.reactive.WebFluxAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.reactive.error.ErrorWebFluxAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.reactive.function.client.WebClientAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.ServletWebServerFactoryAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.error.ErrorMvcAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.HttpEncodingAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.MultipartAutoConfiguration,\
+org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration,\
+org.springframework.boot.autoconfigure.websocket.reactive.WebSocketReactiveAutoConfiguration,\
+org.springframework.boot.autoconfigure.websocket.servlet.WebSocketServletAutoConfiguration,\
+org.springframework.boot.autoconfigure.websocket.servlet.WebSocketMessagingAutoConfiguration,\
+org.springframework.boot.autoconfigure.webservices.WebServicesAutoConfiguration,\
+org.springframework.boot.autoconfigure.webservices.client.WebServiceTemplateAutoConfiguration
+
+# Failure analyzers
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+org.springframework.boot.autoconfigure.diagnostics.analyzer.NoSuchBeanDefinitionFailureAnalyzer,\
+org.springframework.boot.autoconfigure.jdbc.DataSourceBeanCreationFailureAnalyzer,\
+org.springframework.boot.autoconfigure.jdbc.HikariDriverConfigurationFailureAnalyzer,\
+org.springframework.boot.autoconfigure.session.NonUniqueSessionRepositoryFailureAnalyzer
+
+# Template availability providers
+org.springframework.boot.autoconfigure.template.TemplateAvailabilityProvider=\
+org.springframework.boot.autoconfigure.freemarker.FreeMarkerTemplateAvailabilityProvider,\
+org.springframework.boot.autoconfigure.mustache.MustacheTemplateAvailabilityProvider,\
+org.springframework.boot.autoconfigure.groovy.template.GroovyTemplateAvailabilityProvider,\
+org.springframework.boot.autoconfigure.thymeleaf.ThymeleafTemplateAvailabilityProvider,\
+org.springframework.boot.autoconfigure.web.servlet.JspTemplateAvailabilityProvider
+</code></code></pre>
+<h3 id="加载applicationlistener系列监听器">加载ApplicationListener系列监听器</h3>
+<pre><code><code>// 加载ApplicationListener系列监听器（从spring.factories文件加载，并实例化和排序后存到this.listeners）
+setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));</code></code></pre>
+<pre><code><code>public void setListeners(Collection&lt;? extends ApplicationListener&lt;?&gt;&gt; listeners) {
+    this.listeners = new ArrayList&lt;&gt;();
+    this.listeners.addAll(listeners);
+}</code></code></pre>
+<pre><code><code>private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type) {
+    return getSpringFactoriesInstances(type, new Class&lt;?&gt;[] {});
+}</code></code></pre>
+<p>　　如上面的初始化器，<code>ApplicationListener</code>系列监听器也是通过<code>getSpringFactoriesInstances(Class&lt;T&gt; type,             Class&lt;?&gt;[] parameterTypes, Object... args)</code>这个方法完成加载、排序及实例化的，而后存入到<code>this.listeners</code>中。</p>
+<h3 id="推断应用入口类">推断应用入口类</h3>
+<pre><code><code>// 推断应用入口类（main函数所在类）
+this.mainApplicationClass = deduceMainApplicationClass();</code></code></pre>
+<pre><code><code>private Class&lt;?&gt; deduceMainApplicationClass() {
+    try {
+        // 通过new一个运行时异常获取堆栈信息
+        StackTraceElement[] stackTrace = new RuntimeException().getStackTrace();
+        for (StackTraceElement stackTraceElement : stackTrace) {
+            // 找到main函数所在的入口类
+            if (&quot;main&quot;.equals(stackTraceElement.getMethodName())) {
+                return Class.forName(stackTraceElement.getClassName());
+            }
+        }
+    }
+    catch (ClassNotFoundException ex) {
+        // Swallow and continue
+    }
+    return null;
+}</code></code></pre>
+<p>　　推断应用入口类这部分比较有意思，他是通过new了一个运行时异常来拿到main线程的堆栈信息，遍历所有方法找到main方法所在的类。</p>
+<h2 id="运行阶段">运行阶段</h2>
+<pre><code><code>// 运行阶段
+public ConfigurableApplicationContext run(String... args) {
+    // 初始化容器启动计时器
+    StopWatch stopWatch = new StopWatch();
+    // 开始计时
+    stopWatch.start();
+    // 初始化上下文ConfigurableApplicationContext
+    ConfigurableApplicationContext context = null;
+    // 初始化异常收集器
+    Collection&lt;SpringBootExceptionReporter&gt; exceptionReporters = new ArrayList&lt;&gt;();
+    // 配置系统参数&quot;java.awt.headless&quot;
+    configureHeadlessProperty();
+    // 获取SpringApplicationRunListener系列监听器（从spring.factories文件加载，并实例化和排序）
+    SpringApplicationRunListeners listeners = getRunListeners(args);
+    // 遍历所有SpringApplicationRunListener系列监听器，广播ApplicationStartingEvent
+    listeners.starting();
+    try {
+        // 处理args参数
+        ApplicationArguments applicationArguments = new DefaultApplicationArguments(
+                args);
+        // 准备环境（创建、配置、绑定环境、广播ApplicationEnvironmentPreparedEvent）
+        ConfigurableEnvironment environment = prepareEnvironment(listeners,
+                applicationArguments);
+        configureIgnoreBeanInfo(environment);
+        // 打印Banner
+        Banner printedBanner = printBanner(environment);
+        // 根据应用类型创建上下文
+        context = createApplicationContext();
+        // 获取SpringBootExceptionReporter系列异常收集器（从spring.factories文件加载，并实例化和排序）
+        exceptionReporters = getSpringFactoriesInstances(
+                SpringBootExceptionReporter.class,
+                new Class[] { ConfigurableApplicationContext.class }, context);
+        // 上下文前置处理（执行ApplicationContextInitializer系列初始化器、加载资源、广播ApplicationPreparedEvent）
+        prepareContext(context, environment, listeners, applicationArguments,
+                printedBanner);
+        // 刷新上下文（）
+        refreshContext(context);
+        // 上下文后置处理(目前啥也没干)
+        afterRefresh(context, applicationArguments);
+        // 启动完成，打印用时
+        stopWatch.stop();
+        if (this.logStartupInfo) {
+            new StartupInfoLogger(this.mainApplicationClass)
+                    .logStarted(getApplicationLog(), stopWatch);
+        }
+        // 遍历前面设置的ConfigurableApplicationContext监听器，发布ApplicationStartedEvent
+        listeners.started(context);
+        // 按顺序回调实现了ApplicationRunner或CommandLineRunner接口的Runners
+        callRunners(context, applicationArguments);
+    }
+    catch (Throwable ex) {
+        // 处理异常（发布ExitCodeEvent和ApplicationFailedEvent事件、异常收集器处理异常）
+        handleRunFailure(context, ex, exceptionReporters, listeners);
+        throw new IllegalStateException(ex);
+    }
+
+    try {
+        // 遍历前面设置好的SpringApplicationRunListener监听器，发布ApplicationReadyEvent
+        listeners.running(context);
+    }
+    catch (Throwable ex) {
+        handleRunFailure(context, ex, exceptionReporters, null);
+        throw new IllegalStateException(ex);
+    }
+    return context;
+}</code></code></pre>
+<h3 id="获取springapplicationrunlistener系列监听器">获取<code>SpringApplicationRunListener</code>系列监听器</h3>
+<pre><code><code>// 获取SpringApplicationRunListener系列监听器（从spring.factories文件加载，并实例化和排序）
+SpringApplicationRunListeners listeners = getRunListeners(args);</code></code></pre>
+<pre><code><code>private SpringApplicationRunListeners getRunListeners(String[] args) {
+    Class&lt;?&gt;[] types = new Class&lt;?&gt;[] { SpringApplication.class, String[].class };
+    return new SpringApplicationRunListeners(logger, getSpringFactoriesInstances(
+            SpringApplicationRunListener.class, types, this, args));
+}</code></code></pre>
+<p>　　这里我们再一次见到<code>getSpringFactoriesInstances(Class&lt;T&gt; type,Class&lt;?&gt;[] parameterTypes, Object... args)</code>这个方法，功能同上。</p>
+<h3 id="广播applicationstartingevent事件">广播<code>ApplicationStartingEvent</code>事件</h3>
+<pre><code><code>// 遍历所有SpringApplicationRunListener系列监听器，广播ApplicationStartingEvent
+listeners.starting();</code></code></pre>
+<pre><code><code>public void starting() {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.starting();
+    }
+}</code></code></pre>
+<pre><code><code>public void starting() {
+    this.initialMulticaster.multicastEvent(
+            new ApplicationStartingEvent(this.application, this.args));
+}</code></code></pre>
+<p>　　这里会遍历上面拿到的排序好的所有<code>SpringApplicationRunListener</code>系列监听器，广播<code>ApplicationStartingEvent</code>事件，这代表Spring应用开始启动，在这之前只进行了注册化初始化器和监听器。</p>
+<h3 id="准备环境广播applicationenvironmentpreparedevent事件">准备环境、广播<code>ApplicationEnvironmentPreparedEvent</code>事件</h3>
+<pre><code><code>// 准备环境（创建、配置、绑定环境、广播ApplicationEnvironmentPreparedEvent）
+ConfigurableEnvironment environment = prepareEnvironment(listeners,
+        applicationArguments);</code></code></pre>
+<pre><code><code>private ConfigurableEnvironment prepareEnvironment(
+        SpringApplicationRunListeners listeners,
+        ApplicationArguments applicationArguments) {
+    // Create and configure the environment
+    ConfigurableEnvironment environment = getOrCreateEnvironment();
+    configureEnvironment(environment, applicationArguments.getSourceArgs());
+    listeners.environmentPrepared(environment);
+    bindToSpringApplication(environment);
+    if (this.webApplicationType == WebApplicationType.NONE) {
+        environment = new EnvironmentConverter(getClassLoader())
+                .convertToStandardEnvironmentIfNecessary(environment);
+    }
+    ConfigurationPropertySources.attach(environment);
+    return environment;
+}</code></code></pre>
+<pre><code><code>public void environmentPrepared(ConfigurableEnvironment environment) {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.environmentPrepared(environment);
+    }
+}</code></code></pre>
+<pre><code><code>@Override
+public void environmentPrepared(ConfigurableEnvironment environment) {
+    this.initialMulticaster.multicastEvent(new ApplicationEnvironmentPreparedEvent(
+            this.application, this.args, environment));
+}</code></code></pre>
+<p>　　这里开始创建、配置和绑定<code>ConfigurableEnvironment</code>环境，环境准备好之后开始遍历<code>SpringApplicationRunListener</code>系列监听器，广播<code>ApplicationEnvironmentPreparedEvent</code>事件，代表环境已准备好。</p>
+<h3 id="开始打印banner">开始打印Banner</h3>
+<pre><code><code>// 打印Banner
+Banner printedBanner = printBanner(environment);</code></code></pre>
+<pre><code><code>private Banner printBanner(ConfigurableEnvironment environment) {
+    // Mode.OFF：不打印banner
+    if (this.bannerMode == Banner.Mode.OFF) {
+        return null;
+    }
+    // 加载banner资源，如果自定义了banner样式，在这里加载，否则加载默认banner
+    ResourceLoader resourceLoader = (this.resourceLoader != null)
+            ? this.resourceLoader : new DefaultResourceLoader(getClassLoader());
+    // 初始化bannerPrinter
+    SpringApplicationBannerPrinter bannerPrinter = new SpringApplicationBannerPrinter(
+            resourceLoader, this.banner);
+    // Mode.LOG：通过日志打印banner
+    if (this.bannerMode == Mode.LOG) {
+        return bannerPrinter.print(environment, this.mainApplicationClass, logger);
+    }
+    // 默认通过控制台打印banner
+    return bannerPrinter.print(environment, this.mainApplicationClass, System.out);
+}</code></code></pre>
+<p>　　关于Banner，SpringBoot支持关闭banner打印、打印到log日志和打印到system日志三种方式；同时支持自定义banner，自定义banner又有图片和txt文本两种（同时存在时先打印图片banner，在打印文本banner），图片banner又支持<code>gif</code>, <code>jpg</code>, <code>png</code>这三种类型的图片格式banner（<code>git</code>优先于<code>jpg</code>优先于<code>png</code>），自定义banner非常简单，只需要将banner文件放到<code>classpath:</code>下就好了（<code>resources</code>目录下），如果存在多个banner文件，想指定某一个文件，只需要在<code>application.properties</code>文件加入如下配置就好了，非常方便。</p>
+<pre class="propertoties"><code>spring.banner.image.location=banner.png
+spring.banner.location=banner.txt</code></code></pre>
+<h3 id="根据应用类型创建上下文">根据应用类型创建上下文</h3>
+<pre><code><code>// 根据应用类型创建上下文
+context = createApplicationContext();</code></code></pre>
+<pre><code><code>protected ConfigurableApplicationContext createApplicationContext() {
+    Class&lt;?&gt; contextClass = this.applicationContextClass;
+    if (contextClass == null) {
+        try {
+            switch (this.webApplicationType) {
+            case SERVLET:
+                contextClass = Class.forName(DEFAULT_WEB_CONTEXT_CLASS);
+                break;
+            case REACTIVE:
+                contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
+                break;
+            default:
+                contextClass = Class.forName(DEFAULT_CONTEXT_CLASS);
+            }
+        }
+        catch (ClassNotFoundException ex) {
+            throw new IllegalStateException(
+                    &quot;Unable create a default ApplicationContext, &quot;
+                            + &quot;please specify an ApplicationContextClass&quot;,
+                    ex);
+        }
+    }
+    return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass);
+}</code></code></pre>
+<pre><code><code>public static final String DEFAULT_WEB_CONTEXT_CLASS = &quot;org.springframework.boot.&quot;
+        + &quot;web.servlet.context.AnnotationConfigServletWebServerApplicationContext&quot;;
+
+public static final String DEFAULT_REACTIVE_WEB_CONTEXT_CLASS = &quot;org.springframework.&quot;
+        + &quot;boot.web.reactive.context.AnnotationConfigReactiveWebServerApplicationContext&quot;;
+        
+public static final String DEFAULT_CONTEXT_CLASS = &quot;org.springframework.context.&quot;
+        + &quot;annotation.AnnotationConfigApplicationContext&quot;;</code></code></pre>
+<p>　　开始创建<code>ConfigurableApplicationContext</code>上下文，其中<code>Servlet</code>类型的web应用会创建<code>AnnotationConfigServletWebServerApplicationContext</code>类型的上下文，<code>Reactive</code>类型的web应用会创建<code>AnnotationConfigReactiveWebServerApplicationContext</code>类型的上下文，非web应用会创建<code>AnnotationConfigApplicationContext</code>类型的上下文。</p>
+<h3 id="获取springbootexceptionreporter系列异常收集器">获取<code>SpringBootExceptionReporter</code>系列异常收集器</h3>
+<pre><code><code>// 获取SpringBootExceptionReporter系列异常收集器（从spring.factories文件加载，并实例化和排序）
+exceptionReporters = getSpringFactoriesInstances(
+        SpringBootExceptionReporter.class,
+        new Class[] { ConfigurableApplicationContext.class }, context);</code></code></pre>
+<pre><code><code>private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type,
+        Class&lt;?&gt;[] parameterTypes, Object... args) {
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+    // Use names and ensure unique to protect against duplicates
+    Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(
+            SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes,
+            classLoader, args, names);
+    AnnotationAwareOrderComparator.sort(instances);
+    return instances;
+}</code></code></pre>
+<p>　　可以看到，加载异常收集器与上面初始化器和监听器如出一辙，不做过多阐述。</p>
+<h3 id="上下文前置处理广播applicationpreparedevent事件">上下文前置处理、广播<code>ApplicationPreparedEvent</code>事件</h3>
+<pre><code><code>// 上下文前置处理（执行ApplicationContextInitializer系列初始化器、加载资源、广播ApplicationPreparedEvent）
+prepareContext(context, environment, listeners, applicationArguments,
+            printedBanner);</code></code></pre>
+<pre><code><code>private void prepareContext(ConfigurableApplicationContext context,
+        ConfigurableEnvironment environment, SpringApplicationRunListeners listeners,
+        ApplicationArguments applicationArguments, Banner printedBanner) {
+    // 关联上下文和环境
+    context.setEnvironment(environment);
+    //
+    postProcessApplicationContext(context);
+    // 去重并排序前面获取好的ApplicationContextInitializer初始化器，执行初始化
+    applyInitializers(context);
+    // 遍历前面设置好的SpringApplicationRunListener，但并没有发布（目前什么都没做，貌似为了以后扩展）
+    listeners.contextPrepared(context);
+    if (this.logStartupInfo) {
+        logStartupInfo(context.getParent() == null);
+        logStartupProfileInfo(context);
+    }
+
+    // Add boot specific singleton beans
+    // 添加启动特定的单例bean
+    ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+    beanFactory.registerSingleton(&quot;springApplicationArguments&quot;, applicationArguments);
+    if (printedBanner != null) {
+        beanFactory.registerSingleton(&quot;springBootBanner&quot;, printedBanner);
+    }
+
+    if (beanFactory instanceof DefaultListableBeanFactory) {
+        ((DefaultListableBeanFactory) beanFactory)
+                .setAllowBeanDefinitionOverriding(this.allowBeanDefinitionOverriding);
+    }
+    // Load the sources
+    // 加载sources资源
+    Set&lt;Object&gt; sources = getAllSources();
+    Assert.notEmpty(sources, &quot;Sources must not be empty&quot;);
+
+    load(context, sources.toArray(new Object[0]));
+    // 广播ApplicationPreparedEvent
+    listeners.contextLoaded(context);
+}</code></code></pre>
+<p>　　在启动上下文之前，会调用前面初始化好的<code>ApplicationContextInitializer</code>接口实现类，当然也包含我们自定义的，所以我们可以自定义初始化器，在上下文启动前做一些操作。之后会广播<code>ApplicationPreparedEvent</code>事件，通知<code>SpringApplicationRunListener</code>监听器<code>ConfigurableApplicationContext</code>上下文已准备好（框架中用<code>listeners.contextLoaded(context);</code>方法广播了<code>ApplicationPreparedEvent</code>事件，而<code>ApplicationLoadedEvent</code>事件并没有发布，感觉这里以后还会变动。。。）。</p>
+<h3 id="刷新上下文">刷新上下文</h3>
+<pre><code><code>// 刷新上下文（）
+refreshContext(context);</code></code></pre>
+<pre><code><code>private void refreshContext(ConfigurableApplicationContext context) {
+    refresh(context);
+    if (this.registerShutdownHook) {
+        try {
+            context.registerShutdownHook();
+        }
+        catch (AccessControlException ex) {
+            // Not allowed in some environments.
+        }
+    }
+}</code></code></pre>
+<h3 id="发布applicationstartedevent事件">发布<code>ApplicationStartedEvent</code>事件</h3>
+<pre><code><code>// 遍历前面设置的ConfigurableApplicationContext监听器，发布ApplicationStartedEvent
+listeners.started(context);</code></code></pre>
+<pre><code><code>public void started(ConfigurableApplicationContext context) {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.started(context);
+    }
+}</code></code></pre>
+<pre><code><code>@Override
+public void started(ConfigurableApplicationContext context) {
+    context.publishEvent(
+            new ApplicationStartedEvent(this.application, this.args, context));
+}</code></code></pre>
+<p>　　发布<code>ApplicationStartedEvent</code>事件，通知　<code>SpringApplicationRunListener</code>系列监听器<code>ConfigurableApplicationContext</code>上下文已启动完成，Spring Bean 已初始化完成。</p>
+<h3 id="回调实现了applicationrunner或commandlinerunner接口的runners">回调实现了<code>ApplicationRunner</code>或<code>CommandLineRunner</code>接口的<code>Runners</code></h3>
+<pre><code><code>// 按顺序回调实现了ApplicationRunner或CommandLineRunner接口的Runners
+callRunners(context, applicationArguments);</code></code></pre>
+<pre><code><code>private void callRunners(ApplicationContext context, ApplicationArguments args) {
+    List&lt;Object&gt; runners = new ArrayList&lt;&gt;();
+    runners.addAll(context.getBeansOfType(ApplicationRunner.class).values());
+    runners.addAll(context.getBeansOfType(CommandLineRunner.class).values());
+    AnnotationAwareOrderComparator.sort(runners);
+    for (Object runner : new LinkedHashSet&lt;&gt;(runners)) {
+        if (runner instanceof ApplicationRunner) {
+            callRunner((ApplicationRunner) runner, args);
+        }
+        if (runner instanceof CommandLineRunner) {
+            callRunner((CommandLineRunner) runner, args);
+        }
+    }
+}</code></code></pre>
+<p>　　这里是有顺序的，<code>ApplicationRunner</code>的实现类优先于<code>CommandLineRunner</code>的实现类被回调</p>
+<h3 id="发布applicationreadyevent事件">发布<code>ApplicationReadyEvent</code>事件</h3>
+<pre><code><code>try {
+    // 遍历前面设置好的SpringApplicationRunListener监听器，发布ApplicationReadyEvent
+    listeners.running(context);
+}</code></code></pre>
+<pre><code><code>public void running(ConfigurableApplicationContext context) {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.running(context);
+    }
+}</code></code></pre>
+<pre><code><code>@Override
+public void running(ConfigurableApplicationContext context) {
+    context.publishEvent(
+            new ApplicationReadyEvent(this.application, this.args, context));
+}</code></code></pre>
+<p>　　发布<code>ApplicationReadyEvent</code>事件,通知<code>SpringApplicationRunListener</code>系列监听器<code>ConfigurableApplicationContext</code>上下文已经在运行，整个容器已经准备好。</p>
+<h3 id="发布exitcodeevent和applicationfailedevent事件和异常收集器收集异常信息">发布<code>ExitCodeEvent</code>和<code>ApplicationFailedEvent</code>事件和异常收集器收集异常信息</h3>
+<pre><code><code>catch (Throwable ex) {
+    handleRunFailure(context, ex, exceptionReporters, listeners);
+    throw new IllegalStateException(ex);
+}</code></code></pre>
+<pre><code><code>private void handleRunFailure(ConfigurableApplicationContext context,
+        Throwable exception,
+        Collection&lt;SpringBootExceptionReporter&gt; exceptionReporters,
+        SpringApplicationRunListeners listeners) {
+    try {
+        try {
+            handleExitCode(context, exception);
+            if (listeners != null) {
+                listeners.failed(context, exception);
+            }
+        }
+        finally {
+            reportFailure(exceptionReporters, exception);
+            if (context != null) {
+                context.close();
+            }
+        }
+    }
+    catch (Exception ex) {
+        logger.warn(&quot;Unable to close ApplicationContext&quot;, ex);
+    }
+    ReflectionUtils.rethrowRuntimeException(exception);
+}</code></code></pre>
+<p>　　如果启动过程中出现异常，springboot将会发布<code>ExitCodeEvent</code>事件通知上下文停止或重启，并发布<code>ApplicationFailedEvent</code>事件通知<code>SpringApplicationRunListener</code>系列监听器，最后<code>SpringBootExceptionReporter</code>异常收集器收集打印异常。</p>
+<h2 id="总结">总结</h2>
+<h3 id="springboot启动过程大致脉络">SpringBoot启动过程大致脉络</h3>
+<ul>
+<li>准备阶段
+<ul>
+<li>参数初始化</li>
+<li>推断应用类型</li>
+<li>加载ApplicationContextInitializer系列初始化器</li>
+<li>加载ApplicationListener系列监听器</li>
+<li>推断应用入口类（main函数所在类）</li>
+</ul></li>
+<li>运行阶段
+<ul>
+<li>初始化容器启动计时器，开始计时</li>
+<li>初始化上下文ConfigurableApplicationContext、异常收集器</li>
+<li>配置系统参数&quot;java.awt.headless&quot;</li>
+<li>获取SpringApplicationRunListener系列监听器</li>
+<li>遍历所有SpringApplicationRunListener系列监听器，广播ApplicationStartingEvent</li>
+<li>处理args参数</li>
+<li>准备环境（创建、配置、绑定环境、广播ApplicationEnvironmentPreparedEvent）</li>
+<li>配置忽略Bean信息</li>
+<li>打印Banner</li>
+<li>根据应用类型创建上下文</li>
+<li>获取SpringBootExceptionReporter系列异常收集器</li>
+<li>上下文前置处理（执行ApplicationContextInitializer系列初始化器、加载资源、广播ApplicationPreparedEvent）</li>
+<li>刷新上下文</li>
+<li>启动完成，打印用时</li>
+<li>遍历前面设置的ConfigurableApplicationContext监听器，发布ApplicationStartedEvent</li>
+<li>回调实现了ApplicationRunner或CommandLineRunner接口的Runners</li>
+<li>遍历前面设置好的SpringApplicationRunListener监听器，发布ApplicationReadyEvent</li>
+</ul></li>
+</ul>
+<p>　　至此，整个SpringBoot项目已经启动完成，我们可以看到，整个过程中Spring的事件驱动机制起着举足轻重的作用，有了这个机制我们可以知晓容器的启动过程，并且可以监听到某些事件，对容器中我们关心的实例做进一步处理，我们深入理解事件驱动机制很有必要，它将帮助我们更好的理解和使用这个Spring框架体系。如果想要文中中文版SpringBoot注释源码，可以在<a href="https://github.com/ZhaoGitHub1/spring-boot">我的github</a>下载，如果发现哪里写的不对，烦请留言通知我。</p>
+<blockquote>
+<p>更多信息可以关注我的个人博客：<a href="https://www.yizhuxiaozhan.site">逸竹小站</a>或<a href="https://userzhao.coding.me">逸竹小站</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

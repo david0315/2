@@ -1,0 +1,123 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修指令重排序和内存屏障' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>指令重排序和内存屏障</center></div><div class='banquan'>原文出处:本文由博客园博主张小云的博客提供。<br/>
+原文连接:https://www.cnblogs.com/zhangweicheng/p/11674660.html</div><br>
+    <h1>一、指令重排序</h1>
+<p>　　指令重排序分为三种，分别为<strong>编译器优化重排序</strong>、<strong>指令级并行重排序</strong>、<strong>内存系统重排序</strong>。如图所示，后面两种为处理器级别（即为硬件层面）。</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="./images/指令重排序和内存屏障0.png" alt="" width="624" height="137" /></p>
+<ul>
+<li><strong>编译器优化重排序：</strong>编译器在不改变程序执行结果的情况下，为了提升效率，对指令进行乱序的编译。例如在代码中A操作需要获取其他资源而进入等待的状态，而A操作后面的代码跟其没有依赖关系，如果编译器一直等待A操作完成再往下执行的话效率要慢的多，所以可以先编译后面的代码，这样的乱序可以提升不小的编译速度。</li>
+<li><strong>指令级并行重排序：</strong>处理器在不影响程序执行结果的情况下，将多条指令重叠在一起执行，同样也是为了提升效率。</li>
+<li><strong>内存系统重排序：</strong>这个跟之前两个不同的是，其为伪重排序，也就是说只是看起来像在乱序执行而已。对于现代的处理器来说，在CPU和主内存之间都具备一个高速缓存，高速缓存的作用主要为减少CPU和主内存的交互（CPU的处理速度要快的多），在CPU进行读操作时，如果缓存没有的话从主内存取，而对于写操作都是先写在缓存中，最后再一次性写入主内存，原因是<strong>减少跟主内存交互时CPU的短暂卡顿</strong>，从而<strong>提升性能</strong>，但是延时写入可能会导致一个问题&mdash;&mdash;数据不一致。
+<src class="cnblogs_code">
+<pre><code>// CPU1执行以下操作
+a = 1<span>;
+int i =<span> b;
+
+// CPU2执行下面操作
+b = 1<span>;
+int j = a;<br /><br />其执行图如下：</span></span></span></code></pre>
+&nbsp; &nbsp;&nbsp;<img src="./images/指令重排序和内存屏障1.png" alt="" width="430" height="338" />
+<p>&nbsp;</p>
+<p>&nbsp;　　　　从上面图中我们可以看到，对于CPU来说，先将a = 1写入缓存在读取变量b，过后在写入a到主内存，而这个操作从表面上看就变成了先读取变量b，在写入a到主内存，也就是发生了<strong>重排序</strong>，所以才说这为伪重排序。</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; 而从上面我们也可以看出，由于CPU1和2写入的时机不同，最终可能导致读到的(a,b)变量有四种情况，分别是(0,0),(0,1),(1,0),(1,1)。例如，在两个缓存未写入主内存的时候就进行变量读取，这时候读到的就为(0,0)，其他情况类推。所以Java在实现内存模型的时候会禁止特定类型的重排序。</p>
+
+</li>
+</ul>
+<p>&nbsp;</p>
+<p>&nbsp;　　<strong>as-if-serial语义：</strong>这是重排序都需要遵循的规则，其大致意思就是在<strong>单线程</strong>中，只要不改变程序的最终执行结果，那么为了提升性能可以改变指令执行的顺序。</p>
+<h1>二、内存屏障</h1>
+<p>　　在<strong>编译器方面使用volatile关键字可以禁止指令重排序</strong>，而<strong>在硬件方面实现禁止指令重排序的则是内存屏障</strong>。其中包括硬件层本来就有的LoadBarriers和StoreBarriers 和JVM封装实现的四种内存屏障。</p>
+<h2><strong>　&nbsp; 从硬件层上</strong></h2>
+<p><strong>　　　　</strong>内存屏障分为两种，LoadBarriers和StoreBarriers。</p>
+<ul>
+<li style="list-style-type: none;">
+<ul>
+<li><strong>LoadBarriers：</strong>在执行屏障后一个操作前，保证已经刷新了缓存的数据，也就是说使缓存失效，强制从内存刷新数据到缓存中。<br />
+<src class="cnblogs_code">
+<pre><code>i =<span> a;
+LoadBarriers;
+// ..其他操作</span></code></pre>
+
+<p>如上伪代码中，在执行其他操作之前必须保证a的变量从主内存中读取并且刷新到缓存中。</p>
+</li>
+<li><strong>StoreBarriers：</strong>此屏障之前的写入缓存中的数据同步到内存中，并且保证其他线程可见。
+<src class="cnblogs_code">
+<pre><code>a = 1<span>;
+b = 2<span>;
+c = 3<span>;
+StoreBarriers;
+// ..其他操作</span></span></span></code></pre>
+
+<p>如上伪代码中，保证在其他操作之前，写入缓存中的a,b,c三个变量同步到主内存中，并且其他线程可以观察到变量的变化。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h2>　　JVM实现的内存屏障</h2>
+<ol>
+<li><strong>LoadLoad：</strong>对于Load1；LoadLoad；Load2这样的情况，保证Load1先于Load2及之后的Load操作，且对其可见。例如：
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">...
+</span><span style="color: #0000ff;">int</span> i =<span style="color: #000000;"> a;
+LoadLoad;
+</span><span style="color: #0000ff;">int</span> j = b; </code></pre>
+
+<p>在这段代码中，在int j = b以及后面的Load操作中，都能见到int i = a的操作，也就是int i = a先于后面的读取操作。即，禁止int i = a和之后的读操作重排序。</p>
+</li>
+<li><strong>LoadStore：</strong>对于Load1；LoadStore；Store1来说，保证Load1操作先于Store1以及后面的Store操作，即对后Store操作可见。如：
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">int</span> i =<span style="color: #000000;"> a;
+LoadStore
+b </span>= 1;<br /><br />// int i = a对于b = 1及之后的store操作均可见。</code></pre>
+
+</li>
+<li><strong>S<strong>toreLoad：</strong>同上，Store1；StoreLoad；Load1情况来说，保证Store1操作先于后续的所有Load操作，并且其Store的变量操作对其他处理器可见。由于Store操作会<strong>立即刷新到内存并对其他处理器缓存可见的特性</strong>，其具备其他三个屏障的功能，但是相对的，<strong>其花费的开销较大。</strong></strong></li>
+<li><strong><strong>S<strong>toreStore：</strong>在Store1；StoreStore；Store2情况中，保证Store1操作先于Store2操作，即在Store1后续的Store操作之前，Store1操作保证刷新到内存并且对其他处理器可见。</strong></strong></li>
+</ol>
+<h2>&nbsp;　volatile的禁止指令重排序</h2>
+<p>　　　　我们都知道<strong>volatile</strong>关键字有两个语义：</p>
+<ul>
+<li style="list-style-type: none;">
+<ul>
+<li><em>保证内存可见性</em></li>
+<li><em>禁止指令重排序</em></li>
+</ul>
+</li>
+</ul>
+<p><em>　　　　</em>其中JVM对其<strong>禁止指令重排序在硬件层面的实现</strong>就是通过在volatile修饰的变量<strong>前后插入内存屏障</strong>。volatile变量的内存屏障规则如下：</p>
+<blockquote>
+<p>　　在每个<strong>volatile</strong>写操作前插入<strong>StoreStore</strong>屏障，在写操作后插入<strong>StoreLoad</strong>屏障；<br />　　在每个<strong>volatile</strong>读操作前插入<strong>LoadLoad</strong>屏障，在读操作后插入<strong>LoadStore</strong>屏障；</p>
+
+
+
+</blockquote>
+<p>　　　　而在编译器方面则是因为对于volatile变量内存中的六种操作会有特殊的规则，可以看看我的另一篇文章&mdash;&mdash;<a href="https://www.cnblogs.com/zhangweicheng/p/11638841.html">浅谈内存模型</a>，里面介绍了volatile两种语义的原理，同时也说明了volatile关键字没有原子性的原因。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<blockquote>
+<p>&nbsp;文章若有不正之处，还望指出，在此多谢！</p>
+
+
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

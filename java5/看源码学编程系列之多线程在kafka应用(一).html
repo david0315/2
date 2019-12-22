@@ -1,0 +1,175 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修看源码学编程系列之多线程在kafka应用(一)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>看源码学编程系列之多线程在kafka应用(一)</center></div><div class='banquan'>原文出处:本文由博客园博主软件改变未来提供。<br/>
+原文连接:https://www.cnblogs.com/pangjia/p/11914456.html</div><br>
+    <p>　　<span style="font-size: 15px;">kafka 由于它自身的高性能发送与消费能力，而受到广大企业的喜欢，所以我们就先看看kafka 一些源码实现如下：</span><span style="font-size: 15px;">　　</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>  <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> messageNo = 1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">while</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>             String messageStr = "Message_" +<span style="color: #000000;"> messageNo;
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">long</span> startTime =<span style="color: #000000;"> System.currentTimeMillis();
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isAsync) { 
+</span><span style="color: #008080;"> 7</span>                 producer.send(<span style="color: #0000ff;">new</span> ProducerRecord&lt;&gt;<span style="color: #000000;">(topic,
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">                    messageNo,
+</span><span style="color: #008080;"> 9</span>                     messageStr), <span style="color: #0000ff;">new</span> DemoCallBack(startTime, messageNo, messageStr));<span style="color: #008000;">//</span><span style="color: #008000;"> 异步发送</span>
+<span style="color: #008080;">10</span>             } <span style="color: #0000ff;">else</span><span style="color: #000000;"> { 
+</span><span style="color: #008080;">11</span>                 <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">12</span>                     producer.send(<span style="color: #0000ff;">new</span> ProducerRecord&lt;&gt;<span style="color: #000000;">(topic,
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">                        messageNo,
+</span><span style="color: #008080;">14</span>                         messageStr)).get();<span style="color: #008000;">//</span><span style="color: #008000;"> 同步发送</span>
+<span style="color: #008080;">15</span>                     System.out.println("Sent message: (" + messageNo + ", " + messageStr + ")"<span style="color: #000000;">);
+</span><span style="color: #008080;">16</span>                 } <span style="color: #0000ff;">catch</span> (InterruptedException |<span style="color: #000000;"> ExecutionException e) {
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                    e.printStackTrace();
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">20</span>             ++<span style="color: #000000;">messageNo;
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">22</span>     }</code></pre>
+
+<p>　　这段代码摘抄的是，kafka源码 生产者发送消息demo（kafka.examples.Producer） 里面的一个片段，主要是涉及到两个知识点，一个是异步发送消息，</p>
+<p>回调函数的实现，<span style="font-size: 14px;">另一个就是</span>同步发送，多线程Future.get 模式的实现。现在分别阐述这两种实现方式。</p>
+<p>　　<span style="font-size: 15px;"><strong>异步回调方式</strong></span></p>
+<p><strong>　　</strong><span style="font-size: 14px;">其实这种方式主要应用在调用多线程执行某个任务时，不用傻傻等到该线程完成后得到相应的反馈信息。举个例子Client端需要调用Server端来执行某个任务，并且希望Server端执行完成后</span></p>
+<p><span style="font-size: 14px;">主动将相应的结果告诉Client端。这个过程就叫做回调了。如下代码：</span></p>
+<p><span style="font-size: 14px;">　　</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> Client <span style="color: #0000ff;">implements</span><span style="color: #000000;"> CSCallBack {
+</span><span style="color: #008080;"> 2</span>     
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">boolean</span> stopThread = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> Server server;
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> Client(Server server) {
+</span><span style="color: #008080;"> 7</span>         <span style="color: #0000ff;">this</span>.server =<span style="color: #000000;"> server;
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> sendMsg(<span style="color: #0000ff;">final</span><span style="color: #000000;"> String msg){
+</span><span style="color: #008080;">11</span>         System.out.println("ThreadName="+Thread.currentThread().getName()+" 客户端：发送的消息为：" +<span style="color: #000000;"> msg);
+</span><span style="color: #008080;">12</span>         <span style="color: #0000ff;">new</span> Thread(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">            @Override
+</span><span style="color: #008080;">14</span>             <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">15</span>                 server.getClientMsg(Client.<span style="color: #0000ff;">this</span>,msg);<span style="color: #008000;">//</span><span style="color: #008000;"> 核心代码1：将被调用方自己当作参数(client)传递到调用方(Server)</span>
+<span style="color: #008080;">16</span>                 
+<span style="color: #008080;">17</span>                 <span style="color: #0000ff;">while</span>(!stopThread) {<span style="color: #008000;">//</span><span style="color: #008000;"> 模拟等待另服务器端代码完成</span>
+<span style="color: #008080;">18</span>                     System.out.println("ThreadName="+Thread.currentThread().getName()+"客户端：模拟等待回调完成"<span style="color: #000000;">);
+</span><span style="color: #008080;">19</span>                     
+<span style="color: #008080;">20</span>                     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">21</span>                         Thread.sleep(50<span style="color: #000000;">);
+</span><span style="color: #008080;">22</span>                     } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">                        e.printStackTrace();
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">                    }
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">27</span> <span style="color: #000000;">        }).start();
+</span><span style="color: #008080;">28</span>         System.out.println("ThreadName="+Thread.currentThread().getName()+" 客户端：异步发送成功"<span style="color: #000000;">);
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">30</span> 
+<span style="color: #008080;">31</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">32</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> process(String status) {
+</span><span style="color: #008080;">33</span>         stopThread = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">34</span>         System.out.println("ThreadName="+Thread.currentThread().getName()+" 客户端：收到服务端回调状态为：" +<span style="color: #000000;"> status);
+</span><span style="color: #008080;">35</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">36</span> }</code></pre>
+
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Server {
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> getClientMsg(CSCallBack csCallBack , String msg) {
+</span><span style="color: #008080;"> 4</span>         
+<span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 模拟服务端需要对数据处理</span>
+<span style="color: #008080;"> 7</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 8</span>              <span style="color: #0000ff;">new</span> Thread(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">                 @Override
+</span><span style="color: #008080;">10</span>                  <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+</span><span style="color: #008080;">11</span>                      System.out.println("ThreadName="+Thread.currentThread().getName()+" 服务端：服务端接收到客户端发送的消息为:" +<span style="color: #000000;"> msg);
+</span><span style="color: #008080;">12</span>                      <span style="color: #0000ff;">while</span>(<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">13</span>                         <span style="color: #0000ff;">int</span> max=10,min=1<span style="color: #000000;">;
+</span><span style="color: #008080;">14</span>                          <span style="color: #0000ff;">int</span> ranNum = (<span style="color: #0000ff;">int</span>) (Math.random()*(max-min)+<span style="color: #000000;">min); 
+</span><span style="color: #008080;">15</span>                          
+<span style="color: #008080;">16</span>                          <span style="color: #0000ff;">if</span>(ranNum &gt;6) {<span style="color: #008000;">//</span><span style="color: #008000;">  当随机数大于5时认为任务完成</span>
+<span style="color: #008080;">17</span>                               System.out.println("ThreadName="+Thread.currentThread().getName()+" 服务端:数据处理成功，返回成功状态 200"<span style="color: #000000;">);
+</span><span style="color: #008080;">18</span>                              String status = "200"<span style="color: #000000;">;
+</span><span style="color: #008080;">19</span>                              csCallBack.process(status);<span style="color: #008000;">//</span><span style="color: #008000;"> 核心代码2：调用方(Server)任务处理完成相应的任务后，调用被调用方(Client)的方法告知任务完成</span>
+<span style="color: #008080;">20</span>                              <span style="color: #0000ff;">break</span><span style="color: #000000;">;
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">                         }
+</span><span style="color: #008080;">22</span>                          
+<span style="color: #008080;">23</span>                          <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">24</span>                             Thread.sleep(80<span style="color: #000000;">);
+</span><span style="color: #008080;">25</span>                         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">                            e.printStackTrace();
+</span><span style="color: #008080;">27</span> <span style="color: #000000;">                        }
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">                     }
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">                 }
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">             }).start();
+</span><span style="color: #008080;">31</span>             
+<span style="color: #008080;">32</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;">33</span> <span style="color: #000000;">            e.printStackTrace();
+</span><span style="color: #008080;">34</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">35</span>        
+<span style="color: #008080;">36</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">37</span> }</code></pre>
+
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</p>
+<p>其实核心代码就两个：</p>
+<p>　　　　　　<span style="font-size: 15px;">client端：被调用方自己当作参数(client)传递到调用方(Server)。</span></p>
+<p><span style="font-size: 14px;">　　　　　　Server端：</span><span style="font-size: 14px;">调用方(Server)任务处理完成相应的任务后，调用被调用方(Client)的方法告知任务完成。</span></p>
+<p><span style="font-size: 14px;">　　 <span style="font-size: 15px;"><strong>同步发送多线程 Future.get 模式实现&nbsp;</strong></span></span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;"><strong>&nbsp; &nbsp; &nbsp; &nbsp;</strong>&nbsp;这种方式方式主要是用来等待某一项任务完成后，接着顺序执行某项任务。和上面的例子一样都是client 端 向server 端请求完成某项任务，并且期望server 端在完成任务后，返回结果</span></span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;"><strong>&nbsp;</strong>&nbsp;实例代码如下：</span></span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;">　　</span></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> FutureDemo {
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">protected</span> RealData realdata = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">boolean</span> isReady = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span> <span style="color: #0000ff;">void</span> requestData(RealData realdata) {<span style="color: #008000;">//</span><span style="color: #008000;"> client请求server完成某项任务</span>
+<span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isReady) {                        
+</span><span style="color: #008080;"> 7</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;">;     
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">this</span>.realdata =<span style="color: #000000;"> realdata;
+</span><span style="color: #008080;">10</span>         isReady = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">11</span>         notifyAll();<span style="color: #008000;">//</span><span style="color: #008000;">核心代码2：当请求的任务处理完成时，唤醒等待中的线程</span>
+<span style="color: #008080;">12</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">13</span>     
+<span style="color: #008080;">14</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span> String getResult() {<span style="color: #008000;">//</span><span style="color: #008000;"> client等待server完成任务后返回,此处就相当于 Future.get </span>
+<span style="color: #008080;">15</span>         <span style="color: #0000ff;">while</span> (!<span style="color: #000000;">isReady) {
+</span><span style="color: #008080;">16</span>             <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">17</span>                 wait();<span style="color: #008000;">//</span><span style="color: #008000;">核心代码1：发出请求后等待线程被激活</span>
+<span style="color: #008080;">18</span>             } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">21</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> realdata.result;
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">23</span> }</code></pre>
+
+<p>　　核心实现代码其实就是多线程里面的，wait 和 notify 实现方式。异步回调 和 同步 Future get 模式最大的区别，举个例子吧，</p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<span style="font-size: 14px;"> 老婆（client 端）很爱老公，老公（服务器端）每天完成加班很晚，老婆都会等到老公回家然后给他做夜宵(同步 Future get 模式)</span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;">&nbsp; &nbsp;<strong>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</strong>&nbsp;老婆（client 端）很爱老公，老公（服务器端）每天完成加班很晚，老婆觉得一直等太累了，就先睡觉，等老公回来后通知老婆（回调），然后老婆再给老公做夜宵（异步回调方式）。</span></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;">&nbsp; &nbsp; &nbsp; 所以大家都期望自己的老婆是，&nbsp;Future get 模式 还是 异步回调模式？</span></span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;"><strong>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</strong></span></span></p>
+<p><span style="font-size: 14px;"><span style="font-size: 15px;"><strong>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</strong></span></span></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

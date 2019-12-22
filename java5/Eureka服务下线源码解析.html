@@ -1,0 +1,199 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka服务下线源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka服务下线源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11749851.html</div><br>
+    <p>我们知道，在Eureka中，可以使用如下方法使Eureka主动下线，那么本篇文章就来分析一下子这个下线的流程</p>
+<pre><code><code>public synchronized void shutdown() {
+        if (isShutdown.compareAndSet(false, true)) {
+            logger.info(&quot;Shutting down DiscoveryClient ...&quot;);
+
+            if (statusChangeListener != null &amp;&amp; applicationInfoManager != null) {
+                applicationInfoManager.unregisterStatusChangeListener(statusChangeListener.getId());
+            }
+
+            cancelScheduledTasks();
+
+            // If APPINFO was registered
+            if (applicationInfoManager != null
+                    &amp;&amp; clientConfig.shouldRegisterWithEureka()
+                    &amp;&amp; clientConfig.shouldUnregisterOnShutdown()) {
+                applicationInfoManager.setInstanceStatus(InstanceStatus.DOWN);
+                unregister();
+            }
+
+            if (eurekaTransport != null) {
+                eurekaTransport.shutdown();
+            }
+
+            heartbeatStalenessMonitor.shutdown();
+            registryStalenessMonitor.shutdown();
+
+            logger.info(&quot;Completed shut down of DiscoveryClient&quot;);
+        }
+    }</code></code></pre>
+<p>主要做了这么几件事：</p>
+<ol>
+<li>解除状态监听器</li>
+<li>取消心跳、刷新线程</li>
+</ol>
+<pre><code><code>private void cancelScheduledTasks() {
+        if (instanceInfoReplicator != null) {
+            instanceInfoReplicator.stop();
+        }
+        if (heartbeatExecutor != null) {
+            heartbeatExecutor.shutdownNow();
+        }
+        if (cacheRefreshExecutor != null) {
+            cacheRefreshExecutor.shutdownNow();
+        }
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+    }</code></code></pre>
+<ol>
+<li>向服务端发起下线通知</li>
+</ol>
+<pre><code><code> void unregister() {
+        // It can be null if shouldRegisterWithEureka == false
+        if(eurekaTransport != null &amp;&amp; eurekaTransport.registrationClient != null) {
+            try {
+                logger.info(&quot;Unregistering ...&quot;);
+                EurekaHttpResponse&lt;Void&gt; httpResponse = eurekaTransport.registrationClient.cancel(instanceInfo.getAppName(), instanceInfo.getId());
+                logger.info(PREFIX + &quot;{} - deregister  status: {}&quot;, appPathIdentifier, httpResponse.getStatusCode());
+            } catch (Exception e) {
+                logger.error(PREFIX + &quot;{} - de-registration failed{}&quot;, appPathIdentifier, e.getMessage(), e);
+            }
+        }
+    }
+
+    @Override
+    public EurekaHttpResponse&lt;Void&gt; cancel(String appName, String id) {
+        String urlPath = &quot;apps/&quot; + appName + &#39;/&#39; + id;
+        ClientResponse response = null;
+        try {
+            Builder resourceBuilder = jerseyClient.resource(serviceUrl).path(urlPath).getRequestBuilder();
+            addExtraHeaders(resourceBuilder);
+            response = resourceBuilder.delete(ClientResponse.class);
+            return anEurekaHttpResponse(response.getStatus()).headers(headersOf(response)).build();
+        } finally {
+            if (logger.isDebugEnabled()) {
+                logger.debug(&quot;Jersey HTTP DELETE {}/{}; statusCode={}&quot;, serviceUrl, urlPath, response == null ? &quot;N/A&quot; : response.getStatus());
+            }
+            if (response != null) {
+                response.close();
+            }
+        }
+    }</code></code></pre>
+<ol>
+<li>停止各个监听器</li>
+</ol>
+<h5 id="服务端接受下线消息">服务端接受下线消息</h5>
+<p>下线消息的处理在<code>InstanceResource</code>类中</p>
+<pre><code><code>@DELETE
+    public Response cancelLease(
+            @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication) {
+        try {
+            boolean isSuccess = registry.cancel(app.getName(), id,
+                &quot;true&quot;.equals(isReplication));
+
+            if (isSuccess) {
+                logger.debug(&quot;Found (Cancel): {} - {}&quot;, app.getName(), id);
+                return Response.ok().build();
+            } else {
+                logger.info(&quot;Not Found (Cancel): {} - {}&quot;, app.getName(), id);
+                return Response.status(Status.NOT_FOUND).build();
+            }
+        } catch (Throwable e) {
+            logger.error(&quot;Error (cancel): {} - {}&quot;, app.getName(), id, e);
+            return Response.serverError().build();
+        }
+
+    }
+ public boolean cancel(final String appName, final String id,
+                          final boolean isReplication) {
+        if (super.cancel(appName, id, isReplication)) {
+          //往集群同步下线信息
+            replicateToPeers(Action.Cancel, appName, id, null, null, isReplication);
+            synchronized (lock) {
+                if (this.expectedNumberOfRenewsPerMin &gt; 0) {
+                    // Since the client wants to cancel it, reduce the threshold (1 for 30 seconds, 2 for a minute)
+                    this.expectedNumberOfRenewsPerMin = this.expectedNumberOfRenewsPerMin - 2;
+                    this.numberOfRenewsPerMinThreshold =
+                            (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+</code></code></pre>
+<p>先看具体的下线逻辑，与租约过期清除的处理逻辑是一致的</p>
+<pre><code><code>   protected boolean internalCancel(String appName, String id, boolean isReplication) {
+        try {
+            read.lock();
+            CANCEL.increment(isReplication);
+            Map&lt;String, Lease&lt;InstanceInfo&gt;&gt; gMap = registry.get(appName);
+            Lease&lt;InstanceInfo&gt; leaseToCancel = null;
+            if (gMap != null) {
+              //删除租约信息
+                leaseToCancel = gMap.remove(id);
+            }
+            synchronized (recentCanceledQueue) {
+                recentCanceledQueue.add(new Pair&lt;Long, String&gt;(System.currentTimeMillis(), appName + &quot;(&quot; + id + &quot;)&quot;));
+            }
+          //删除客户端状态信息
+            InstanceStatus instanceStatus = overriddenInstanceStatusMap.remove(id);
+            if (instanceStatus != null) {
+                logger.debug(&quot;Removed instance id {} from the overridden map which has value {}&quot;, id, instanceStatus.name());
+            }
+            if (leaseToCancel == null) {
+                CANCEL_NOT_FOUND.increment(isReplication);
+                logger.warn(&quot;DS: Registry: cancel failed because Lease is not registered for: {}/{}&quot;, appName, id);
+                return false;
+            } else {
+                leaseToCancel.cancel();
+                InstanceInfo instanceInfo = leaseToCancel.getHolder();
+                String vip = null;
+                String svip = null;
+                if (instanceInfo != null) {
+                    instanceInfo.setActionType(ActionType.DELETED);
+                    recentlyChangedQueue.add(new RecentlyChangedItem(leaseToCancel));
+                    instanceInfo.setLastUpdatedTimestamp();
+                    vip = instanceInfo.getVIPAddress();
+                    svip = instanceInfo.getSecureVipAddress();
+                }
+                invalidateCache(appName, vip, svip);
+                logger.info(&quot;Cancelled instance {}/{} (replication={})&quot;, appName, id, isReplication);
+                return true;
+            }
+        } finally {
+            read.unlock();
+        }
+    }</code></code></pre>
+<p>其中<code>invalidateCache</code>则是删除当前服务中与该实例相关的缓存</p>
+<p>集群的同步下线信息则跟集群信息注册的逻辑差不多</p>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

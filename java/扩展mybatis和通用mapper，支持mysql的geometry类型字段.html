@@ -1,0 +1,284 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修扩展mybatis和通用mapper，支持mysql的geometry类型字段' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>扩展mybatis和通用mapper，支持mysql的geometry类型字段</center></div><div class='banquan'>原文出处:本文由博客园博主羊望提供。<br/>
+原文连接:https://www.cnblogs.com/lookup/p/11523409.html</div><br>
+    <p>因项目中需要用到地理位置信息的存储、查询、计算等，经过研究决定使用mysql（5.7版本）数据库的geometry类型字段来保存地理位置坐标，使用虚拟列（Virtual Generated Column）来保存geohash值，便于查询。<br />
+需要了解geometry如何使用及优势可参看：<br />
+<a href="https://www.jianshu.com/p/d6bf587389f1">mysql中geometry类型的简单使用</a><br />
+<a href="https://www.cnblogs.com/hargen/p/9674958.html">MySQL Geometry扩展在地理位置计算中的效率优势</a></p>
+<p>本文主要讲解扩展mybatis和通用mapper，使其支持geometry类型字段的新增、修改、查询</p>
+<p>首先创建一张表，作为本文的案例</p>
+<pre><code><code>CREATE TABLE `t_user` (
+  `id` varchar(45) NOT NULL,
+  `name` varchar(10) NOT NULL COMMENT &#39;姓名&#39;,
+  `gis` geometry NOT NULL COMMENT &#39;空间位置信息&#39;,
+  `geohash` varchar(20)  GENERATED ALWAYS AS (st_geohash(`gis`,8)) VIRTUAL NOT NULL COMMENT &#39;geo哈希&#39;,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `id` (`id`),
+  SPATIAL KEY `idx_gis` (`gis`),
+  KEY `idx_geohash` (`geohash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT=&#39;用户&#39;;</code></code></pre>
+<p>创建对应的实体类</p>
+<pre class="java"><code>@Table(name = &quot;t_user&quot;)
+public class User {
+    private String id;
+    private String name;
+    @Column
+    private GeoPoint gis;
+    @VirtualGenerated
+    private String geohash;
+}</code></code></pre>
+<p>其中GeoPoint类型是我们自定义的类型，用来对应mysql的geometry类型</p>
+<pre class="java"><code>public class GeoPoint {
+    public GeoPoint(BigDecimal lng, BigDecimal lat) {
+        this.lng = lng;
+        this.lat = lat;
+    }
+    /* 经度 */
+    private BigDecimal lng;
+    /* 纬度 */
+    private BigDecimal lat;
+}</code></code></pre>
+<p>@VirtualGenerated注解是我们自定义的注解，用来标识虚拟列字段，使insert、update时能够忽略该字段</p>
+<h2 id="使tk通用mapper的insert支持geometry类型">使tk通用mapper的insert支持geometry类型</h2>
+<p>tk通用mapper默认生成的insert语句xml是这样</p>
+<pre class="xml"><code>&lt;insert&gt;
+    INSERT INTO t_user 
+    &lt;trim prefix=&quot;(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        &lt;if test=&quot;id != null&quot;&gt;id,&lt;/if&gt;
+        &lt;if test=&quot;name != null&quot;&gt;name,&lt;/if&gt;
+        &lt;if test=&quot;gis != null&quot;&gt;gis,&lt;/if&gt;
+    &lt;/trim&gt;
+    &lt;trim prefix=&quot;VALUES(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        &lt;if test=&quot;id != null&quot;&gt;#{id},&lt;/if&gt;
+        &lt;if test=&quot;name != null&quot;&gt;#{name},&lt;/if&gt;
+        &lt;if test=&quot;gis != null&quot;&gt;#{gis},&lt;/if&gt;
+    &lt;/trim&gt;
+&lt;/insert&gt;</code></code></pre>
+<p>而我们希望生成的insert语句xml是这样</p>
+<pre class="xml"><code>&lt;insert&gt;
+    INSERT INTO t_user 
+    &lt;trim prefix=&quot;(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        &lt;if test=&quot;id != null&quot;&gt;id,&lt;/if&gt;
+        &lt;if test=&quot;name != null&quot;&gt;name,&lt;/if&gt;
+        &lt;if test=&quot;gis != null&quot;&gt;gis,&lt;/if&gt;
+    &lt;/trim&gt;
+    &lt;trim prefix=&quot;VALUES(&quot; suffix=&quot;)&quot; suffixOverrides=&quot;,&quot;&gt;
+        &lt;if test=&quot;id != null&quot;&gt;#{id},&lt;/if&gt;
+        &lt;if test=&quot;name != null&quot;&gt;#{name},&lt;/if&gt;
+        &lt;if test=&quot;gis != null&quot;&gt;geomfromtext(&#39;point(${gis.lng} ${gis.lat})&#39;),&lt;/if&gt;
+    &lt;/trim&gt;
+&lt;/insert&gt;</code></code></pre>
+<p>于是...开始我们的修改,查看通用mapper的源码得知，通用insert主要是通过BaseInsertMapper和BaseInsertProvider这两个类实现的，所以我们仿造着创建GeoBaseInsertMapper.java 和 GeoBaseInsertProvider.java，其中GeoBaseInsertProvider.java直接复制BaseInsertProvider来修改即可<br />
+GeoBaseInsertMapper.java如下：</p>
+<pre class="java"><code>@RegisterMapper
+public interface GeoBaseInsertMapper&lt;T&gt; {
+    @InsertProvider(type = GeoBaseInsertProvider.class, method = &quot;dynamicSQL&quot;)
+    int insert(T record);
+
+    @InsertProvider(type = GeoBaseInsertProvider.class, method = &quot;dynamicSQL&quot;)
+    int insertSelective(T record);
+}</code></code></pre>
+<p>最主要的是GeoBaseInsertProvider.java<br />
+将</p>
+<pre class="java"><code>public class GeoBaseInsertProvider extends MapperTemplate {
+
+    public GeoBaseInsertProvider(Class&lt;?&gt; mapperClass, MapperHelper mapperHelper) {
+        super(mapperClass, mapperHelper);
+    }
+
+    public String insert(MappedStatement ms) {
+        Class&lt;?&gt; entityClass = getEntityClass(ms);
+        StringBuilder sql = new StringBuilder();
+        //获取全部列
+        Set&lt;EntityColumn&gt; columnList = EntityHelper.getColumns(entityClass);
+        EntityColumn logicDeleteColumn = SqlHelper.getLogicDeleteColumn(entityClass);
+        processKey(sql, entityClass, ms, columnList);
+        sql.append(SqlHelper.insertIntoTable(entityClass, tableName(entityClass)));
+        sql.append(&quot;&lt;trim prefix=\&quot;(\&quot; suffix=\&quot;)\&quot; suffixOverrides=\&quot;,\&quot;&gt;&quot;);
+        //当某个列有主键策略时，不需要考虑他的属性是否为空，因为如果为空，一定会根据主键策略给他生成一个值
+        for (EntityColumn column : columnList) {
+            if (!column.isInsertable()) {
+                continue;
+            }
+            //忽略虚拟列
+            if (column.getEntityField().isAnnotationPresent(VirtualGenerated.class)) {
+                continue;
+            }
+            sql.append(column.getColumn() + &quot;,&quot;);
+        }
+        sql.append(&quot;&lt;/trim&gt;&quot;);
+        sql.append(&quot;&lt;trim prefix=\&quot;VALUES(\&quot; suffix=\&quot;)\&quot; suffixOverrides=\&quot;,\&quot;&gt;&quot;);
+        for (EntityColumn column : columnList) {
+            if (!column.isInsertable()) {
+                continue;
+            }
+            //忽略虚拟列
+            if (column.getEntityField().isAnnotationPresent(VirtualGenerated.class)) {
+                continue;
+            }
+            if (logicDeleteColumn != null &amp;&amp; logicDeleteColumn == column) {
+                sql.append(SqlHelper.getLogicDeletedValue(column, false)).append(&quot;,&quot;);
+                continue;
+            }
+
+            //优先使用传入的属性值,当原属性property!=null时，用原属性
+            //自增的情况下,如果默认有值,就会备份到property_cache中,所以这里需要先判断备份的值是否存在
+            if (column.isIdentity()) {
+                sql.append(SqlHelper.getIfCacheNotNull(column, column.getColumnHolder(null, &quot;_cache&quot;, &quot;,&quot;)));
+            } else {
+                //判断字段是GeoPoint类型时，调用getGeoColumnHolder方法来生成
+                if (column.getJavaType() == GeoPoint.class) {
+                    //&lt;if test=&quot;property != null&quot;&gt;geomfromtext(&#39;point(108.9498710632 34.2588125935)&#39;),&lt;/if&gt;
+                    sql.append(SqlHelper.getIfNotNull(column, getGeoColumnHolder(column), isNotEmpty()));
+                } else {
+                    //其他情况值仍然存在原property中
+                    sql.append(SqlHelper.getIfNotNull(column, column.getColumnHolder(null, null, &quot;,&quot;), isNotEmpty()));
+                }
+
+            }
+            //当属性为null时，如果存在主键策略，会自动获取值，如果不存在，则使用null
+            if (column.isIdentity()) {
+                sql.append(SqlHelper.getIfCacheIsNull(column, column.getColumnHolder() + &quot;,&quot;));
+            } else {
+                //判断字段是GeoPoint类型时，调用getGeoColumnHolder方法来生成
+                if (column.getJavaType() == GeoPoint.class) {
+                    //&lt;if test=&quot;property == null&quot;&gt;geomfromtext(&#39;point(108.9498710632 34.2588125935)&#39;),&lt;/if&gt;
+                    sql.append(SqlHelper.getIfIsNull(column, getGeoColumnHolder(column), isNotEmpty()));
+                } else {
+                    //当null的时候，如果不指定jdbcType，oracle可能会报异常，指定VARCHAR不影响其他
+                    sql.append(SqlHelper.getIfIsNull(column, column.getColumnHolder(null, null, &quot;,&quot;), isNotEmpty()));
+                }
+            }
+        }
+        sql.append(&quot;&lt;/trim&gt;&quot;);
+        return sql.toString();
+    }
+
+    /*
+     * insert GEO字段占位符
+     */
+    private String getGeoColumnHolder(EntityColumn column){
+        return String.format(&quot;geomfromtext(&#39;point(${%s.lng} ${%s.lat})&#39;),&quot;,column.getProperty(),column.getProperty());
+    }
+
+    //忽略以下部分代码
+
+}</code></code></pre>
+<p>让你的mapper接口继承GeoBaseInsertMapper<T>就能使insert方法支持geometry类型了，同时能够忽略虚拟列。</p>
+<pre class="java"><code>@Repository
+public interface UserMapper extends GeoBaseInsertMapper&lt;User&gt;{
+}</code></code></pre>
+<p>如果你理解了通用insert的修改，update的修改也同样如此，相信难不倒你，这里就不再贴代码了。</p>
+<h2 id="使mybatis查询支持将geometry类型字段映射到geopoint类型">使mybatis查询支持将geometry类型字段映射到GeoPoint类型</h2>
+<p>mybatis通过定义typeHandler将数据类型映射为java类型，mybatis内置了多种常见的typeHandler，但没有支持geometry，好在mybatis提供了足够的扩展性，我们可以自定义typeHandler，这里还需要在pom.xml引入jts库来解析</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.vividsolutions&lt;/groupId&gt;
+    &lt;artifactId&gt;jts&lt;/artifactId&gt;
+    &lt;version&gt;${jts.version}&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>接下来是自定义的MysqlGeoPointTypeHandler</p>
+<pre class="java"><code>/*
+ * mybatis查询结果集中 mysql的geometry类型映射到GeoPoint对象
+ */
+@MappedTypes(value = {GeoPoint.class})
+public class MysqlGeoPointTypeHandler extends BaseTypeHandler&lt;GeoPoint&gt; {
+
+    private WKBReader _wkbReader;
+
+    public MysqlGeoPointTypeHandler(int srid) {
+        GeometryFactory _geometryFactory = new GeometryFactory(new PrecisionModel(), srid);
+        _wkbReader = new WKBReader(_geometryFactory);
+    }
+
+    @Override
+    public void setNonNullParameter(PreparedStatement ps, int i, GeoPoint parameter, JdbcType jdbcType) {
+        //因为GeoPoint对象里包含经度和纬度两个值，无法直接适配到一个参数，所以也不会使用到这个方法
+    }
+
+    @Override
+    public GeoPoint getNullableResult(ResultSet rs, String columnName) throws SQLException {
+        return fromMysqlWkb(rs.getBytes(columnName));
+    }
+
+    @Override
+    public GeoPoint getNullableResult(ResultSet rs, int columnIndex) throws SQLException {
+        return fromMysqlWkb(rs.getBytes(columnIndex));
+    }
+
+    @Override
+    public GeoPoint getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {
+        return fromMysqlWkb(cs.getBytes(columnIndex));
+    }
+
+    /*
+     * bytes转GeoPoint对象
+     */
+    private GeoPoint fromMysqlWkb(byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        try {
+            byte[] geomBytes = ByteBuffer.allocate(bytes.length - 4).order(ByteOrder.LITTLE_ENDIAN)
+                    .put(bytes, 4, bytes.length - 4).array();
+            Geometry geometry = _wkbReader.read(geomBytes);
+            Point point = (Point) geometry;
+            return new GeoPoint(new BigDecimal(String.valueOf(point.getX())), new BigDecimal(String.valueOf(point.getY())));
+        } catch (Exception e) {
+        }
+        return null;
+    }
+}</code></code></pre>
+<p>然后我们需要将MysqlGeoPointTypeHandler添加到mybatis配置中，这样mybatis在遇到GeoPoint时就知道怎么映射了。<br />
+这里演示用java代码来配置mybatis，也可以在mybatis.xml文件中配置</p>
+<pre class="java"><code>@Configuration
+@MapperScan(basePackages = {&quot;com.carson.**.mapper&quot;}, sqlSessionTemplateRef = &quot;sqlSessionTemplate&quot;)
+public class MybatisConfig {
+
+    @Bean
+    public SqlSessionFactory sqlSessionFactory(DataSource dataSource) {
+        SqlSessionFactoryBean bean = new SqlSessionFactoryBean();
+        bean.setDataSource(dataSource);
+        bean.setVfs(SpringBootVFS.class);
+        //添加XML目录
+        ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+        try {
+            bean.setMapperLocations(resolver.getResources(&quot;classpath:mybatis/**/*Mapper.xml&quot;));
+            bean.setTypeAliasesPackage(&quot;com.carson.pojo&quot;);
+            //添加MysqlGeoPointTypeHandler
+            bean.setTypeHandlers(new TypeHandler[]{new MysqlGeoPointTypeHandler()});
+            bean.getObject().getConfiguration().setMapUnderscoreToCamelCase(true);
+            return bean.getObject();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+}</code></code></pre>
+<p>完成这些以后查询的结果集里包含geometry类型的字段，就能映射到GeoPoint了，从而可以获取经纬度</p>
+<h2 id="源码在哪里-talk-is-cheapshow-me-the-code">源码在哪里？ talk is cheap,show me the code！</h2>
+<p>如果你懒得看以上长篇大论，只想要开箱即用的代码，就在这里了，有帮助的话记得给个star哦！</p>
+<p><a href="https://github.com/tzjzcy/mybatis-mysql-geo-boot" class="uri">https://github.com/tzjzcy/mybatis-mysql-geo-boot</a></p>
+<p><a href="https://gitee.com/tzjzcy/mybatis-mysql-geo-boot" class="uri">https://gitee.com/tzjzcy/mybatis-mysql-geo-boot</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

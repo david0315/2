@@ -1,0 +1,174 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java性能 -- CAS乐观锁' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java性能 -- CAS乐观锁</center></div><div class='banquan'>原文出处:本文由博客园博主Java架构Monster提供。<br/>
+原文连接:https://www.cnblogs.com/sevencutekk/p/11534117.html</div><br>
+    <src class="post-body">
+<h2 id="synchronized-Lock-CAS">synchronized / Lock / CAS</h2>
+<ol>
+<li>synchronized和Lock实现的同步锁机制，都属于悲观锁，而CAS属于<em>乐观锁</em></li>
+<li>悲观锁在高并发的场景下，激烈的锁竞争会造成线程阻塞，而大量阻塞线程会导致系统的上下文切换，增加系统的性能开销</li>
+</ol><a id="more"></a>
+<h2 id="乐观锁">乐观锁</h2>
+<ol>
+<li>乐观锁：在操作共享资源时，总是抱着乐观的态度进行，认为自己能够完成操作</li>
+<li>但实际上，当多个线程同时操作一个共享资源时，只有一个线程会成功，失败的线程不会被挂起，仅仅只是返回</li>
+<li>乐观锁相比于悲观锁来说，不会带来死锁、饥饿等活性故障问题，线程间的相互影响也远远比悲观锁要小
+<ul>
+<li>乐观锁没有因竞争而造成的系统上下文切换，所以在性能上更胜一筹</li>
+</ul>
+</li>
+</ol>
+<h2 id="实现原理">实现原理</h2>
+<ol>
+<li>CAS是实现乐观锁的核心算法，包含3个参数：V（需要更新的变量），E（预期值）、N（最新值）</li>
+<li>只有V等于E时，V才会被设置为N</li>
+<li>如果V不等于E了，说明其它线程已经更新了V，此时该线程不做操作，返回V的真实值</li>
+</ol>
+<h3 id="CAS实现原子操作">CAS实现原子操作</h3>
+<p>AtomicInteger是基于CAS实现的一个线程安全的整型类，Unsafe调用CPU底层指令实现原子操作</p>
+<src class="highlight-wrap"><button class="copy-btn">复制</button>
+<src class="table-container">
+<table>
+<tbody>
+<tr>
+<td class="gutter">
+<pre><code><span class="line">1<br /><span class="line">2<br /><span class="line">3<br /><span class="line">4<br /><span class="line">5<br /><span class="line">6<br /><span class="line">7<br /><span class="line">8<br /></span></span></span></span></span></span></span></span></code></pre>
+</td>
+<td class="code">
+<pre><code><span class="line"><span class="comment">// java.util.concurrent.atomic.AtomicInteger<br /><span class="line"><span class="function"><span class="keyword">public <span class="keyword">final <span class="keyword">int <span class="title">getAndIncrement<span class="params">() {<br /><span class="line">    <span class="keyword">return unsafe.getAndAddInt(<span class="keyword">this, valueOffset, <span class="number">1);<br /><span class="line">}<br /><span class="line"><br /><span class="line"><span class="function"><span class="keyword">public <span class="keyword">final <span class="keyword">int <span class="title">getAndDecrement<span class="params">() {<br /><span class="line">    <span class="keyword">return unsafe.getAndAddInt(<span class="keyword">this, valueOffset, -<span class="number">1);<br /><span class="line">}<br /></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></pre>
+</td>
+</tr>
+</tbody>
+</table>
+
+
+<src class="highlight-wrap"><button class="copy-btn">复制</button>
+<src class="table-container">
+<table>
+<tbody>
+<tr>
+<td class="gutter">
+<pre><code><span class="line">1<br /><span class="line">2<br /><span class="line">3<br /><span class="line">4<br /><span class="line">5<br /><span class="line">6<br /><span class="line">7<br /><span class="line">8<br /><span class="line">9<br /><span class="line">10<br /><span class="line">11<br /><span class="line">12<br /></span></span></span></span></span></span></span></span></span></span></span></span></code></pre>
+</td>
+<td class="code">
+<pre><code><span class="line"><span class="comment">// sun.misc.Unsafe<br /><span class="line"><span class="function"><span class="keyword">public <span class="keyword">final <span class="keyword">int <span class="title">getAndAddInt<span class="params">(Object o, <span class="keyword">long offset, <span class="keyword">int delta) {<br /><span class="line">    <span class="keyword">int v;<br /><span class="line">    <span class="keyword">do {<br /><span class="line">        v = getIntVolatile(o, offset);<br /><span class="line">    } <span class="keyword">while (!compareAndSwapInt(o, offset, v, v + delta));<br /><span class="line">    <span class="keyword">return v;<br /><span class="line">}<br /><span class="line"><br /><span class="line"><span class="function"><span class="keyword">public <span class="keyword">native <span class="keyword">int     <span class="title">getIntVolatile<span class="params">(Object o, <span class="keyword">long offset);<br /><span class="line"><br /><span class="line"><span class="function"><span class="keyword">public <span class="keyword">final <span class="keyword">native <span class="keyword">boolean <span class="title">compareAndSwapInt<span class="params">(Object o, <span class="keyword">long offset, <span class="keyword">int expected, <span class="keyword">int x);<br /></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></pre>
+</td>
+</tr>
+</tbody>
+</table>
+
+
+<h3 id="处理器实现原子操作">处理器实现原子操作</h3>
+<ol>
+<li>CAS是调用处理器底层指令来实现原子操作的</li>
+<li>处理器和物理内存之间的通信速度要远低于处理器间的处理速度，所以处理器有自己的内部缓存（L1/L2/L3）</li>
+<li>服务器通常为多处理器，并且处理器是多核的，每个处理器维护了一块字节的缓存存，每个内核也维护了一块字节的缓存
+<ul>
+<li>此时在多线程并发就会存在缓存不一致的问题，从而导致数据不一致</li>
+</ul>
+</li>
+<li>处理器提供了总线锁定和缓存锁定两种机制来保证复杂内存操作的原子性
+<ul>
+<li>总线锁定
+<ul>
+<li>当处理器要操作一个共享变量时，会在总线上会发出一个Lock信号，此时其它处理器就不能操作共享变量了</li>
+<li>总线锁定在阻塞其他处理器获取该共享变量的操作请求时，也可能会导致大量阻塞，从而增加系统的性能开销</li>
+</ul>
+</li>
+<li>缓存锁定（后来出现）
+<ul>
+<li>当某个处理器对缓存中的共享变量进行了操作，就会通知其他处理器放弃存储或者重新读取该共享变量</li>
+<li>目前最新的处理器都支持缓存锁定机制</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol><a class="fancybox fancybox.image" href="./images/Java性能 -- CAS乐观锁0.png" rel="default" data-fancybox="default"><img src="./images/Java性能 -- CAS乐观锁0.png" alt="" width="800/" /></a>
+<h2 id="优化CAS乐观锁">优化CAS乐观锁</h2>
+<ol>
+<li>乐观锁在并发性能上要优于悲观锁
+<ul>
+<li>但在写大于读的操作场景下，CAS失败的可能性增大，如果循环CAS，会长时间占用CPU</li>
+<li>例如上面的AtomicInteger#getAndIncrement</li>
+</ul>
+</li>
+<li>JDK 1.8中，提供了新的原子类LongAdder
+<ul>
+<li>LongAdder在高并发场景下会比AtomicInteger和AtomicLong的性能更好，代价是消耗更多的内存空间
+<ul>
+<li>核心思想：<em>空间换时间</em></li>
+<li>实现原理：降低操作共享变量的并发数</li>
+</ul>
+</li>
+<li>LongAdder内部由一个base变量和一个cell[]数组组成
+<ul>
+<li>当只有一个写线程（没有竞争）
+<ul>
+<li>LongAdder会直接使用base变量作为原子操作变量，通过CAS操作修改base变量</li>
+</ul>
+</li>
+<li>当有多个写线程（存在竞争）
+<ul>
+<li>除了占用base变量的一个写线程外，其他写线程的value值会分散到cell数组中</li>
+<li>不同线程会命中到数组的不同槽中，各个线程只对自己槽中的value进行CAS操作</li>
+<li class=" has-jax"><span class="MathJax_Preview"><span id="MathJax-Element-1-Frame" class="MathJax" data-mathml="&lt;math xmlns=&quot;http://www.w3.org/1998/Math/MathML&quot;&gt;&lt;mi&gt;v&lt;/mi&gt;&lt;mi&gt;a&lt;/mi&gt;&lt;mi&gt;l&lt;/mi&gt;&lt;mi&gt;u&lt;/mi&gt;&lt;mi&gt;e&lt;/mi&gt;&lt;mo&gt;=&lt;/mo&gt;&lt;mi&gt;b&lt;/mi&gt;&lt;mi&gt;a&lt;/mi&gt;&lt;mi&gt;s&lt;/mi&gt;&lt;mi&gt;e&lt;/mi&gt;&lt;mo&gt;+&lt;/mo&gt;&lt;munderover&gt;&lt;mo&gt;&amp;#x2211;&lt;/mo&gt;&lt;mrow class=&quot;MJX-TeXAtom-ORD&quot;&gt;&lt;mi&gt;i&lt;/mi&gt;&lt;mo&gt;=&lt;/mo&gt;&lt;mn&gt;0&lt;/mn&gt;&lt;/mrow&gt;&lt;mi&gt;n&lt;/mi&gt;&lt;/munderover&gt;&lt;mi&gt;C&lt;/mi&gt;&lt;mi&gt;e&lt;/mi&gt;&lt;mi&gt;l&lt;/mi&gt;&lt;mi&gt;l&lt;/mi&gt;&lt;mo stretchy=&quot;false&quot;&gt;[&lt;/mo&gt;&lt;mi&gt;i&lt;/mi&gt;&lt;mo stretchy=&quot;false&quot;&gt;]&lt;/mo&gt;&lt;/math&gt;"><span id="MathJax-Span-1" class="math"><span id="MathJax-Span-2" class="mrow"><span id="MathJax-Span-3" class="mi">v<span id="MathJax-Span-4" class="mi">a<span id="MathJax-Span-5" class="mi">l<span id="MathJax-Span-6" class="mi">u<span id="MathJax-Span-7" class="mi">e<span id="MathJax-Span-8" class="mo">=<span id="MathJax-Span-9" class="mi">b<span id="MathJax-Span-10" class="mi">a<span id="MathJax-Span-11" class="mi">s<span id="MathJax-Span-12" class="mi">e<span id="MathJax-Span-13" class="mo">+<span id="MathJax-Span-14" class="munderover"><span id="MathJax-Span-15" class="mo">&sum;<span id="MathJax-Span-16" class="mi">n<span id="MathJax-Span-17" class="texatom"><span id="MathJax-Span-18" class="mrow"><span id="MathJax-Span-19" class="mi">i<span id="MathJax-Span-20" class="mo">=<span id="MathJax-Span-21" class="mn">0<span id="MathJax-Span-22" class="mi">C<span id="MathJax-Span-23" class="mi">e<span id="MathJax-Span-24" class="mi">l<span id="MathJax-Span-25" class="mi">l<span id="MathJax-Span-26" class="mo">[<span id="MathJax-Span-27" class="mi">i<span id="MathJax-Span-28" class="mo">]</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="MJX_Assistive_MathML">value=base+&sum;i=0nCell[i]</span></span></span></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LongAdder在操作后的返回值只是一个近似准确的值，但最终返回的是一个准确的值
+<ul>
+<li>LongAdder不适合实时性要求较高的场景</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+<h2 id="性能对比">性能对比</h2>
+<a class="fancybox fancybox.image" href="./images/Java性能 -- CAS乐观锁1.png" rel="default" data-fancybox="default"><img src="./images/Java性能 -- CAS乐观锁1.png" alt="" width="1000/" /></a><ol>
+<li>读大于写，读写锁ReentrantReadWriteLock、读写锁StampedLock、乐观锁LongAdder的性能最好</li>
+<li>写大于读，乐观锁的性能最好，其他四种锁的性能差不多</li>
+<li>读约等于写，两种读写锁和乐观锁的性能要优于synchronized和Lock</li>
+</ol>
+<h2 id="小结">小结</h2>
+<ol>
+<li>乐观锁的常见使用场景：数据库更新
+<ul>
+<li>为每条数据定义一个版本号，在更新前获取版本号，在更新数据时，再判断版本号是否被更新过，如果没有才更新数据</li>
+</ul>
+</li>
+<li>CAS乐观锁的使用比较受限，因为乐观锁<em>只能保证单个变量操作的原子性</em></li>
+<li>CAS乐观锁在高并发写大于读的场景下
+<ul>
+<li>大部分线程的原子操作会失败，失败后的线程将不断重试CAS原子操作，导致大量线程长时间占用CPU资源</li>
+<li>JDK 1.8中，新增了原子类LongAdder，采用空间换时间的思路解决了这个问题，但实时性不高</li>
+</ul>
+</li>
+</ol>
+<ul class="post-copyright">
+<li class="post-copyright-author">本文作者：&nbsp;zhongmingmao</li>
+<li class="post-copyright-link">本文链接：&nbsp;<a title="Java性能 --  CAS乐观锁" href="http://zhongmingmao.me/2019/08/20/java-performance-cas/">http://zhongmingmao.me/2019/08/20/java-performance-cas/</a></li>
+<li class="post-copyright-license">版权声明：&nbsp;本博客所有文章除特别声明外，均采用&nbsp;<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh" rel="noopener" target="_blank"><span class="fa fa-fw fa-creative-commons">BY-NC-SA</span></a>&nbsp;许可协议。转载请注明出处！</li>
+</ul>
+<src class="popular-posts-title"><a href="http://zhongmingmao.me/2019/08/12/java-performance-nio/" rel="bookmark">&nbsp;</a>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

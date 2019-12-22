@@ -1,0 +1,261 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot （六）： 为 JPA 插上翅膀的 QueryDSL' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot （六）： 为 JPA 插上翅膀的 QueryDSL</center></div><div class='banquan'>原文出处:本文由博客园博主极客挖掘机提供。<br/>
+原文连接:https://www.cnblogs.com/babycomeon/p/11605809.html</div><br>
+    <p><img src="./images/Spring Boot （六）： 为 JPA 插上翅膀的 QueryDSL0.png" /></p>
+<blockquote>
+<p>在前面的文章中，我们介绍了 JPA 的基础使用方式，<a href="https://www.geekdigging.com/2019/09/19/2405775053/">《Spring Boot （三）： ORM 框架 JPA 与连接池 Hikari》</a>，本篇文章，我们由入门至进阶的介绍一下为 JPA 插上翅膀的 QueryDSL。</p>
+</blockquote>
+<h2 id="引言">1. 引言</h2>
+<p>不可否认的是 JPA 使用是非常方便的，极简化的配置，只需要使用注解，无需任何 xml 的配置文件，语义简单易懂，但是，以上的一切都建立在单表查询的前提下的，我们可以使用 JPA 默认提供的方法，简单加轻松的完成 CRUD 操作。</p>
+<p>但是如果涉及到多表动态查询， JPA 的功能就显得有些捉襟见肘了，虽然我们可以使用注解 <code>@Query</code> ，在这个注解中写 SQL 或者 HQL 都是在拼接字符串，并且拼接后的字符串可读性非常的差，当然 JPA 还为我们提供了 <code>Specification</code> 来做这件事情，从我个人使用体验上来讲，可读性虽然还不错，但是在初学者上手的时候， <code>Predicate</code> 和 <code>CriteriaBuilder</code> 使用方式估计能劝退不少人，而且如果直接执行 SQL 连表查询，获得是一个 <code>Object[]</code> ，类型是什么？字段名是什么？这些都无法直观的获得，还需我们手动将 <code>Object[]</code> 映射到我们需要的 <code>Model</code> 类里面去，这种使用体验无疑是极其糟糕的。</p>
+<p>这一切都在 QueryDSL 出世以后终结了， QueryDSL 语法与 SQL 非常相似，代码可读性非常强，异常简介优美，，并且与 JPA 高度集成，无需多余的配置，从笔者个人使用体验上来讲是非常棒的。可以这么说，只要会写 SQL ，基本上只需要看一下示例代码完全可以达到入门的级别。</p>
+<h2 id="querydsl-简介">2. QueryDSL 简介</h2>
+<p>QueryDSL 是一个非常活跃的开源项目，目前在 Github 上的发布的 Release 版本已经多达 251 个版本，目前最新版是 4.2.1 ，并且由 Querydsl Google组 和 StackOverflow 两个团队提供支持。</p>
+<p>QueryDSL 是一个框架，可用于构造静态类型的类似SQL的查询。可以通过诸如 QueryDSL 之类的 API 构造查询，而不是将查询编写为内联字符串或将其外部化为XML文件。</p>
+<p>例如，与简单字符串相比，使用 API 的好处是</p>
+<ul>
+<li><p>IDE中的代码完成</p></li>
+<li><p>几乎没有语法无效的查询</p></li>
+<li><p>可以安全地引用域类型和属性</p></li>
+<li><p>更好地重构域类型的更改</p></li>
+</ul>
+<h2 id="querydsl-使用实战">3. QueryDSL 使用实战</h2>
+<h3 id="引入-maven-依赖">3.1 引入 Maven 依赖</h3>
+<p>代码清单：spring-boot-jpa-querydsl/pom.xml<br />
+***</p>
+<pre><code><code>&lt;!--QueryDSL支持--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.querydsl&lt;/groupId&gt;
+    &lt;artifactId&gt;querydsl-apt&lt;/artifactId&gt;
+    &lt;scope&gt;provided&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;!--QueryDSL支持--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.querydsl&lt;/groupId&gt;
+    &lt;artifactId&gt;querydsl-jpa&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<ul>
+<li>这里无需指定版本号，已在 <code>spring-boot-dependencies</code> 工程中定义。</li>
+</ul>
+<h3 id="添加-maven-插件">3.2 添加 Maven 插件</h3>
+<p>添加这个插件是为了让程序自动生成 query type (查询实体，命名方式为：&quot;Q&quot;+对应实体名)。<br />
+上文引入的依赖中 querydsl-apt 即是为此插件服务的。</p>
+<p>注：在使用过程中,如果遇到 query type 无法自动生成的情况，用maven更新一下项目即可解决(右键项目 -&gt; Maven -&gt; Update Folders)。</p>
+<p>代码清单：spring-boot-jpa-querydsl/pom.xml<br />
+***</p>
+<pre><code><code>&lt;plugins&gt;
+    &lt;plugin&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+    &lt;/plugin&gt;
+    &lt;plugin&gt;
+        &lt;groupId&gt;com.mysema.maven&lt;/groupId&gt;
+        &lt;artifactId&gt;apt-maven-plugin&lt;/artifactId&gt;
+        &lt;version&gt;1.1.3&lt;/version&gt;
+        &lt;executions&gt;
+            &lt;execution&gt;
+                &lt;goals&gt;
+                    &lt;goal&gt;process&lt;/goal&gt;
+                &lt;/goals&gt;
+                &lt;configuration&gt;
+                    &lt;outputDirectory&gt;target/generated-sources/java&lt;/outputDirectory&gt;
+                    &lt;processor&gt;com.querydsl.apt.jpa.JPAAnnotationProcessor&lt;/processor&gt;
+                &lt;/configuration&gt;
+            &lt;/execution&gt;
+        &lt;/executions&gt;
+    &lt;/plugin&gt;
+&lt;/plugins&gt;</code></code></pre>
+<h3 id="更新和删除">3.3 更新和删除</h3>
+<p>在 JPA 中已经为我们提供了非常简便的更新和删除的使用方式，我们完全没有必要使用 QueryDSL 的更新和删除，不过这里还是给出用法，供大家参考：</p>
+<p>代码清单：spring-boot-jpa-querydsl/src/main/java/com/springboot/springbootjpaquerydsl/service/impl/UserServiceImpl.java<br />
+***</p>
+<pre><code><code>@Override
+public Long update(String id, String nickName) {
+    QUserModel userModel = QUserModel.userModel;
+    // 更新
+    return queryFactory.update(userModel).set(userModel.nickName, nickName).where(userModel.id.eq(id)).execute();
+}
+
+@Override
+public Long delete(String id) {
+    QUserModel userModel = QUserModel.userModel;
+    // 删除
+    return queryFactory.delete(userModel).where(userModel.id.eq(id)).execute();
+}</code></code></pre>
+<h3 id="查询">3.2 查询</h3>
+<p>QueryDSL 在查询这方面可以说玩的非常花了，比如一些有关 <code>select()</code> 和 <code>fetch()</code> 常用的写法如下：</p>
+<p>代码清单：spring-boot-jpa-querydsl/src/main/java/com/springboot/springbootjpaquerydsl/service/impl/UserServiceImpl.java<br />
+***</p>
+<pre><code><code>@Override
+public List&lt;String&gt; selectAllNameList() {
+    QUserModel userModel = QUserModel.userModel;
+    // 查询字段
+    return queryFactory.select(userModel.nickName).from(userModel).fetch();
+}
+
+@Override
+public List&lt;UserModel&gt; selectAllUserModelList() {
+    QUserModel userModel = QUserModel.userModel;
+    // 查询实体
+    return queryFactory.selectFrom(userModel).fetch();
+}
+
+@Override
+public List&lt;UserDTO&gt; selectAllUserDTOList() {
+    QUserModel userModel = QUserModel.userModel;
+    QLessonModel lessonModel = QLessonModel.lessonModel;
+    // 连表查询实体并将结果封装至DTO
+    return queryFactory
+            .select(
+                    Projections.bean(UserDTO.class, userModel.nickName, userModel.age, lessonModel.startDate, lessonModel.address, lessonModel.name)
+            )
+            .from(userModel)
+            .leftJoin(lessonModel)
+            .on(userModel.id.eq(lessonModel.userId))
+            .fetch();
+}
+
+@Override
+public List&lt;String&gt; selectDistinctNameList() {
+    QUserModel userModel = QUserModel.userModel;
+    // 去重查询
+    return queryFactory.selectDistinct(userModel.nickName).from(userModel).fetch();
+}
+
+@Override
+public UserModel selectFirstUser() {
+    QUserModel userModel = QUserModel.userModel;
+    // 查询首个实体
+    return queryFactory.selectFrom(userModel).fetchFirst();
+}
+
+@Override
+public UserModel selectUser(String id) {
+    QUserModel userModel = QUserModel.userModel;
+    // 查询单个实体，如果结果有多个，会抛`NonUniqueResultException`。
+    return queryFactory.selectFrom(userModel).fetchOne();
+}</code></code></pre>
+<h3 id="复杂查询操作">3.4 复杂查询操作</h3>
+<p>上面列举了简单的查询，但实际我们会遇到相当复杂的操作，比如子查询，多条件查询，多表连查，使用示例如下：</p>
+<p>代码清单：spring-boot-jpa-querydsl/src/main/java/com/springboot/springbootjpaquerydsl/service/impl/LessonServiceImpl.java<br />
+***</p>
+<pre><code><code>@Service
+public class LessonServiceImpl implements LessonService {
+
+    @Autowired
+    JPAQueryFactory queryFactory;
+
+    @Override
+    public List&lt;LessonModel&gt; findLessonList(String name, Date startDate, String address, String userId) throws ParseException {
+        QLessonModel lessonModel = QLessonModel.lessonModel;
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(&quot;yyyy-MM-dd hh:mm:ss&quot;);
+        // 多条件查询示例
+        return queryFactory.selectFrom(lessonModel)
+                .where(
+                        lessonModel.name.like(&quot;%&quot; + name + &quot;%&quot;)
+                        .and(lessonModel.address.contains(address))
+                        .and(lessonModel.userId.eq(userId))
+                        .and(lessonModel.startDate.between(simpleDateFormat.parse(&quot;2018-12-31 00:00:00&quot;), new Date()))
+                )
+                .fetch();
+    }
+
+    @Override
+    public List&lt;LessonModel&gt; findLessonDynaList(String name, Date startDate, String address, String userId) throws ParseException {
+        QLessonModel lessonModel = QLessonModel.lessonModel;
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(&quot;yyyy-MM-dd hh:mm:ss&quot;);
+
+        // 动态查询示例
+        BooleanBuilder builder = new BooleanBuilder();
+
+        if (!StringUtils.isEmpty(name)){
+            builder.and(lessonModel.name.like(&quot;%&quot; + name + &quot;%&quot;));
+        }
+
+        if (startDate != null) {
+            builder.and(lessonModel.startDate.between(simpleDateFormat.parse(&quot;2018-12-31 00:00:00&quot;), new Date()));
+        }
+
+        if (!StringUtils.isEmpty(address)) {
+            builder.and(lessonModel.address.contains(address));
+        }
+
+        if (!StringUtils.isEmpty(userId)) {
+            builder.and(lessonModel.userId.eq(userId));
+        }
+
+        return queryFactory.selectFrom(lessonModel).where(builder).fetch();
+    }
+
+    @Override
+    public List&lt;LessonModel&gt; findLessonSubqueryList(String name, String address) {
+        QLessonModel lessonModel = QLessonModel.lessonModel;
+        // 子查询示例，并无实际意义
+        return queryFactory.selectFrom(lessonModel)
+                .where(lessonModel.name.in(
+                        JPAExpressions
+                                .select(lessonModel.name)
+                                .from(lessonModel)
+                                .where(lessonModel.address.eq(address))
+                ))
+                .fetch();
+    }
+}</code></code></pre>
+<h3 id="mysql-聚合函数">3.5 Mysql 聚合函数</h3>
+<p>QueryDSL 已经内置了一些常用的 Mysql 的聚合函数，如果遇到 QueryDSL 没有提供的聚合函数也无需慌张， QueryDSL 为我们提供了 <code>Expressions</code> 这个类，我们可以使用这个类手动拼接一个就好，如下示例：</p>
+<p>代码清单：spring-boot-jpa-querydsl/src/main/java/com/springboot/springbootjpaquerydsl/service/impl/UserServiceImpl.java<br />
+***</p>
+<pre><code><code>@Override
+public String mysqlFuncDemo(String id, String nickName, int age) {
+
+    QUserModel userModel = QUserModel.userModel;
+
+    // Mysql 聚合函数示例
+
+    // 聚合函数-avg()
+    Double averageAge = queryFactory.select(userModel.age.avg()).from(userModel).fetchOne();
+
+    // 聚合函数-sum()
+    Integer sumAge = queryFactory.select(userModel.age.sum()).from(userModel).fetchOne();
+
+    // 聚合函数-concat()
+    String concat = queryFactory.select(userModel.nickName.concat(nickName)).from(userModel).fetchOne();
+
+    // 聚合函数-contains()
+    Boolean contains = queryFactory.select(userModel.nickName.contains(nickName)).from(userModel).where(userModel.id.eq(id)).fetchOne();
+
+    // 聚合函数-DATE_FORMAT()
+    String date = queryFactory.select(Expressions.stringTemplate(&quot;DATE_FORMAT({0},&#39;%Y-%m-%d&#39;)&quot;, userModel.createDate)).from(userModel).fetchOne();
+
+    return null;
+}</code></code></pre>
+<h2 id="小结">4. 小结</h2>
+<p>有关 QueryDSL 的介绍到这里就结束了，不知道各位读者看了上面的示例，有没有一种直接读 SQL 的感觉，而且这种 SQL 还是使用 OOM 的思想，将原本 Hibernate 没有做好的事情给出了一个相当完美的解决方案，上手简单易操作，而又无需写 SQL ，实际上我们操作的还是对象类。</p>
+<h2 id="示例代码">5. 示例代码</h2>
+<p><a href="https://github.com/meteor1993/spring-boot-examples/tree/master/spring-boot-jpa-querydsl" title="示例代码-Github">示例代码-Github</a></p>
+<p><a href="https://gitee.com/inwsy/spring-boot-examples/tree/master/spring-boot-jpa-querydsl" title="示例代码-Gitee">示例代码-Gitee</a></p>
+<h2 id="参考">6. 参考</h2>
+<p><a href="http://www.querydsl.com/static/querydsl/latest/reference/html/index.html">《QueryDSL 官方文档》</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

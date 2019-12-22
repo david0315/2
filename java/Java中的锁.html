@@ -1,0 +1,203 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java中的锁' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java中的锁</center></div><div class='banquan'>原文出处:本文由博客园博主MrHH提供。<br/>
+原文连接:https://www.cnblogs.com/HuiH/p/11891098.html</div><br>
+    <p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">一、乐观锁</span></strong></span></p>
+<p><span style="font-size: 16px;">　　乐观锁是一种乐观思想，即认为读多写少，遇到并发写的可能性低，每次去拿数据时都认为别人不会修改，所以不会上锁，但是在更新时会判断一下在此期间别人有没有去更新这个数据，采取在写时先读出当前版本号，然后加锁操作（比较跟上一次的版本号，如果一样则更新），如果失败则要重复读-比较-写操作。</span></p>
+<p><span style="font-size: 16px;">　　Java中的乐观锁基本是通过CAS操作实现的，CAS是一种更新的原子操作，比较当前值跟传入值是否一样，一样则更新，否则失败。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">二、悲观锁</span></strong></p>
+<p><span style="font-size: 16px;">　　悲观锁就是悲观思想，即认为写多，遇到并发写的可能性高，每次去拿数据时都认为被人会修改，所以每次在读写数据时都会上锁。这样别人想读写这个数据就会block知道拿到锁。Java中的悲观所就是Synchronized，AQS框架下的锁则是先尝试CAS乐观锁去获取锁，若获取不到时，才会转换为悲观锁，如RetreenLock。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">三、Synchronized同步锁</span></strong></p>
+<p><span style="font-size: 16px;">可以把任意一个非null的对象当作锁，它属于独占式的悲观锁，同时属于可重入锁。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">作用范围：</span></strong></p>
+<p><span style="font-size: 16px;">　　1）作用于方法时，锁住的是对象的实例（this）；</span></p>
+<p><span style="font-size: 16px;">　　2）作用于静态方法时，锁住的是Class实例，又因为Class的相关数据存储在永久代PermGen（JDK1.8则是metaspace），永久代是全局共享的，因此静态方法相当于类的一个全局锁，会锁所有调用该方法的线程。<br /></span></p>
+<p><span style="font-size: 16px;">　　3）synchronized作用于一个对象实例时，锁住的是所有以该对象为锁的代码块。它有多个队列，当多个线程一起访问某个对象监视器时，对象监视器会将这些线程存储在不同的容器中。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">核心组件：</span></strong></p>
+<p><span style="font-size: 16px;">　　1）Wait Set ：哪些调用wait方法被阻塞的线程被放置在这里。</span></p>
+<p><span style="font-size: 16px;">　　2）Contention List：竞争队列，所有请求锁的线程首先被放在这个竞争队列中。<br /></span></p>
+<p><span style="font-size: 16px;">　　3）Entry List：Contention List中那些有资格成为候选资源的线程被移动到Entry List。</span></p>
+<p><span style="font-size: 16px;">　　4）OnDeck：任意时刻，最多只有一个线程正在竞争锁资源，该线程被称为OnDeck。</span></p>
+<p><span style="font-size: 16px;">　　5）Owner：当前已经获取到锁资源的线程被称为Owner。</span></p>
+<p><span style="font-size: 16px;">　　6）!Owner：当前释放锁的线程。<br /></span></p>
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">Synchronized实现：</span></strong></span></p>
+<p><span style="font-size: 16px;">　　1）JVM每次从队列的尾部取出一个数据用于锁竞争候选者（OnDeck），但是在并发情况下，ContentionList会被大量的并发线程进行CAS访问，为了降低对尾部元素的竞争，JVM会将一部分线程迁移到EntryList中作为候选竞争线程。</span></p>
+<p><span style="font-size: 16px;">　　2）Owner线程会在unlock时，将ContentionList中的部分线程迁移到EntryList中，并指定EntryList中的某个线程为OnDeck线程（一般是最先进去的那个线程）。</span></p>
+<p><span style="font-size: 16px;">　　3）Owner线程并不是直接把锁传递给OnDeck线程，而是把锁竞争的权利交给OnDeck，OnDeck需要重新竞争锁。这样虽然牺牲了一些公平性，但是能极大地提升系统的吞吐量。在JVM中，也把这种选择性为称之为&ldquo;竞争切换&rdquo;。</span></p>
+<p><span style="font-size: 16px;">　　4）OnDeck线程获取到锁资源后会变为Owner线程，而没有得到锁资源的仍然停留在EntryList中。如果Owner线程被wait方法阻塞，则转移到WaitSet队列中，直到某个时刻通过notify或notifyAll唤醒，会重新进去EntryList中。</span></p>
+<p><span style="font-size: 16px;">　　5）处于ContentionList、EntryList、WaitSet中的线程都处于阻塞状态，该阻塞是由操作系统来完成的（Linux内核下采用pthread_mutex_lock内核函数实现的）。</span></p>
+<p><span style="font-size: 16px;">　　6）<span style="color: #0000ff;">Synchronized是非公平锁。</span>Synchronized在线程进入ContentionList时，等待的线程会先尝试自旋获取锁，如果获取不到就进入ContentionList，这明显对于已经进入队列的线程是不公平的，还有一个不公平的事情就是自旋获取锁的线程还可能直接抢占OnDeck线程的锁资源。</span></p>
+<p><span style="font-size: 16px;">　　7）每个对象都有一个monitor对象，加锁就是在竞争monitor对象，代码块加锁是在前后分别加上monitorenter和monitorexit指令来实现的，方法加锁是通过一个标记位来判断的。</span></p>
+<p><span style="font-size: 16px;">　　8）<span style="color: #0000ff;">Synchronized是一个重量级锁。</span>需要调用操作系统相关接口，性能是低效的，有可能给线程加锁消耗的时间比有用操作消耗的时间更多。</span></p>
+<p><span style="font-size: 16px;">　　9）Java1.6 ，Synchronized进行了很多的优化，有适应自旋、锁消除、锁粗化、轻量级锁及偏向锁等，效率有了本质上的提高。在之后推出的Java1.7与1.8中，均对该关键字的实现机理做了优化。引入了偏向锁和轻量级锁。都是在对象头中有标记位，不需要经过操作系统加锁。</span></p>
+<p><span style="font-size: 16px;">　　10）<span style="color: #0000ff;">锁可以从偏向锁升级到轻量级锁，再升级到重量级锁。这种升级过程叫做<strong>锁膨胀</strong>。</span></span></p>
+<p><span style="font-size: 16px;">　　11）JDK1.6 中默认是开启偏向锁和轻量级锁，可以通过-XX:-UseBiasedLocking来禁用偏向锁。</span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">四、ReentrantLock</span></strong></span></p>
+<p><span style="font-size: 16px;">　　ReentrantLock继承接口Lock并实现接口中定义的方法，它是一种可重入锁。除了能完成synchronized所能完成的所有工作，还提供了诸如可响应中断锁、可轮询锁请求、定时锁等避免多线程死锁的方法。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">Lock接口的主要方法：</span></strong></p>
+<p><span style="font-size: 16px;">　　1. void lock()：执行此方法时，如果锁处于空闲状态，当前线程将获取到锁。相反，如果锁已经被其他线程持有，将禁用当前线程，直到当前线程获取到锁。</span></p>
+<p><span style="font-size: 16px;">　　2. boolean tryLock()：如果锁可用，则获取锁，并立即返回true，否则返回false。该方法和lock()的区别在于，tryLock()只是试图获取锁，如果锁不可用，不会导致当前线程被禁用，当前线程仍然继续往下执行代码，而lock()方法则是一定要获取到锁，如果锁不可用，就一直等待，在未获取锁之前，当前线程并不继续向下执行。</span></p>
+<p><span style="font-size: 16px;">　　3. void unlock()：执行此方法时，当前线程将释放持有的锁，锁只能由持有者释放，如果线程并不持有锁，却执行了该方法，可能导致异常的发生。</span></p>
+<p><span style="font-size: 16px;">　　4. Condition newCondition()：条件对象，获取等待通知组件。该组件和当前的锁绑定，当前线程只有获取了锁，才能调用该组件的await()方法，而调用后，当前线程将释放锁。</span></p>
+<p><span style="font-size: 16px;">　　5. getHoldCount()：查询当前线程保持此锁的次数，也就是此线程执行lock方法的次数。</span></p>
+<p><span style="font-size: 16px;">　　6. getQueueLength()：返回正等待获取此锁的线程估计数，比如启动10个线程，1个线程获得锁，此时返回的是9。</span></p>
+<p><span style="font-size: 16px;">　　7. getWaitQueueLength()：返回等待与此锁相关的给定条件的线程估计数。比如：10个线程，用同一个condition对象，并且此时这10个线程都执行了condition对象的await方法，那么此时执行此方法返回10。</span></p>
+<p><span style="font-size: 16px;">　　8. hasWaiters(Condition condition)：查询是否有线程等待与此锁有关的给定条件（condition），对于指定condition对象，有多少线程执行了condition.await方法。</span></p>
+<p><span style="font-size: 16px;">　　9. hasQueueThread(Thread thread)：查询给定线程是否等待获取此锁。</span></p>
+<p><span style="font-size: 16px;">　　10. hasQueueThreads()：是否有线程等待此锁。</span></p>
+<p><span style="font-size: 16px;">　　11. isFair()：该锁是否公平锁。</span></p>
+<p><span style="font-size: 16px;">　　12. isLock()：此锁是否有任意线程占用。</span></p>
+<p><span style="font-size: 16px;">　　13. tryLock()：尝试获得锁，仅在调用时锁未被线程占用，获得锁。</span></p>
+<p><span style="font-size: 16px;">　　14. tryLock(long timeout TimeUnit unit)：如果锁在给定等待时间内没有被另一个线程保持，则获取该锁。</span></p>
+<p><span style="font-size: 16px;"><strong><span style="color: #0000ff;">公平锁：</span></strong>指的是所得分配机制是公平的，通常先对锁提出获取请求的线程会先被分配到锁，ReentrantLock在构造函数中提供了是否公平锁的初始化来定义公平锁。加锁前检查是否有排队等待的线程，优先排队等待的线程，先来先得。</span></p>
+<p><span style="font-size: 16px;"><strong><span style="color: #0000ff;">非公平锁：</span></strong>JVM按随机、就近原则分配锁的机制，ReentrantLock在构造函数中提供了是否公平锁的初始化方式，默认为非公平锁。非公平锁实际执行的效率要远远超过公平锁，除非程序有特殊需要，否则最常用非公平锁的分配机制。加锁时不考虑排队等待问题，直接尝试获取锁，获取不到自动到队尾等待。Java中的Synchronized是非公平锁，ReentrantLock默认的lock()方法采用的是非公平锁。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">ReentrantLock实现：</span></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 15px;"><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MyService {
+</span><span style="color: #008080;"> 2</span>      <span style="color: #0000ff;">private</span> Lock lock = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ReentrantLock();
+</span><span style="color: #008080;"> 3</span>    <span style="color: #008000;">//</span><span style="color: #008000;">Lock lock=new ReentrantLock(true);</span><span style="color: #008000;">//</span><span style="color: #008000;">公平锁
+</span><span style="color: #008080;"> 4</span>      <span style="color: #008000;">//</span><span style="color: #008000;">Lock lock=new ReentrantLock(false);</span><span style="color: #008000;">//</span><span style="color: #008000;">非公平锁</span>
+<span style="color: #008080;"> 5</span>      <span style="color: #0000ff;">private</span> Condition condition=lock.newCondition();<span style="color: #008000;">//</span><span style="color: #008000;">创建 Condition</span>
+<span style="color: #008080;"> 6</span>  <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testMethod() {
+</span><span style="color: #008080;"> 7</span>      <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 8</span>          lock.lock();<span style="color: #008000;">//</span><span style="color: #008000;">lock 加锁
+</span><span style="color: #008080;"> 9</span> <span style="color: #008000;">//</span><span style="color: #008000;">1：wait 方法等待：
+</span><span style="color: #008080;">10</span>         <span style="color: #008000;">//</span><span style="color: #008000;">System.out.println("开始 wait");</span>
+<span style="color: #008080;">11</span> <span style="color: #000000;">         condition.await();
+</span><span style="color: #008080;">12</span> <span style="color: #008000;">//</span><span style="color: #008000;">通过创建 Condition 对象来使线程 wait，必须先执行 lock.lock 方法获得锁
+</span><span style="color: #008080;">13</span> <span style="color: #008000;">//</span><span style="color: #008000;">2：signal 方法唤醒</span>
+<span style="color: #008080;">14</span> condition.signal();<span style="color: #008000;">//</span><span style="color: #008000;">condition 对象的 signal 方法可以唤醒 wait 线程</span>
+<span style="color: #008080;">15</span>      <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; 5; i++<span style="color: #000000;">) {
+</span><span style="color: #008080;">16</span> System.out.println("ThreadName=" + Thread.currentThread().getName()+ (" " + (i + 1<span style="color: #000000;">)));
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">         }
+</span><span style="color: #008080;">18</span>      } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">         e.printStackTrace();
+</span><span style="color: #008080;">20</span>  }<span style="color: #0000ff;">finally</span><span style="color: #000000;">{
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">         lock.unlock();
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">         }
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">     }
+</span><span style="color: #008080;">24</span> }</span></code></pre>
+
+<p><strong><span style="font-size: 16px; color: #0000ff;">&nbsp;Condition类和Object类锁方法的区别：</span></strong></p>
+<p>&nbsp;　　<span style="font-size: 16px;">1）Condition类的await方法和Object类的wait方法等效；</span></p>
+<p><span style="font-size: 16px;">　　2）Condition类的signal方法和Object类的notify方法等效；</span></p>
+<p><span style="font-size: 16px;">　　3）Condition类的signalAll方法和Object类的notifyAll方法等效；</span></p>
+<p><span style="font-size: 16px;">　　4）ReentrantLock类可以唤醒制定条件的线程，而Object的唤醒是随机的；</span></p>
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">tryLock和lock和lockInterruptibly区别：</span></strong></span></p>
+<p><span style="font-size: 16px;">　　1）tryLock能获得锁就返回true，不能就立即返回false，tryLock(long timeout,TimeUnit unit)，可以增加时间限制，如果超过该时间段还没获得锁，返回false。</span></p>
+<p><span style="font-size: 16px;">　　2）lock能获得锁就返回true，不能的话一直等待获得锁。</span></p>
+<p><span style="font-size: 16px;">　　3）lock和lockInterruptibly，如果两个线程分别执行这两个方法，但此时中断这两个线程，lock不会抛出异常，而lockInterruptibly会抛出异常。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">Synchronized和ReentrantLock的区别：</span></strong></p>
+<p><span style="font-size: 16px;">　　共同点：</span></p>
+<p><span style="font-size: 16px;">　　　　1）都是用来协调多线程对共享对象、变量的访问；</span></p>
+<p><span style="font-size: 16px;">　　　　2）都是可重入锁，同一线程可以多次获得同一个锁；</span></p>
+<p><span style="font-size: 16px;">　　　　3）都保证了可见性和互斥性；</span></p>
+<p><span style="font-size: 16px;">　　不同点：</span></p>
+<p><span style="font-size: 16px;">　　　　1）ReentrantLock显式的获得、释放锁，synchronized隐式获得、释放锁；</span></p>
+<p><span style="font-size: 16px;">　　　　2）ReentrantLock可响应中断、可轮回，synchronized是不可以响应中断的，为处理锁的不可用性提供了更高的灵活性；</span></p>
+<p><span style="font-size: 16px;">　　　　3）ReentrantLock是API级别的，synchronized是JVM级别的；</span></p>
+<p><span style="font-size: 16px;">　　　　4）ReentrantLock可以实现公平锁，可以通过Condition绑定多个条件；</span></p>
+<p><span style="font-size: 16px;">　　　　5）底层实现不一样，synchronized是同步阻塞，使用的是悲观并发策略；ReentrantLock是同步非阻塞，采用的是乐观并发策略；</span></p>
+<p><span style="font-size: 16px;">　　　　6）Lock是一个接口，而synchronized是Java中的关键字，synchronized是内置的语言实现；</span></p>
+<p><span style="font-size: 16px;">　　　　7）synchronized在发生异常时，会自动释放线程占有的锁，因此不会导致死锁现象发生；而Lock在发生异常时，如果没有主动通过unlock()去释放锁，则很可能造成死锁现象，因此使用Lock时需要在finally块中释放锁；</span></p>
+<p><span style="font-size: 16px;">　　　　8）Lock可以让等待锁的线程响应中断，而synchronized却不行，使用synchronized时，等待的线程会一直等待下去，不能够响应中断；<br /></span></p>
+<p><span style="font-size: 16px;">　　　　9）通过Lock的tryLock()方法可以知道有没有成功获取锁，而synchronized却无法办到。</span></p>
+<p><span style="font-size: 16px;">　　　　10）Lock可以提高多个线程进行读操作的效率，即实现读写锁等。</span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">五、自旋锁</span></strong></span></p>
+<p><span style="font-size: 16px;">　　如果持有锁的线程能在很短时间内释放锁资源，那么那些等待竞争锁的线程就不需要做内核态和用户态之间的切换进入阻塞挂起状态，它们只需要等一等（自旋），等待有锁的线程释放锁后即可立即获取锁，这样就避免了用户线程和内核切换的消耗。</span></p>
+<p><span style="font-size: 16px;">　　线程自旋需要消耗CPU，如果一直获取不到锁，那么线程就会一直自旋，因此需要设置一个自旋等待的最大时间。</span></p>
+<p><span style="font-size: 16px;">　　如果持有锁的线程执行的时间超过自选等待的最大时间仍没有释放锁，就会导致其他争用锁的线程在最大等待时间内还是获取不到锁，这时争用线程会停止自旋进入阻塞状态。</span></p>
+<p><span style="font-size: 16px;">　<span style="color: #0000ff;"><strong>　1.自旋锁的优缺点：</strong></span>自旋锁尽可能地减少线程的阻塞，这对于锁的竞争不激烈，且占用锁时间非常短的代码块来说性能能大幅度的提升。但是如果锁的竞争激烈或持有锁的线程需要长时间占用锁执行同步块，则自旋锁就不适用了。</span></p>
+<p><span style="font-size: 16px;">　<strong><span style="color: #0000ff;">　2.自旋锁的时间阈值：</span></strong>自旋锁的目的就是占着CPU的资源不释放，等到获取到锁立即进行处理。</span></p>
+<p><span style="font-size: 16px;">　　<span style="color: #0000ff;"><strong>3.适应性自旋锁：</strong></span>意味着自旋的时间不是固定的，而是由前一次在同一个锁的自旋时间以及锁的拥有者的状态来决定的。基本认为一个线程上下文切换的时间是最佳的一个时间，同时JVM还针对当前CPU的负荷情况做了较多的优化，如果平均负载小于CPUs则一直自旋，如果有超过（CPUs/2）个线程正在自旋，则后来线程直接阻塞，如果正在自旋的线程发现Owner发生了变化则延迟自旋时间（自旋计数）或进入阻塞，如果CPU处于节电模式则停止自旋，自旋时间的最坏情况是CPU的存储延迟（CPU A存储了一个数据，到CPU B得知这个数据直接的时间差），自旋时会适当放弃线程优先级之间的差异。</span></p>
+<p><span style="font-size: 16px;">　<strong><span style="color: #0000ff;">　4. 自旋锁的开启</span></strong></span></p>
+<p><span style="font-size: 16px;">　　　　JDK1.6 中 -XX:+UseSpinning开启；-XX:PreBlockSpin=10为自旋次数；</span></p>
+<p><span style="font-size: 16px;">　　　　JDK1.7后，去掉此参数，由JVM控制；</span></p>
+<p><span style="color: #ff0000;"><strong><span style="font-size: 16px;">六、Semaphore（信号量）</span></strong></span></p>
+<p><span style="font-size: 16px;">　　Semaphore是一种基于计数的信号量。它可以设定一个阈值，基于此，多个线程竞争获取许可信号，做完自己的申请后归还，超过阈值后，线程申请许可信号将会被阻塞。Semaphore可以用来构建一些对象池，资源池之类的，比如数据库连接池。</span></p>
+<p><span style="font-size: 16px;">　　实现互斥锁（计数器为1）</span></p>
+<p><span style="font-size: 16px;">　　　　我们也可以创建计数为1的Semaphore，将其作为一种类似互斥锁的机制，这也叫二元信号量，表示两种互斥状态。</span></p>
+<p><span style="font-size: 16px;">　　代码实现：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 15px;"><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 创建一个计数阈值为 5 的信号量对象
+</span><span style="color: #008080;"> 2</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 只能 5 个线程同时访问</span>
+<span style="color: #008080;"> 3</span> Semaphore semp = <span style="color: #0000ff;">new</span> Semaphore(5<span style="color: #000000;">);
+</span><span style="color: #008080;"> 4</span> <span style="color: #0000ff;">try</span> { <span style="color: #008000;">//</span><span style="color: #008000;"> 申请许可</span>
+<span style="color: #008080;"> 5</span> <span style="color: #000000;">    semp.acquire();
+</span><span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> 业务逻辑</span>
+<span style="color: #008080;"> 8</span>         } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;"> 9</span>         } <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">10</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> 释放许可</span>
+<span style="color: #008080;">11</span> <span style="color: #000000;">            semp.release();
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">13</span>     } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+</span><span style="color: #008080;">14</span> }</span></code></pre>
+
+<p><span style="color: #0000ff;"><strong><span style="font-size: 16px;">&nbsp;Semaphore与ReentrantLock</span></strong></span></p>
+<p><span style="font-size: 16px;">　　Semaphore基本能完成ReentrantLock的所有工作，使用方法也与之类似，<strong>通过acquire()与release()方法来获得和释放临界资源。</strong>经实测，<strong>Semaphore.acquire()方法默认为可响应中断锁</strong>，与ReentrantLock.lockInterruptibly()作用效果一致，也就是说在等待临界资源的过程中可以被Thread.interrupt()方法中断。</span></p>
+<p><span style="font-size: 16px;">　　此外，Semaphore也实现了可轮询的锁请求与定时锁的功能，除了方法名tryAcquire与tryLock不同，其使用方法与ReentrantLock几乎一致。Semaphore也提供了公平与非公平锁的机制，也可在构造函数中进行设定。</span></p>
+<p><span style="font-size: 16px;">　　<strong>Semaphore的锁释放操作也由手动进行</strong>，因此与ReentrantLock一样，为避免线程因抛出异常而无法正常释放锁的情况发生，<strong>释放锁的操作也必须在finally代码块中完成。</strong></span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">七、可重入锁（递归锁）</span></strong></p>
+<p><span style="font-size: 16px;"><strong>　　</strong></span><span style="font-size: 16px;">可重入锁，也叫做递归锁，指的是同一线程外层函数获得锁之后，内层递归函数仍然有获取该锁的代码，但不受影响。在Java环境下ReentrantLock和synchronized都是可重入锁。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">八、ReadWriteLock读写锁</span></strong></p>
+<p><span style="font-size: 16px;">　　为了提高性能，Java提供了读写锁，读写锁分为读锁和写锁，多个读锁不互斥，读锁与写锁互斥，写锁与写锁互斥，这是由JVM控制的。如果没有写锁的情况下，读是无阻塞的，在一定程度上提高了程序的执行效率。</span></p>
+<p><span style="font-size: 16px;">　　读锁：如果你的代码只读数据，可以很多人同时读，但不能同时写，那就上读锁。</span></p>
+<p><span style="font-size: 16px;">　　写锁：如果你的代码就修改数据，只能有一个人写，且不能同时读取，那就上写锁。总之，读时上写锁，写时上读锁。</span></p>
+<p><span style="font-size: 16px;">　　Java中读写锁有个接口，java.util.concurrent.locks.ReadWriteLock，也有具体的实现ReentrantReadWriteLock。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">九、共享锁和独占锁</span></strong></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">独占锁：</span></strong></p>
+<p><span style="font-size: 16px;">　　独占锁模式下，每次只能有一线程持有锁，ReentrantLock就是以独占方式实现的互斥锁。</span></p>
+<p><span style="font-size: 16px;">　　独占锁是一种悲观保守的加锁策略，它避免了读/读冲突，如果某个只读线程获取锁，则其他读线程都只能等待，这种情况下就限制了不必要的并发性，因为读操作并不会影响数据的一致性。</span></p>
+<p><strong><span style="font-size: 16px; color: #0000ff;">共享锁：</span></strong></p>
+<p><span style="font-size: 16px;">　　共享锁则允许多个线程同时获取锁，并发访问共享资源，如ReadWriteLock。共享锁则是一种乐观锁，它放宽了加锁策略，允许多个读操作的线程同时访问共享资源。</span></p>
+<p><span style="font-size: 16px;">　　1）AQS的内部类Node定义了两个常量SHARED和EXCLUSIVE，它们分别标识AQS队列中等待线程的锁获取模式。</span></p>
+<p><span style="font-size: 16px;">　　2）Java的并发包中提供了ReadWriteLock，它允许一个资源可以被多个读操作访问，或者被一个写操作访问，但两者不能同时进行。<br /></span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十、重量级锁（Mutex Lock）</span></strong></p>
+<p><span style="font-size: 16px;">　　Synchronized是通过对象内部的一个叫做监视器锁（monitor）来实现的。但是监视器锁本质又是依赖于底层的操作系统的MutexLock来实现的。而操作系统实现线程之间的切换就需要从用户态转换到核心态，这个成本非常高，状态之间的转换需要相对比较长的时间，这就是为什么synchronized效率低的原因。因此，这种依赖于操作系统MutexLock所实现的锁，我们称之为&ldquo;重量级锁&rdquo;。JDK中对synchronized做的种种优化，其核心都是为了减少这种重量级锁的使用。JDK1.6后，为了减少获得锁和释放锁所带来的性能消耗，提高性能，引入了&ldquo;轻量级锁&rdquo;和&ldquo;偏向锁&rdquo;。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十一、轻量级锁</span></strong></p>
+<p><span style="font-size: 16px;">　　<span style="color: #0000ff;">锁的状态总共有四种：无锁状态、偏向锁、轻量级锁和重量级锁。</span></span></p>
+<p><span style="font-size: 16px;">　<span style="color: #0000ff;"><strong>　锁升级</strong></span>：随着锁的竞争，锁可以从偏向锁升级到轻量级锁再升级到重量级锁（但锁的升级是单向的，只能从低到高升级，不会出现锁的降级）。</span></p>
+<p><span style="font-size: 16px;">　　&ldquo;轻量级锁&rdquo;是相对于使用操作系统互斥量来实现的传统锁而言的。但是，首先需要强调一点的是，轻量级锁并不是用来代替重量级锁的，它的本意是在没有多线程竞争的前提下， 减少传统的重量级锁使用产生的性能消耗。在解释轻量级锁的执行过程之前，先明白一下，<span style="color: #0000ff;">轻量级锁所适应的场景是线程交替执行同步块的情况</span>，如果存在同一时间访问同一锁的情况，就会导致轻量级锁膨胀为重量级锁。</span></p>
+<p><span style="font-size: 16px;">　　在执行同步代码块之前，会在当前线程栈帧中创建用于保存锁记录的空间，并将对象头中的标记复制到锁记录中。之后线程尝试CAS将Mark Word替换为指向锁记录的指针。如果成功，则获取锁，如果失败，则表示有线程竞争，则通过自旋来获取锁。</span></p>
+<p><span style="font-size: 16px;">　　<strong><span style="color: #0000ff;">解锁</span></strong>：原子通过CAS操作将锁记录中的MarkWord替换为对象头，如果成功，则表示没发生竞争，如果失败，膨胀为重量级锁。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十二、偏向锁</span></strong></p>
+<p><span style="font-size: 16px;">　　Hotspot的作者经过以往的研究发现大多数情况下锁不仅不存在多线程竞争，而且总是由同一线程多次获得。<span style="color: #0000ff;">偏向锁的目的是在某个线程获得锁之后，消除这个线程锁重入（CAS）的开销</span>，看起来让这个线程得到了偏护。引入偏向锁是为了在无多线程竞争的情况下尽量减少不必要的轻量级锁执行路径，因为轻量级锁的获取及释放依赖多次CAS原子指令，而偏向锁只需要在置换ThreadID的时候依赖依次CAS原子指令（由于一旦出现多线程竞争的情况就必须撤销偏向锁，所以偏向锁的撤销操作的性能损耗必须小于节省下来的CAS原子指令的性能消耗）。上面说过，轻量级锁是为了在线程交替执行同步块时提高性能，而<span style="color: #0000ff;">偏向锁则是在只有一个线程执行同步块时进一步提高性能。</span></span></p>
+<p><span style="font-size: 16px;">　　当线程访问同步代码块获取锁，将当前线程ID存储在对象头和当前栈帧的锁记录中，之后线程进入或退出同步代码块，不用CAS来加锁或解锁。只需要测试一下对象头中锁记录是否还存着当前线程的偏向锁。如果是，则不用修改，如果不是，看当前对象头的锁记录是不是偏向锁，如果是，则用CAS将对象头设置为当前对象头，如果不是，则用CAS竞争锁。</span></p>
+<p><span style="font-size: 16px;">　　<strong><span style="color: #0000ff;">偏向锁的撤销</span></strong>：当发生竞争时，或释放偏向锁。首先会先停掉当前拥有偏向锁的线程，判断线程是否存活，如果不存活则将对象头置为无锁状态，如果存活，有偏向锁的栈会执行。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十三、分段锁</span></strong></p>
+<p><span style="font-size: 16px;">　　ConcurrentHashMap并发</span></p>
+<p><span style="font-size: 16px;">　　减小锁粒度：减小锁粒度是指缩小锁定对象的范围，从而减小锁冲突的可能性，从而提高系统的并发能力。减小锁粒度是一种削弱多线程锁精症的有效手段，这种技术典型的应用是ConcurrentHashMap（高性能的HashMap）类的实现。对于HashMap而言，最重要的两个方法是get与set方法，如果我们对于整个HashMap加锁，可以得到线程安全的对象，但是加锁粒度太大。Segment的大小也被称为ConcurrentHashMap的并发度。</span></p>
+<p><span style="font-size: 16px;">　　ConcurrentHashMap分段锁</span></p>
+<p><span style="font-size: 16px;">　　ConcurrentHashMap，它内部细分了若干个小的HashMap，称之为段（Segment）。默认情况下一个ConcurrentHashMap被进一步细分为16个段，即就是锁的并发度。如果需要在ConcurrentHashMap中添加一个新的表项，并不是将整个HashMap加锁，而是首先根据hashcode得到该表项存放在哪个段中，然后对该段加锁，并完成put操作。在多线程环境下，如果多个线程同时进行put操作，只要被加入的表项不存在同一个段中，则线程间可以做到真正的并行。</span></p>
+<p><span style="font-size: 16px;">　　<span style="color: #0000ff;">ConcurrentHashMap是由Segment数组结构和HashEntry数组结构组成。Segment是一种可重入锁ReentrantLock，在ConcurrentHashMap里扮演锁的角色，HashEntry则用于存储键值对数据。</span>一个ConcurrentHashMap里包含一个segment数组，segment的结构和hashmap类似，是一种数组和链表结构，一个segment里包含一个hashentry数组，每个hashentry是一个链表结构的元素，每个segment守护一个hashentry数组里的元素，当对hashentry数组的数据进行修改时，必须首先获得它对应的segment锁。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十四、锁优化</span></strong></p>
+<p><span style="font-size: 16px;">　　减少锁持有时间：只有在有线程安全要求的程序上加锁；</span></p>
+<p><span style="font-size: 16px;">　　减少锁粒度：将大对象（这个对象可能会被很多线程访问），折成小对象，大大增加并行度，降低锁竞争。降低了锁竞争，偏向锁、轻量级锁成功率才会提高。最典型的减少锁粒度的案例就是ConcurrentHashMap。</span></p>
+<p><span style="font-size: 16px;">　　锁分离：最常见的锁分离就是读写锁ReadWriteLock，根据功能进行分离成读锁和写锁，这样读读不互斥、读写互斥、写写互斥，即保证了线程安全，又提高了性能。读写分离思想可以延伸，只要操作互不影响，锁就可以分离。比如LinkedBlockingQueue从头部取出，从尾部放数据。</span></p>
+<p><span style="font-size: 16px;">　　锁粗化：通常情况下，为了保证多线程间的有效并发，会要求每个线程持有锁的时间尽量短，即在使用完公共资源后，应该立即释放锁。如果对同一个锁不停的进行请求、同步和释放，其本身也会消耗系统宝贵的资源。反而不利于性能的优化。</span></p>
+<p><span style="font-size: 16px;">　　锁消除：是在编译器级别的事情。在即时编译器时，如果发现不可能被共享的对象，则可以消除这些对象的锁操作，多数时因为程序员编码不规范引起。</span></p>
+<p><strong><span style="font-size: 16px; color: #ff0000;">十五、同步锁和死锁</span></strong></p>
+<p><span style="font-size: 16px;">　　同步锁：当多个线程同时访问一个数据时，很容易出现问题。为了避免这种情况出现，我们要保证线程同步互斥，就是指并发执行的多个线程，在同一时间内只允许一个线程访问共享数组。Java中可以使用synchronized关键字来取得一个对象的同步锁。</span></p>
+<p><span style="font-size: 16px;">　　死锁：就是多个线程同时被阻塞，它们中的一个或者全部都在等待某个资源被释放。</span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

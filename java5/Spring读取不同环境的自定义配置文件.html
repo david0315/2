@@ -1,0 +1,119 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring读取不同环境的自定义配置文件' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring读取不同环境的自定义配置文件</center></div><div class='banquan'>原文出处:本文由博客园博主chenzuyibao提供。<br/>
+原文连接:https://www.cnblogs.com/chenzuyibao/p/11425046.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        <ul>
+        <li><a href="#配置文件">配置文件</a><ul>
+        <li><a href="#需求">需求</a></li>
+        <li><a href="#spring环境">Spring环境</a><ul>
+        <li><a href="#配置类">配置类</a></li>
+        <li><a href="#propertysourcefactory">PropertySourceFactory</a></li>
+        </ul></li>
+        <li><a href="#非spring环境">非Spring环境</a></li>
+        </ul></li>
+        </ul>
+    
+
+<h1 id="配置文件">配置文件</h1>
+<h2 id="需求">需求</h2>
+<blockquote>
+<p>针对不同环境下，可以配置不同的配置文件，如log-dev.properties、log-test.properties。</p>
+</blockquote>
+<h2 id="spring环境">Spring环境</h2>
+<p>采用<code>spring.profiles.active</code>属性来区分不同的应用环境。</p>
+<h3 id="配置类">配置类</h3>
+<pre><code><code>@Data
+@Component
+@ConfigurationProperties(prefix = &quot;log&quot;)
+@PropertySource(name = &quot;log&quot;, value = &quot;classpath:log-${spring.profiles.active:}.properties&quot;, factory = SystemPropertySourceFactory.class)
+public class LogConfig implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
+    private String            host;
+    private int               port;
+    private int               maxThreads       = 20;
+    private int               saveMode         = 0;
+    private boolean           saveLog          = true;
+    private String            namesrvAddr;
+    private String            producerGroupName;
+    private String            instanceName;
+    private int               sendTimeout;
+}</code></code></pre>
+<p>若spring.profiles.active为空，则该值为空字符串。</p>
+<h3 id="propertysourcefactory">PropertySourceFactory</h3>
+<pre><code><code>/**
+ * 针对自定义配置文件的一个多环境配置逻辑
+ * 
+ */
+public class SystemPropertySourceFactory implements PropertySourceFactory {
+    
+    @Override
+    public PropertySource&lt;?&gt; createPropertySource(String name, EncodedResource resource)
+        throws IOException {
+        String fileSuffix = &quot;&quot;;
+        try {
+            String filename = resource.getResource().getFilename();
+            fileSuffix = filename.substring(filename.lastIndexOf(&quot;.&quot;));
+            resource.getResource().getFile();
+            return new ResourcePropertySource(name, resource);
+        } catch (Exception e) {
+            InputStream inputStream = SystemPropertySourceFactory.class.getClassLoader()
+                .getResourceAsStream(name + fileSuffix);
+            //转成resource
+            InputStreamResource inResource = new InputStreamResource(inputStream);
+            return new ResourcePropertySource(new EncodedResource(inResource));
+        }
+    }
+    
+}</code></code></pre>
+<blockquote>
+<p>若spring.profiles.active=dev有配置，但是没有这个配置文件（例：log-dev.properties），则默认读取log.properties。若spring.profiles.active无配置，则默认读取log.properties。</p>
+</blockquote>
+<h2 id="非spring环境">非Spring环境</h2>
+<blockquote>
+<p>思路：将spring.profiles.active 属性设置到System环境变量。则非Spring环境可从System环境变量中获取该值。</p>
+</blockquote>
+<pre><code><code>@Component
+public class ServerInfo implements ApplicationListener&lt;WebServerInitializedEvent&gt; {
+    private static final String SPRING_PROFILES_ACTIVE = &quot;spring.profiles.active&quot;;
+    
+    @Override
+    public void onApplicationEvent(WebServerInitializedEvent event) {
+        //设置系统变量
+        System.setProperty(SPRING_PROFILES_ACTIVE, this.getProfileActive());
+    }
+    
+    /**
+     * 获取spring.profiles.active属性值
+     * @return
+     */
+    public String getProfileActive() {
+        return env.getProperty(SPRING_PROFILES_ACTIVE, &quot;&quot;);
+    }
+    
+}
+</code></code></pre>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

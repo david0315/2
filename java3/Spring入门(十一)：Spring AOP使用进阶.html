@@ -1,0 +1,468 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring入门(十一)：Spring AOP使用进阶' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring入门(十一)：Spring AOP使用进阶</center></div><div class='banquan'>原文出处:本文由博客园博主申城异乡人提供。<br/>
+原文连接:https://www.cnblogs.com/zwwhnly/p/11422874.html</div><br>
+    <p>在上篇博客中，我们了解了什么是AOP以及在Spring中如何使用AOP，本篇博客继续深入讲解下AOP的高级用法。</p>
+<h2 id="声明带参数的切点">1. 声明带参数的切点</h2>
+<p>假设我们有一个接口CompactDisc和它的实现类BlankDisc：</p>
+<pre><code><code>package chapter04.soundsystem;
+
+/**
+ * 光盘
+ */
+public interface CompactDisc {
+    void play();
+
+    void play(int songNumber);
+}</code></code></pre>
+<pre><code><code>package chapter04.soundsystem;
+
+import java.util.List;
+
+/**
+ * 空白光盘
+ */
+public class BlankDisc implements CompactDisc {
+    /**
+     * 唱片名称
+     */
+    private String title;
+
+    /**
+     * 艺术家
+     */
+    private String artist;
+
+    /**
+     * 唱片包含的歌曲集合
+     */
+    private List&lt;String&gt; songs;
+
+    public BlankDisc(String title, String artist, List&lt;String&gt; songs) {
+        this.title = title;
+        this.artist = artist;
+        this.songs = songs;
+    }
+
+    @Override
+    public void play() {
+        System.out.println(&quot;Playing &quot; + title + &quot; by &quot; + artist);
+        for (String song : songs) {
+            System.out.println(&quot;-Song:&quot; + song);
+        }
+    }
+
+    /**
+     * 播放某首歌曲
+     *
+     * @param songNumber
+     */
+    @Override
+    public void play(int songNumber) {
+        System.out.println(&quot;Play Song:&quot; + songs.get(songNumber - 1));
+    }
+}</code></code></pre>
+<p>现在我们的需求是记录每首歌曲的播放次数，按照以往的做法，我们可能会修改BlankDisc类的逻辑，在播放每首歌曲的代码处增加记录播放次数的逻辑，但现在我们使用切面，在不修改BlankDisc类的基础上，实现相同的功能。</p>
+<p>首先，新建切面SongCounter如下所示：</p>
+<pre><code><code>package chapter04.soundsystem;
+
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.annotation.Pointcut;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Aspect
+public class SongCounter {
+    private Map&lt;Integer, Integer&gt; songCounts = new HashMap&lt;&gt;();
+
+    /**
+     * 可重用的切点
+     *
+     * @param songNumber
+     */
+    @Pointcut(&quot;execution(* chapter04.soundsystem.CompactDisc.play(int)) &amp;&amp; args(songNumber)&quot;)
+    public void songPlayed(int songNumber) {
+    }
+
+    @Before(&quot;songPlayed(songNumber)&quot;)
+    public void countSong(int songNumber) {
+        System.out.println(&quot;播放歌曲计数：&quot; + songNumber);
+        int currentCount = getPlayCount(songNumber);
+        songCounts.put(songNumber, currentCount + 1);
+    }
+
+    /**
+     * 获取歌曲播放次数
+     *
+     * @param songNumber
+     * @return
+     */
+    public int getPlayCount(int songNumber) {
+        return songCounts.getOrDefault(songNumber, 0);
+    }
+}</code></code></pre>
+<p>重点关注下切点表达式<code>execution(* chapter04.soundsystem.CompactDisc.play(int)) &amp;&amp; args(songNumber)</code>，其中int代表参数类型，songNumber代表参数名称。</p>
+<p>新建配置类SongCounterConfig：</p>
+<pre><code><code>package chapter04.soundsystem;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Configuration
+@EnableAspectJAutoProxy
+public class SongCounterConfig {
+    @Bean
+    public CompactDisc yehuimei() {
+        List&lt;String&gt; songs = new ArrayList&lt;&gt;();
+        songs.add(&quot;东风破&quot;);
+        songs.add(&quot;以父之名&quot;);
+        songs.add(&quot;晴天&quot;);
+        songs.add(&quot;三年二班&quot;);
+        songs.add(&quot;你听得到&quot;);
+
+        BlankDisc blankDisc = new BlankDisc(&quot;叶惠美&quot;, &quot;周杰伦&quot;, songs);
+        return blankDisc;
+    }
+
+    @Bean
+    public SongCounter songCounter() {
+        return new SongCounter();
+    }
+}</code></code></pre>
+<p><strong>注意事项：</strong></p>
+<p>1)配置类要添加<code>@EnableAspectJAutoProxy</code>注解启用AspectJ自动代理。</p>
+<p>2)切面SongCounter要被声明bean，否则切面不会生效。</p>
+<p>最后，新建测试类SongCounterTest如下所示：</p>
+<pre><code><code>package chapter04.soundsystem;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import static org.junit.Assert.assertEquals;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes = SongCounterConfig.class)
+public class SongCounterTest {
+    @Autowired
+    private CompactDisc compactDisc;
+
+    @Autowired
+    private SongCounter songCounter;
+
+    @Test
+    public void testSongCounter() {
+        compactDisc.play(1);
+
+        compactDisc.play(2);
+
+        compactDisc.play(3);
+        compactDisc.play(3);
+        compactDisc.play(3);
+        compactDisc.play(3);
+
+        compactDisc.play(5);
+        compactDisc.play(5);
+
+        assertEquals(1, songCounter.getPlayCount(1));
+        assertEquals(1, songCounter.getPlayCount(2));
+
+        assertEquals(4, songCounter.getPlayCount(3));
+
+        assertEquals(0, songCounter.getPlayCount(4));
+
+        assertEquals(2, songCounter.getPlayCount(5));
+    }
+}</code></code></pre>
+<p>运行测试方法testSongCounter()，测试通过，输出结果如下所示：</p>
+<blockquote>
+<p>播放歌曲计数：1</p>
+<p>Play Song:东风破</p>
+<p>播放歌曲计数：2</p>
+<p>Play Song:以父之名</p>
+<p>播放歌曲计数：3</p>
+<p>Play Song:晴天</p>
+<p>播放歌曲计数：3</p>
+<p>Play Song:晴天</p>
+<p>播放歌曲计数：3</p>
+<p>Play Song:晴天</p>
+<p>播放歌曲计数：3</p>
+<p>Play Song:晴天</p>
+<p>播放歌曲计数：5</p>
+<p>Play Song:你听得到</p>
+<p>播放歌曲计数：5</p>
+<p>Play Song:你听得到</p>
+</blockquote>
+<h2 id="限定匹配带有指定注解的连接点">2. 限定匹配带有指定注解的连接点</h2>
+<p>在之前我们声明的切点中，切点表达式都是使用全限定类名和方法名匹配到某个具体的方法，但有时候我们需要匹配到使用某个注解的所有方法，此时就可以在切点表达式使用@annotation来实现，注意和之前在切点表达式中使用execution的区别。</p>
+<p>为了更好的理解，我们还是通过一个具体的例子来讲解。</p>
+<p>首先，定义一个注解Action：</p>
+<pre><code><code>package chapter04;
+
+import java.lang.annotation.*;
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface Action {
+    String name();
+}</code></code></pre>
+<p>然后定义2个使用@Action注解的方法：</p>
+<pre><code><code>package chapter04;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class DemoAnnotationService {
+    @Action(name = &quot;注解式拦截的add操作&quot;)
+    public void add() {
+        System.out.println(&quot;DemoAnnotationService.add()&quot;);
+    }
+
+    @Action(name = &quot;注解式拦截的plus操作&quot;)
+    public void plus() {
+        System.out.println(&quot;DemoAnnotationService.plus()&quot;);
+    }
+}</code></code></pre>
+<p>接着定义切面LogAspect：</p>
+<pre><code><code>package chapter04;
+
+import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.annotation.After;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.stereotype.Component;
+
+import java.lang.reflect.Method;
+
+@Aspect
+@Component
+public class LogAspect {
+    @Pointcut(&quot;@annotation(chapter04.Action)&quot;)
+    public void annotationPointCut() {
+    }
+
+    @After(&quot;annotationPointCut()&quot;)
+    public void after(JoinPoint joinPoint) {
+        MethodSignature methodSignature = (MethodSignature) joinPoint.getSignature();
+        Method method = methodSignature.getMethod();
+        Action action = method.getAnnotation(Action.class);
+        System.out.println(&quot;注解式拦截 &quot; + action.name());
+    }
+}</code></code></pre>
+<p>注意事项：</p>
+<p>1)切面使用了<code>@Component</code>注解，以便Spring能自动扫描到并创建为bean，如果这里不添加该注解，也可以通过Java配置或者xml配置的方式将该切面声明为一个bean，否则切面不会生效。</p>
+<p>2)<code>@Pointcut(&quot;@annotation(chapter04.Action)&quot;)</code>，这里我们在定义切点时使用了@annotation来指定某个注解，而不是之前使用execution来指定某些或某个方法。</p>
+<p>我们之前使用的切面表达式是<code>execution(* chapter04.concert.Performance.perform(..))</code>是匹配到某个具体的方法，如果想匹配到某些方法，可以修改为如下格式：</p>
+<pre><code><code>execution(* chapter04.concert.Performance.*(..))</code></code></pre>
+<p>然后，定义配置类AopConfig：</p>
+<pre><code><code>package chapter04;
+
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+
+@Configuration
+@ComponentScan
+@EnableAspectJAutoProxy
+public class AopConfig {
+}</code></code></pre>
+<blockquote>
+<p>注意事项：配置类需要添加<code>@EnableAspectJAutoProxy</code>注解启用AspectJ自动代理，否则切面不会生效。</p>
+</blockquote>
+<p>最后新建Main类，在其main()方法中添加如下测试代码：</p>
+<pre><code><code>package chapter04;
+
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class Main {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(AopConfig.class);
+
+        DemoAnnotationService demoAnnotationService = context.getBean(DemoAnnotationService.class);
+
+        demoAnnotationService.add();
+        demoAnnotationService.plus();
+
+        context.close();
+    }
+}</code></code></pre>
+<p>输出结果如下所示：</p>
+<blockquote>
+<p>DemoAnnotationService.add()</p>
+<p>注解式拦截 注解式拦截的add操作</p>
+<p>DemoAnnotationService.plus()</p>
+<p>注解式拦截 注解式拦截的plus操作</p>
+</blockquote>
+<p>可以看到使用@Action注解的add()和plus()方法在执行完之后，都执行了切面中定义的after()方法。</p>
+<p>如果再增加一个使用@Action注解的subtract()方法，执行完之后，也会执行切面中定义的after()方法。</p>
+<h2 id="项目中的实际使用">3. 项目中的实际使用</h2>
+<p>在实际的使用中，切面很适合用来记录日志，既满足了记录日志的需求又让日志代码和实际的业务逻辑隔离开了，</p>
+<p>下面看下具体的实现方法。</p>
+<p>首先，声明一个访问日志的注解AccessLog：</p>
+<pre><code><code>package chapter04.log;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * 访问日志 注解
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface AccessLog {
+    boolean recordLog() default true;
+}</code></code></pre>
+<p>然后定义访问日志的切面AccessLogAspectJ：</p>
+<pre><code><code>package chapter04.log;
+
+import com.alibaba.fastjson.JSON;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class AccessLogAspectJ {
+    @Pointcut(&quot;@annotation(AccessLog)&quot;)
+    public void accessLog() {
+
+    }
+
+    @Around(&quot;accessLog()&quot;)
+    public void recordLog(ProceedingJoinPoint proceedingJoinPoint) {
+        try {
+            Object object = proceedingJoinPoint.proceed();
+
+            AccessLog accessLog = ((MethodSignature) proceedingJoinPoint.getSignature()).getMethod().getAnnotation(AccessLog.class);
+
+            if (accessLog != null &amp;&amp; accessLog.recordLog() &amp;&amp; object != null) {
+                // 这里只是打印出来,一般实际使用时都是记录到公司的日志中心
+                System.out.println(&quot;方法名称:&quot; + proceedingJoinPoint.getSignature().getName());
+                System.out.println(&quot;入参:&quot; + JSON.toJSONString(proceedingJoinPoint.getArgs()));
+                System.out.println(&quot;出参:&quot; + JSON.toJSONString(object));
+            }
+        } catch (Throwable throwable) {
+            // 这里可以记录异常日志到公司的日志中心
+            throwable.printStackTrace();
+        }
+    }
+}</code></code></pre>
+<p>上面的代码需要在pom.xml中添加如下依赖：</p>
+<pre class="xml"><code>&lt;!-- https://mvnrepository.com/artifact/com.alibaba/fastjson --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+    &lt;artifactId&gt;fastjson&lt;/artifactId&gt;
+    &lt;version&gt;1.2.59&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>然后定义配置类LogConfig：</p>
+<pre><code><code>package chapter04.log;
+
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+
+@Configuration
+@ComponentScan
+@EnableAspectJAutoProxy
+public class LogConfig {
+}</code></code></pre>
+<blockquote>
+<p>注意事项：不要忘记添加@EnableAspectJAutoProxy注解，否则切面不会生效。</p>
+</blockquote>
+<p>然后，假设你的对外接口是下面这样的：</p>
+<pre><code><code>package chapter04.log;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class MockService {
+    @AccessLog
+    public String mockMethodOne(int index) {
+        return index + &quot;MockService.mockMethodOne&quot;;
+    }
+
+    @AccessLog
+    public String mockMethodTwo(int index) {
+        return index + &quot;MockService.mockMethodTwo&quot;;
+    }
+}</code></code></pre>
+<p>因为要记录日志，所以每个方法都添加了@AccessLog注解。</p>
+<p>最后新建Main类，在其main()方法中添加如下测试代码：</p>
+<pre><code><code>package chapter04.log;
+
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class Main {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(LogConfig.class);
+
+        MockService mockService = context.getBean(MockService.class);
+
+        mockService.mockMethodOne(1);
+        mockService.mockMethodTwo(2);
+
+        context.close();
+    }
+}</code></code></pre>
+<p>输出日志如下所示：</p>
+<blockquote>
+<p>方法名称:mockMethodOne</p>
+<p>入参:[1]</p>
+<p>出参:&quot;1MockService.mockMethodOne&quot;</p>
+<p>方法名称:mockMethodTwo</p>
+<p>入参:[2]</p>
+<p>出参:&quot;2MockService.mockMethodTwo&quot;</p>
+</blockquote>
+<p>如果某个方法不需要记录日志，可以不添加@AccessLog注解：</p>
+<pre><code><code>public String mockMethodTwo(int index) {
+    return index + &quot;MockService.mockMethodTwo&quot;;
+}</code></code></pre>
+<p>也可以指定recordLog为false：</p>
+<pre><code><code>@AccessLog(recordLog = false)
+public String mockMethodTwo(int index) {
+    return index + &quot;MockService.mockMethodTwo&quot;;
+}</code></code></pre>
+<p>这里只是举了个简单的记录日志的例子，大家也可以把切面应用到记录接口耗时等更多的场景。</p>
+<h2 id="源码及参考">4. 源码及参考</h2>
+<p>源码地址：<a href="https://github.com/zwwhnly/spring-action.git" class="uri">https://github.com/zwwhnly/spring-action.git</a>，欢迎下载。</p>
+<p>Craig Walls 《Spring实战（第4版）》</p>
+<p>汪云飞《Java EE开发的颠覆者：Spring Boot实战》</p>
+<p><a href="https://baike.baidu.com/item/AOP/1332219">AOP（面向切面编程）_百度百科</a></p>
+<p>最后，欢迎关注我的微信公众号：「申城异乡人」，所有博客会同步更新。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

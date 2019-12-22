@@ -1,0 +1,146 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot系列：Spring Boot集成Spring Cache，使用RedisCache' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot系列：Spring Boot集成Spring Cache，使用RedisCache</center></div><div class='banquan'>原文出处:本文由博客园博主杨小格子提供。<br/>
+原文连接:https://www.cnblogs.com/imyanger/p/11729490.html</div><br>
+    <p>前面的章节，讲解了<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>，Spring Cache已经完成了多种Cache的实现，包括EhCache、RedisCache、ConcurrentMapCache等。</p>
+<p>这一节我们来看看Spring Cache使用RedisCache。</p>
+<h3 id="一rediscache使用演示">一、RedisCache使用演示</h3>
+<p>Redis是一个key-value存储系统，在web应用上被广泛应用，这里就不对其过多描述了。</p>
+<p>本章节示例是在<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>的源码基础上进行改造。源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p20-springboot-cache" class="uri">https://github.com/imyanger/springboot-project/tree/master/p20-springboot-cache</a></p>
+<p>使用RedisCache作为缓存，我们先引入相关依赖。</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;!--redis依赖--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-data-redis&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>然后SpringBoot配置文件中，对redis进行配置。</p>
+<pre class="yml"><code>server:
+  port: 10900
+
+spring:
+  profiles:
+    active: dev
+  redis:
+    host: localhost #redis服务器地址
+    port: 6379 #redis端口
+    password: 1234 #redis密码
+    timeout: 60000 #连接超时时间
+    database: 0 #数据库索引，默认为0</code></code></pre>
+<p>SpringBoot中使用Redis，可以通过Spring Cache的注解，也可以使用RedisTemplate来实现，大部分情况下，因为注解存在一定局限性不够灵活，一般实际开发中都是使用的RedisTemplate。</p>
+<p>附上CacheConfig注入RedisTemplate，如果不需要使用RedisTemplate，直接将@EnableCaching注解加在SpringBoot启动类上即可。</p>
+<pre><code><code>@Configuration
+@EnableCaching
+public class CacheConfig {
+
+    @Bean
+    public RedisTemplate&lt;String, Object&gt; redisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate&lt;String, Object&gt; redisTemplate = new RedisTemplate&lt;&gt;();
+        redisTemplate.setConnectionFactory(connectionFactory);
+
+        // 使用Jackson2JsonRedisSerializer来序列化和反序列化redis的value值（默认使用JDK的序列化方式）
+        Jackson2JsonRedisSerializer serializer = new Jackson2JsonRedisSerializer(Object.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        mapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        serializer.setObjectMapper(mapper);
+
+        redisTemplate.setValueSerializer(serializer);
+        // 使用StringRedisSerializer来序列化和反序列化redis的key值
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.afterPropertiesSet();
+        return redisTemplate;
+    }
+
+}</code></code></pre>
+<p>这样就可以开始使用RedisCache了，测试代码与<a href="https://blog.csdn.net/Simple_Yangger/article/details/102693316">Spring Boot集成Spring Cache</a>一致。</p>
+<p>CacheApi接口调用类，方便调用进行测试。</p>
+<pre><code><code>@RestController
+@RequestMapping(&quot;cache&quot;)
+public class CacheApi {
+
+    @Autowired
+    private CacheService cacheService;
+
+    @GetMapping(&quot;get&quot;)
+    public User  get(@RequestParam int id){
+        return cacheService.get(id);
+    }
+
+    @PostMapping(&quot;set&quot;)
+    public User  set(@RequestParam int id, @RequestParam String code, @RequestParam String name){
+        User u = new User(code, name);
+        return cacheService.set(id, u);
+    }
+
+    @DeleteMapping(&quot;del&quot;)
+    public void  del(@RequestParam int id){
+        cacheService.del(id);
+    }
+    
+}</code></code></pre>
+<p>CacheService缓存业务处理类，添加缓存，更新缓存和删除。</p>
+<pre><code><code>@Slf4j
+@Service
+public class CacheService {
+
+    private Map&lt;Integer, User&gt; dataMap = new HashMap &lt;Integer, User&gt;(){
+        {
+            for (int i = 1; i &lt; 100 ; i++) {
+                User u = new User(&quot;code&quot; + i, &quot;name&quot; + i);
+                put(i, u);
+            }
+        }
+     };
+
+    // 获取数据
+    @Cacheable(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public User get(int id){
+        log.info(&quot;通过id{}查询获取&quot;, id);
+        return dataMap.get(id);
+    }
+
+    // 更新数据
+    @CachePut(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public User set(int id, User u){
+        log.info(&quot;更新id{}数据&quot;, id);
+        dataMap.put(id, u);
+        return u;
+     }
+
+    //删除数据
+    @CacheEvict(value = &quot;cache&quot;, key = &quot;&#39;user:&#39; + #id&quot;)
+    public void del(int id){
+        log.info(&quot;删除id{}数据&quot;, id);
+        dataMap.remove(id);
+    }
+    
+}</code></code></pre>
+<p>启动服务进行测试，可以看到缓存功能正常，且打开redis进行查看，也能看到对应的缓存数据。</p>
+<p>源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p21-springboot-cache-redis" class="uri">https://github.com/imyanger/springboot-project/tree/master/p21-springboot-cache-redis</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

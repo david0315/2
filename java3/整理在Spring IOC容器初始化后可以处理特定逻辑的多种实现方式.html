@@ -1,0 +1,168 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修整理在Spring IOC容器初始化后可以处理特定逻辑的多种实现方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>整理在Spring IOC容器初始化后可以处理特定逻辑的多种实现方式</center></div><div class='banquan'>原文出处:本文由博客园博主梦在旅途提供。<br/>
+原文连接:https://www.cnblogs.com/zuowj/p/11871415.html</div><br>
+    <p>　　Spring框架的核心是依赖注入、切面；Spring Boot是在Spring框架的基础上为其提供许多默认配置、默认约定（约定优于配置），从而达到减少或减化配置进而可开箱即用、快速上手；Spring Cloud又是在Spring Boot框架的基础上提供了大量的微服务体系内的各种组件（starter），简化了微服务开发实现的成本；但不管是Spring、Spring Boot、Spring Cloud的底层实现都是充分利用了IOC、AOP；有时我们想在所有Bean都成功注册到IOC容器后，并实例化完成后统一做一些初始化的工作，那么就需要捕获Spring IOC容器初始化后的事件点，而这个事件点我结合自己经验及网上分享进行了一次整理汇总，主要是有如下几种方式（先后触发顺序）：</p>
+<ol>
+<li><strong>ApplicationContextAware.setApplicationContext</strong></li>
+<li><strong>Bean&nbsp;添加了@PostConstruct的方法</strong></li>
+<li><strong>InitializingBean.afterPropertiesSet</strong></li>
+<li><strong>BeanPostProcessor （postProcessBeforeInitialization、postProcessAfterInitialization）</strong></li>
+<li><span style="color: #ff0000;"><strong>SmartLifecycle.start</strong></span></li>
+<li><span style="color: #ff0000;"><strong>ApplicationListener.onApplicationEvent</strong></span></li>
+<li><span style="color: #ff0000;"><strong>ApplicationRunner.run</strong></span></li>
+</ol>
+<p>&nbsp;</p>
+<p>下面是把如上的触发点都集中实现在一个Bean中看效果，示例代码如下：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package cn.zuowenjun.demo.ioc.service;
+
+import cn.zuowenjun.demo.ioc.mapper.DemoInfoMapper;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.SmartLifecycle;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.WebApplicationContext;
+
+import javax.annotation.PostConstruct;
+import java.util.Date;
+
+@Component
+public class DemoModesCollection
+        implements ApplicationContextAware,
+        ApplicationListener&lt;ContextRefreshedEvent&gt;,
+        ApplicationRunner,
+        SmartLifecycle,
+        InitializingBean,
+        BeanPostProcessor {
+
+    private  ApplicationContext context;
+
+
+    @PostConstruct
+    public void postConstructMethod(){
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;@PostConstruct postConstructMethod:running!%n",new Date());
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+
+        System.out.println("@PostConstruct &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+    }
+
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;InitializingBean.afterPropertiesSet:running!%n",new Date());
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("afterPropertiesSet &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+    }
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;ApplicationContextAware.setApplicationContext:running! ===beansCount:%2$d %n",
+                new Date(), applicationContext.getBeanDefinitionCount());
+        this.context=applicationContext;
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("setApplicationContext &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+    }
+
+    @Override
+    public void onApplicationEvent(ContextRefreshedEvent event) {
+
+        if (event.getApplicationContext().getParent() == null || event.getApplicationContext() instanceof WebApplicationContext) {
+            System.out.printf("%1$tF %1$tT.%1$tL ---&gt;ApplicationListener.onApplicationEvent:running! ===beansCount:%2$d  (beanType:%3$s) %n",
+                    new Date(), event.getApplicationContext().getBeanDefinitionCount(), event.getApplicationContext().getClass().getTypeName());
+
+            DemoInfoMapper mapper= event.getApplicationContext().getBean(DemoInfoMapper.class);
+            System.out.println("onApplicationEvent &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+        }
+    }
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;ApplicationRunner.run:running!%n", new Date());
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("run &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+    }
+
+
+
+    private boolean isRunning = false;
+
+    @Override
+    public void start() {
+
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;SmartLifecycle.start:running!%n",new Date());
+
+        isRunning=true;
+
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("start &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+    }
+
+    @Override
+    public void stop() {
+        isRunning = false;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return isRunning;
+    }
+
+
+
+    @Override
+    public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;BeanPostProcessor.postProcessBeforeInitialization:running!%n",new Date());
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("postProcessBeforeInitialization &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+        return bean;
+    }
+
+    @Override
+    public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        System.out.printf("%1$tF %1$tT.%1$tL ---&gt;BeanPostProcessor.postProcessAfterInitialization:running!%n",new Date());
+        DemoInfoMapper mapper= context.getBean(DemoInfoMapper.class);
+        System.out.println("postProcessAfterInitialization &gt;&gt;&gt;context.getBean:" + (mapper==null?"null":AopUtils.getTargetClass(mapper).getName()));
+        return bean;
+    }
+}
+</code></pre>
+
+<p>　如上代码，大家可将尝试其加入到一个spring boot项目中，就可以看到运行的效果（执行的顺序）　，比如我这里的输出如下：</p>
+<blockquote>
+<p><br />2019-11-16 12:25:48.283 ---&gt;ApplicationContextAware.setApplicationContext:running! ===beansCount:325 <br />setApplicationContext &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:48.558 ---&gt;@PostConstruct postConstructMethod:running!<br />@PostConstruct &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:48.559 ---&gt;InitializingBean.afterPropertiesSet:running!<br />afterPropertiesSet &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:48.567 ---&gt;BeanPostProcessor.postProcessBeforeInitialization:running!<br />postProcessBeforeInitialization &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:48.567 ---&gt;BeanPostProcessor.postProcessAfterInitialization:running!<br /><span style="color: #ff0000;"><strong>......有很多的BeanPostProcessor.postProcessBeforeInitialization、BeanPostProcessor.postProcessAfterInitialization（每一个bean初始化前后都会触发，省略）</strong></span><br />2019-11-16 12:25:50.045 ---&gt;SmartLifecycle.start:running!<br />start &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:50.053 ---&gt;ApplicationListener.onApplicationEvent:running! ===beansCount:325  (beanType:org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext) <br />onApplicationEvent &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84<br />2019-11-16 12:25:50.080 ---&gt;ApplicationRunner.run:running!<br />run &gt;&gt;&gt;context.getBean:com.sun.proxy.$Proxy84</p>
+
+</blockquote>
+<p>从输出结果我们可以看出整个的顺序，那么也得出结论最好是在：SmartLifecycle.start、ApplicationListener.onApplicationEvent、ApplicationRunner.run&nbsp;这三种实现方式中才能真正达到IOC初始后全部完成后触发的事件点的要求。</p>
+<p>注：如果需要在控制台直接看到上面的内容，建议调整spring root的log level，避免无效的日志输出影响观看，配置如：</p>
+<blockquote>
+<pre><code>logging.level.root=error</code></pre>
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

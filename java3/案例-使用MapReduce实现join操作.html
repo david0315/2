@@ -1,0 +1,370 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修案例-使用MapReduce实现join操作' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>案例-使用MapReduce实现join操作</center></div><div class='banquan'>原文出处:本文由博客园博主喜讯XiCent提供。<br/>
+原文连接:https://www.cnblogs.com/xicent/p/11835434.html</div><br>
+    <p>哈喽～各位小伙伴们中秋快乐，好久没更新新的文章啦，今天分享如何使用mapreduce进行join操作。</p>
+<blockquote>
+<p>在离线计算中，我们常常不只是会对单一一个文件进行操作，进行需要进行两个或多个文件关联出更多数据，类似与sql中的join操作。<br />
+今天就跟大家分享一下如何在MapReduce中实现join操作</p>
+</blockquote>
+<h1 id="需求">需求</h1>
+<pre><code><code>现有两张，一张是产品信息表，一张是订单表。订单表中只表存了产品ID，如果想要查出订单以及产品的相关信息就必须使用关联。</code></code></pre>
+<h1 id="实现">实现</h1>
+<pre><code><code>根据MapReduce特性，大家都知道在reduce端，相同key的key，value对会被放到同一个reduce方法中(不设置partition的话)。
+利用这个特点我们可以轻松实现join操作，请看下面示例。</code></code></pre>
+<h2 id="产品表">产品表</h2>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>brand</th>
+<th>model</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>p0001</td>
+<td>苹果</td>
+<td>iphone11 pro max</td>
+</tr>
+<tr class="even">
+<td>p0002</td>
+<td>华为</td>
+<td>p30</td>
+</tr>
+<tr class="odd">
+<td>p0003</td>
+<td>小米</td>
+<td>mate10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="订单表">订单表</h2>
+<table>
+<thead>
+<tr class="header">
+<th>id</th>
+<th>name</th>
+<th>address</th>
+<th>produceID</th>
+<th>num</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>00001</td>
+<td>kris</td>
+<td>深圳市福田区</td>
+<td>p0001</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>00002</td>
+<td>pony</td>
+<td>深圳市南山区</td>
+<td>p0001</td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td>00003</td>
+<td>jack</td>
+<td>深圳市坂田区</td>
+<td>p0001</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>假如数据量巨大，两表的数据是以文件的形式存储在HDFS中，需要用mapreduce程序来实现一下SQL查询运算:</p>
+</blockquote>
+<pre><code><code>select a.id,a.name,a.address,a.num from t_orders a join t_products on a.productID=b.ID</code></code></pre>
+<h2 id="mapreduce实现思路">MapReduce实现思路</h2>
+<pre><code><code>通过将关联的条件(prodcueID)作为map输出的key，将两表满足join条件的数据并携带数据所来源的文件信息，发往同一个
+reduce task，在reduce中进行数据的串联</code></code></pre>
+<h3 id="实现方式一-reduce端join">实现方式一-reduce端join</h3>
+<h4 id="定义一个bean">定义一个Bean</h4>
+<pre><code><code>public class RJoinInfo implements Writable{
+    private String customerName=&quot;&quot;;
+    private String customerAddr=&quot;&quot;;
+    private String orderID=&quot;&quot;;
+    private int orderNum;
+    private String productID=&quot;&quot;;
+    private String productBrand=&quot;&quot;;
+    private String productModel=&quot;&quot;;
+//    0是产品，1是订单
+    private int flag;
+    
+    setter/getter</code></code></pre>
+<h4 id="编写mapper">编写Mapper</h4>
+<pre><code><code>public class RJoinMapper extends Mapper&lt;LongWritable,Text,Text,RJoinInfo&gt; {
+    private static Logger logger = LogManager.getLogger(RJoinMapper.class);
+    private RJoinInfo rJoinInfo = new RJoinInfo();
+    private Text k = new Text();
+    @Override
+    protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+//        输入方式支持很多中包括数据库等等。这里用的是文件，因此可以直接强转为文件切片
+        FileSplit fileSplit = (FileSplit) context.getInputSplit();
+//        获取文件名称
+        String name = fileSplit.getPath().getName();
+        logger.info(&quot;splitPathName:&quot;+name);
+
+        String line = value.toString();
+        String[] split = line.split(&quot;\t&quot;);
+
+
+        String productID = &quot;&quot;;
+
+            if(name.contains(&quot;product&quot;)){
+                productID = split[0];
+                String setProductBrand = split[1];
+                String productModel = split[2];
+
+                rJoinInfo.setProductID(productID);
+                rJoinInfo.setProductBrand(setProductBrand);
+                rJoinInfo.setProductModel(productModel);
+                rJoinInfo.setFlag(0);
+            }else if(name.contains(&quot;orders&quot;)){
+                String orderID = split[0];
+                String customerName = split[1];
+                String cutsomerAddr = split[2];
+                productID = split[3];
+                String orderNum = split[4];
+
+                rJoinInfo.setProductID(productID);
+                rJoinInfo.setCustomerName(customerName);
+                rJoinInfo.setCustomerAddr(cutsomerAddr);
+                rJoinInfo.setOrderID(orderID);
+                rJoinInfo.setOrderNum(Integer.parseInt(orderNum));
+                rJoinInfo.setFlag(1);
+            }
+
+        k.set(productID);
+        context.write(k,rJoinInfo);
+    }
+}</code></code></pre>
+<blockquote>
+<p>代码解释，这里根据split的文件名，判断是products还是orders，<br />
+然后根据是product还是orders获取不同的数据，最用都以productID为Key发送给Reduce端</p>
+</blockquote>
+<h3 id="编写reducer">编写Reducer</h3>
+<pre><code><code>public class RJoinReducer extends Reducer&lt;Text,RJoinInfo,RJoinInfo,NullWritable&gt; {
+    private static Logger logger = LogManager.getLogger(RJoinReducer.class);
+    @Override
+    protected void reduce(Text key, Iterable&lt;RJoinInfo&gt; values, Context context) throws IOException, InterruptedException {
+        List&lt;RJoinInfo&gt; orders = new ArrayList&lt;&gt;();
+
+        String productID = key.toString();
+        logger.info(&quot;productID:&quot;+productID);
+        RJoinInfo rJoinInfo = new RJoinInfo();
+
+        for (RJoinInfo value : values) {
+            int flag = value.getFlag();
+            if (flag == 0) {
+//                产品
+                try {
+                    BeanUtils.copyProperties(rJoinInfo,value);
+                } catch (IllegalAccessException e) {
+                    logger.error(e.getMessage());
+                } catch (InvocationTargetException e) {
+                    logger.error(e.getMessage());
+                }
+            }else {
+//                订单
+                RJoinInfo orderInfo = new RJoinInfo();
+                try {
+                    BeanUtils.copyProperties(orderInfo,value);
+                } catch (IllegalAccessException e) {
+                    logger.error(e.getMessage());
+                } catch (InvocationTargetException e) {
+                    logger.error(e.getMessage());
+                }
+                orders.add(orderInfo);
+            }
+        }
+
+        for (RJoinInfo order : orders) {
+            rJoinInfo.setOrderNum(order.getOrderNum());
+            rJoinInfo.setOrderID(order.getOrderID());
+            rJoinInfo.setCustomerName(order.getCustomerName());
+            rJoinInfo.setCustomerAddr(order.getCustomerAddr());
+
+//          只输出key即可，value可以使用nullwritable
+            context.write(rJoinInfo,NullWritable.get());
+        }
+    }
+}
+</code></code></pre>
+<blockquote>
+<p>代码解释:根据productID会分为不同的组发到reduce端，reduce端拿到后一组数据后，其中有一个产品对象和多个订单对象。<br />
+遍历每一个对象，根据flag区分产品和订单。保存产品对象，获取每个订单对象到一个集合中。当我们对每个对象都分好<br />
+类后，遍历订单集合将订单和产品信息集合，然后输出。</p>
+</blockquote>
+<p>注意:我们这里效率虽然不是最高的，主要是想说明join的思路。</p>
+<h3 id="编写driver">编写Driver</h3>
+<pre><code><code>public class RJoinDriver {
+    public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+
+        Configuration conf = new Configuration();
+//        conf.set(&quot;mapreduce.framework.name&quot;,&quot;yarn&quot;);
+//        conf.set(&quot;yarn.resourcemanager.hostname&quot;,&quot;server1&quot;);
+//        conf.set(&quot;fs.defaultFS&quot;,&quot;hdfs://server1:9000&quot;);
+        conf.set(&quot;mapreduce.framework.name&quot;,&quot;local&quot;);
+        conf.set(&quot;fs.defaultFS&quot;,&quot;file:///&quot;);
+
+        Job job = Job.getInstance(conf);
+
+//       如果是本地运行，可以不用设置jar包的路径，因为不用拷贝jar到其他地方
+        job.setJarByClass(RJoinDriver.class);
+//        job.setJar(&quot;/Users/kris/IdeaProjects/bigdatahdfs/target/rjoin.jar&quot;);
+
+        job.setMapperClass(RJoinMapper.class);
+        job.setReducerClass(RJoinReducer.class);
+
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(RJoinInfo.class);
+        job.setOutputKeyClass(RJoinInfo.class);
+        job.setOutputValueClass(NullWritable.class);
+
+        FileInputFormat.setInputPaths(job,new Path(&quot;/Users/kris/Downloads/rjoin/input&quot;));
+        FileOutputFormat.setOutputPath(job,new Path(&quot;/Users/kris/Downloads/rjoin/output&quot;));
+
+        boolean waitForCompletion = job.waitForCompletion(true);
+        System.out.println(waitForCompletion);
+    }
+}</code></code></pre>
+<p>==上面实现的这种方式有个缺点，就是join操作是在reduce阶段完成的，reduce端的处理压力太大，map节点的运算负载则很低，资源利用率不高，且在reduce阶段极易产生数据倾斜==</p>
+<h3 id="实现方式二-map端join">实现方式二-map端join</h3>
+<pre><code><code>这种方式适用于关联表中有小表的情形:
+可以将小表分发到所有的map节点，这样，map节点就可以在本地对自己所读到的大表数据进行join操作并输出结果，
+可以大大提高join操作的并发度，加快处理速度。</code></code></pre>
+<h3 id="编写mapper-1">编写Mapper</h3>
+<pre><code><code>在Mapper端我们一次性加载数据或者用Distributedbache将文件拷贝到每一个运行的maptask的节点上加载
+
+这里我们使用第二种，在mapper类中定义好小表进行join</code></code></pre>
+<pre><code><code>static class RjoinMapper extends Mapper&lt;LongWritable,Text,RJoinInfo,NullWritable&gt;{
+
+        private static Map&lt;String, RJoinInfo&gt; productMap = new HashMap&lt;&gt;();
+
+//      在循环调用map方法之前会先调用setup方法。因此我们可以在setup方法中，先对文件进行处理
+        @Override
+        protected void setup(Context context) throws IOException, InterruptedException {
+
+            //通过这几句代码可以获取到cache file的本地绝对路径，测试验证用
+            URI[] cacheFiles = context.getCacheFiles();
+            System.out.println(Arrays.toString(new URI[]{cacheFiles[0]}));
+
+//          直接指定名字，默认在工作文件夹的目录下查找 1⃣
+            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(new FileInputStream(&quot;products.txt&quot;)))){
+
+                String line;
+                while ((line = bufferedReader.readLine())!=null){
+                    String[] split = line.split(&quot;\t&quot;);
+                    String productID = split[0];
+                    String setProductBrand = split[1];
+                    String productModel = split[2];
+
+                    RJoinInfo rJoinInfo = new RJoinInfo();
+                    rJoinInfo.setProductID(productID);
+                    rJoinInfo.setProductBrand(setProductBrand);
+                    rJoinInfo.setProductModel(productModel);
+                    rJoinInfo.setFlag(0);
+                    productMap.put(productID, rJoinInfo);
+                }
+            }
+
+            super.setup(context);
+        }
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            FileSplit fileSplit = (FileSplit)context.getInputSplit();
+
+            String name = fileSplit.getPath().getName();
+
+            if (name.contains(&quot;orders&quot;)) {
+                String line = value.toString();
+
+                String[] split = line.split(&quot;\t&quot;);
+                String orderID = split[0];
+                String customerName = split[1];
+                String cutsomerAddr = split[2];
+                String productID = split[3];
+                String orderNum = split[4];
+
+                RJoinInfo rJoinInfo = productMap.get(productID);
+                rJoinInfo.setProductID(productID);
+                rJoinInfo.setCustomerName(customerName);
+                rJoinInfo.setCustomerAddr(cutsomerAddr);
+                rJoinInfo.setOrderID(orderID);
+                rJoinInfo.setOrderNum(Integer.parseInt(orderNum));
+                rJoinInfo.setFlag(1);
+
+                context.write(rJoinInfo, NullWritable.get());
+            }
+        }
+    }</code></code></pre>
+<blockquote>
+<p>代码解释:这里我们又重写了一个setup()方法，这个方法会在执行map()方法前先执行，因此我们可以在这个方法中事先加载好数据。<br />
+在上述代码中，我们直接指定名字就拿到了product.txt文件，这个究竟这个文件是怎么复制在maptask的节点上的呢，还要看下面的driver</p>
+</blockquote>
+<h4 id="编写driver-1">编写Driver</h4>
+<pre><code><code>public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException, URISyntaxException {
+        Configuration conf = new Configuration();
+        conf.set(&quot;mapreduce.framework.name&quot;,&quot;local&quot;);
+        conf.set(&quot;fs.defaultFS&quot;,&quot;file:///&quot;);
+
+        Job job = Job.getInstance(conf);
+        job.setJarByClass(RJoinDemoInMapDriver.class);
+
+        job.setMapperClass(RjoinMapper.class);
+        job.setOutputKeyClass(RJoinInfo.class);
+        job.setOutputValueClass(NullWritable.class);
+
+        FileInputFormat.setInputPaths(job,new Path(&quot;/Users/kris/Downloads/rjoin/input&quot;));
+        FileOutputFormat.setOutputPath(job,new Path(&quot;/Users/kris/Downloads/rjoin/output2&quot;));
+
+//        指定需要缓存一个文件到所有的maptask运行节点工作目录
+//        job.addFileToClassPath(); 将普通文件缓存到task运行节点的classpath下
+//        job.addArchiveToClassPath();缓存jar包到task运行节点的classpath下
+//        job.addCacheArchive();缓存压缩包文件到task运行节点的工作目录
+//        job.addCacheFile();将普通文件 1⃣
+        job.addCacheFile(new URI(&quot;/Users/kris/Downloads/rjoin/products.txt&quot;));
+
+//      设置reduce的数量为0
+        job.setNumReduceTasks(0);
+
+
+        boolean waitForCompletion = job.waitForCompletion(true);
+        System.out.println(waitForCompletion);
+
+    }</code></code></pre>
+<blockquote>
+<p>代码解释:上述Driver中，我们通过job.addCacheFile()指定了一个URI本地地址，运行时mapreduce就会将这个文件拷贝到maptask的运行工作目录中。</p>
+</blockquote>
+<p>好啦～本期分享代码量偏多，主要是想分享如何使用mapreduce进行join操作的思路。下一篇我会再讲一下 计算共同好友的思路以及代码～</p>
+<pre><code><code>        公众号搜索:喜讯XiCent    获取更多福利资源～～～～</code></code></pre>
+<blockquote>
+<p>本文由博客一文多发平台 <a href="https://openwrite.cn?from=article_bottom">OpenWrite</a> 发布！</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

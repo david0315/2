@@ -1,0 +1,133 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Docker下实战zabbix三部曲之二：监控其他机器' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Docker下实战zabbix三部曲之二：监控其他机器</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11597352.html</div><br>
+    <p>在上一章<a href="http://blog.csdn.net/boling_cavalry/article/details/76857936">《Docker下实战zabbix三部曲之一：极速体验》</a>中，我们快速安装了zabbix server，并登录管理页面查看了zabbix server所在机器的监控信息，但是在实际场景中，应该是对应用服务器做监控，所以今天我们来实战将应用服务器的监控加入到zabbix server中。</p>
+<h3 id="全系列文章链接">全系列文章链接：</h3>
+<ol>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/76857936">《Docker下实战zabbix三部曲之一：极速体验》</a>；</li>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/77095153">《Docker下实战zabbix三部曲之二：监控其他机器》</a>；</li>
+<li><a href="https://blog.csdn.net/boling_cavalry/article/details/77410178">《Docker下实战zabbix三部曲之三：自定义监控项》</a>；</li>
+</ol>
+<h3 id="部署情况">部署情况</h3>
+<p>假设实际项目中我们有两台应用服务器，为了监控它们，我们要在上面分别安装zabbix-agent服务，然后通过配置让它们与zabbix server连接，所有监控数据和监控配置数据都被zabbix server保存在mysql中，部署情况如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器0.png" alt="这里写图片描述" /></p>
+<p>真实场景中是在应用服务器上安装zabbix agent服务，但是安装agent的过程和步骤不是本次实践的重点，为了快速体验服务本文使用了zabbix官方的agent镜像，这个镜像实际上就是在ubuntu14上安装了zabbix agent（在服务器上安装zabbix agent的过程就不在本文中详述了，对安装有兴趣的读者们可以去网上搜索相关资料）</p>
+<h3 id="docker-compose.yml文件">docker-compose.yml文件</h3>
+<p>按照前面图片所示的部署情况，我们的docker-compose.yml内容如下，mysql和zabbix server是必须的，再新增了两个zabbix agent容器，名称分别是zabbix-agent-a和zabbix-agent-b：</p>
+<pre><code><code>version: &#39;2&#39;
+services:
+  zabbix-mysql-service: 
+    image: daocloud.io/library/mysql:8
+    container_name: zabbix-mysql-service
+    environment:
+      - MYSQL_ROOT_PASSWORD=888888
+    restart: always
+  zabbix-server-service:
+    image: monitoringartist/zabbix-xxl:3.2.6
+    links: 
+      - zabbix-mysql-service:mysqlhost
+    container_name: zabbix-server-service
+    restart: always
+    depends_on:
+      - zabbix-mysql-service
+    ports:
+      - &quot;8888:80&quot;
+    environment:
+      - ZS_DBHost=mysqlhost
+      - ZS_DBUser=root
+      - ZS_DBPassword=888888
+  zabbix-agent-a:
+    image: zabbix/zabbix-agent:ubuntu-3.2.6
+    links: 
+      - zabbix-server-service:zabbixserverhost
+    container_name: zabbix-agent-a
+    restart: always
+    depends_on:
+      - zabbix-server-service
+    environment:
+      - ZBX_HOSTNAME=zabbix-agent-service-a
+      - ZBX_SERVER_HOST=zabbixserverhost
+  zabbix-agent-b:
+    image: zabbix/zabbix-agent:ubuntu-3.2.6
+    links: 
+      - zabbix-server-service:zabbixserverhost
+    container_name: zabbix-agent-b
+    restart: always
+    depends_on:
+      - zabbix-server-service
+    environment:
+      - ZBX_HOSTNAME=zabbix-agent-service-b
+      - ZBX_SERVER_HOST=zabbixserverhost</code></code></pre>
+<p>如上所示，zabbix agent在配置过程中要用到zabbix server的ip信息，这里我们通过links参数，在zabbix agent的host文件中加入了zabbix server的ip信息，host name是zabbixserverhost；</p>
+<p>另外，ZBX_HOSTNAME和ZBX_SERVER_HOST这两个环境变量，在zabbix agent镜像的官方文档中已经说明，如下图，ZBX_HOSTNAME用来表示自己的身份，ZBX_SERVER_HOST是用来标明zabbix server的ip信息的，这里直接用link参数中的alias来表示，就能通过host直接找到zabbix server的ip了：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器1.png" alt="这里写图片描述" /></p>
+<h3 id="启动docker-容器">启动docker 容器</h3>
+<p>打开控制台，在docker-compose.yml文件所在的目录下执行命令<font color="red">docker-compose up -d</font>，如图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器2.png" alt="这里写图片描述" /></p>
+<h3 id="进入控制台">进入控制台</h3>
+<p>等待大约1分钟，让zabbix server完成初始化，然后就能登录管理页面了，详情请参照<a href="http://blog.csdn.net/boling_cavalry/article/details/76857936">《Docker下实战zabbix三部曲之一：极速体验》</a>一文，登录后进入hosts页面，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器3.png" alt="这里写图片描述" /></p>
+<h3 id="获取监控机器ip">获取监控机器ip</h3>
+<p>按照前面的部署描述图上的部署，有两台机器装了zabbix agent服务，然后想要加入监控，第一步我们要把机器的ip确定下来，在控制台执行<font color="red">docker exec -it zabbix-agent-a ip addr</font>命令，可以看到如下输出，第一台机器的ip是172.31.0.4：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器4.png" alt="这里写图片描述" /></p>
+<p>在控制台执行<font color="red">docker exec -it zabbix-agent-b ip addr</font>命令，可以看到如第二台机器的ip是172.31.0.5；</p>
+<h3 id="添加机器监控">添加机器监控</h3>
+<p>点击hosts页面右上角的<font color="red">Create host</font>按钮，可以添加监控机器，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器5.png" alt="这里写图片描述" /></p>
+<p>在添加机器的页面，主要参数填写如下：</p>
+<p>a. Host name ：机器的环境变量ZBX_HOSTNAME的值：zabbix-agent-service-a；</p>
+<p>b. Visible name ：和Host name的值相同；</p>
+<p>c. Groups : 机器分组，这里选择Linux servers；</p>
+<p>d. Agent interfaces：这里面只需要填写IP address，就是刚才我们通过命令<font color="red">docker exec -it zabbix-agent-a ip addr</font>得到的ip：172.31.0.4；<br />
+这个页面只需要填写以上四点内容，其他的都保持默认值，填写完毕后点击底部的&quot;Add&quot;按钮，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器6.png" alt="这里写图片描述" /></p>
+<p>增加成功后，在列表中可以看到新增的机器，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器7.png" alt="这里写图片描述" /></p>
+<h3 id="添加监控项">添加监控项</h3>
+<p>在机器列表页面中，点击机器名称，如下图红框中位置：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器7.png" alt="这里写图片描述" /></p>
+<p>在打开的页面点击&quot;Templates&quot;，如下图红框所示：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器9.png" alt="这里写图片描述" /></p>
+<p>再点击&quot;Select&quot;按钮，如下图红框所示：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器10.png" alt="这里写图片描述" /></p>
+<p>在弹出的页面中，勾选“Template OS Linux”，然后再点击底部的“Select”按钮，这样就把linux服务的常用监控项给批量添加了，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器11.png" alt="这里写图片描述" /></p>
+<p>注意，返回的页面中，<font color="red">一定要点击“Add”才能让把刚才的选择加上</font>，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器12.png" alt="这里写图片描述" /></p>
+<p>然后点击“Update”，完成监控项的批量添加，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器13.png" alt="这里写图片描述" /></p>
+<p>按照同样的方法把另一台机器的监控也加上；</p>
+<p>等待大约1-2分钟后，再刷新hosts页面，就能看到列表中的&quot;ZBX&quot;图标已经变为绿色，表示监控已经生效；</p>
+<h3 id="查看监控信息">查看监控信息</h3>
+<p>我们来看看监控曲线图吧，点击下图红框中的“Graphs”：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器14.png" alt="这里写图片描述" /></p>
+<p>可以看到有5个曲线图可以查看，如下图，我们看一下cpu load：<br />
+<img src="./images/Docker下实战zabbix三部曲之二：监控其他机器15.png" alt="这里写图片描述" /></p>
+<p>在跳转的页面中，点击“Previdew”，就能看到cpu load的曲线图了，如下图：</p>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器16.png" alt="这里写图片描述" /></p>
+<p>至此，我们添加监控机器的实战已经完成了，但是在真实场景中，我们除了cpu、磁盘等基础信息的监控，还要监控一些业务有关的数据，例如某个http服务每分钟的访问量，在下一章<a href="https://blog.csdn.net/boling_cavalry/article/details/77410178">《Docker下实战zabbix三部曲之三：自定义监控项》</a>，我们一起实战开发一个自定义监控。</p>
+<h3 id="欢迎关注我的公众号">欢迎关注我的公众号</h3>
+<p><img src="./images/Docker下实战zabbix三部曲之二：监控其他机器17.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

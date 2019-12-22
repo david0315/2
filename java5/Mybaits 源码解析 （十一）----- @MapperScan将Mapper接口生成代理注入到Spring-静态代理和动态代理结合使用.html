@@ -1,0 +1,703 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （十一）----- @MapperScan将Mapper接口生成代理注入到Spring-静态代理和动态代理结合使用' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （十一）----- @MapperScan将Mapper接口生成代理注入到Spring-静态代理和动态代理结合使用</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11839958.html</div><br>
+    <p>上一篇文章我们讲了SqlSessionFactoryBean，通过这个FactoryBean创建SqlSessionFactory并注册进Spring容器，这篇文章我们就讲剩下的部分，通过MapperScannerConfigurer将Mapper接口生成代理注入到Spring</p>
+<h2>扫描Mapper接口</h2>
+<p>我们上一篇文章介绍了扫描Mapper接口有两种方式，一种是通过bean.xml注册MapperScannerConfigurer对象，一种是通过@MapperScan("com.chenhao.mapper")注解的方式，如下</p>
+<p>方式一：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">bean </span><span style="color: #ff0000;">class</span><span style="color: #0000ff;">="org.mybatis.spring.mapper.MapperScannerConfigurer"</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">property </span><span style="color: #ff0000;">name</span><span style="color: #0000ff;">="basePackage"</span><span style="color: #ff0000;"> value</span><span style="color: #0000ff;">="com.chenhao.mapper"</span> <span style="color: #0000ff;">/&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">bean</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>方式二：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Configuration
+@MapperScan(</span>"com.chenhao.mapper"<span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AppConfig {</code></pre>
+
+<h2 id="Cr12jPzr">@MapperScan</h2>
+<p>我们来看看<strong>@MapperScan</strong>这个注解</p>
+<src class="cnblogs_code">
+<pre><code>@Import(MapperScannerRegistrar.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span> @<span style="color: #0000ff;">interface</span> MapperScan {</code></pre>
+
+<p>MapperScan使用<code>@Import</code>将<code>MapperScannerRegistrar</code>导入。</p>
+<h3>MapperScannerRegistrar</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MapperScannerRegistrar <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ImportBeanDefinitionRegistrar, ResourceLoaderAware {
+</span><span style="color: #008080;"> 2</span>   <span style="color: #0000ff;">private</span><span style="color: #000000;"> ResourceLoader resourceLoader;
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">  @Override
+</span><span style="color: #008080;"> 4</span>   <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+</span><span style="color: #008080;"> 5</span>    <strong> <span style="color: #008000;">//</span><span style="color: #008000;"> 获取MapperScan 注解，如@MapperScan("com.chenhao.mapper")</span>
+<span style="color: #008080;"> 6</span>     AnnotationAttributes annoAttrs = AnnotationAttributes.fromMap(importingClassMetadata.getAnnotationAttributes(MapperScan.<span style="color: #0000ff;">class</span><span style="color: #000000;">.getName()));
+</span><span style="color: #008080;"> 7</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 创建路径扫描器，下面的一大段都是将MapperScan 中的属性设置到ClassPathMapperScanner ，做的就是一个set操作</span>
+<span style="color: #008080;"> 8</span>     ClassPathMapperScanner scanner = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ClassPathMapperScanner(registry);
+</span></strong><span style="color: #008080;"> 9</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> this check is needed in Spring 3.1</span>
+<span style="color: #008080;">10</span>     <span style="color: #0000ff;">if</span> (resourceLoader != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">11</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 设置资源加载器，作用：扫描指定包下的class文件。</span>
+<span style="color: #008080;">12</span> <span style="color: #000000;">      scanner.setResourceLoader(resourceLoader);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">14</span>     Class&lt;? <span style="color: #0000ff;">extends</span> Annotation&gt; annotationClass = annoAttrs.getClass("annotationClass"<span style="color: #000000;">);
+</span><span style="color: #008080;">15</span>     <span style="color: #0000ff;">if</span> (!Annotation.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(annotationClass)) {
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">      scanner.setAnnotationClass(annotationClass);
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">18</span>     Class&lt;?&gt; markerInterface = annoAttrs.getClass("markerInterface"<span style="color: #000000;">);
+</span><span style="color: #008080;">19</span>     <span style="color: #0000ff;">if</span> (!Class.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(markerInterface)) {
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">      scanner.setMarkerInterface(markerInterface);
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">22</span>     Class&lt;? <span style="color: #0000ff;">extends</span> BeanNameGenerator&gt; generatorClass = annoAttrs.getClass("nameGenerator"<span style="color: #000000;">);
+</span><span style="color: #008080;">23</span>     <span style="color: #0000ff;">if</span> (!BeanNameGenerator.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(generatorClass)) {
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">      scanner.setBeanNameGenerator(BeanUtils.instantiateClass(generatorClass));
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">26</span>     Class&lt;? <span style="color: #0000ff;">extends</span> MapperFactoryBean&gt; mapperFactoryBeanClass = annoAttrs.getClass("factoryBean"<span style="color: #000000;">);
+</span><span style="color: #008080;">27</span>     <span style="color: #0000ff;">if</span> (!MapperFactoryBean.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(mapperFactoryBeanClass)) {
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">      scanner.setMapperFactoryBean(BeanUtils.instantiateClass(mapperFactoryBeanClass));
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">30</span>     scanner.setSqlSessionTemplateBeanName(annoAttrs.getString("sqlSessionTemplateRef"<span style="color: #000000;">));
+</span><span style="color: #008080;">31</span>    <strong> <span style="color: #008000;">//</span><span style="color: #008000;">设置SqlSessionFactory的名称</span>
+<span style="color: #008080;">32</span>     scanner.setSqlSessionFactoryBeanName(annoAttrs.getString("sqlSessionFactoryRef"<span style="color: #000000;">));
+</span><span style="color: #008080;">33</span>     List&lt;String&gt; basePackages = <span style="color: #0000ff;">new</span> ArrayList&lt;String&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">34</span>     <span style="color: #008000;">//</span><span style="color: #008000;">获取配置的包路径，如com.chenhao.mapper</span>
+<span style="color: #008080;">35</span>     <span style="color: #0000ff;">for</span> (String pkg : annoAttrs.getStringArray("value"<span style="color: #000000;">)) {
+</span><span style="color: #008080;">36</span>       <span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(pkg)) {
+</span><span style="color: #008080;">37</span> <span style="color: #000000;">        basePackages.add(pkg);
+</span><span style="color: #008080;">38</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">39</span> <span style="color: #000000;">    }
+</span></strong><span style="color: #008080;">40</span>     <span style="color: #0000ff;">for</span> (String pkg : annoAttrs.getStringArray("basePackages"<span style="color: #000000;">)) {
+</span><span style="color: #008080;">41</span>       <span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(pkg)) {
+</span><span style="color: #008080;">42</span> <span style="color: #000000;">        basePackages.add(pkg);
+</span><span style="color: #008080;">43</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">44</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">45</span>     <span style="color: #0000ff;">for</span> (Class&lt;?&gt; clazz : annoAttrs.getClassArray("basePackageClasses"<span style="color: #000000;">)) {
+</span><span style="color: #008080;">46</span> <span style="color: #000000;">      basePackages.add(ClassUtils.getPackageName(clazz));
+</span><span style="color: #008080;">47</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">48</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 注册过滤器，作用：什么类型的Mapper将会留下来。</span>
+<span style="color: #008080;">49</span> <span style="color: #000000;">    scanner.registerFilters();
+</span><span style="color: #008080;">50</span>     <strong><span style="color: #008000;">//</span><span style="color: #008000;"> 扫描指定包</span>
+<span style="color: #008080;">51</span> <span style="color: #000000;">    scanner.doScan(StringUtils.toStringArray(basePackages));
+</span></strong><span style="color: #008080;">52</span> <span style="color: #000000;">  }
+</span><span style="color: #008080;">53</span> }</code></pre>
+
+<h3>ClassPathMapperScanner</h3>
+<p>接着我们来看看扫描过程<strong>&nbsp;scanner.doScan(StringUtils.toStringArray(basePackages));</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Override
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> Set&lt;BeanDefinitionHolder&gt;<span style="color: #000000;"> doScan(String... basePackages) {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #008000;">//</span><span style="color: #008000;">调用父类进行扫描，并将basePackages下的class都封装成BeanDefinitionHolder，并注册进Spring容器的BeanDefinition</span>
+<span style="color: #008080;"> 4</span>     Set&lt;BeanDefinitionHolder&gt; beanDefinitions = <span style="color: #0000ff;">super</span><span style="color: #000000;">.doScan(basePackages);
+</span><span style="color: #008080;"> 5</span>  
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">if</span><span style="color: #000000;"> (beanDefinitions.isEmpty()) {
+</span><span style="color: #008080;"> 7</span>       logger.warn("No MyBatis mapper was found in '" + Arrays.toString(basePackages) + "' package. Please check your configuration."<span style="color: #000000;">);
+</span><span style="color: #008080;"> 8</span>     } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 9</span>       <span style="color: #008000;">//</span><span style="color: #008000;">继续对beanDefinitions做处理，额外设置一些属性</span>
+<span style="color: #008080;">10</span> <span style="color: #000000;">      processBeanDefinitions(beanDefinitions);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">12</span>  
+<span style="color: #008080;">13</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> beanDefinitions;
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">15</span>   
+<span style="color: #008080;">16</span> <span style="color: #0000ff;">protected</span> Set&lt;BeanDefinitionHolder&gt;<span style="color: #000000;"> doScan(String... basePackages) {
+</span><span style="color: #008080;">17</span>     Assert.notEmpty(basePackages, "At least one base package must be specified"<span style="color: #000000;">);
+</span><span style="color: #008080;">18</span>     Set&lt;BeanDefinitionHolder&gt; beanDefinitions = <span style="color: #0000ff;">new</span> LinkedHashSet&lt;BeanDefinitionHolder&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">19</span>     <span style="color: #008000;">//</span><span style="color: #008000;">遍历basePackages进行扫描</span>
+<span style="color: #008080;">20</span>     <span style="color: #0000ff;">for</span><span style="color: #000000;"> (String basePackage : basePackages) {
+</span><span style="color: #008080;">21</span>         <span style="color: #008000;">//</span><span style="color: #008000;">找出匹配的类</span>
+<span style="color: #008080;">22</span>         Set&lt;BeanDefinition&gt; candidates =<span style="color: #000000;"> findCandidateComponents(basePackage);
+</span><span style="color: #008080;">23</span>         <span style="color: #0000ff;">for</span><span style="color: #000000;"> (BeanDefinition candidate : candidates) {
+</span><span style="color: #008080;">24</span>             ScopeMetadata scopeMetadata = <span style="color: #0000ff;">this</span><span style="color: #000000;">.scopeMetadataResolver.resolveScopeMetadata(candidate);
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">            candidate.setScope(scopeMetadata.getScopeName());
+</span><span style="color: #008080;">26</span>             String beanName = <span style="color: #0000ff;">this</span>.beanNameGenerator.generateBeanName(candidate, <span style="color: #0000ff;">this</span><span style="color: #000000;">.registry);
+</span><span style="color: #008080;">27</span>             <span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> AbstractBeanDefinition) {
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">                postProcessBeanDefinition((AbstractBeanDefinition) candidate, beanName);
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">30</span>             <span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> AnnotatedBeanDefinition) {
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">                AnnotationConfigUtils.processCommonDefinitionAnnotations((AnnotatedBeanDefinition) candidate);
+</span><span style="color: #008080;">32</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">33</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (checkCandidate(beanName, candidate)) {
+</span><span style="color: #008080;">34</span>                 <span style="color: #008000;">//</span><span style="color: #008000;">封装成BeanDefinitionHolder 对象</span>
+<span style="color: #008080;">35</span>                 BeanDefinitionHolder definitionHolder = <span style="color: #0000ff;">new</span><span style="color: #000000;"> BeanDefinitionHolder(candidate, beanName);
+</span><span style="color: #008080;">36</span>                 definitionHolder = AnnotationConfigUtils.applyScopedProxyMode(scopeMetadata, definitionHolder, <span style="color: #0000ff;">this</span><span style="color: #000000;">.registry);
+</span><span style="color: #008080;">37</span> <span style="color: #000000;">                beanDefinitions.add(definitionHolder);
+</span><span style="color: #008080;">38</span>                 <span style="color: #008000;">//</span><span style="color: #008000;">将BeanDefinition对象注入spring的BeanDefinitionMap中，后续getBean时，就是从BeanDefinitionMap获取对应的BeanDefinition对象，取出其属性进行实例化Bean</span>
+<span style="color: #008080;">39</span>                 registerBeanDefinition(definitionHolder, <span style="color: #0000ff;">this</span><span style="color: #000000;">.registry);
+</span><span style="color: #008080;">40</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">41</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">42</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">43</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> beanDefinitions;
+</span><span style="color: #008080;">44</span> }</code></pre>
+
+<p>我们重点看下第4行和第10行代码，第4行是调用父类的doScan方法，获取basePackages下的所有Class，并将其生成<strong>BeanDefinition，</strong>注入spring的<strong>BeanDefini</strong>tionMap中，也就是Class的描述类，在调用getBean方法时，获取BeanDefinition进行实例化。此时，所有的Mapper接口已经被生成了BeanDefinition。接着我们看下第10行，对生成的BeanDefinition做一些额外的处理。</p>
+<h3><strong>processBeanDefinitions</strong></h3>
+<p>上面BeanDefinition已经注入进Spring容器了，接着我们看对BeanDefinition进行哪些额外的处理</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> processBeanDefinitions(Set&lt;BeanDefinitionHolder&gt;<span style="color: #000000;"> beanDefinitions) {
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">    GenericBeanDefinition definition;
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">for</span><span style="color: #000000;"> (BeanDefinitionHolder holder : beanDefinitions) {
+</span><span style="color: #008080;"> 4</span>       definition =<span style="color: #000000;"> (GenericBeanDefinition) holder.getBeanDefinition();
+</span><span style="color: #008080;"> 5</span>  
+<span style="color: #008080;"> 6</span>       <span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+</span><span style="color: #008080;"> 7</span>         logger.debug("Creating MapperFactoryBean with name '" +<span style="color: #000000;"> holder.getBeanName() 
+</span><span style="color: #008080;"> 8</span>           + "' and '" + definition.getBeanClassName() + "' mapperInterface"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">10</span>  
+<span style="color: #008080;">11</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 设置definition构造器的输入参数为definition.getBeanClassName()，这里就是com.chenhao.mapper.UserMapper
+</span><span style="color: #008080;">12</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 那么在getBean实例化时，通过反射调用构造器实例化时要将这个参数传进去</span>
+<span style="color: #008080;">13</span> <span style="color: #000000;">      definition.getConstructorArgumentValues().addGenericArgumentValue(definition.getBeanClassName())
+</span><span style="color: #008080;">14</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 修改definition对应的Class
+</span><span style="color: #008080;">15</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 看过Spring源码的都知道，getBean()返回的就是BeanDefinitionHolder中beanClass属性对应的实例
+</span><span style="color: #008080;">16</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 所以我们后面ac.getBean(UserMapper.class)的返回值也就是MapperFactoryBean的实例
+</span><span style="color: #008080;">17</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 但是最终被注入到Spring容器的对象的并不是MapperFactoryBean的实例，根据名字看，我们就知道MapperFactoryBean实现了FactoryBean接口
+</span><span style="color: #008080;">18</span>       <span style="color: #008000;">//</span><span style="color: #008000;"> 那么最终注入Spring容器的必定是从MapperFactoryBean的实例的getObject()方法中返回</span>
+<span style="color: #008080;">19</span>       definition.setBeanClass(<span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperFactoryBean.getClass());
+</span><span style="color: #008080;">20</span>  
+<span style="color: #008080;">21</span>       definition.getPropertyValues().add("addToConfig", <span style="color: #0000ff;">this</span><span style="color: #000000;">.addToConfig);
+</span><span style="color: #008080;">22</span>  
+<span style="color: #008080;">23</span>       <span style="color: #0000ff;">boolean</span> explicitFactoryUsed = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">24</span>       <span style="color: #0000ff;">if</span> (StringUtils.hasText(<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactoryBeanName)) {
+</span><span style="color: #008080;">25</span>         definition.getPropertyValues().add("sqlSessionFactory", <span style="color: #0000ff;">new</span> RuntimeBeanReference(<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactoryBeanName));
+</span><span style="color: #008080;">26</span>         explicitFactoryUsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">27</span>       } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.sqlSessionFactory != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">28</span>         <span style="color: #008000;">//</span><span style="color: #008000;">往definition设置属性值sqlSessionFactory，那么在MapperFactoryBean实例化后，进行属性赋值时populateBean(beanName, mbd, instanceWrapper);，会通过反射调用sqlSessionFactory的set方法进行赋值
+</span><span style="color: #008080;">29</span>         <span style="color: #008000;">//</span><span style="color: #008000;">也就是在MapperFactoryBean创建实例后，要调用setSqlSessionFactory方法将sqlSessionFactory注入进MapperFactoryBean实例</span>
+<span style="color: #008080;">30</span>         definition.getPropertyValues().add("sqlSessionFactory", <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory);
+</span><span style="color: #008080;">31</span>         explicitFactoryUsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">32</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">33</span>  
+<span style="color: #008080;">34</span>       <span style="color: #0000ff;">if</span> (StringUtils.hasText(<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionTemplateBeanName)) {
+</span><span style="color: #008080;">35</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (explicitFactoryUsed) {
+</span><span style="color: #008080;">36</span>           logger.warn("Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored."<span style="color: #000000;">);
+</span><span style="color: #008080;">37</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">38</span>         definition.getPropertyValues().add("sqlSessionTemplate", <span style="color: #0000ff;">new</span> RuntimeBeanReference(<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionTemplateBeanName));
+</span><span style="color: #008080;">39</span>         explicitFactoryUsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">40</span>       } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.sqlSessionTemplate != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">41</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (explicitFactoryUsed) {
+</span><span style="color: #008080;">42</span>           logger.warn("Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored."<span style="color: #000000;">);
+</span><span style="color: #008080;">43</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">44</span>         definition.getPropertyValues().add("sqlSessionTemplate", <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionTemplate);
+</span><span style="color: #008080;">45</span>         explicitFactoryUsed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">46</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">47</span>  
+<span style="color: #008080;">48</span>       <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">explicitFactoryUsed) {
+</span><span style="color: #008080;">49</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+</span><span style="color: #008080;">50</span>           logger.debug("Enabling autowire by type for MapperFactoryBean with name '" + holder.getBeanName() + "'."<span style="color: #000000;">);
+</span><span style="color: #008080;">51</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">52</span> <span style="color: #000000;">        definition.setAutowireMode(AbstractBeanDefinition.AUTOWIRE_BY_TYPE);
+</span><span style="color: #008080;">53</span> <span style="color: #000000;">      }
+</span><span style="color: #008080;">54</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">55</span> }</code></pre>
+
+<p>看第19行，将<strong>definitio</strong>n的beanClass属性设置为MapperFactoryBean.class，我们知道，在getBean的时候，会通过反射创建Bean的实例，也就是创建beanClass的实例，如下Spring的getBean的部分代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object instantiate(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner) {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 没有覆盖
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 直接使用反射实例化即可</span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">bd.hasMethodOverrides()) {
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 重新检测获取下构造函数
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 该构造函数是经过前面 N 多复杂过程确认的构造函数</span>
+        Constructor&lt;?&gt;<span style="color: #000000;"> constructorToUse;
+        </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (bd.constructorArgumentLock) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取已经解析的构造函数</span>
+            constructorToUse = (Constructor&lt;?&gt;<span style="color: #000000;">) bd.resolvedConstructorOrFactoryMethod;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果为 null，从 class 中解析获取，并设置</span>
+            <span style="color: #0000ff;">if</span> (constructorToUse == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">final</span> Class&lt;?&gt; clazz =<span style="color: #000000;"> bd.getBeanClass();
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (clazz.isInterface()) {
+                    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BeanInstantiationException(clazz, "Specified class is an interface"<span style="color: #000000;">);
+                }
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    </span><span style="color: #0000ff;">if</span> (System.getSecurityManager() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                        constructorToUse </span>=<span style="color: #000000;"> AccessController.doPrivileged(
+                                (PrivilegedExceptionAction</span>&lt;Constructor&lt;?&gt;&gt;<span style="color: #000000;">) clazz::getDeclaredConstructor);
+                    }
+                    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">利用反射获取构造器</span>
+                        constructorToUse =</strong><span style="color: #000000;"><strong>  clazz.getDeclaredConstructor();</strong>
+                    }
+                    bd.resolvedConstructorOrFactoryMethod </span>=<span style="color: #000000;"> constructorToUse;
+                }
+                </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable ex) {
+                    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BeanInstantiationException(clazz, "No default constructor found"<span style="color: #000000;">, ex);
+                }
+            }
+        }
+
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 通过BeanUtils直接使用构造器对象实例化bean</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> BeanUtils.instantiateClass(constructorToUse);</strong>
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 生成CGLIB创建的子类对象</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> instantiateWithMethodInjection(bd, beanName, owner);</strong>
+    }
+}</span></code></pre>
+
+<p>看到没，是通过<strong>bd.getBeanClass();从</strong>BeanDefinition中获取beanClass属性，然后通过反射实例化Bean，如上，所有的Mapper接口扫描封装成的BeanDefinition的beanClass都设置成了MapperFactoryBean，我们知道在Spring初始化的最后，会获取所有的BeanDefinition，并通过getBean创建所有的实例注入进Spring容器，那么意思就是说，在getBean时，创建的的所有Mapper对象是MapperFactoryBean这个对象了。</p>
+<p><strong>我们看下第13行处，设置了BeanDefinition构造器参数，那么当getBean中通过构造器创建实例时，需要将设置的构造器参数definition.getBeanClassName()，这里就是com.chenhao.mapper.UserMapper传进去。</strong></p>
+<p>还有一个点要注意，在第30行处，往BeanDefinition的PropertyValues设置了sqlSessionFactory，那么在创建完MapperFactoryBean的实例后，会对MapperFactoryBean进行属性赋值，也就是Spring创建Bean的这句代码，<span><strong>populateBean(beanName, mbd, instanceWrapper);</strong>，这里会通过反射调用MapperFactoryBean的<strong>setSqlSessionFactory方法将sqlSessionFactory注入进MapperFactoryBean实例，所以我们接下来重点看的就是</strong><strong>MapperFactoryBean这个对象了。</strong></span></p>
+<h2>MapperFactoryBean</h2>
+<p>接下来我们看最重要的一个类MapperFactoryBean</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">继承SqlSessionDaoSupport、实现FactoryBean，那么最终注入Spring容器的对象要从getObject()中取</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MapperFactoryBean&lt;T&gt; <span style="color: #0000ff;">extends</span> SqlSessionDaoSupport <span style="color: #0000ff;">implements</span> FactoryBean&lt;T&gt;<span style="color: #000000;"> {
+    </span><span style="color: #0000ff;">private</span> Class&lt;T&gt;<span style="color: #000000;"> mapperInterface;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span> addToConfig = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MapperFactoryBean() {
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">构造器，我们上一节中在BeanDefinition中已经设置了构造器输入参数
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">所以在通过反射调用构造器实例化时，会获取在BeanDefinition设置的构造器输入参数
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">也就是对应得每个Mapper接口Class</span>
+    <span style="color: #0000ff;">public</span> MapperFactoryBean(Class&lt;T&gt;<span style="color: #000000;"> mapperInterface) {
+        </span><span style="color: #0000ff;">this</span>.mapperInterface =<span style="color: #000000;"> mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> checkDaoConfig() {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">.checkDaoConfig();
+        Assert.notNull(</span><span style="color: #0000ff;">this</span>.mapperInterface, "Property 'mapperInterface' is required"<span style="color: #000000;">);
+        Configuration configuration </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getSqlSession().getConfiguration();
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.addToConfig &amp;&amp; !configuration.hasMapper(<span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface)) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                configuration.addMapper(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception var6) {
+                </span><span style="color: #0000ff;">this</span>.logger.error("Error while adding the mapper '" + <span style="color: #0000ff;">this</span>.mapperInterface + "' to configuration."<span style="color: #000000;">, var6);
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IllegalArgumentException(var6);
+            } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+                ErrorContext.instance().reset();
+            }
+        }
+
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">最终注入Spring容器的就是这里的返回对象</span>
+    <span style="color: #0000ff;">public</span> T getObject() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取父类setSqlSessionFactory方法中创建的SqlSessionTemplate
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">通过SqlSessionTemplate获取mapperInterface的代理类
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">我们例子中就是通过SqlSessionTemplate获取com.chenhao.mapper.UserMapper的代理类
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取到Mapper接口的代理类后，就把这个Mapper的代理类对象注入Spring容器</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.getSqlSession().getMapper(<span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface);
+    }
+
+    </span><span style="color: #0000ff;">public</span> Class&lt;T&gt;<span style="color: #000000;"> getObjectType() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isSingleton() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setMapperInterface(Class&lt;T&gt;<span style="color: #000000;"> mapperInterface) {
+        </span><span style="color: #0000ff;">this</span>.mapperInterface =<span style="color: #000000;"> mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Class&lt;T&gt;<span style="color: #000000;"> getMapperInterface() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setAddToConfig(<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> addToConfig) {
+        </span><span style="color: #0000ff;">this</span>.addToConfig =<span style="color: #000000;"> addToConfig;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isAddToConfig() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.addToConfig;
+    }
+}
+
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> SqlSessionDaoSupport <span style="color: #0000ff;">extends</span><span style="color: #000000;"> DaoSupport {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> SqlSession sqlSession;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> externalSqlSession;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionDaoSupport() {
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">还记得上一节中我们往BeanDefinition中设置的sqlSessionFactory这个属性吗？
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">在实例化MapperFactoryBean后，进行属性赋值时，就会通过反射调用setSqlSessionFactory</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setSqlSessionFactory(SqlSessionFactory sqlSessionFactory) {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.externalSqlSession) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个SqlSessionTemplate并赋值给sqlSession</span>
+            <span style="color: #0000ff;">this</span>.sqlSession = <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlSessionTemplate(sqlSessionFactory);
+        }
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setSqlSessionTemplate(SqlSessionTemplate sqlSessionTemplate) {
+        </span><span style="color: #0000ff;">this</span>.sqlSession =<span style="color: #000000;"> sqlSessionTemplate;
+        </span><span style="color: #0000ff;">this</span>.externalSqlSession = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSession getSqlSession() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSession;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> checkDaoConfig() {
+        Assert.notNull(</span><span style="color: #0000ff;">this</span>.sqlSession, "Property 'sqlSessionFactory' or 'sqlSessionTemplate' are required"<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>我们看到MapperFactoryBean&nbsp;<strong>extends SqlSessionDaoSupport implements FactoryBean，那么getBean获取的对象是从其getObject()中获取，并且MapperFactoryBean是一个单例，那么其中的属性</strong><strong>SqlSessionTemplate对象也是一个单例，全局唯一，供所有的Mapper代理类使用。</strong></p>
+<p>这里我大概讲一下getBean时，这个类的过程：</p>
+<p>1、MapperFactoryBean通过反射调用构造器实例化出一个对象，并且通过上一节中definition.getConstructorArgumentValues().addGenericArgumentValue(definition.getBeanClassName())设置的构造器参数，在构造器实例化时，传入Mapper接口的Class,并设置为MapperFactoryBean的mapperInterface属性。</p>
+<p>2、进行属性赋值，通过上一节中definition.getPropertyValues().add("sqlSessionFactory", this.sqlSessionFactory);设置的属性值，在populateBean属性赋值过程中通过反射调用setSqlSessionFactory方法，并创建SqlSessionTemplate对象设置到sqlSession属性中。</p>
+<p>3、由于MapperFactoryBean实现了FactoryBean，最终注册进Spring容器的对象是从getObject()方法中取，接着获取SqlSessionTemplate这个SqlSession调用getMapper(this.mapperInterface);生成Mapper接口的代理对象，将Mapper接口的代理对象注册进Spring容器</p>
+<p>至此，所有com.chenhao.mapper中的Mapper接口都生成了代理类，并注入到Spring容器了。接着我们就可以在Service中直接从Spring的BeanFactory中获取了，如下</p>
+<p><img src="./images/Mybaits 源码解析 （十一）----- @MapperScan将Mapper接口生成代理注入到Spring-静态代理和动态代理结合使用0.png" alt="" /></p>
+<h2>SqlSessionTemplate</h2>
+<p>还记得我们前面分析Mybatis源码时，获取的SqlSession实例是什么吗？我们简单回顾一下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * ExecutorType 指定Executor的类型，分为三种：SIMPLE, REUSE, BATCH，默认使用的是SIMPLE
+ * TransactionIsolationLevel 指定事务隔离级别，使用null,则表示使用数据库默认的事务隔离界别
+ * autoCommit 是否自动提交，传过来的参数为false，表示不自动提交
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> SqlSession openSessionFromDataSource(ExecutorType execType, TransactionIsolationLevel level, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoCommit) {
+    Transaction tx </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取配置中的环境信息，包括了数据源信息、事务等</span>
+        <span style="color: #0000ff;">final</span> Environment environment =<span style="color: #000000;"> configuration.getEnvironment();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建事务工厂</span>
+        <span style="color: #0000ff;">final</span> TransactionFactory transactionFactory =<span style="color: #000000;"> getTransactionFactoryFromEnvironment(environment);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建事务，配置事务属性</span>
+        tx =<span style="color: #000000;"> transactionFactory.newTransaction(environment.getDataSource(), level, autoCommit);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建Executor，即执行器
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 它是真正用来Java和数据库交互操作的类，后面会展开说。</span>
+        <span style="color: #0000ff;">final</span> Executor executor =<span style="color: #000000;"> configuration.newExecutor(tx, execType);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建DefaultSqlSession对象返回，其实现了SqlSession接口</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultSqlSession(configuration, executor, autoCommit);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        closeTransaction(tx);
+        </span><span style="color: #0000ff;">throw</span> ExceptionFactory.wrapException("Error opening session.  Cause: " +<span style="color: #000000;"> e, e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ErrorContext.instance().reset();
+    }
+}</span></code></pre>
+
+<p>大家应该还有印象，就是上面的DefaultSqlSession，那上一节的SqlSessionTemplate是什么鬼？？？我们来看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 实现SqlSession接口，单例、线程安全，使用spring的事务管理器的sqlSession，
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 具体的SqlSession的功能，则是通过内部包含的sqlSessionProxy来来实现，这也是静态代理的一种实现。
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 同时内部的sqlSessionProxy实现InvocationHandler接口，则是动态代理的一种实现，而线程安全也是在这里实现的。
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> 注意mybatis默认的sqlSession不是线程安全的，需要每个线程有一个单例的对象实例。
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> SqlSession的主要作用是提供SQL操作的API，执行指定的SQL语句，mapper需要依赖SqlSession来执行其方法对应的SQL。</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> SqlSessionTemplate <span style="color: #0000ff;">implements</span><span style="color: #000000;"> SqlSession, DisposableBean {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> SqlSessionFactory sqlSessionFactory;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ExecutorType executorType;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 一个代理类，由于SqlSessionTemplate为单例的，被所有mapper，所有线程共享，
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 所以sqlSessionProxy要保证这些mapper中方法调用的线程安全特性：
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> sqlSessionProxy的实现方式主要为实现了InvocationHandler接口实现了动态代理，
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 由动态代理的知识可知，InvocationHandler的invoke方法会拦截所有mapper的所有方法调用，
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 故这里的实现方式是在invoke方法内部创建一个sqlSession局部变量，从而实现了每个mapper的每个方法调用都使用</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> SqlSession sqlSessionProxy;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> PersistenceExceptionTranslator exceptionTranslator;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionTemplate(SqlSessionFactory sqlSessionFactory) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">(sqlSessionFactory, sqlSessionFactory.getConfiguration().getDefaultExecutorType());
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionTemplate(SqlSessionFactory sqlSessionFactory, ExecutorType executorType) {
+        </span><span style="color: #0000ff;">this</span>(sqlSessionFactory, executorType, <span style="color: #0000ff;">new</span> MyBatisExceptionTranslator(sqlSessionFactory.getConfiguration().getEnvironment().getDataSource(), <span style="color: #0000ff;">true</span><span style="color: #000000;">));
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionTemplate(SqlSessionFactory sqlSessionFactory, ExecutorType executorType, PersistenceExceptionTranslator exceptionTranslator) {
+        Assert.notNull(sqlSessionFactory, </span>"Property 'sqlSessionFactory' is required"<span style="color: #000000;">);
+        Assert.notNull(executorType, </span>"Property 'executorType' is required"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.sqlSessionFactory =<span style="color: #000000;"> sqlSessionFactory;
+        </span><span style="color: #0000ff;">this</span>.executorType =<span style="color: #000000;"> executorType;
+        </span><span style="color: #0000ff;">this</span>.exceptionTranslator =<span style="color: #000000;"> exceptionTranslator;
+        </span><span style="color: #0000ff;">this</span>.sqlSessionProxy = (SqlSession)Proxy.newProxyInstance(SqlSessionFactory.<span style="color: #0000ff;">class</span>.getClassLoader(), <span style="color: #0000ff;">new</span> Class[]{SqlSession.<span style="color: #0000ff;">class</span>}, <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlSessionTemplate.SqlSessionInterceptor());
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionFactory getSqlSessionFactory() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ExecutorType getExecutorType() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.executorType;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> PersistenceExceptionTranslator getPersistenceExceptionTranslator() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.exceptionTranslator;
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt;<span style="color: #000000;"> T selectOne(String statement) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">由真实的对象sqlSessionProxy执行查询</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectOne(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt;<span style="color: #000000;"> T selectOne(String statement, Object parameter) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">由真实的对象sqlSessionProxy执行查询</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectOne(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;K, V&gt; Map&lt;K, V&gt;<span style="color: #000000;"> selectMap(String statement, String mapKey) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">由真实的对象sqlSessionProxy执行查询</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectMap(statement, mapKey);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;K, V&gt; Map&lt;K, V&gt;<span style="color: #000000;"> selectMap(String statement, Object parameter, String mapKey) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">由真实的对象sqlSessionProxy执行查询</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectMap(statement, parameter, mapKey);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;K, V&gt; Map&lt;K, V&gt;<span style="color: #000000;"> selectMap(String statement, Object parameter, String mapKey, RowBounds rowBounds) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">由真实的对象sqlSessionProxy执行查询</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectMap(statement, parameter, mapKey, rowBounds);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt; Cursor&lt;T&gt;<span style="color: #000000;"> selectCursor(String statement) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectCursor(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt; Cursor&lt;T&gt;<span style="color: #000000;"> selectCursor(String statement, Object parameter) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectCursor(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt; Cursor&lt;T&gt;<span style="color: #000000;"> selectCursor(String statement, Object parameter, RowBounds rowBounds) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectCursor(statement, parameter, rowBounds);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectList(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement, Object parameter) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectList(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;E&gt; List&lt;E&gt;<span style="color: #000000;"> selectList(String statement, Object parameter, RowBounds rowBounds) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.selectList(statement, parameter, rowBounds);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> select(String statement, ResultHandler handler) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.select(statement, handler);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> select(String statement, Object parameter, ResultHandler handler) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.select(statement, parameter, handler);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> select(String statement, Object parameter, RowBounds rowBounds, ResultHandler handler) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.select(statement, parameter, rowBounds, handler);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> insert(String statement) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.insert(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> insert(String statement, Object parameter) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.insert(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> update(String statement) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.update(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> update(String statement, Object parameter) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.update(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> delete(String statement) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.delete(statement);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> delete(String statement, Object parameter) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.delete(statement, parameter);
+    }
+
+    </span><span style="color: #0000ff;">public</span> &lt;T&gt; T getMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.getConfiguration().getMapper(type, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commit() {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> UnsupportedOperationException("Manual commit is not allowed over a Spring managed SqlSession"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> commit(<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> force) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> UnsupportedOperationException("Manual commit is not allowed over a Spring managed SqlSession"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> rollback() {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> UnsupportedOperationException("Manual rollback is not allowed over a Spring managed SqlSession"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> rollback(<span style="color: #0000ff;">boolean</span><span style="color: #000000;"> force) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> UnsupportedOperationException("Manual rollback is not allowed over a Spring managed SqlSession"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> close() {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> UnsupportedOperationException("Manual close is not allowed over a Spring managed SqlSession"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> clearCache() {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.clearCache();
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Configuration getConfiguration() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory.getConfiguration();
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Connection getConnection() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.getConnection();
+    }
+
+    </span><span style="color: #0000ff;">public</span> List&lt;BatchResult&gt;<span style="color: #000000;"> flushStatements() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionProxy.flushStatements();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> destroy() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">class</span> SqlSessionInterceptor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> InvocationHandler {
+        </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> SqlSessionInterceptor() {
+        }
+
+        </span><span style="color: #0000ff;">public</span> Object invoke(Object proxy, Method method, Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+            SqlSession sqlSession </span>= SqlSessionUtils.getSqlSession(SqlSessionTemplate.<span style="color: #0000ff;">this</span>.sqlSessionFactory, SqlSessionTemplate.<span style="color: #0000ff;">this</span>.executorType, SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.exceptionTranslator);
+
+            Object unwrapped;
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                Object result </span>=<span style="color: #000000;"> method.invoke(sqlSession, args);
+                </span><span style="color: #0000ff;">if</span> (!SqlSessionUtils.isSqlSessionTransactional(sqlSession, SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory)) {
+                    sqlSession.commit(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+                }
+
+                unwrapped </span>=<span style="color: #000000;"> result;
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var11) {
+                unwrapped </span>=<span style="color: #000000;"> ExceptionUtil.unwrapThrowable(var11);
+                </span><span style="color: #0000ff;">if</span> (SqlSessionTemplate.<span style="color: #0000ff;">this</span>.exceptionTranslator != <span style="color: #0000ff;">null</span> &amp;&amp; unwrapped <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PersistenceException) {
+                    SqlSessionUtils.closeSqlSession(sqlSession, SqlSessionTemplate.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory);
+                    sqlSession </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                    Throwable translated </span>= SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.exceptionTranslator.translateExceptionIfPossible((PersistenceException)unwrapped);
+                    </span><span style="color: #0000ff;">if</span> (translated != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                        unwrapped </span>=<span style="color: #000000;"> translated;
+                    }
+                }
+
+                </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> (Throwable)unwrapped;
+            } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">if</span> (sqlSession != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    SqlSessionUtils.closeSqlSession(sqlSession, SqlSessionTemplate.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory);
+                }
+
+            }
+
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> unwrapped;
+        }
+    }
+}</span></code></pre>
+
+<p>我们看到SqlSessionTemplate实现了<strong>SqlSession接口，那么Mapper代理类中执行所有的数据库操作，都是通过SqlSessionTemplate来执行，如上我们看到所有的数据库操作都由</strong><strong>对象sqlSessionProxy执行查询</strong></p>
+<h3>静态代理的使用</h3>
+<p>SqlSessionTemplate在内部访问数据库时，其实是委派给<strong>sqlSessionProxy</strong>来执行数据库操作的，SqlSessionTemplate不是自身重新实现了一套mybatis数据库访问的逻辑。</p>
+<p>SqlSessionTemplate通过静态代理机制来提供SqlSession接口的行为，即实现SqlSession接口来获取SqlSession的所有方法；SqlSessionTemplate的定义如下：标准的静态代理实现模式，即实现SqlSession接口并在内部包含一个SqlSession接口实现类引用sqlSessionProxy。那我们就要看看sqlSessionProxy这个SqlSession，我们先来看看SqlSessionTemplate的构造方法</p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #0000ff;">public</span><span style="color: #000000;"> SqlSessionTemplate(SqlSessionFactory sqlSessionFactory, ExecutorType executorType, PersistenceExceptionTranslator exceptionTranslator) {
+        Assert.notNull(sqlSessionFactory, </span>"Property 'sqlSessionFactory' is required"<span style="color: #000000;">);
+        Assert.notNull(executorType, </span>"Property 'executorType' is required"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.sqlSessionFactory =<span style="color: #000000;"> sqlSessionFactory;
+        </span><span style="color: #0000ff;">this</span>.executorType =<span style="color: #000000;"> executorType;
+        </span><span style="color: #0000ff;">this</span>.exceptionTranslator =<span style="color: #000000;"> exceptionTranslator;
+        </span><span style="color: #0000ff;">this</span>.sqlSessionProxy = (SqlSession)Proxy.newProxyInstance(SqlSessionFactory.<span style="color: #0000ff;">class</span>.getClassLoader(), <span style="color: #0000ff;">new</span> Class[]{SqlSession.<span style="color: #0000ff;">class</span>}, <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlSessionTemplate.SqlSessionInterceptor());
+    }</span></code></pre>
+
+<h3>动态代理的使用</h3>
+<p>不是吧，又使用了动态代理？？真够曲折的，那我们接着看<strong>&nbsp;</strong>new SqlSessionTemplate.SqlSessionInterceptor() 这个InvocationHandler</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">class</span> SqlSessionInterceptor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> InvocationHandler {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">很奇怪，这里并没有真实目标对象？</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> SqlSessionInterceptor() {
+    }
+
+    </span><span style="color: #0000ff;">public</span> Object invoke(Object proxy, Method method, Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取一个sqlSession来执行proxy的method对应的SQL,
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 每次调用都获取创建一个sqlSession线程局部变量，故不同线程相互不影响，在这里实现了SqlSessionTemplate的线程安全性</span>
+        SqlSession sqlSession = SqlSessionUtils.getSqlSession(SqlSessionTemplate.<span style="color: #0000ff;">this</span>.sqlSessionFactory, SqlSessionTemplate.<span style="color: #0000ff;">this</span>.executorType, SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.exceptionTranslator);
+
+        Object unwrapped;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">直接通过新创建的SqlSession反射调用method
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">这也就解释了为什么不需要目标类属性了，这里每次都会创建一个</span>
+            Object result =<span style="color: #000000;"> method.invoke(sqlSession, args);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果当前操作没有在一个Spring事务中，则手动commit一下
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果当前业务没有使用@Transation,那么每次执行了Mapper接口的方法直接commit
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 还记得我们前面讲的Mybatis的一级缓存吗，这里一级缓存不能起作用了，因为每执行一个Mapper的方法，sqlSession都提交了
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> sqlSession提交，会清空一级缓存</span>
+            <span style="color: #0000ff;">if</span> (!SqlSessionUtils.isSqlSessionTransactional(sqlSession, SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory)) {
+                sqlSession.commit(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            }
+
+            unwrapped </span>=<span style="color: #000000;"> result;
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var11) {
+            unwrapped </span>=<span style="color: #000000;"> ExceptionUtil.unwrapThrowable(var11);
+            </span><span style="color: #0000ff;">if</span> (SqlSessionTemplate.<span style="color: #0000ff;">this</span>.exceptionTranslator != <span style="color: #0000ff;">null</span> &amp;&amp; unwrapped <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PersistenceException) {
+                SqlSessionUtils.closeSqlSession(sqlSession, SqlSessionTemplate.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory);
+                sqlSession </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                Throwable translated </span>= SqlSessionTemplate.<span style="color: #0000ff;">this</span><span style="color: #000000;">.exceptionTranslator.translateExceptionIfPossible((PersistenceException)unwrapped);
+                </span><span style="color: #0000ff;">if</span> (translated != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    unwrapped </span>=<span style="color: #000000;"> translated;
+                }
+            }
+
+            </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> (Throwable)unwrapped;
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (sqlSession != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                SqlSessionUtils.closeSqlSession(sqlSession, SqlSessionTemplate.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSessionFactory);
+            }
+
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> unwrapped;
+    }
+}</span></code></pre>
+
+<p>这里大概讲一下Mapper代理类调用方法执行逻辑：</p>
+<p>1、SqlSessionTemplate生成Mapper代理类时，将本身传进去做为Mapper代理类的属性，调用Mapper代理类的方法时，最后会通过SqlSession类执行，也就是调用SqlSessionTemplate中的方法。</p>
+<p>2、SqlSessionTemplate中操作数据库的方法中又交给了<strong>sqlSessionProxy</strong>这个代理类去执行，那么每次执行的方法都会回调其SqlSessionInterceptor这个InvocationHandler的invoke方法</p>
+<p>3、在invoke方法中，为每个线程创建一个新的SqlSession，并通过反射调用SqlSession的method。这里sqlSession是一个线程局部变量，不同线程相互不影响，实现了SqlSessionTemplate的线程安全性</p>
+<p>4、如果当前操作并没有在Spring事务中，那么每次执行一个方法，都会提交，相当于数据库的事务自动提交，Mysql的一级缓存也将不可用</p>
+<p>接下来我们还要看一个地方，invoke中是如何创建<strong>SqlSession的？</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> SqlSession getSqlSession(SqlSessionFactory sessionFactory, ExecutorType executorType, PersistenceExceptionTranslator exceptionTranslator) {
+    Assert.notNull(sessionFactory, </span>"No SqlSessionFactory specified"<span style="color: #000000;">);
+    Assert.notNull(executorType, </span>"No ExecutorType specified"<span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">通过TransactionSynchronizationManager内部的ThreadLocal中获取</span>
+    SqlSessionHolder holder =<span style="color: #000000;"> (SqlSessionHolder)TransactionSynchronizationManager.getResource(sessionFactory);
+    SqlSession session </span>=<span style="color: #000000;"> sessionHolder(executorType, holder);
+    </span><span style="color: #0000ff;">if</span>(session != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> session;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(LOGGER.isDebugEnabled()) {
+            LOGGER.debug(</span>"Creating a new SqlSession"<span style="color: #000000;">);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">这里我们知道实际上是创建了一个DefaultSqlSession</span>
+        session =<span style="color: #000000;"> sessionFactory.openSession(executorType);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">将创建的SqlSession对象放入TransactionSynchronizationManager内部的ThreadLocal中</span>
+<span style="color: #000000;">        registerSessionHolder(sessionFactory, executorType, exceptionTranslator, session);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> session;
+    }
+}</span></code></pre>
+
+<p>通过<strong>sessionFactory.openSession(executorType)实际创建的</strong><strong>SqlSession还是</strong><strong>DefaultSqlSession。</strong>如果读过我前面Spring源码的朋友，肯定知道TransactionSynchronizationManager这个类，其内部维护了一个<strong>ThreadLocal的</strong>Map，这里同一线程创建了<strong>SqlSession后放入<strong>ThreadLocal中，同一线程中其他Mapper接口调用方法时，将会直接从<strong>ThreadLocal中获取。</strong></strong></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

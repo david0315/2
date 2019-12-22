@@ -1,0 +1,131 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修java微服务的统一配置中心' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>java微服务的统一配置中心</center></div><div class='banquan'>原文出处:本文由博客园博主skychmz提供。<br/>
+原文连接:https://www.cnblogs.com/skychmz/p/11503924.html</div><br>
+    <p>为了更好的管理应用的配置，也为了不用每次更改配置都重启应用，我们可以使用配置中心</p>
+<p>关于eureka的服务注册和rabbitMQ的安装使用（自动更新配置需要用到rabbitMQ）这里不赘述，只关注配置中心的内容</p>
+<p>我们需要引入关键的包是这三个</p>
+<src class="cnblogs_code">
+<pre><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-bus-amqp&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+
+<p>需要在启动类加上@EnableConfigServer注解，这里有个busRefresh2方法需要讲下，其实这里有个坑，如果在github的webhook直接访问/actuator/bus-refresh是有json转换错误的，</p>
+<p>因为github触发webhook的时候会带一大串字符，就是这段字符引发json转换错误，所以我们在这里包装下/actuator/bus-refresh</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@SpringBootApplication
+@EnableDiscoveryClient
+@EnableConfigServer
+@RestController
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ConfigApplication {
+    @PostMapping(</span>"/actuator/bus-refresh2"<span style="color: #000000;">)
+    @ResponseBody
+    </span><span style="color: #0000ff;">public</span> Object busRefresh2(HttpServletRequest request, @RequestBody(required = <span style="color: #0000ff;">false</span><span style="color: #000000;">) String s) {
+        System.out.println(s);
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> ModelAndView("/actuator/bus-refresh"<span style="color: #000000;">);
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(ConfigApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+
+}</span></code></pre>
+
+<p>然后在配置文件上加上这些内容，主要是配置github上的配置文件的路径，配置rabbitMQ和启用bus-refresh端点。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  application:
+    name: config
+  cloud:
+    config:
+      server:
+        git:
+          uri: https:</span><span style="color: #008000;">//</span><span style="color: #008000;">github.com/skychmz/config.git</span>
+<span style="color: #000000;">          username: skychmz
+          password: xxxxxxx
+  rabbitmq:
+    host: localhost
+    username: guest
+    password: guest
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: bus</span>-refresh</code></pre>
+
+<p>如果某个服务需要使用配置中心，先引入以下包</p>
+<src class="cnblogs_code">
+<pre><code>&lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-bus-amqp&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-config-client&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+
+<p>在yml配置文件上加上如下配置，主要是开启配置中心，我们的配置中心的服务名是CONFIG</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  cloud:
+    config:
+      discovery:
+        enabled: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+        service</span>-id: CONFIG</code></pre>
+
+<p>把该服务的配置文件放到github，注意eureka的配置还是要放本地的，因为服务启动的时候要先访问eureka才会找到CONFIG服务</p>
+<p><img src="./images/java微服务的统一配置中心0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;配置github的webhooks，这里我用的是内网穿透的地址</p>
+<p><img src="./images/java微服务的统一配置中心1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>在需要刷新配置的地方加上@RefreshScope注解，这样就完成了。当我们更改github上的配置文件之后，GitHub就会触发webhook从而自动刷新配置。</p>
+<p>最后提一下如果zuul网关服务也需要自动刷新配置的话可以在启动类加一个方法返回一个ZuulProperties()，当然还要加上@RefreshScope注解</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@SpringBootApplication
+@EnableZuulProxy
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ApiGatewayApplication {
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(ApiGatewayApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+    
+    @ConfigurationProperties(</span>"zuul"<span style="color: #000000;">)
+    @RefreshScope
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ZuulProperties zuulProperties() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ZuulProperties();
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

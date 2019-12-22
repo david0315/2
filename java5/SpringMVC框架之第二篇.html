@@ -1,0 +1,544 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringMVC框架之第二篇' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringMVC框架之第二篇</center></div><div class='banquan'>原文出处:本文由博客园博主小小一提供。<br/>
+原文连接:https://www.cnblogs.com/haizai/p/11667988.html</div><br>
+    <src class="cnblogs_code">
+<pre><code>6<span style="color: #000000;">.参数绑定（重点）
+        Springmvc作为表现层框架，是连接页面和service层的桥梁，它负责所有请求的中转。怎么从请求中接收参数是重点，这也体现了我们刚开始说的Springmvc的第一个作用：&ldquo;接收请求中的参数&rdquo;。
+        接收的参数具体有哪些类型呢？</span>6.1~6<span style="color: #000000;">.5是绝大部分参数绑定的类型，还有两种第二天课程讲。
+        </span>6.1<span style="color: #000000;">.简述参数绑定的类型
+        </span>1<span style="color: #000000;">.默认支持的参数类型：HttpServletRequest，HttpServletResponse，HttpSession，Model
+        </span>2.简单类型：String，<span style="color: #0000ff;">long</span>，<span style="color: #0000ff;">double</span>，<span style="color: #0000ff;">boolean</span><span style="color: #000000;">，Integer, Long等
+        </span>3<span style="color: #000000;">.POJO类型
+        </span>4.POJO的包装类型-<span style="color: #000000;">QueryVo
+        </span>5<span style="color: #000000;">.自定义转换器Converter：适合参数在传入方法前做事前加工，比如不能自动完成的类型转换，去空格等。
+
+        </span>6.2<span style="color: #000000;">.需求
+        前面我们做完了商品列表画面的展示，下面继续做修改页面和保存修改。
+        【修改页面】：在列表页面点击一条数据的【修改】，根据id查询这条数据的详细信息，然后显示在修改页面
+        【保存修改】：在修改页面修改信息，然后点【保存】，把信息存到数据库，保存成功迁移到success页面。（正常保存完应该返回列表页面，但我们先做的简单一点，就暂时迁移到success页面。）
+        下面我们就利用这个修改的业务需求来逐个演示各种参数绑定方法。
+        </span>6.3<span style="color: #000000;">.业务实现的代码规划
+        &middot;默认支持的参数类型实现【修改页面】显示；
+        &middot;简单类型实现【保存修改】功能；
+        &middot;POJO类型改进【保存修改】功能；
+        &middot;针对日期类型，利用自定义转换器Converter实现字符串到日期类型转换，进一步完善【保存修改】功能；
+        &middot;POJO的包装类型</span>-<span style="color: #000000;">QueryVo简单说明综合查询业务的综合查询条件的传递。
+        </span>6.4<span style="color: #000000;">.默认支持的参数类型
+        </span>6.4.1<span style="color: #000000;">.啥是默认支持的参数类型
+        所谓默认支持的参数类型就是传不传它们都会存在的参数，想用时就在Controller方法中定义即可，用哪个定义哪个，不用不定义。
+        默认参数有：
+        HttpServletRequest：通过request对象获取请求信息
+        HttpServletResponse：通过response处理响应信息
+        HttpSession：通过session对象得到session中存放的对象
+        Model：通过Model参数返回需要传递给页面的数据。
+        注意：如果使用Model参数给页面传值，那方法的返回值可以不使用ModelAndView对象而只返回一个逻辑视图名（String字符串），此时返回的字符串会走视图解析器解析生成View对象。
+        无论Springmvc怎样对结果和返回值进行处理封装，其本质都是使用Request对象向jsp传递数据。
+
+        </span>6.4.2<span style="color: #000000;">.演示代码
+        </span>1<span style="color: #000000;">.【itemList.jsp】的【修改】：
+
+        </span>2<span style="color: #000000;">.【ItemsController.java】新定义一个方法
+        </span>&lt;说明&gt;<span style="color: #000000;">
+        &middot;HttpServletRequest：
+        可以接收页面传递过来的参数。
+        &middot;Model：前面讲过，略
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示默认支持的类型参数：HttpServletRequest、HttpServletResponse、HttpSession、Model
+             * 默认支持的参数类型就是传不传它们都存在的参数，想用时就在Controller方法中定义即可，
+             * 用哪个就定义哪个，不用就不定义。
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/toEdit"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span> String itemEdit(HttpServletRequest request, Model model) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 取得页面传过来的主键id</span>
+                Integer id = Integer.valueOf(request.getParameter("id"<span style="color: #000000;">));
+                Items itemsResult </span>=<span style="color: #000000;"> itemsService.getItemsDetailById(id);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 设置返回给页面的数据</span>
+                model.addAttribute("item"<span style="color: #000000;">, itemsResult);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 返回页面的逻辑视图名</span>
+                <span style="color: #0000ff;">return</span> "editItem"<span style="color: #000000;">;
+            }
+        </span>3<span style="color: #000000;">.【ItemsService.java】新定义一个接口
+            </span><span style="color: #0000ff;">public</span> Items findItemsById(Integer id) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception;
+        </span>4<span style="color: #000000;">.【ItemsServiceImpl.java】实现上面的接口方法
+            </span><span style="color: #0000ff;">public</span> Items findItemsById(Integer id) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                Items items </span>=<span style="color: #000000;"> itemsMapper.selectByPrimaryKey(id);
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> items;
+            }    
+        </span>5.访问【http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8080/ssm2/list.action】，点击【修改】</span>
+        6<span style="color: #000000;">.将返回页面的数据和返回页面的地址合体返回：
+        SpringMVC提供一种专门用于Handler返回结果的类：ModelAndView（模型和视图类）。它相当于把Model类和视图路径字符串合并在一起返回。SpringMVC拿到这个类对象后仍然会调度视图解析器来解析这个视图文件路径，并把数据给刚由视图解析器生成的视图对象，由它执行页面的渲染。
+        改造上面的方法：
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示默认支持的类型参数：HttpServletRequest、HttpServletResponse、HttpSession、Model
+             * 默认支持的参数类型就是传不传它们都存在的参数，想用时就在Controller方法中定义即可，
+             * 用哪个就定义哪个，不用就不定义。
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/toEdit"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span> ModelAndView itemEdit(HttpServletRequest request, Model model) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 取得页面传过来的主键id</span>
+                Integer id = Integer.valueOf(request.getParameter("id"<span style="color: #000000;">));
+                Items itemsResult </span>=<span style="color: #000000;"> itemsService.getItemsDetailById(id);
+
+                ModelAndView modelAndView </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ModelAndView();
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1. 设置返回页面需要的数据
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第一个参数是属性名称, 第二个参数是属性值</span>
+                modelAndView.addObject("item"<span style="color: #000000;">, itemsResult);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2. 指定返回页面的地址</span>
+                modelAndView.setViewName("editItem"<span style="color: #000000;">);
+                
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> modelAndView;
+            }    
+        项目实在中经常使用的还是直接返回字符串的那种，这个返回ModelAndView的不太常用。
+
+
+
+
+        </span>6.5<span style="color: #000000;">.简单类型
+        默认参数类型有一个缺点：用request.getParameter来取值可能需要额外的类型转换，从String转成其他类型。
+        Springmvc可不可以直接接收这些类型的参数呢？答案是可以的，即直接接收简单类型的参数。Springmvc不仅可以直接接收多个简单类型参数，还可以自动进行简单的类型转换。
+        </span>6.5.1<span style="color: #000000;">.简单类型就是java的简单类型
+        例如：String、</span><span style="color: #0000ff;">double</span>、<span style="color: #0000ff;">long</span><span style="color: #000000;">、Integer、Boolean等。
+        </span>6.5.2<span style="color: #000000;">.传参规范
+        页面上input框的name属性值必须等于controller方法中接收时的参数名称
+        </span>6.5.3<span style="color: #000000;">.演示代码
+        </span>1<span style="color: #000000;">.从【资料\参考案例\jsp】中导入【editItem.jsp】到工程的jsp目录下。
+        </span>2<span style="color: #000000;">.【ItemsController.java】新定义一个方法
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示接收简单类型:String, Integer, Double, Boolean等
+             * 要求:页面上input框的name属性值必须等于controller方法中接收时的参数的变量名称
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/itemUpdate"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String itemUpdate(Integer id, String name, Float price, String detail) 
+                    </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                Items items </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Items();
+                items.setId(id);
+                items.setName(name);
+                items.setPrice(price);
+                items.setDetail(detail);
+                itemsService.updateItems(items);
+                </span><span style="color: #0000ff;">return</span> "success"<span style="color: #000000;">;
+            }    
+        </span>3<span style="color: #000000;">.【ItemsService.java】新定义一个接口
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> updateItems(Items items) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception;
+
+        </span>4<span style="color: #000000;">.【ItemsServiceImpl.java】实现上面的接口方法
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> updateItems(Items items) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                itemsMapper.updateByPrimaryKeySelective(items);
+            }
+        </span>5<span style="color: #000000;">.从【资料\参考案例\jsp】中导入【success.jsp】到工程的jsp目录下。
+        </span>6<span style="color: #000000;">.进入修改页面修改信息并保存。
+        </span>6.5.4<span style="color: #000000;">.解决post提交乱码问题
+        web页面默认的编码是ISO8859</span>-1<span style="color: #000000;">，但这个编码不支持汉字，所以汉字参数传递过来会出现乱码。
+        post请求乱码的解决方法：在web.xml中加一个过滤器解决。
+        </span>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+        &lt;web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"<span style="color: #000000;"> 
+            xmlns</span>="http://java.sun.com/xml/ns/javaee"<span style="color: #000000;"> 
+            xsi:schemaLocation</span>="http://java.sun.com/xml/ns/javaee 
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">java.sun.com/xml/ns/javaee/web-app_2_5.xsd" </span>
+            id="WebApp_ID" version="2.5"&gt;<span style="color: #000000;">
+        。。。。
+            </span>&lt;!-- 配置解决post提交汉字乱码的过滤器 --&gt;
+            &lt;filter&gt;
+                &lt;filter-name&gt;CharacterEncodingFilter&lt;/filter-name&gt;
+                &lt;filter-<span style="color: #0000ff;">class</span>&gt;org.springframework.web.filter.CharacterEncodingFilter&lt;/filter-<span style="color: #0000ff;">class</span>&gt;
+                &lt;init-param&gt;
+                    &lt;param-name&gt;encoding&lt;/param-name&gt;
+                    &lt;param-value&gt;utf-8&lt;/param-value&gt;
+                &lt;/init-param&gt;
+            &lt;/filter&gt;
+            &lt;filter-mapping&gt;
+                &lt;filter-name&gt;CharacterEncodingFilter&lt;/filter-name&gt;
+                &lt;url-pattern&gt;<span style="color: #008000;">/*</span><span style="color: #008000;">&lt;/url-pattern&gt;
+            &lt;/filter-mapping&gt;
+        。。。。
+        &lt;/web-app&gt;
+
+        6.5.5.解决get提交乱码问题
+        对于get请求中文参数出现乱码解决方法有两个：
+        1.修改tomcat配置文件【server.xml】添加编码与工程编码一致，如下：（常用）
+
+        2.另外一种方法对参数进行重新编码：
+
+        6.6.POJO类型
+        实现对修改保存的改进，适应参数个数的变化，几十上百个参数时候是绝对不可能用简单类型传递参数的。
+        6.6.1.传参规范
+        页面中input框的name属性值必须等于Controller方法接收时的POJO参数中的属性名称
+        6.6.2.演示代码
+        【ItemsController.java】新定义一个保存更新的方法，将旧的注释掉
+            /**
+             * 演示接收简单类型:String, Integer, Double, Boolean等
+             * 要求:页面上input框的name属性值必须等于controller方法中接收时的参数的变量名称
+             </span><span style="color: #008000;">*/</span>
+        <span style="color: #008000;">//</span><span style="color: #008000;">    @RequestMapping("/itemUpdate")
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">    public String itemUpdate(Integer id, String name, Float price, String detail) 
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">            throws Exception {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        Items items = new Items();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        items.setId(id);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        items.setName(name);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        items.setPrice(price);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        items.setDetail(detail);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        items.setCreatetime(new Date());
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        itemsService.updateItems(items);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">        return "success";
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">    }</span>
+            
+            <span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示接收POJO类型的参数
+             * 要求:页面上input框的name属性值必须等于pojo中的属性名称
+             * 
+             * </span><span style="color: #808080;">@return</span><span style="color: #008000;">
+             * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> Exception
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/itemUpdate"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String itemUpdate(Items items) 
+                    </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                itemsService.updateItems(items);
+                </span><span style="color: #0000ff;">return</span> "success"<span style="color: #000000;">;
+
+            }
+
+        </span>6.7.POJO的包装类型-<span style="color: #000000;">QueryVo
+        我们要想在列表页面加一个综合查询功能，查询条件可能有商品信息、用户信息、订单信息，因此我们需要一个QueryVo来包装这些查询信息。那如何传递包装的参数呢？
+        </span>6.7.1<span style="color: #000000;">.传参规范
+        页面中input框的name属性值必须等于Controller方法接收时的Vo参数中的属性.属性.属性....，即各层的属性名要相等。
+        </span>6.7.2<span style="color: #000000;">.演示代码
+        </span>1<span style="color: #000000;">.新定义【QueryVo.java】
+        </span><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.baidu.pojo;
+
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> QueryVo {
+            
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 用户对象
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> ......
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 订单对象
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> ......
+            
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 商品对象</span>
+            <span style="color: #0000ff;">private</span><span style="color: #000000;"> Items items;
+
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Items getItems() {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> items;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setItems(Items items) {
+                </span><span style="color: #0000ff;">this</span>.items =<span style="color: #000000;"> items;
+            }
+        }
+        </span>2<span style="color: #000000;">.【itemList.jsp】中增加两个查询条件作为POJO的包装类型的示范说明：控件name属性的名称要符合要求。
+        </span>&lt;%@ page language="java" contentType="text/html; charset=UTF-8"<span style="color: #000000;">
+            pageEncoding</span>="UTF-8"%&gt;
+        &lt;%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %&gt;
+        &lt;%@ taglib uri="http://java.sun.com/jsp/jstl/fmt"  prefix="fmt"%&gt;
+        &lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd"&gt;
+        &lt;html&gt;
+        &lt;head&gt;
+        &lt;meta http-equiv="Content-Type" content="text/html; charset=UTF-8"&gt;
+        &lt;title&gt;查询商品列表&lt;/title&gt;
+        &lt;/head&gt;
+        &lt;body&gt; 
+        &lt;form action="${pageContext.request.contextPath }/search.action" method="post"&gt;<span style="color: #000000;">
+        查询条件：
+        </span>&lt;table width="100%" border=1&gt;
+            &lt;tr&gt;
+                &lt;td&gt;商品名称: &lt;input type="text" name="items.name"&gt;&lt;/td&gt;
+                &lt;td&gt;商品价格: &lt;input type="text" name="items.price"&gt;&lt;/td&gt;
+                &lt;td&gt;&lt;input type="submit" value="查询"/&gt;&lt;/td&gt;
+            &lt;/tr&gt;
+        &lt;/table&gt;<span style="color: #000000;">
+        商品列表：
+        </span>&lt;table width="100%" border=1&gt;
+        &lt;tr&gt;
+            &lt;td&gt;商品名称&lt;/td&gt;
+            &lt;td&gt;商品价格&lt;/td&gt;
+            &lt;td&gt;生产日期&lt;/td&gt;
+            &lt;td&gt;商品描述&lt;/td&gt;
+            &lt;td&gt;操作&lt;/td&gt;
+        &lt;/tr&gt;
+        &lt;c:forEach items="${itemList }" var="item"&gt;
+        &lt;tr&gt;
+            &lt;td&gt;${item.name }&lt;/td&gt;
+            &lt;td&gt;${item.price }&lt;/td&gt;
+            &lt;td&gt;&lt;fmt:formatDate value="${item.createtime}" pattern="yyyy-MM-dd HH:mm:ss"/&gt;&lt;/td&gt;
+            &lt;td&gt;${item.detail }&lt;/td&gt;
+            
+            &lt;td&gt;&lt;a href="${pageContext.request.contextPath }/toEdit.action?id=${item.id}"&gt;修改&lt;/a&gt;&lt;/td&gt;
+        &lt;/tr&gt;
+        &lt;/c:forEach&gt;
+        &lt;/table&gt;
+        &lt;/form&gt;
+        &lt;/body&gt;
+        &lt;/html&gt;    
+        3<span style="color: #000000;">.【ItemsController.java】新定义一个方法，这里不做具体的查询过滤，我们主要学习的是参数的传递。
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示接收POJO的包装类型 - QueryVo
+             * 要求: 页面上input框的name属性值必须等于POJO中属性.属性.属性.....
+             * 
+             * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> vo
+             * </span><span style="color: #808080;">@return</span><span style="color: #008000;">
+             * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> Exception
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/search"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span> String searchItems(QueryVo vo) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                System.out.println(vo);
+                </span><span style="color: #0000ff;">return</span> "success"<span style="color: #000000;">;
+            }
+
+        </span>6.8<span style="color: #000000;">.自定义转换器Converter
+        前台传递的是一个时间格式的字符串，后台数据库存储的是一个日期类型的数据，需要转换，但自动转换会报错（可以试一试）。为了转换需要自定义转换器。
+        </span>6.8.1<span style="color: #000000;">.自定义转换器的作用
+        参数传递到方法之前的统一加工处理。
+        应用：最多的应用就是复杂类型转换、再有就是去掉金钱中的千分符等。比如：在Springmvc中接收参数时可以自动进行简单类型的类型转换，但是像String转Date这种复杂的类型转换，Springmvc不能自动完成，所以需要手动编写Converter转换器，来进行类型转换。
+        </span>6.8.2<span style="color: #000000;">.演示代码
+        </span>1<span style="color: #000000;">.将【editItem.jsp】中的【商品生产日期】项目的注释打开
+        </span>2<span style="color: #000000;">.自定义转换器Converter
+        Converter的包名可以随意，我们这里定义一个全局的String到Date的转换器。
+        都要继承【Converter</span>&lt;S, T&gt;】接口，【S - source源的类型】，【T -<span style="color: #000000;"> target目标的类型】，我们这里的S是String，T是Date。
+
+        </span><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.baidu.controller.converter;
+
+        </span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.text.ParseException;
+        </span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.text.SimpleDateFormat;
+        </span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Date;
+
+        </span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.core.convert.converter.Converter;
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * S - source源的类型
+         * T - target目标的类型
+         * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> Derek Sun
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> CustomGlobalStrToDateConverter <span style="color: #0000ff;">implements</span> Converter&lt;String, Date&gt;<span style="color: #000000;"> {
+
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Date convert(String source) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    Date date </span>= <span style="color: #0000ff;">new</span> SimpleDateFormat("yyyy-MM-dd hh:mm:ss"<span style="color: #000000;">).parse(source);
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> date;
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ParseException e) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated catch block</span>
+<span style="color: #000000;">                    e.printStackTrace();
+                }
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            }
+        }
+        </span>3<span style="color: #000000;">.Converter的配置方式：
+        【SpringMVC.xml】
+        </span>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+        &lt;beans xmlns="http://www.springframework.org/schema/beans"<span style="color: #000000;">
+            xmlns:xsi</span>="http://www.w3.org/2001/XMLSchema-instance"<span style="color: #000000;"> 
+            xmlns:p</span>="http://www.springframework.org/schema/p"<span style="color: #000000;">
+            xmlns:context</span>="http://www.springframework.org/schema/context"<span style="color: #000000;">
+            xmlns:mvc</span>="http://www.springframework.org/schema/mvc"<span style="color: #000000;">
+            xsi:schemaLocation</span>="http://www.springframework.org/schema/beans 
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/beans/spring-beans-4.0.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/mvc </span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/mvc/spring-mvc-4.0.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/context </span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/context/spring-context-4.0.xsd"&gt;</span>
+            &lt;!-- controller层的组件扫描 --&gt;
+            &lt;context:component-scan base-<span style="color: #0000ff;">package</span>="cn.baidu.controller" /&gt;
+            
+            &lt;!-- 配置注解驱动 --&gt;
+            &lt;!-- 配置加载converter转换器 --&gt;
+            &lt;mvc:annotation-driven conversion-service="conversionService" /&gt;
+            
+            &lt;!-- 转换器配置 --&gt;
+            &lt;bean id="conversionService"
+                <span style="color: #0000ff;">class</span>="org.springframework.format.support.FormattingConversionServiceFactoryBean"&gt;
+                &lt;property name="converters"&gt;
+                    &lt;set&gt;
+                        &lt;bean <span style="color: #0000ff;">class</span>="cn.baidu.controller.converter.CustomGlobalStrToDateConverter"/&gt;
+                    &lt;/set&gt;
+                &lt;/property&gt;
+            &lt;/bean&gt;
+            
+            &lt;!-- 配置视图解析器 --&gt;
+            &lt;bean <span style="color: #0000ff;">class</span>="org.springframework.web.servlet.view.InternalResourceViewResolver"&gt;
+                &lt;!-- 前缀 --&gt;
+                &lt;property name="prefix" value="WEB-INF/jsp/" /&gt;
+                &lt;!-- 后缀 --&gt;
+                &lt;property name="suffix" value=".jsp" /&gt;
+            &lt;/bean&gt;
+        &lt;/beans&gt;
+        4<span style="color: #000000;">.Converter的配置方式2（了解）
+        这种方式放到工程里不好用，就是用来理解Converter具体作用在处理器适配器上。
+        </span>&lt;?xmlversion="1.0"encoding="UTF-8"?&gt;
+        &lt;beansxmlns="http://www.springframework.org/schema/beans"<span style="color: #000000;">
+            xmlns:xsi</span>="http://www.w3.org/2001/XMLSchema-instance"xmlns:p="http://www.springframework.org/schema/p"<span style="color: #000000;">
+            xmlns:context</span>="http://www.springframework.org/schema/context"<span style="color: #000000;">
+            xmlns:dubbo</span>="http://code.alibabatech.com/schema/dubbo"xmlns:mvc="http://www.springframework.org/schema/mvc"<span style="color: #000000;">
+            xsi:schemaLocation</span>="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/mvc </span><span style="color: #008000; text-decoration: underline;">http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">code.alibabatech.com/schema/dubbo </span><span style="color: #008000; text-decoration: underline;">http://code.alibabatech.com/schema/dubbo/dubbo.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/context </span><span style="color: #008000; text-decoration: underline;">http://www.springframework.org/schema/context/spring-context-4.0.xsd</span><span style="color: #008000;">"&gt;</span>
+
+            &lt;!-- 扫描带Controller注解的类 --&gt;
+            &lt;context:component-scanbase-<span style="color: #0000ff;">package</span>="cn.baidu.springmvc.controller"/&gt;
+            
+            &lt;!-- 转换器配置 --&gt;
+            &lt;beanid="conversionService"
+                <span style="color: #0000ff;">class</span>="org.springframework.format.support.FormattingConversionServiceFactoryBean"&gt;
+                &lt;propertyname="converters"&gt;
+                    &lt;set&gt;
+                        &lt;beanclass="cn.baidu.springmvc.convert.DateConverter"/&gt;
+                    &lt;/set&gt;
+                &lt;/property&gt;
+            &lt;/bean&gt;
+            &lt;!-- 自定义webBinder --&gt;
+            &lt;beanid="customBinder"    <span style="color: #0000ff;">class</span>="org.springframework.web.bind.support.ConfigurableWebBindingInitializer"&gt;
+                &lt;propertyname="conversionService"ref="conversionService"/&gt;
+            &lt;/bean&gt;
+            &lt;!--注解适配器 --&gt;
+            &lt;beanclass="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter"&gt;
+                &lt;propertyname="webBindingInitializer"ref="customBinder"&gt;&lt;/property&gt;
+            &lt;/bean&gt;
+            &lt;!-- 注解处理器映射器 --&gt;
+            &lt;beanclass="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping"/&gt;
+            &lt;!-- 加载注解驱动 --&gt;
+            &lt;!-- &lt;mvc:annotation-driven/&gt; --&gt;
+            &lt;!-- 视图解析器 --&gt;
+            &lt;beanclass="org.springframework.web.servlet.view.InternalResourceViewResolver"&gt;
+                &lt;propertyname="viewClass"<span style="color: #000000;">
+                    value</span>="org.springframework.web.servlet.view.JstlView"/&gt;
+                &lt;!-- jsp前缀 --&gt;
+                &lt;propertyname="prefix"value="/WEB-INF/jsp/"/&gt;
+                &lt;!-- jsp后缀 --&gt;
+                &lt;propertyname="suffix"value=".jsp"/&gt;
+            &lt;/bean&gt;
+        &lt;/beans&gt;<span style="color: #000000;">
+        注意：此方法需要独立配置处理器映射器、适配器，不再使用</span>&lt;mvc:annotation-driven/&gt;
+
+        5<span style="color: #000000;">. 【ItemsController.java】
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 演示接收POJO类型的参数
+             * 要求:页面上input框的name属性值必须等于pojo中的属性名称
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            @RequestMapping(</span>"/itemUpdate"<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String itemUpdate(Items items) 
+                    </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                itemsService.updateItems(items);
+                </span><span style="color: #0000ff;">return</span> "success"<span style="color: #000000;">;
+            }
+        再次启动运行。
+
+        </span>5.仅仅是做一个日期类型的转化可以不用自定义转换器，还有一种更简单的做法：直接在pojo对应的日期属性变量上面加注解 @DateTimeFormat(pattern="yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">)，因此SpringMVC.xml恢复原来的配置
+        【SpringMVC.xml】
+        </span>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+        &lt;beans xmlns="http://www.springframework.org/schema/beans"<span style="color: #000000;">
+            xmlns:xsi</span>="http://www.w3.org/2001/XMLSchema-instance"<span style="color: #000000;"> 
+            xmlns:p</span>="http://www.springframework.org/schema/p"<span style="color: #000000;">
+            xmlns:context</span>="http://www.springframework.org/schema/context"<span style="color: #000000;">
+            xmlns:mvc</span>="http://www.springframework.org/schema/mvc"<span style="color: #000000;">
+            xsi:schemaLocation</span>="http://www.springframework.org/schema/beans 
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/beans/spring-beans-4.0.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/mvc </span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/mvc/spring-mvc-4.0.xsd</span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/context </span>
+                http:<span style="color: #008000;">//</span><span style="color: #008000;">www.springframework.org/schema/context/spring-context-4.0.xsd"&gt;</span>
+
+            &lt;!-- 配置注解扫描 --&gt;
+            &lt;context:component-scan base-<span style="color: #0000ff;">package</span>="cn.baidu.controller" /&gt;
+            
+            &lt;!-- 企业中配置处理器映射器和处理器适配器：注解驱动 --&gt;
+            &lt;mvc:annotation-driven /&gt;
+
+            &lt;!-- 配置视图解析器 --&gt;
+            &lt;bean <span style="color: #0000ff;">class</span>="org.springframework.web.servlet.view.InternalResourceViewResolver"&gt;
+                &lt;!-- 前缀 --&gt;
+                &lt;property name="prefix" value="/WEB-INF/jsp/" /&gt;
+                &lt;!-- 后缀 --&gt;
+                &lt;property name="suffix" value=".jsp" /&gt;
+            &lt;/bean&gt;
+        &lt;/beans&gt;<span style="color: #000000;">
+
+        【Items.java】在pojo中对应的日期属性变量上使用注解@DateTimeFormat
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Items {
+            。。。。。。
+            @DateTimeFormat(pattern</span>="yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Date createtime;
+        。。。。。。
+        }
+        启动测试，这样也是可以进行String到Date的类型转换的。
+        注意格式：【yyyy</span>-MM-<span style="color: #000000;">dd HH:mm:ss】
+        </span>6.9<span style="color: #000000;">.本节重点
+        要想顺利的保证前台的数据传到后台，在使用SpringMVC框架的前提下就要遵守SpringMVC传参的规范，具体规范如下：
+        </span>1<span style="color: #000000;">.默认支持的参数类型：HttpServletRequest，HttpServletResponse，HttpSession，Model。用哪个就在方法的形参中定义哪个，不用的不定义。
+        </span>2.简单类型：String，<span style="color: #0000ff;">long</span>，<span style="color: #0000ff;">double</span>，<span style="color: #0000ff;">boolean</span><span style="color: #000000;">，Integer等
+        要求：页面中input框的name属性值必须等于Controller方法接收时的参数名称。
+        适合单个或少数参数的请求
+        </span>3<span style="color: #000000;">.POJO类型 
+        要求：页面中input框的name属性值必须等于Controller方法接收时的POJO参数中的属性名称。
+        适合更新、插入操作。
+        </span>4.POJO的包装类型-<span style="color: #000000;">QueryVo
+        要求: 页面中input框的name属性值必须等于Controller方法接收时的Vo参数中的属性.属性.属性....
+        适合综合查询。
+        </span>5<span style="color: #000000;">.自定义转换器Converter
+        作用：参数传递到方法之前的统一加工处理。
+        应用：复杂类型转换、去空格, 去钱的千分符等
+
+        </span>7<span style="color: #000000;">.Springmvc与Struts2区别
+        </span>1<span style="color: #000000;">.入口不同：
+        springmvc的入口是一个servlet即前端控制器，而struts2入口是一个filter过虑器。
+        </span>2<span style="color: #000000;">.请求的拦截级别：
+        Struts2是类级别的拦截，一个Action类对应一个request上下文；
+        SpringMVC是方法级别的拦截，一个Controller类的方法对应一个request上下文。
+        </span>3<span style="color: #000000;">.单例与多例：
+        Struts2是基于类开发，传递参数是通过Action类的属性，只能设计为多例。
+        Springmvc是基于方法开发(一个url对应一个方法)，请求参数传递到方法的形参，可以设计为单例或多例(默认是单例)。
+        </span>4<span style="color: #000000;">.接收参数和返回数据：
+        Struts接收的请求参数存放于Action的属性中，是诸多方法共享的，程序可读性差。Struts采用值栈存储请求和响应的数据，通过OGNL存取数据；值栈存储方式太过原始。
+        Springmvc通过参数解析器是将request请求内容解析并给方法形参赋值，即请求参数是方法之间独立的。Springmvc对数据和视图封装成ModelAndView对象，最后又将ModelAndView中的模型数据通过reques对象传输到页面。
+                        
+    SSM整合思路 :    
+        web系统结构分为：三层
+            Controller层</span>---&gt; Service层---&gt;<span style="color: #000000;"> Dao层
+
+        代码的目录结构：
+            Controller层
+                controller目录：用@Controller注解修饰的类&mdash;&mdash;SpringMVC的后端控制器（手动编写）
+            Service层
+                service目录：用@Service注解修饰的类&mdash;&mdash;业务处理模型（手动编写）
+            Dao层
+                dao目录：mybatis动态代理扫描
+                         利用mybatis逆向工程生成dao接口和映射文件
+                pojo目录：利用mybatis逆向工程生成pojo
+
+        配置文件的目录：
+            config目录：
+                SpringMVC的配置文件&mdash;&mdash;SpringMVC.xml
+                    Controller层注解扫描，注解驱动，视图解析器（可能带有前缀和后缀）
+
+                spring的配置文件
+                    Service层注解扫描，事务管理&mdash;&mdash;ApplicationContext</span>-<span style="color: #000000;">service.xml
+                    mybatis整合（整合会话工厂、动态代理的包扫描）&mdash;&mdash;ApplicationContext</span>-<span style="color: #000000;">dao.xml
+
+                mybatis的配置文件&mdash;&mdash;MybatisConfig.xml
+                    暂时保留一个空的配置文件&mdash;&mdash;保留一个空的配置文件是为了将来好扩展
+                    
+                一些properties属性文件（日志，jdbc）
+
+        web.xml&mdash;&mdash;是java web的唯一入口
+            spring的监听
+            SpringMVC的前端控制器</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

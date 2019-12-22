@@ -1,0 +1,452 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修使用Quarkus在Openshift上构建微服务的快速指南' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>使用Quarkus在Openshift上构建微服务的快速指南</center></div><div class='banquan'>原文出处:本文由博客园博主锅外的大佬提供。<br/>
+原文连接:https://www.cnblogs.com/liululee/p/11525469.html</div><br>
+    <p>在我的博客上，您有机会阅读了许多关于使用Spring Boot或Micronaut之类框架构建微服务的文章。这里将介绍另一个非常有趣的框架专门用于微服务体系结构，它越来越受到大家的关注– <a href="https://quarkus.io/"><strong>Quarkus</strong></a>。它是作为下一代Kubernetes/Openshift原生Java框架引入的。它构建在著名的Java标准之上，如CDI、JAX-RS和Eclipse MicroProfile，这些标准将它与Spring Boot区别开来。</p>
+<p>其他一些可能说服您使用Quarkus的特性包括非常快的启动时间、为在容器中运行而优化的最小内存占用，以及较短的首次请求时间。此外，尽管它是一个相对较新的框架(当前版本是0.21)，但它有很多扩展，包括Hibernate、Kafka、RabbitMQ、Openapi和Vert.x等等。</p>
+<p>在本文中，我将指导您使用Quarkus构建微服务，并在OpenShift(通过Minishift)上运行它们。我们将讨论以下主题:</p>
+<ul>
+<li>构建基于rest的且包含输入校验的应用程序</li>
+<li>微服务与RestClient之间的通信</li>
+<li>开放健康检查(liveness, readiness)</li>
+<li>开放OpenAPI /Swagger 文档</li>
+<li>使用Quarkus Maven插件在本地机器上运行应用程序</li>
+<li>使用JUnit和RestAssured进行测试</li>
+<li>使用source-2镜像在Minishift上部署和运行Quarkus应用程序</li>
+</ul>
+<h3 id="创建应用程序---依赖项">1. 创建应用程序 - 依赖项</h3>
+<p>在创建新应用程序时，你可以执行一个Maven命令，该命令使用<code>quarkus-maven-plugin</code>。依赖项应该在参数<code>-Dextensions</code>中声明。</p>
+<pre><code><code>mvn io.quarkus:quarkus-maven-plugin:0.21.1:create \
+    -DprojectGroupId=pl.piomin.services \
+    -DprojectArtifactId=employee-service \
+    -DclassName=&quot;pl.piomin.services.employee.controller.EmployeeController&quot; \
+    -Dpath=&quot;/employees&quot; \
+    -Dextensions=&quot;resteasy-jackson, hibernate-validator&quot;</code></code></pre>
+<p>下面是我们<code>pom.xml</code>的结构:</p>
+<pre class="xml"><code>&lt;properties&gt;
+    &lt;quarkus.version&gt;0.21.1&lt;/quarkus.version&gt;
+    &lt;project.build.sourceEncoding&gt;UTF-8&lt;/project.build.sourceEncoding&gt;
+    &lt;maven.compiler.source&gt;11&lt;/maven.compiler.source&gt;
+    &lt;maven.compiler.target&gt;11&lt;/maven.compiler.target&gt;
+&lt;/properties&gt;
+&lt;dependencyManagement&gt;
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+            &lt;artifactId&gt;quarkus-bom&lt;/artifactId&gt;
+            &lt;version&gt;${quarkus.version}&lt;/version&gt;
+            &lt;type&gt;pom&lt;/type&gt;
+            &lt;scope&gt;import&lt;/scope&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+&lt;/dependencyManagement&gt;
+&lt;build&gt;
+    &lt;plugins&gt;
+        &lt;plugin&gt;
+            &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+            &lt;artifactId&gt;quarkus-maven-plugin&lt;/artifactId&gt;
+            &lt;version&gt;${quarkus.version}&lt;/version&gt;
+            &lt;executions&gt;
+                &lt;execution&gt;
+                    &lt;goals&gt;
+                        &lt;goal&gt;build&lt;/goal&gt;
+                    &lt;/goals&gt;
+                &lt;/execution&gt;
+            &lt;/executions&gt;
+        &lt;/plugin&gt;
+    &lt;/plugins&gt;
+&lt;/build&gt;</code></code></pre>
+<p>对于使用输入验证构建简单的REST应用程序，我们不需要太多模块。您可能已经注意到，我只声明了两个扩展，这与下面<code>pom.xml</code>中的依赖项列表相同:</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-resteasy-jackson&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-hibernate-validator&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h3 id="创建应用程序---代码">2. 创建应用程序 - 代码</h3>
+<p>对于Spring Boot或Micronaut用户来说，可能有点奇怪的是，没有使用静态代码main方法的主运行类。resource/controller类实际上就是主类。Quarkus的resource/controller类和方法应该使用<code>javax.ws.rs</code>库中的注解进行标记。</p>
+<p>下面是employee-service的REST controller 的实现:</p>
+<pre class="java"><code>@Path(&quot;/employees&quot;)
+@Produces(MediaType.APPLICATION_JSON)
+public class EmployeeController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EmployeeController.class);
+
+    @Inject
+    EmployeeRepository repository;
+
+    @POST
+    public Employee add(@Valid Employee employee) {
+        LOGGER.info(&quot;Employee add: {}&quot;, employee);
+        return repository.add(employee);
+    }
+
+    @Path(&quot;/{id}&quot;)
+    @GET
+    public Employee findById(@PathParam(&quot;id&quot;) Long id) {
+        LOGGER.info(&quot;Employee find: id={}&quot;, id);
+        return repository.findById(id);
+    }
+
+    @GET
+    public Set&lt;Employee&gt; findAll() {
+        LOGGER.info(&quot;Employee find&quot;);
+        return repository.findAll();
+    }
+
+    @Path(&quot;/department/{departmentId}&quot;)
+    @GET
+    public Set&lt;Employee&gt; findByDepartment(@PathParam(&quot;departmentId&quot;) Long departmentId) {
+        LOGGER.info(&quot;Employee find: departmentId={}&quot;, departmentId);
+        return repository.findByDepartment(departmentId);
+    }
+
+    @Path(&quot;/organization/{organizationId}&quot;)
+    @GET
+    public Set&lt;Employee&gt; findByOrganization(@PathParam(&quot;organizationId&quot;) Long organizationId) {
+        LOGGER.info(&quot;Employee find: organizationId={}&quot;, organizationId);
+        return repository.findByOrganization(organizationId);
+    }
+
+}</code></code></pre>
+<p>我们使用CDI进行依赖注入，使用SLF4J进行日志记录。 Controller类使用内存存储库bean存储和检索数据。Repository bean使用CDI <code>@ApplicationScoped</code>注解，并注入controller:</p>
+<pre class="java"><code>@ApplicationScoped
+public class EmployeeRepository {
+
+    private Set&lt;Employee&gt; employees = new HashSet&lt;&gt;();
+
+    public EmployeeRepository() {
+        add(new Employee(1L, 1L, &quot;John Smith&quot;, 30, &quot;Developer&quot;));
+        add(new Employee(1L, 1L, &quot;Paul Walker&quot;, 40, &quot;Architect&quot;));
+    }
+
+    public Employee add(Employee employee) {
+        employee.setId((long) (employees.size()+1));
+        employees.add(employee);
+        return employee;
+    }
+
+    public Employee findById(Long id) {
+        Optional&lt;Employee&gt; employee = employees.stream().filter(a -&gt; a.getId().equals(id)).findFirst();
+        if (employee.isPresent())
+            return employee.get();
+        else
+            return null;
+    }
+
+    public Set&lt;Employee&gt; findAll() {
+        return employees;
+    }
+
+    public Set&lt;Employee&gt; findByDepartment(Long departmentId) {
+        return employees.stream().filter(a -&gt; a.getDepartmentId().equals(departmentId)).collect(Collectors.toSet());
+    }
+
+    public Set&lt;Employee&gt; findByOrganization(Long organizationId) {
+        return employees.stream().filter(a -&gt; a.getOrganizationId().equals(organizationId)).collect(Collectors.toSet());
+    }
+
+}</code></code></pre>
+<p>最后一个组件是带验证的实体类:</p>
+<pre class="java"><code>public class Employee {
+
+    private Long id;
+    @NotNull
+    private Long organizationId;
+    @NotNull
+    private Long departmentId;
+    @NotBlank
+    private String name;
+    @Min(1)
+    @Max(100)
+    private int age;
+    @NotBlank
+    private String position;
+
+    // ... GETTERS AND SETTERS
+
+}</code></code></pre>
+<h3 id="单元测试">3. 单元测试</h3>
+<p>对于大多数流行的Java框架，使用Quarkus进行单元测试非常简单。如果您正在测试基于REST的web应用程序，您应该在<code>pom.xml</code>中包含以下依赖项:</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-junit5&lt;/artifactId&gt;
+    &lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.rest-assured&lt;/groupId&gt;
+    &lt;artifactId&gt;rest-assured&lt;/artifactId&gt;
+    &lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>让我们分析一下来自organization-service(我们的另一个微服务，以及employee-service和department-service)的测试类。测试类应该用<code>@QuarkusTest</code>注释。我们可以通过<code>@Inject</code>注解注入其他bean。其余部分是典型的JUnit和RestAssured—我们正在测试controller公开的API方法。因为我们使用内存存储库，所以除了服务间通信之外，我们不需要模拟任何东西(我们将在本文后面讨论)。对于GET、POST方法，我们有一些积极的场景，还有一个不通过输入验证的消极场景(<code>testInvalidAdd</code>)。</p>
+<pre class="java"><code>@QuarkusTest
+public class OrganizationControllerTests {
+
+    @Inject
+    OrganizationRepository repository;
+
+    @Test
+    public void testFindAll() {
+        given().when().get(&quot;/organizations&quot;).then().statusCode(200).body(notNullValue());
+    }
+
+    @Test
+    public void testFindById() {
+        Organization organization = new Organization(&quot;Test3&quot;, &quot;Address3&quot;);
+        organization = repository.add(organization);
+        given().when().get(&quot;/organizations/{id}&quot;, organization.getId()).then().statusCode(200)
+                .body(&quot;id&quot;, equalTo(organization.getId().intValue()))
+                .body(&quot;name&quot;, equalTo(organization.getName()));
+    }
+
+    @Test
+    public void testFindByIdWithDepartments() {
+        given().when().get(&quot;/organizations/{id}/with-departments&quot;, 1L).then().statusCode(200)
+                .body(notNullValue())
+                .body(&quot;departments.size()&quot;, is(1));
+    }
+
+    @Test
+    public void testAdd() {
+        Organization organization = new Organization(&quot;Test5&quot;, &quot;Address5&quot;);
+        given().contentType(&quot;application/json&quot;).body(organization)
+                .when().post(&quot;/organizations&quot;).then().statusCode(200)
+                .body(&quot;id&quot;, notNullValue())
+                .body(&quot;name&quot;, equalTo(organization.getName()));
+    }
+
+    @Test
+    public void testInvalidAdd() {
+        Organization organization = new Organization();
+        given().contentType(&quot;application/json&quot;).body(organization).when().post(&quot;/organizations&quot;).then().statusCode(400);
+    }
+
+}</code></code></pre>
+<h3 id="服务间通信">4. 服务间通信</h3>
+<p>由于Quarkus的目标是在Kubernetes上运行，因此它不提供任何对第三方服务发现(例如通过Consul 或Netflix Eureka)和与此发现集成的HTTP客户机的内置支持。然而，Quarkus为REST通信提供了专用的客户端支持。要使用它，我们首先需要包括以下依赖性:</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-rest-client&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>Quarkus基于MicroProfile REST客户机提供声明性REST客户机。您需要创建一个带有所需方法的接口，并使用<code>@RegisterRestClient</code>对其进行注解。其他注解与服务器端非常相似。因为您使用<code>@RegisterRestClient</code>来标记Quarkus，所以应该知道这个接口作为REST客户机可用于CDI注入。</p>
+<pre class="java"><code>@Path(&quot;/departments&quot;)
+@RegisterRestClient
+public interface DepartmentClient {
+
+    @GET
+    @Path(&quot;/organization/{organizationId}&quot;)
+    @Produces(MediaType.APPLICATION_JSON)
+    List&lt;Department&gt; findByOrganization(@PathParam(&quot;organizationId&quot;) Long organizationId);
+
+    @GET
+    @Path(&quot;/organization/{organizationId}/with-employees&quot;)
+    @Produces(MediaType.APPLICATION_JSON)
+    List&lt;Department&gt; findByOrganizationWithEmployees(@PathParam(&quot;organizationId&quot;) Long organizationId);
+
+}</code></code></pre>
+<p>现在，让我们看一下organization-service内的controller类。与<code>@Inject</code>一起，我们需要使用<code>@RestClient</code>注解来正确地注入REST客户机bean。之后，您可以使用接口方法来调用其他公开的服务</p>
+<pre class="java"><code>@Path(&quot;/organizations&quot;)
+@Produces(MediaType.APPLICATION_JSON)
+public class OrganizationController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(OrganizationController.class);
+
+    @Inject
+    OrganizationRepository repository;
+    @Inject
+    @RestClient
+    DepartmentClient departmentClient;
+    @Inject
+    @RestClient
+    EmployeeClient employeeClient;
+
+    // ... OTHER FIND METHODS
+
+    @Path(&quot;/{id}/with-departments&quot;)
+    @GET
+    public Organization findByIdWithDepartments(@PathParam(&quot;id&quot;) Long id) {
+        LOGGER.info(&quot;Organization find: id={}&quot;, id);
+        Organization organization = repository.findById(id);
+        organization.setDepartments(departmentClient.findByOrganization(organization.getId()));
+        return organization;
+    }
+
+    @Path(&quot;/{id}/with-departments-and-employees&quot;)
+    @GET
+    public Organization findByIdWithDepartmentsAndEmployees(@PathParam(&quot;id&quot;) Long id) {
+        LOGGER.info(&quot;Organization find: id={}&quot;, id);
+        Organization organization = repository.findById(id);
+        organization.setDepartments(departmentClient.findByOrganizationWithEmployees(organization.getId()));
+        return organization;
+    }
+
+    @Path(&quot;/{id}/with-employees&quot;)
+    @GET
+    public Organization findByIdWithEmployees(@PathParam(&quot;id&quot;) Long id) {
+        LOGGER.info(&quot;Organization find: id={}&quot;, id);
+        Organization organization = repository.findById(id);
+        organization.setEmployees(employeeClient.findByOrganization(organization.getId()));
+        return organization;
+    }
+
+}</code></code></pre>
+<p>通信中缺少的最后一个东西是目标服务的地址。我们可以使用<code>@RegisterRestClient</code>注解的字段<code>baseUri</code> 来提供它们。然而，更好的解决方案似乎是将它们放在<code>application.properties</code>中。属性名需要包含客户端接口的完全限定名和后缀<code>mp-rest/url</code>。</p>
+<pre class="properties"><code>pl.piomin.services.organization.client.DepartmentClient/mp-rest/url=http://localhost:8090
+pl.piomin.services.organization.client.EmployeeClient/mp-rest/url=http://localhost:8080</code></code></pre>
+<p>在前一节中，我已经提到了单元测试和服务间通信。要测试与其他应用程序通信的API方法，我们需要模拟REST客户机。下面是为模拟示例创建了<code>DepartmentClient</code>。它应该只在测试期间可见，所以我们必须将它放在<code>src/test/java</code>中。如果我们用<code>@Mock</code> 和<code>@RestClient</code>注释它，那么默认情况下将自动使用这个bean，而不是在<code>src/main/java</code>中定义的声明性REST客户机。</p>
+<pre class="java"><code>@Mock
+@ApplicationScoped
+@RestClient
+public class MockDepartmentClient implements DepartmentClient {
+
+    @Override
+    public List&lt;Department&gt; findByOrganization(Long organizationId) {
+        return Collections.singletonList(new Department(&quot;Test1&quot;));
+    }
+
+    @Override
+    public List&lt;Department&gt; findByOrganizationWithEmployees(Long organizationId) {
+        return null;
+    }
+
+}</code></code></pre>
+<h3 id="监测和记录">5. 监测和记录</h3>
+<p>我们可以轻松地使用Quarkus公开健康检查或API文档。API文档是使用OpenAPI/Swagger构建的。Quarkus利用了 <a href="https://smallrye.io/projects/">SmallRye</a>项目中可用的库。我们应该在<code>pom.xml</code>中包含以下依赖项:</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-smallrye-openapi&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+    &lt;artifactId&gt;quarkus-smallrye-health&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>我们可以定义两种类型的健康检查:readiness 和liveness。有<code>/health/ready</code> 和<code>/health/live</code>上下文路径。要将它们公开到应用程序之外，我们需要定义一个实现MicroProfile <code>HealthCheck</code> 接口的bean。Readiness 端应该用<code>@Readiness</code>标注，而liveness 端应该用<code>@Liveness</code>标注。</p>
+<pre class="java"><code>@ApplicationScoped
+@Readiness
+public class ReadinessHealthcheck implements HealthCheck {
+
+    @Override
+    public HealthCheckResponse call() {
+        return HealthCheckResponse.named(&quot;Employee Health Check&quot;).up().build();
+    }
+
+}</code></code></pre>
+<p>为了启用Swagger文档，我们只需要添加一个依赖项即可。Quarkus还为Swagger提供了内置UI。默认情况下，它是在开发模式下启用的，所以如果您愿意在生产环境中使用它，您应该添加<code>quarkus.swagger-ui.always-include=true</code>到您的<code>application.properties</code>文件。现在，如果通过执行Maven命令<code>mvn compile quarkus:dev</code>在本地以开发模式运行应用程序employee-service，您可以在URLhttp://localhost:8080/swagger-ui下查看可用的API规范。</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南0.png" alt="quarkus-swagger" /></p>
+<p>这是我从应用程序启动时的日志。它打印监听端口和加载的扩展列表。</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南1.png" alt="quarkus-startup" /></p>
+<h3 id="在本地机器上运行微服务">6. 在本地机器上运行微服务</h3>
+<p>因为我们希望在同一台机器上运行多个应用程序，所以需要覆盖它们的默认HTTP监听端口。虽然employee-service仍然在默认的<code>8080</code> 端口上运行，但是其他微服务使用不同的端口，如下所示。</p>
+<p>department-service:<br />
+<img src="./images/使用Quarkus在Openshift上构建微服务的快速指南2.png" alt="quarkus-port-department" /></p>
+<p>organization-service:<br />
+<img src="./images/使用Quarkus在Openshift上构建微服务的快速指南3.png" alt="quarkus-port-organization" /></p>
+<p>让我们测试一下Swagger UI中的服务间通信。我调用了<code>GET /organizations/{id}/with-departments</code>，它调用由department-service公开的端点GET <code>GET /departments/organization/{organizationId}</code>。结果如下图所示。</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南4.png" alt="quarkus-communication" /></p>
+<h3 id="在openshift上运行微服务">7. 在OpenShift上运行微服务</h3>
+<p>我们已经完成了示例微服务体系结构的实现，并在本地机器上运行它们。现在，我们可以进行最后一步，并尝试在 Minishift上部署这些应用程序。在OpenShift上部署Quarkus应用程序时，我们有一些不同的方法。今天，我将向您展示如何利用S2I为此构建的机制。</p>
+<p>我们将使用Quarkus <strong>GraalVM Native S2I Builder</strong>。可以在 quai.io的 <code>quarkus/ubi-quarkus-native-s2i</code>找到。当然，在部署应用程序之前，我们需要先启动Minishift。根据Quarkus的文档，基于GraalVM的本机构建占用了大量内存和CPU，所以我决定为Minishift设置6GB和4个内核。</p>
+<pre><code><code>$ minishift start --vm-driver=virtualbox --memor</code></code></pre>
+<p>此外，我们还需要稍微修改一下应用程序的源代码。您可能还记得，我们使用JDK 11在本地运行它们。Quarkus S2I builder只支持JDK 8，所以我们需要在<code>pom.xml</code>中更改它。我们还需要包括一个声明的<code>本机</code>配置文件如下:</p>
+<pre class="xml"><code>&lt;properties&gt;
+    &lt;quarkus.version&gt;0.21.1&lt;/quarkus.version&gt;
+    &lt;project.build.sourceEncoding&gt;UTF-8&lt;/project.build.sourceEncoding&gt;
+    &lt;maven.compiler.source&gt;1.8&lt;/maven.compiler.source&gt;
+    &lt;maven.compiler.target&gt;1.8&lt;/maven.compiler.target&gt;
+&lt;/properties&gt;
+...
+&lt;profiles&gt;
+    &lt;profile&gt;
+        &lt;id&gt;native&lt;/id&gt;
+        &lt;activation&gt;
+            &lt;property&gt;
+                &lt;name&gt;native&lt;/name&gt;
+            &lt;/property&gt;
+        &lt;/activation&gt;
+        &lt;build&gt;
+            &lt;plugins&gt;
+                &lt;plugin&gt;
+                    &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+                    &lt;artifactId&gt;quarkus-maven-plugin&lt;/artifactId&gt;
+                    &lt;version&gt;${quarkus.version}&lt;/version&gt;
+                    &lt;executions&gt;
+                        &lt;execution&gt;
+                            &lt;goals&gt;
+                                &lt;goal&gt;native-image&lt;/goal&gt;
+                            &lt;/goals&gt;
+                            &lt;configuration&gt;
+                                &lt;enableHttpUrlHandler&gt;true&lt;/enableHttpUrlHandler&gt;
+                            &lt;/configuration&gt;
+                        &lt;/execution&gt;
+                    &lt;/executions&gt;
+                &lt;/plugin&gt;
+                &lt;plugin&gt;
+                    &lt;artifactId&gt;maven-failsafe-plugin&lt;/artifactId&gt;
+                    &lt;version&gt;2.22.1&lt;/version&gt;
+                    &lt;executions&gt;
+                        &lt;execution&gt;
+                            &lt;goals&gt;
+                                &lt;goal&gt;integration-test&lt;/goal&gt;
+                                &lt;goal&gt;verify&lt;/goal&gt;
+                            &lt;/goals&gt;
+                            &lt;configuration&gt;
+                                &lt;systemProperties&gt;
+                                    &lt;native.image.path&gt;${project.build.directory}/${project.build.finalName}-runner&lt;/native.image.path&gt;
+                                &lt;/systemProperties&gt;
+                            &lt;/configuration&gt;
+                        &lt;/execution&gt;
+                    &lt;/executions&gt;
+                &lt;/plugin&gt;
+            &lt;/plugins&gt;
+        &lt;/build&gt;
+    &lt;/profile&gt;
+&lt;/profiles&gt;</code></code></pre>
+<p>另外在<code>application.properties</code>文件需要修改两处。我们不需要覆盖端口号，因为 Minishift动态地为每个pod分配虚拟IP。服务间的通信是通过OpenShift发现实现的，所以我们只需要设置服务的名称而不是localhost。</p>
+<pre class="properties"><code>quarkus.swagger-ui.always-include=true
+pl.piomin.services.organization.client.DepartmentClient/mp-rest/url=http://department:8080
+pl.piomin.services.organization.client.EmployeeClient/mp-rest/url=http://employee:8080</code></code></pre>
+<p>最后，我们可以将我们的应用程序部署到Minishift上。为此，你应使用<code>oc</code>客户端执行以下命令:</p>
+<pre><code><code>$ oc new-app quay.io/quarkus/ubi-quarkus-native-s2i:19.1.1~https://github.com/piomin/sample-quarkus-microservices.git#openshift --context-dir=employee --name=employee
+$ oc new-app quay.io/quarkus/ubi-quarkus-native-s2i:19.1.1~https://github.com/piomin/sample-quarkus-microservices.git#openshift --context-dir=department --name=department
+$ oc new-app quay.io/quarkus/ubi-quarkus-native-s2i:19.1.1~https://github.com/piomin/sample-quarkus-microservices.git#openshift --context-dir=organization --name=organization</code></code></pre>
+<p>正如您所看到的，可以在我的GitHub帐户上找到找到程序源代码，地址是https://github.com/piomin/sample-quarkus-microservices.git。在Minishift 上运行的版本已经在分支<strong>openshift</strong>中共享。在本地机器上运行的版本在<strong>主分支</strong>上可用。因为所有的应用程序都存储在一个库中，所以我们需要为每个部署定义一个参数<code>context-dir</code> 。</p>
+<p>我很失望。虽然为minishift 设置更多的内存和CPU花费了我很长的时间——大约25分钟。</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南5.png" alt="quarkus-builds" /></p>
+<p>然而，经过长时间的等待，我的所有应用程序终于都部署好了。</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南6.png" alt="quarkus-openshift-overview" /></p>
+<p>我通过执行下面可见的命令将它们公开在Minishift 外。可以使用DNS <code>http://${APP_NAME}-myproject.192.168.99.100.nip.io</code>下的OpenShift路由测试它们。</p>
+<pre><code><code>$ oc expose svc employee
+$ oc expose svc department
+$ oc expose svc organization</code></code></pre>
+<p>此外，您还可以在OpenShift上启用readiness 和liveness 健康检查，因为它们在默认情况下是禁用的。</p>
+<h2 id="quarkus-health"><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南7.png" alt="quarkus-health" /></h2>
+<p>9月福利，关注公众号<br />
+​<br />
+后台回复：004，领取8月翻译集锦!<br />
+​<br />
+往期福利回复：001，002, 003即可领取！</p>
+<p><img src="./images/使用Quarkus在Openshift上构建微服务的快速指南8.png" alt="img" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

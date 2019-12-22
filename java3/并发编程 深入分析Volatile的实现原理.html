@@ -1,0 +1,81 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修并发编程 深入分析Volatile的实现原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>并发编程 深入分析Volatile的实现原理</center></div><div class='banquan'>原文出处:本文由博客园博主不忘初心1987提供。<br/>
+原文连接:https://www.cnblogs.com/buwangchuxin000/p/11573369.html</div><br>
+    <p>在多线程并发编程中synchronized和Volatile都扮演着重要的角色，Volatile是<strong>轻量级的synchronized</strong>，它在多处理器开发中保证了共享变量的&ldquo;可见性&rdquo;。可见性的意思是当一个线程修改一个共享变量时，另外一个线程能读到这个修改的值。它在某些情况下比synchronized的开销更小，本文将深入分析在硬件层面上Inter处理器是如何实现Volatile的，通过深入分析能帮助我们正确的使用Volatile变量。</p>
+<p>&nbsp;</p>
+<h2><strong>术语定义</strong></h2>
+<table border="1" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td valign="top" width="110">术语</td>
+<td valign="top" width="155">英文单词</td>
+<td valign="top" width="288">描述</td>
+</tr>
+<tr>
+<td valign="top" width="110">共享变量</td>
+<td valign="top" width="155">&nbsp;</td>
+<td valign="top" width="288">在多个线程之间能够被共享的变量被称为共享变量。共享变量包括所有的实例变量，静态变量和数组元素。他们都被存放在堆内存中，Volatile只作用于共享变量。</td>
+</tr>
+<tr>
+<td valign="top" width="110">内存屏障</td>
+<td valign="top" width="155">Memory Barriers</td>
+<td valign="top" width="288">是一组处理器指令，用于实现对内存操作的顺序限制。</td>
+</tr>
+<tr>
+<td valign="top" width="110">缓冲行</td>
+<td valign="top" width="155">Cache line</td>
+<td valign="top" width="288">缓存中可以分配的最小存储单位。处理器填写缓存线时会加载整个缓存线，需要使用多个主内存读周期。</td>
+</tr>
+<tr>
+<td valign="top" width="110">原子操作</td>
+<td valign="top" width="155">Atomic operations</td>
+<td valign="top" width="288">不可中断的一个或一系列操作。</td>
+</tr>
+<tr>
+<td valign="top" width="110">缓存行填充</td>
+<td valign="top" width="155">cache line fill</td>
+<td valign="top" width="288">当处理器识别到从内存中读取操作数是可缓存的，处理器读取整个缓存行到适当的缓存（L1，L2，L3的或所有）</td>
+</tr>
+<tr>
+<td valign="top" width="110">缓存命中</td>
+<td valign="top" width="155">cache hit</td>
+<td valign="top" width="288">如果进行高速缓存行填充操作的内存位置仍然是下次处理器访问的地址时，处理器从缓存中读取操作数，而不是从内存。</td>
+</tr>
+<tr>
+<td valign="top" width="110">写命中</td>
+<td valign="top" width="155">write hit</td>
+<td valign="top" width="288">当处理器将操作数写回到一个内存缓存的区域时，它首先会检查这个缓存的内存地址是否在缓存行中，如果存在一个有效的缓存行，则处理器将这个操作数写回到缓存，而不是写回到内存，这个操作被称为写命中。</td>
+</tr>
+<tr>
+<td valign="top" width="110">写缺失</td>
+<td valign="top" width="155">write misses the cache</td>
+<td valign="top" width="288">一个有效的缓存行被写入到不存在的内存区域。</td>
+</tr>
+</tbody>
+</table>
+<h2><strong>Volatile的官方定义</strong></h2>
+<p>Java语言规范第三版中对volatile的定义如下： java编程语言允许线程访问共享变量，为了确保共享变量能被准确和一致的更新，线程应该确保通过排他锁单独获得这个变量。Java语言提供了volatile，在某些情况下比锁更加方便。如果一个字段被声明成volatile，java线程内存模型确保所有线程看到这个变量的值是一致的。</p>
+<h2><strong>为什么要使用Volatile</strong></h2>
+<p>Volatile变量修饰符如果使用<strong>恰当</strong>的话，它比synchronized的<strong>使用和执行成本会更低</strong>，因为它不会引起线程上下文的切换和调度。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

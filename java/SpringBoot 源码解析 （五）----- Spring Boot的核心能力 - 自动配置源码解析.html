@@ -1,0 +1,214 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11837043.html</div><br>
+    <p>在上一篇博客中分析了<code>springBoot</code>启动流程，大体的轮廓只是冰山一角。今天就来看一下<code>springBoot</code>的亮点功能：自动化装配功能。</p>
+<p>先从<code>@SpringBootApplication</code>开始。在启动流程章节中，我们讲述了SpringBoot2大致的启动步骤，并进行了源码详解。但是在刷新容器这块并未展开，refreshContext(context);简单的一行代码，背后却做了太多事情。所以为了不喧宾夺主，本篇也尽量选取和注解@SpringBootApplication有关的方法讲解。</p>
+<h2>springBoot启动类加载</h2>
+<p>首先加载springBoot启动类注入到spring容器中beanDefinitionMap中，看下prepareContext方法中的load方法：load(context, sources.toArray(new Object[0]));<br />跟进该方法最终会执行BeanDefinitionLoader的load方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> load(Object source) {
+    Assert.notNull(source, </span>"Source must not be null"<span style="color: #000000;">);
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">如果是class类型，启用注解类型</span>
+    <span style="color: #0000ff;">if</span> (source <span style="color: #0000ff;">instanceof</span> Class&lt;?&gt;<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> load((Class&lt;?&gt;<span style="color: #000000;">) source);
+    }
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">如果是resource类型，启用xml解析</span>
+    <span style="color: #0000ff;">if</span> (source <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Resource) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> load((Resource) source);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果是package类型，启用扫描包，例如：@ComponentScan</span>
+    <span style="color: #0000ff;">if</span> (source <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Package) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> load((Package) source);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果是字符串类型，直接加载</span>
+    <span style="color: #0000ff;">if</span> (source <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> CharSequence) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> load((CharSequence) source);
+    }
+    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Invalid source type " +<span style="color: #000000;"> source.getClass());
+}</span></code></pre>
+
+<p>继续跟进<code>load(Class&lt;?&gt; source)</code>方法：</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析0.png" alt="" /></p>
+<p>上述方法判断启动类中是否包含@component注解，可我们的启动类并没有该注解。继续跟进会发现，AnnotationUtils判断是否包含该注解是通过递归实现，注解上的注解若包含指定类型也是可以的。</p>
+<p>启动类中包含@SpringBootApplication注解，进一步查找到@SpringBootConfiguration注解，然后查找到@Component注解，最后会查找到@Component注解：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+<strong>@Component
+</strong></span><span style="color: #0000ff;">public</span> @<span style="color: #0000ff;">interface</span><span style="color: #000000;"> Configuration {
+}</span></code></pre>
+
+<p>在查找到<code>@Component</code>注解后，表面该对象为spring bean，然后会将其信息包装成 beanDefinitaion ，添加到容器的 beanDefinitionMap中。如下：</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析1.png" alt="" /></p>
+<p>如此一来，我们的启动类就被包装成<code>AnnotatedGenericBeanDefinition</code>了，后续启动类的处理都基于该对象了。</p>
+<h2 id="入口注解类enableautoconfiguration">@EnableAutoConfiguration</h2>
+<p><strong>@SpringBootApplication</strong>注解中包含了自动配置的入口注解：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@SpringBootConfiguration
+<strong>@EnableAutoConfiguration</strong>
+@ComponentScan(excludeFilters </span>=<span style="color: #000000;"> {
+        @Filter(type </span>= FilterType.CUSTOM, classes = TypeExcludeFilter.<span style="color: #0000ff;">class</span><span style="color: #000000;">),
+        @Filter(type </span>= FilterType.CUSTOM, classes = AutoConfigurationExcludeFilter.<span style="color: #0000ff;">class</span><span style="color: #000000;">) })
+</span><span style="color: #0000ff;">public</span> @<span style="color: #0000ff;">interface</span> SpringBootApplication {}</code></pre>
+
+<p>我们跟进去看看<strong>@EnableAutoConfiguration</strong></p>
+<src class="cnblogs_code">
+<pre><code><strong><span style="color: #000000;">@AutoConfigurationPackage
+@Import(EnableAutoConfigurationImportSelector.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span></strong><span style="color: #0000ff;">public</span> @<span style="color: #0000ff;">interface</span> EnableAutoConfiguration {}</code></pre>
+
+<h3>@AutoConfigurationPackage</h3>
+<ul>
+<li>自动配置包注解</li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><strong>@Import(AutoConfigurationPackages.Registrar.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span></strong><span style="color: #0000ff;">public</span> @<span style="color: #0000ff;">interface</span> AutoConfigurationPackage {}</code></pre>
+
+<p>@Import(AutoConfigurationPackages.Registrar.class)：默认将主配置类(@SpringBootApplication)所在的包及其子包里面的所有组件扫描到Spring容器中。如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Order(Ordered.HIGHEST_PRECEDENCE)
+</span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> Registrar <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ImportBeanDefinitionRegistrar, DeterminableImports {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerBeanDefinitions(AnnotationMetadata metadata,
+            BeanDefinitionRegistry registry) {
+         </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">默认将会扫描@SpringBootApplication标注的主配置类所在的包及其子包下所有组件</span>
+        register(registry, <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> PackageImport(metadata).getPackageName());</strong>
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Set&lt;Object&gt;<span style="color: #000000;"> determineImports(AnnotationMetadata metadata) {
+        </span><span style="color: #0000ff;">return</span> Collections.&lt;Object&gt;singleton(<span style="color: #0000ff;">new</span><span style="color: #000000;"> PackageImport(metadata));
+    }
+}</span></code></pre>
+
+<h3><code class="java  language-java"><span class="token annotation punctuation">@Import<span class="token punctuation">(<span class="token class-name">EnableAutoConfigurationImportSelector<span class="token punctuation">.<span class="token keyword">class<span class="token punctuation">)</span></span></span></span></span></span></code></h3>
+<p>EnableAutoConfigurationImportSelector： 导入哪些组件的选择器，将所有需要导入的组件以全类名的方式返回，这些组件就会被添加到容器中。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">//</span><span style="color: #008000;">EnableAutoConfigurationImportSelector的父类：AutoConfigurationImportSelector</span>
+<span style="color: #008080;"> 2</span> <span style="color: #000000;">@Override
+</span><span style="color: #008080;"> 3</span> <span style="color: #0000ff;">public</span><span style="color: #000000;"> String[] selectImports(AnnotationMetadata annotationMetadata) {
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isEnabled(annotationMetadata)) {
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> NO_IMPORTS;
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 8</span>         AutoConfigurationMetadata autoConfigurationMetadata =<span style="color: #000000;"> AutoConfigurationMetadataLoader
+</span><span style="color: #008080;"> 9</span>             .loadMetadata(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanClassLoader);
+</span><span style="color: #008080;">10</span>         AnnotationAttributes attributes =<span style="color: #000000;"> getAttributes(annotationMetadata);
+</span><span style="color: #008080;">11</span>         <strong>List&lt;String&gt; configurations =<span style="color: #000000;"> getCandidateConfigurations(annotationMetadata, attributes);
+</span></strong><span style="color: #008080;">12</span>         configurations =<span style="color: #000000;"> removeDuplicates(configurations);
+</span><span style="color: #008080;">13</span>         configurations =<span style="color: #000000;"> sort(configurations, autoConfigurationMetadata);
+</span><span style="color: #008080;">14</span>         Set&lt;String&gt; exclusions =<span style="color: #000000;"> getExclusions(annotationMetadata, attributes);
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        checkExcludedClasses(configurations, exclusions);
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">        configurations.removeAll(exclusions);
+</span><span style="color: #008080;">17</span>         configurations =<span style="color: #000000;"> filter(configurations, autoConfigurationMetadata);
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">        fireAutoConfigurationImportEvents(configurations, exclusions);
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">return</span> configurations.toArray(<span style="color: #0000ff;">new</span><span style="color: #000000;"> String[configurations.size()]);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">21</span>     <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException ex) {
+</span><span style="color: #008080;">22</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IllegalStateException(ex);
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">24</span> }</code></pre>
+
+<p>我们主要看第11行<code>List&lt;String&gt; configurations = getCandidateConfigurations(annotationMetadata, attributes);</code>会给容器中注入众多的自动配置类（xxxAutoConfiguration），就是给容器中导入这个场景需要的所有组件，并配置好这些组件。获取这些组件后，还要过滤一下这些组件，我们跟进去看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> List&lt;String&gt;<span style="color: #000000;"> getCandidateConfigurations(AnnotationMetadata metadata,
+            AnnotationAttributes attributes) {
+    List</span>&lt;String&gt; configurations =<span style="color: #000000;"> SpringFactoriesLoader.<strong>loadFactoryNames</strong>(<strong>getSpringFactoriesLoaderFactoryClass</strong>(), getBeanClassLoader());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+    <span style="color: #0000ff;">return</span><span style="color: #000000;"> configurations;
+}
+
+</span><span style="color: #0000ff;">protected</span> Class&lt;?&gt;<span style="color: #000000;"> getSpringFactoriesLoaderFactoryClass() {
+    </span><span style="color: #0000ff;">return</span><strong> EnableAutoConfiguration.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>;</strong>
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String FACTORIES_RESOURCE_LOCATION = <strong>"META-INF/spring.factories"<span style="color: #000000;">;
+
+</span></strong><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;String&gt; loadFactoryNames(Class&lt;?&gt;<span style="color: #000000;"> factoryClass, ClassLoader classLoader) {
+    String factoryClassName </span>=<span style="color: #000000;"> factoryClass.getName();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">从类路径的META-INF/spring.factories中加载所有默认的自动配置类</span>
+        Enumeration&lt;URL&gt; urls = (classLoader != <span style="color: #0000ff;">null</span> ?</strong><span style="color: #000000;"><strong> classLoader.getResources(FACTORIES_RESOURCE_LOCATION) :
+                                 ClassLoader.getSystemResources(FACTORIES_RESOURCE_LOCATION));</strong>
+        List</span>&lt;String&gt; result = <span style="color: #0000ff;">new</span> ArrayList&lt;String&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (urls.hasMoreElements()) {
+            URL url </span>=<span style="color: #000000;"> urls.nextElement();
+            Properties properties </span>= PropertiesLoaderUtils.loadProperties(<span style="color: #0000ff;">new</span><span style="color: #000000;"> UrlResource(url));
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">获取EnableAutoConfiguration指定的所有值,也就是EnableAutoConfiguration.class的值</span>
+            String factoryClassNames =</strong><span style="color: #000000;"><strong> properties.getProperty(factoryClassName);</strong>
+            result.addAll(Arrays.asList(StringUtils.commaDelimitedListToStringArray(factoryClassNames)));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException ex) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Unable to load [" + factoryClass.getName() + "] factories from location [" + FACTORIES_RESOURCE_LOCATION + "]"<span style="color: #000000;">, ex);
+    }
+}</span></code></pre>
+
+<p>SpringBoot启动的时候从类路径下的&nbsp;META-INF/spring.factories中获取EnableAutoConfiguration指定的值，并将这些值作为自动配置类导入到容器中，自动配置类就会生效，最后完成自动配置工作。EnableAutoConfiguration默认在spring-boot-autoconfigure这个包中，如下图</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析2.png" alt="" /></p>
+<p>最终有96个自动配置类被加载并注册进Spring容器中</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析3.png" alt="" /></p>
+<p>我们也可以将需要自动配置的Bean写入这个文件</p>
+<h2>自定义starter</h2>
+<p>首先定义一个配置类模块：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;"><strong>@Configuration</strong>
+<strong>@ConditionalOnProperty(name </strong></span><strong>= "enabled.autoConfituration", matchIfMissing = <span style="color: #0000ff;">true</span><span style="color: #000000;">)
+</span></strong><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MyAutoConfiguration {
+
+    </span><span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+        System.out.println(</span>"myAutoConfiguration init..."<span style="color: #000000;">);
+    }
+
+    @Bean
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SimpleBean simpleBean(){
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleBean();
+    }
+
+}</span></code></pre>
+
+<p>然后定义一个starter模块，里面无需任何代码，pom也无需任何依赖，只需在META-INF下面建一个&nbsp;<code>spring.factories</code>文件，添加如下配置：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+spring.study.startup.bean.MyAutoConfiguration</span></code></pre>
+
+<p>如图所示：</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析4.png" alt="" /></p>
+<p>最后只需在启动类项目的pom中引入我们的 starter 模块即可。</p>
+<h3>原理</h3>
+<p>最终在<code>AutoConfigurationImportSelector</code>解析<code>spring.factories</code>文件：</p>
+<p><img src="./images/SpringBoot 源码解析 （五）----- Spring Boot的核心能力 - 自动配置源码解析5.png" alt="" /></p>
+<p><strong>springBoot为我们提供的配置类有180多个，但是我们不可能会全部引入。按条件注解 @Conditional或者@ConditionalOnProperty等相关注解进行判断，决定是否需要装配。</strong></p>
+<p>我们自定义的配置类也是以相同的逻辑进行装配，我们指定了以下注解：</p>
+<src class="cnblogs_code">
+<pre><code>@ConditionalOnProperty(name = "enabled.autoConfituration", matchIfMissing = true)</code></pre>
+
+<p>默认为 true，所以自定义的starter成功执行。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

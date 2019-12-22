@@ -1,0 +1,110 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修shiro小记' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>shiro小记</center></div><div class='banquan'>原文出处:本文由博客园博主無腳鳥提供。<br/>
+原文连接:https://www.cnblogs.com/steveshao/p/11636856.html</div><br>
+    <p>今天主要看了Shiro的认证，授权功能初步了解了一下，其他的功能用的不多，之后再看。</p>
+<p>先说一下Shiro的三个核心概念：</p>
+<p>1、Subject： 代表当前正在执行操作的用户，但Subject代表的可以是人，也可以是任何第三方系统帐号。当然每个subject实例都会被绑定到SercurityManger上。<br />2、SecurityManger:SecurityManager是Shiro核心，主要协调Shiro内部的各种安全组件，这个我们不需要太关注，只需要知道可以设置自定的Realm。<br />3、Realm:用户数据和Shiro数据交互的桥梁。比如需要用户身份认证、权限认证。都是需要通过Realm来读取数据。</p>
+<h2 id="认证">认证</h2>
+<p>下面的例子是以继承了AuthenticatingRealm的自定义Realm来实现自定义认证。<br />认证依赖于方法doGetAuthenticationInfo，需要返回一个AuthenticationInfo，通常返回一个他的子类SimpleAuthenticationInfo，构造方法的第一个参数是用户名，第二个是验证密码，第三个是当前realm的className。</p>
+<p>&nbsp;</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package com.demo.realms;
+
+import org.apache.shiro.authc.*;
+import org.apache.shiro.realm.AuthenticatingRealm;
+
+public class MyRealm extends AuthenticatingRealm {
+    @Override
+    protected AuthenticationInfo doGetAuthenticationInfo(AuthenticationToken token)  {
+        System.out.println("MyRealm认证中----&gt;用户："+token.getPrincipal());
+        // 可以从token中获取用户名来从数据库中查询数据
+        UsernamePasswordToken upToken = (UsernamePasswordToken) token;
+        String password="123456";// 假设这是从数据库中查询到的用户密码
+        // 创建一个SimpleAuthenticationInfo，第一个参数是用户名，第二个是验证密码，第三个是当前realm的className
+        // 验证密码会与用户提交的密码进行比对
+        SimpleAuthenticationInfo info = new SimpleAuthenticationInfo(upToken.getUsername(),password,this.getName());
+        return info;
+    }
+}
+</code></pre>
+
+<p>&nbsp;</p>
+<h2 id="授权">授权</h2>
+<p>下面的例子是以继承了AuthorizingRealm的自定义Realm来实现自定义认证和自定义授权。<br />授权依赖于方法doGetAuthorizationInfo，需要返回一个AuthorizationInfo，通常返回一个他的子类SimpleAuthorizationInfo。构造SimpleAuthorizationInfo可以空构造，也可以传入一个<code>Set&lt;String&gt; roles</code>来构造。</p>
+<p>&nbsp;</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package com.demo.realms;
+
+import org.apache.shiro.authc.*;
+import org.apache.shiro.authz.AuthorizationInfo;
+import org.apache.shiro.authz.SimpleAuthorizationInfo;
+import org.apache.shiro.realm.AuthorizingRealm;
+import org.apache.shiro.subject.PrincipalCollection;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public class RealmForDouble extends AuthorizingRealm {
+//    授权
+    @Override
+    protected AuthorizationInfo doGetAuthorizationInfo(PrincipalCollection principals) {
+        // 1. 获取授权的用户
+        Object principal = principals.getPrimaryPrincipal();
+        System.out.println("RealmForDouble授权中----&gt;用户："+principal);
+        //2.下面使用Set&lt;String&gt; roles来构造SimpleAuthorizationInfo
+        SimpleAuthorizationInfo info = null;
+//        SimpleAuthorizationInfo info = new SimpleAuthorizationInfo();
+        Set&lt;String&gt; roles = new HashSet&lt;&gt;();
+        if ("admin".equals(principal)){
+            roles.add("admin"); // 假设这个角色是从数据库中查出的
+            // 如果SimpleAuthorizationInfo实例化了，
+            // 可以这样来加角色，行为需要这样添加
+            // 角色可以传构造函数来实例化SimpleAuthorizationInfo
+//            info.addRole("admin");
+//            info.addStringPermission("*");
+        }
+        if ("guest".equals(principal)){
+            roles.add("guest");
+        }
+        info = new SimpleAuthorizationInfo(roles);
+        return info;
+    }
+
+//    认证
+    @Override
+    protected AuthenticationInfo doGetAuthenticationInfo(AuthenticationToken token) throws AuthenticationException {
+        System.out.println("RealmForDouble认证中----&gt;用户："+token.getPrincipal());
+        UsernamePasswordToken upToken = (UsernamePasswordToken) token;
+        String password="123456";// 假设这是从数据库中查询到的用户密码
+        // 创建一个SimpleAuthenticationInfo，第一个参数是用户名，第二个是验证密码，第三个是当前realm的className
+        // 验证密码会与用户提交的密码进行比对
+        SimpleAuthenticationInfo info = new SimpleAuthenticationInfo(upToken.getUsername(),password,this.getName());
+        return info;
+    }
+}
+</code></pre>
+
+<p>　　</p>
+<p>以上内容摘自博客：<a href="https://www.cnblogs.com/progor/p/10970971.html#%E4%BE%9D%E8%B5%96%E5%8C%85">https://www.cnblogs.com/progor/p/10970971.html#%E4%BE%9D%E8%B5%96%E5%8C%85</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

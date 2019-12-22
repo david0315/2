@@ -1,0 +1,396 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JDK源码解析之Java SPI机制' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JDK源码解析之Java SPI机制</center></div><div class='banquan'>原文出处:本文由博客园博主达兔哥提供。<br/>
+原文连接:https://www.cnblogs.com/zdd-java/p/10694607.html</div><br>
+    <h1 class="article-title" data-v-4e83724e="">1. spi 是什么</h1>
+<src class="article-content" data-v-4e83724e="" data-id="5ca17a94f265da30827a1212">
+<p>SPI全称Service Provider Interface，是Java提供的一套用来被第三方实现或者扩展的API，它可以用来启用框架扩展和替换组件。</p>
+<p>系统设计的各个抽象，往往有很多不同的实现方案，在面向的对象的设计里，一般推荐模块之间基于接口编程，模块之间不对实现类进行硬编码。一旦代码里涉及具体的实现类，就违反了开闭原则，Java SPI就是为某个接口寻找服务实现的机制，Java Spi的核心思想就是解耦。</p>
+<p>整体机制图如下：</p>
+<p>&nbsp;</p>
+<img class="lazyload inited loaded" src="./images/JDK源码解析之Java SPI机制0.png" alt="Java的SPI机制" data-src="./images/JDK源码解析之Java SPI机制0.png" data-width="892" data-height="337" />
+<p>&nbsp;</p>
+<p>Java SPI 实际上是&ldquo;基于接口的编程＋策略模式＋配置文件&rdquo;组合实现的动态加载机制。</p>
+<p>总结起来就是：调用者根据实际使用需要，启用、扩展、或者替换框架的实现策略</p>
+<h3 class="heading" data-id="heading-1">2. 应用场景</h3>
+<ul>
+<li>
+<p>数据库驱动加载接口实现类的加载</p>
+<p>JDBC加载不同类型数据库的驱动</p>
+</li>
+<li>
+<p>日志门面接口实现类加载</p>
+<p>SLF4J加载不同提供应商的日志实现类</p>
+</li>
+<li>
+<p>Spring</p>
+<p>Servlet容器启动初始化<code>org.springframework.web.SpringServletContainerInitializer</code></p>
+</li>
+<li>
+<p>Spring Boot</p>
+<p>自动装配过程中，加载META-INF/spring.factories文件，解析properties文件</p>
+</li>
+<li>
+<p>Dubbo</p>
+<p>Dubbo大量使用了SPI技术，里面有很多个组件，每个组件在框架中都是以接口的形成抽象出来</p>
+<p>例如Protocol 协议接口</p>
+</li>
+</ul>
+<h3 class="heading" data-id="heading-2">3. 使用步骤</h3>
+<p>以支付服务为例：</p>
+<ul>
+<li>
+<p>创建一个<code>PayService</code>添加一个<code>pay</code>方法</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package com.imooc.spi;
+
+import java.math.BigDecimal;
+
+public interface PayService {
+
+    void pay(BigDecimal price);
+}
+</code></pre>
+
+<p>　　</p>
+</li>
+</ul>
+<ol>
+<li>
+<p>创建<code>AlipayService</code>和<code>WechatPayService</code>，实现<code>PayService</code></p>
+<p>⚠️SPI的实现类必须携带一个不带参数的构造方法；</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package com.imooc.spi;
+
+import java.math.BigDecimal;
+
+public class AlipayService implements PayService{
+
+    public void pay(BigDecimal price) {
+        System.out.println("使用支付宝支付");
+    }
+}
+</code></pre>
+
+<src class="cnblogs_Highlighter">
+<pre><code>package com.imooc.spi;
+
+import java.math.BigDecimal;
+
+public class WechatPayService implements PayService{
+
+    public void pay(BigDecimal price) {
+        System.out.println("使用微信支付");
+    }
+}
+</code></pre>
+
+</li>
+<li>
+<p>resources目录下创建目录META-INF/services</p>
+</li>
+<li>
+<p>在META-INF/services创建com.imooc.spi.PayService文件</p>
+</li>
+<li>
+<p>先以AlipayService为例：在com.imooc.spi.PayService添加com.imooc.spi.AlipayService的文件内容</p>
+</li>
+<li>
+<p>创建测试类</p>
+<src class="cnblogs_Highlighter">
+<pre><code>package com.imooc.spi;
+
+import com.util.ServiceLoader;
+
+import java.math.BigDecimal;
+
+public class PayTests {
+
+    public static void main(String[] args) {
+        ServiceLoader&lt;PayService&gt; payServices = ServiceLoader.load(PayService.class);
+        for (PayService payService : payServices) {
+            payService.pay(new BigDecimal(1));
+        }
+    }
+}
+</code></pre>
+
+</li>
+<li>
+<p>运行测试类，查看返回结果</p>
+</li>
+</ol>
+<h3 class="heading" data-id="heading-3">4. 原理分析</h3>
+<p>首先，我们先打开<code>ServiceLoader&lt;S&gt;</code>&nbsp;这个类</p>
+<pre><code></code></pre>
+<src class="cnblogs_Highlighter">
+<pre><code>  public final class ServiceLoader&lt;S&gt; implements&nbsp;Iterable&lt;S&gt; {
+    // SPI文件路径的前缀
+    private static final String PREFIX = "META-INF/services/";
+  
+    // 需要加载的服务的类或接口
+    private Class&lt;S&gt; service;
+  
+    // 用于定位、加载和实例化提供程序的类加载器
+    private ClassLoader loader;
+  
+    // 创建ServiceLoader时获取的访问控制上下文
+    private final AccessControlContext acc;
+  
+    // 按实例化顺序缓存Provider
+    private LinkedHashMap&lt;String, S&gt; providers = new LinkedHashMap();
+  
+    // 懒加载迭代器 
+    private LazyIterator lookupIterator;
+  
+  	......
+}
+</code></pre>
+
+<p>　　</p>
+<pre><code><code class="hljs java copyable" lang="java"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-class"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-title"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-title"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"> <span class="copy-code-btn"><br /></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>参考具体ServiceLoader具体源码，代码量不多，实现的流程如下：</p>
+<ol>
+<li>
+<p>应用程序调用ServiceLoader.load方法</p>
+<src class="cnblogs_Highlighter">
+<pre><code>// 1. 获取ClassLoad
+public static &lt;S&gt; ServiceLoader&lt;S&gt; load(Class&lt;S&gt; service) {
+  ClassLoader cl = Thread.currentThread().getContextClassLoader();
+  return ServiceLoader.load(service, cl);
+}
+
+// 2. 调用构造方法
+public static &lt;S&gt; ServiceLoader&lt;S&gt; load(Class&lt;S&gt; service, ClassLoader loader){
+  return new ServiceLoader&lt;&gt;(service, loader);
+}
+
+// 3. 校验参数和ClassLoad
+private ServiceLoader(Class&lt;S&gt; svc, ClassLoader cl) {
+  service = Objects.requireNonNull(svc, "Service interface cannot be null");
+  loader = (cl == null) ? ClassLoader.getSystemClassLoader() : cl;
+  acc = (System.getSecurityManager() != null) ? AccessController.getContext() : null;
+  reload();
+}
+
+//4. 清理缓存容器，实例懒加载迭代器
+public void reload() {
+  providers.clear();
+  lookupIterator = new LazyIterator(service, loader);
+}
+</code></pre>
+
+<p>　　</p>
+<pre><code><code class="hljs java copyable" lang="java"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-string"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="copy-code-btn">&nbsp;</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+</li>
+<li>
+<p>我们简单看一下这个懒加载迭代器</p>
+<src class="cnblogs_Highlighter">
+<pre><code>// 实现完全懒惰的提供程序查找的私有内部类
+private class LazyIterator&emsp;implements Iterator&lt;S&gt;{
+
+  // 需要加载的服务的类或接口
+  Class&lt;S&gt; service;
+  // 用于定位、加载和实例化提供程序的类加载器
+  ClassLoader loader;
+  // 枚举类型的资源路径
+  Enumeration&lt;URL&gt; configs = null;
+  // 迭代器
+  Iterator&lt;String&gt; pending = null;
+  // 配置文件中下一行className
+  String nextName = null;
+
+  private LazyIterator(Class&lt;S&gt; service, ClassLoader loader) {
+    this.service = service;
+    this.loader = loader;
+  }
+
+  private boolean hasNextService() {
+    if (nextName != null) {
+      return true;
+    }
+    // 加载配置PREFIX + service.getName()的文件
+    if (configs == null) {
+      try {
+        String fullName = PREFIX + service.getName();
+        if (loader == null)
+          configs = ClassLoader.getSystemResources(fullName);
+        else
+          configs = loader.getResources(fullName);
+      } catch (IOException x) {
+        fail(service, "Error locating configuration files", x);
+      }
+    }
+    // 循环获取下一行
+    while ((pending == null) || !pending.hasNext()) {
+      // 判断是否还有元素
+      if (!configs.hasMoreElements()) {
+        return false;
+      }
+      pending = parse(service, configs.nextElement());
+    }
+    // 获取类名
+    nextName = pending.next();
+    return true;
+  }
+
+  // 获取下一个Service实现
+  private S nextService() {
+    if (!hasNextService())
+      throw new NoSuchElementException();
+    String cn = nextName;
+    nextName = null;
+    Class&lt;?&gt; c = null;
+    try {
+      // 加载类
+      c = Class.forName(cn, false, loader);
+    } catch (ClassNotFoundException x) {
+      fail(service,
+           "Provider " + cn + " not found");
+    }
+    // 超类判断
+    if (!service.isAssignableFrom(c)) {
+      fail(service,
+           "Provider " + cn  + " not a subtype");
+    }
+    try {
+      // 实例化并进行类转换
+      S p = service.cast(c.newInstance());
+      // 放入缓存容器中
+      providers.put(cn, p);
+      return p;
+    } catch (Throwable x) {
+      fail(service,
+           "Provider " + cn + " could not be instantiated",
+           x);
+    }
+    throw new Error();          // This cannot happen
+  }
+
+  // for循环遍历时
+  public boolean hasNext() {
+    if (acc == null) {
+      return hasNextService();
+    } else {
+      PrivilegedAction&lt;Boolean&gt; action = new PrivilegedAction&lt;Boolean&gt;() {
+        public Boolean run() { return hasNextService(); }
+      };
+      return AccessController.doPrivileged(action, acc);
+    }
+  }
+
+  public S next() {
+    if (acc == null) {
+      return nextService();
+    } else {
+      PrivilegedAction&lt;S&gt; action = new PrivilegedAction&lt;S&gt;() {
+        public S run() { return nextService(); }
+      };
+      return AccessController.doPrivileged(action, acc);
+    }
+  }
+
+  // 禁止删除
+  public void remove() {
+    throw new UnsupportedOperationException();
+  }
+
+}
+</code></pre>
+
+<p>　　</p>
+<pre><code><code class="hljs java copyable" lang="java"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-class"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-title"><span class="hljs-comment"><span class="hljs-comment"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-string"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-string"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-comment"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-string"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-comment"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-comment"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="copy-code-btn">&nbsp;</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+</li>
+<li>
+<p>将给定URL的内容作为提供程序配置文件进行分析。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>private Iterator&lt;String&gt; parse(Class&lt;?&gt; service, URL u)
+        throws ServiceConfigurationError
+    {
+        InputStream in = null;
+        BufferedReader r = null;
+        ArrayList&lt;String&gt; names = new ArrayList&lt;&gt;();
+        try {
+            in = u.openStream();
+            r = new BufferedReader(new InputStreamReader(in, "utf-8"));
+            int lc = 1;
+            while ((lc = parseLine(service, u, r, lc, names)) &gt;= 0);
+        } catch (IOException x) {
+            fail(service, "Error reading configuration file", x);
+        } finally {
+            try {
+                if (r != null) r.close();
+                if (in != null) in.close();
+            } catch (IOException y) {
+                fail(service, "Error closing configuration file", y);
+            }
+        }
+        return names.iterator();
+    }
+</code></pre>
+
+<p>　　</p>
+<pre><code><code class="hljs java copyable" lang="java"><span class="hljs-function"><span class="hljs-keyword"><span class="hljs-title"><span class="hljs-params"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-keyword"><span class="hljs-number"><span class="hljs-keyword"><span class="hljs-number"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-keyword"><span class="hljs-string"><span class="hljs-keyword"><span class="copy-code-btn">&nbsp;</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+</li>
+<li>
+<p>按行解析配置文件，并保存names列表中</p>
+<src class="cnblogs_Highlighter">
+<pre><code>private int parseLine(Class&lt;?&gt; service, URL u, BufferedReader r, int lc,
+                          List&lt;String&gt; names)
+        throws IOException, ServiceConfigurationError
+    {
+        String ln = r.readLine();
+        if (ln == null) {
+            return -1;
+        }
+        int ci = ln.indexOf('#');
+        if (ci &gt;= 0) ln = ln.substring(0, ci);
+        ln = ln.trim();
+        int n = ln.length();
+        if (n != 0) {
+            if ((ln.indexOf(' ') &gt;= 0) || (ln.indexOf('\t') &gt;= 0))
+                fail(service, u, lc, "Illegal configuration-file syntax");
+            int cp = ln.codePointAt(0);
+            if (!Character.isJavaIdentifierStart(cp))
+                fail(service, u, lc, "Illegal provider-class name: " + ln);
+            for (int i = Character.charCount(cp); i &lt; n; i += Character.charCount(cp)) {
+                cp = ln.codePointAt(i);
+                if (!Character.isJavaIdentifierPart(cp) &amp;&amp; (cp != '.'))
+                    fail(service, u, lc, "Illegal provider-class name: " + ln);
+            }
+            // 判断provider容器中是否包含 不包含则讲classname加入 names列表中
+            if (!providers.containsKey(ln) &amp;&amp; !names.contains(ln))
+                names.add(ln);
+        }
+        return lc + 1;
+    }
+</code></pre>
+
+<p>　</p>
+</li>
+</ol>
+<h3 class="heading" data-id="heading-4">5. 总结</h3>
+<p>优点：使用Java SPI机制的优势是实现解耦，使得第三方服务模块的装配控制的逻辑与调用者的业务代码分离，而不是耦合在一起。应用程序可以根据实际业务情况启用框架扩展或替换框架组件。</p>
+<p>缺点：线程不安全，虽然ServiceLoader也算是使用的延迟加载，但是基本只能通过遍历全部获取，也就是接口的实现类全部加载并实例化一遍。如果你并不想用某些实现类，它也被加载并实例化了，这就造成了浪费。获取某个实现类的方式不够灵活，只能通过Iterator形式获取，不能根据某个参数来获取对应的实现类。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

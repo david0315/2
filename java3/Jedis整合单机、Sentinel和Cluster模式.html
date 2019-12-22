@@ -1,0 +1,265 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Jedis整合单机、Sentinel和Cluster模式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Jedis整合单机、Sentinel和Cluster模式</center></div><div class='banquan'>原文出处:本文由博客园博主懵懂的半壶提供。<br/>
+原文连接:https://www.cnblogs.com/Innocent-of-Dabber/p/11676811.html</div><br>
+    <p>配置文件和配置类</p>
+<src class="cnblogs_Highlighter">
+<pre><code>@Data
+@Configuration
+@ConfigurationProperties("jedis-config")
+public class JedisConfigure {
+
+    @Value("maxtotal")
+    private String maxTotal;
+    @Value("maxidle")
+    private String maxIdle;
+    @Value("minidle")
+    private String minIdle;
+    @Value("host")
+    private String host;
+    @Value("port")
+    private String port;
+    @Value("nodes")
+    private Set&lt;String&gt; nodes;
+    @Value("master-name")
+    private String masterName;
+    @Value("timeout")
+    private String timeout;
+}
+//配置文件 放在application.yml
+jedis-config:
+  maxtotal: 100
+  host: 127.0.0.1
+  port: 6379
+  maxidle: 100
+  minidle: 0
+  master-name: mymaster
+  nodes:
+    - 127.0.0.1:7001
+    - 127.0.0.1:7002
+    - 192.168.1.98:7003
+    - 192.168.1.98:7004
+    - 192.168.1.20:7005
+    - 192.168.1.20:7006
+</code></pre>
+
+<p>　　一、定义jedis接口</p>
+<src class="cnblogs_Highlighter">
+<pre><code>public interface IJedisService {
+
+    /**
+     * 获取Jedis连接
+     * @return JedisCommands
+     */
+    JedisCommands getJedis();
+
+    /**
+     * 释放连接
+     * @param jedis
+     */
+    void jedisClose(JedisCommands jedis);
+
+    /**
+     * 关闭连接池
+     */
+    void jedisPoolClose();
+}
+</code></pre>
+
+<p>　　二、定义IJedisService的实现类</p>
+<src class="cnblogs_Highlighter">
+<pre><code>@EnableConfigurationProperties(JedisConfigure.class)
+public class AbstractRedisService implements IJedisService {
+
+    Pool&lt;Jedis&gt; jedisPool;
+
+    @Autowired
+    private JedisConfigure jedisConfigure;
+
+    /**
+     * jedis连接池配置类
+     */
+    public GenericObjectPoolConfig jedisPoolConfig = new GenericObjectPoolConfig();
+
+    /**
+     * 初始化Jedis连接池配置
+     */
+    @PostConstruct
+    public void initJedisPoolConfig() {
+
+        jedisPoolConfig.setMaxTotal(Integer.parseInt(jedisConfigure.getMaxTotal()));
+        jedisPoolConfig.setMaxIdle(Integer.parseInt(jedisConfigure.getMinIdle()));
+        jedisPoolConfig.setMinIdle(Integer.parseInt(jedisConfigure.getMinIdle()));
+        jedisPoolConfig.setJmxEnabled(true);
+        jedisPoolConfig.setBlockWhenExhausted(true);
+        jedisPoolConfig.setTestOnBorrow(true);
+        jedisPoolConfig.setTestOnReturn(true);
+        jedisPoolConfig.setMaxWaitMillis(-1);
+    }
+
+    /**
+     *  初始化线程池
+     *  根据Class类型初始化
+     * @param clazz
+     * @return
+     */
+    public void initJedisPool(Class clazz) {
+
+        //Single
+        if (JedisPool.class.getName().equals(clazz.getName()))
+            jedisPool = new JedisPool(jedisPoolConfig, jedisConfigure.getHost(),
+                    Integer.parseInt(jedisConfigure.getPort()), 100000);
+        //Sentinel
+        if (JedisSentinelPool.class.getName().equals(clazz.getName()))
+            jedisPool = new JedisSentinelPool(jedisConfigure.getMasterName(),
+                    jedisConfigure.getNodes(), jedisPoolConfig, 100000);
+
+    }
+
+    @Override
+    public JedisCommands getJedis() {
+        Jedis jedis = jedisPool.getResource();
+        return jedis;
+    }
+
+    @Override
+    public void jedisClose(JedisCommands jedis) {
+
+        jedisPool.returnResource((Jedis) jedis);
+    }
+
+    @Override
+    public void jedisPoolClose() {
+        if (!jedisPool.isClosed()) jedisPool.close();
+    }
+}
+</code></pre>
+
+<p>　　三、单机模式的具体实现</p>
+<src class="cnblogs_Highlighter">
+<pre><code>public class JedisSingleService extends AbstractRedisService {
+
+    @PostConstruct
+    private void loadJedisPool() {
+        super.initJedisPool(JedisPool.class);
+    }
+}
+</code></pre>
+
+<p>　　四、Sentinel模式的具体实现</p>
+<src class="cnblogs_Highlighter">
+<pre><code>public class JedisSentinelService extends AbstractRedisService {
+
+    @PostConstruct
+    private void loadJedisPool() {
+        super.initJedisPool(JedisSentinelPool.class);
+    }
+}
+</code></pre>
+
+<p>　　五、Cluster模式的具体实现</p>
+<src class="cnblogs_Highlighter">
+<pre><code>@Slf4j
+@EnableConfigurationProperties(JedisConfigure.class)
+public class JedisClusterService extends AbstractRedisService {
+
+    @Autowired
+    private JedisConfigure jedisConfigure;
+
+    JedisCluster jedis;
+
+    /**
+     * 初始化配置
+     */
+    @PostConstruct
+    private void initJedisCluster() {
+
+        //初始化一般配置
+        super.initJedisPoolConfig();
+
+        //初始化JedisCluster
+        Set&lt;HostAndPort&gt; clusterHostMap = Sets.newHashSet();
+        initHostMap(clusterHostMap, jedisConfigure.getNodes());
+        jedis = new JedisCluster(clusterHostMap, jedisPoolConfig);
+    }
+
+    /**
+     * 节点转换
+     *
+     * @param clusterHostMap
+     * @param nodes
+     */
+    private void initHostMap(Set&lt;HostAndPort&gt; clusterHostMap, Set&lt;String&gt; nodes) {
+        if (clusterHostMap == null)
+            return;
+        try {
+            for (String node : nodes) {
+
+                log.info("初始化Redis-Cluster集群 --- [{}]", node);
+                String[] nodeInfo = node.split(":");
+
+                String ip = nodeInfo[0];
+                Integer port = Integer.parseInt(nodeInfo[1]);
+
+                HostAndPort hostAndPort = new HostAndPort(ip, port);
+                clusterHostMap.add(hostAndPort);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("redis--&gt;Cluster集群节点配置异常");
+        }
+    }
+
+    @Override
+    public JedisCommands getJedis() {
+        return jedis;
+    }
+
+    @Override
+    public void jedisClose(JedisCommands jedis) {
+
+        try {
+            ((JedisCluster) jedis).close();
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error("Redis-Cluster Close失败 --- [{}]", e.getMessage());
+        }
+    }
+}
+</code></pre>
+
+<p>　　六、注入Bean</p>
+<src class="cnblogs_Highlighter">
+<pre><code>@Bean
+public IJedisService redisSingleJedisService() { return new JedisSingleService(); }
+
+@Bean
+IJedisService redisSentinelService() { return new JedisSentinelService(); }
+
+@Bean
+IJedisService redisClusterService() { return new JedisClusterService(); }
+</code></pre>
+
+<p>　　</p>
+<p><img id="uploading_image_88448" src="./images/Jedis整合单机、Sentinel和Cluster模式0.png" alt="" /></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

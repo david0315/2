@@ -1,0 +1,198 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JavaWeb  使用Filter实现自动登录' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JavaWeb  使用Filter实现自动登录</center></div><div class='banquan'>原文出处:本文由博客园博主chenhongyong提供。<br/>
+原文连接:https://www.cnblogs.com/chy18883701161/p/11423332.html</div><br>
+    <p>&nbsp;</p>
+<h3>思路</h3>
+<p>使用cookie存储账号、密码，使用Filter拦截，从cookie中取出账号、密码。若用户要注销|登出、不再想使用自动登录，将cookie的有效期设置为0即可。</p>
+<p>浏览器可以查看Cookie，不能直接存储账号、密码的明文，使用Cookie存储账号、密码时需要加密，从Cookie中取出来时需要解密。</p>
+<p>每次HTTP请求都使用Filter拦截，从Cookie中解密出账号、密码，每次都要解密，浪费时间。第一次从Cookie中解密出账号、密码后，可以将账号、密码放到session域中，会话期间直接从session中取，不必再解密。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>登录页面</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">form </span><span style="color: #ff0000;">action</span><span style="color: #0000ff;">="loginServlet"</span><span style="color: #ff0000;"> method</span><span style="color: #0000ff;">="post"</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;">
+    用户名：</span><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">input </span><span style="color: #ff0000;">type</span><span style="color: #0000ff;">="text"</span><span style="color: #ff0000;"> name</span><span style="color: #0000ff;">="user"</span> <span style="color: #0000ff;">/&gt;&lt;</span><span style="color: #800000;">br </span><span style="color: #0000ff;">/&gt;</span><span style="color: #000000;">
+    密码：</span><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">input </span><span style="color: #ff0000;">type</span><span style="color: #0000ff;">="password"</span><span style="color: #ff0000;"> name</span><span style="color: #0000ff;">="pwd"</span> <span style="color: #0000ff;">/&gt;&lt;</span><span style="color: #800000;">br </span><span style="color: #0000ff;">/&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">button </span><span style="color: #ff0000;">type</span><span style="color: #0000ff;">="submit"</span><span style="color: #0000ff;">&gt;</span>登录<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">button</span><span style="color: #0000ff;">&gt;&lt;</span><span style="color: #800000;">br </span><span style="color: #0000ff;">/&gt;</span><span style="color: #000000;">
+    ${requestScope.errorMsg}
+</span><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">form</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>EL表达式没有空指针异常，没有时返回空串。所以没有errorMsg时，&nbsp;<span class="cnblogs_code">${requestScope.errorMsg}</span>&nbsp;也不会出错。</p>
+<p>&nbsp;</p>
+<p>EL表达式不同于&lt;%&nbsp; %&gt;、&lt;%=&nbsp; &nbsp;%&gt;，EL表达式不会报数组越界、域中没有这个变量（空指针异常）这些错，找不到就返回空串，不会报错。但EL表达式中不能使用+号来拼接字符串。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>将登录页面设为项目初始页面</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">welcome-file-list</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">welcome-file</span><span style="color: #0000ff;">&gt;</span>/login.jsp<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">welcome-file</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">welcome-file-list</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>处理登录表单的Servlet</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> @WebServlet("/loginServlet"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> LoginServlet <span style="color: #0000ff;">extends</span><span style="color: #000000;"> HttpServlet {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doPost(HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+</span><span style="color: #008080;"> 4</span>         String user=request.getParameter("user"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 5</span>         String pwd=request.getParameter("pwd"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;">连接数据库，检查是否正确
+</span><span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;">......</span>
+<span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">){
+</span><span style="color: #008080;">10</span>             <span style="color: #008000;">//</span><span style="color: #008000;">放到session中</span>
+<span style="color: #008080;">11</span>             HttpSession session =<span style="color: #000000;"> request.getSession();
+</span><span style="color: #008080;">12</span>             session.setAttribute("user"<span style="color: #000000;">,user);
+</span><span style="color: #008080;">13</span>             session.setAttribute("pwd","pwd"<span style="color: #000000;">);
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>             <span style="color: #008000;">//</span><span style="color: #008000;">将值加密后存储在Cookie中，此处略过加密</span>
+<span style="color: #008080;">16</span>             Cookie cookie=<span style="color: #0000ff;">new</span> Cookie("autoLogin",user+"-"+<span style="color: #000000;">pwd);
+</span><span style="color: #008080;">17</span>             <span style="color: #008000;">//</span><span style="color: #008000;">整个项目中可用</span>
+<span style="color: #008080;">18</span> <span style="color: #000000;">            cookie.setPath(request.getContextPath());
+</span><span style="color: #008080;">19</span>             <span style="color: #008000;">//</span><span style="color: #008000;">这个域名地址下的所有webApp都可用
+</span><span style="color: #008080;">20</span>             <span style="color: #008000;">//</span><span style="color: #008000;">cookie.setPath("/");</span>
+<span style="color: #008080;">21</span>             cookie.setMaxAge(60*60*24*7<span style="color: #000000;">);
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">            response.addCookie(cookie);
+</span><span style="color: #008080;">23</span> 
+<span style="color: #008080;">24</span>             <span style="color: #008000;">//</span><span style="color: #008000;">重定向到目标页面。request.getContextPath()获取的是当前web应用的根目录</span>
+<span style="color: #008080;">25</span>             response.sendRedirect(request.getContextPath()+"/index.jsp"<span style="color: #000000;">);
+</span><span style="color: #008080;">26</span>             <span style="color: #008000;">//</span><span style="color: #008000;">不能这样写，这样写表示域名下的index.jsp,不是域名/web应用/index.jsp。
+</span><span style="color: #008080;">27</span>             <span style="color: #008000;">//</span><span style="color: #008000;">response.sendRedirect("/index.jsp");</span>
+<span style="color: #008080;">28</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">29</span>         <span style="color: #0000ff;">else</span><span style="color: #000000;">{
+</span><span style="color: #008080;">30</span>             <span style="color: #008000;">//</span><span style="color: #008000;">转发到登录页面，附加错误信息</span>
+<span style="color: #008080;">31</span>             request.setAttribute("errorMsg","账户名或密码错误"<span style="color: #000000;">);
+</span><span style="color: #008080;">32</span>             request.getRequestDispatcher("/login.jsp"<span style="color: #000000;">).forward(request,response);
+</span><span style="color: #008080;">33</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">34</span> 
+<span style="color: #008080;">35</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">36</span> 
+<span style="color: #008080;">37</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doGet(HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+</span><span style="color: #008080;">38</span> <span style="color: #000000;">        doPost(request,response);
+</span><span style="color: #008080;">39</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">40</span> }</code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>首页</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;h2&gt;hello,${sessionScope.user}&lt;/h2&gt;</code></pre>
+
+<h3>&nbsp;</h3>
+<h3>&nbsp;</h3>
+<h3>&nbsp;</h3>
+<h3>Filter实现自动登录</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> @WebFilter("/*"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> HandlerFilter <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Filter {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> destroy() {
+</span><span style="color: #008080;"> 4</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> doFilter(ServletRequest req, ServletResponse resp, FilterChain chain) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;">统一全站编码</span>
+<span style="color: #008080;"> 8</span>         req.setCharacterEncoding("utf-8"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 9</span>         resp.setContentType("text/html;charset=utf-8"<span style="color: #000000;">);
+</span><span style="color: #008080;">10</span> 
+<span style="color: #008080;">11</span>         <span style="color: #008000;">//</span><span style="color: #008000;">ServletRequest不能获取session、cookie，需要强转为HttpServletRequest</span>
+<span style="color: #008080;">12</span>         HttpServletRequest httpReq =<span style="color: #000000;"> (HttpServletRequest) req;
+</span><span style="color: #008080;">13</span> 
+<span style="color: #008080;">14</span>         <span style="color: #008000;">//</span><span style="color: #008000;">检查session中有没有用户信息</span>
+<span style="color: #008080;">15</span>         HttpSession session =<span style="color: #000000;"> httpReq.getSession();
+</span><span style="color: #008080;">16</span>         <span style="color: #0000ff;">if</span> (session.getAttribute("user")==<span style="color: #0000ff;">null</span><span style="color: #000000;">){
+</span><span style="color: #008080;">17</span>             <span style="color: #008000;">//如果</span><span style="color: #008000;">session中没有，从Cookie中找autoLogin。可能是会话结束后再次访问，比如离开网站30min（session默认超时时间）后再次访问、关闭浏览器后重新打开再次访问。</span>
+<span style="color: #008080;">18</span>             Cookie[] cookies =<span style="color: #000000;"> httpReq.getCookies();
+</span><span style="color: #008080;">19</span>             <span style="color: #008000;">//</span><span style="color: #008000;">需要先检测cookies是否为null，为null时会报空指针异常</span>
+<span style="color: #008080;">20</span>             <span style="color: #0000ff;">if</span> (cookies!=<span style="color: #0000ff;">null</span><span style="color: #000000;">){
+</span><span style="color: #008080;">21</span>                 <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Cookie cookie:cookies){
+</span><span style="color: #008080;">22</span>                     <span style="color: #0000ff;">if</span> (cookie.getName().equals("autoLogin"<span style="color: #000000;">)) {
+</span><span style="color: #008080;">23</span>                         <span style="color: #008000;">//</span><span style="color: #008000;">需要先解密，此处略过
+</span><span style="color: #008080;">24</span>                         <span style="color: #008000;">//</span><span style="color: #008000;">......</span>
+<span style="color: #008080;">25</span>                         String[] userInfo=cookie.getValue().split("-"<span style="color: #000000;">);
+</span><span style="color: #008080;">26</span>                         session.setAttribute("user",userInfo[0<span style="color: #000000;">]);
+</span><span style="color: #008080;">27</span>                         session.setAttribute("pwd",userInfo[1<span style="color: #000000;">]);
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">                    }
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">32</span> 
+<span style="color: #008080;">33</span> <span style="color: #000000;">        chain.doFilter(req, resp);
+</span><span style="color: #008080;">34</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">35</span> 
+<span style="color: #008080;">36</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> init(FilterConfig config) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+</span><span style="color: #008080;">37</span> 
+<span style="color: #008080;">38</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">39</span> 
+<span style="color: #008080;">40</span> }</code></pre>
+
+<p>&nbsp;ServletRequest不能获取session、cookie，需要强转为HttpServletRequest才可以。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>处理注销 | 登出 | 不再使用自动登录 的Servlet</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> @WebServlet("/logoutServlet"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> LogoutServlet <span style="color: #0000ff;">extends</span><span style="color: #000000;"> HttpServlet {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doPost(HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+</span><span style="color: #008080;"> 4</span>         <span style="color: #008000;">//</span><span style="color: #008000;">从session中移出用户信息</span>
+<span style="color: #008080;"> 5</span>         HttpSession session =<span style="color: #000000;"> request.getSession();
+</span><span style="color: #008080;"> 6</span>         session.removeAttribute("user"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 7</span>         session.removeAttribute("pwd"<span style="color: #000000;">);
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;">删除Cookie,此处采用同名覆盖，也可以遍历获取，再将有效期设为0</span>
+<span style="color: #008080;">10</span>         Cookie cookie=<span style="color: #0000ff;">new</span> Cookie("autoLogin",""<span style="color: #000000;">);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">        cookie.setPath(request.getContextPath());
+</span><span style="color: #008080;">12</span>         cookie.setMaxAge(0<span style="color: #000000;">);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        response.addCookie(cookie);
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">15</span> 
+<span style="color: #008080;">16</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doGet(HttpServletRequest request, HttpServletResponse response) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        doPost(request,response);
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">19</span> }</code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h4>获取当前WebApp的根目录：</h4>
+<src class="cnblogs_code">
+<pre><code>        String path1 =<span style="color: #000000;"> request.getContextPath();   //通过request对象来获取
+        String path2 </span>= getServletContext().getContextPath();  //通过ServletContext对象来获取</code></pre>
+
+<p>这2种方式获取的都是相对路径。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h4>获取当前WebApp中的某个资源在服务器上的绝对路径：</h4>
+<src class="cnblogs_code">
+<pre><code>        String path3 = getServletContext().getRealPath("/index.jsp");   //通过ServletContext对象来获取</code></pre>
+
+<p>就是把当前项目的根目录（绝对路径）、参数中的路径拼接在一起。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

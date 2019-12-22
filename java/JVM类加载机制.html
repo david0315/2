@@ -1,0 +1,177 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JVM类加载机制' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JVM类加载机制</center></div><div class='banquan'>原文出处:本文由博客园博主CodingDiary提供。<br/>
+原文连接:https://www.cnblogs.com/coding-diary/p/11680097.html</div><br>
+    <src class="markdown-here-wrapper" data-md-url="https://i.cnblogs.com/EditPosts.aspx?opt=1">
+<p style="margin: 0px 0px 1.2em !important;">Java的程序要运行需要将编译好的class文件加载到JVM运行时数据区。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制0.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;">在了解类的加载机制之前，我们需要了解一下类的生命周期。Java类从被加载到JVM内存开始，到卸载出内存为止，它的整个生命周期包括了：加载（Loading），验证（Verification），准备（Preparation），解析（Resolution），初始化（Initialization），使用（Using）和卸载（Unloading）七个阶段。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制1.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">类加载器</h3>
+<p style="margin: 0px 0px 1.2em !important;">Java类的加载需要用到类加载器。类加载器负责装入类，搜索网络，jar，zip，文件夹，二进制数据，内存等指定位置的资源。一个Java程序运行，至少有3个不同的类加载器实例，负责加载不同的类。这三个类加载器分别为，启动类加载器（Bootstrap ClassLoader），扩展类加载器（Extension ClassLoader），应用程序类加载器（Application ClassLoader）。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制2.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;">通过JDK提供的API：java.lang.Class.getClassLoader() 可以进行类加载器的查看，该API会返回装载类的类加载器，如果这个类是由Bootstrap ClassLoader加载的，那个这个方法会返回null。</p>
+<p style="margin: 0px 0px 1.2em !important;">代码示例：</p>
+<pre><code><code style="font-size: 0.85em; font-family: Consolas, Inconsolata, Courier, monospace; margin: 0px 0.15em; padding: 0.5em 0.7em; white-space: pre; border: 1px solid #cccccc; background-color: #f8f8f8; border-radius: 3px; display: block !important; overflow: auto;">public class ClassLoaderView {
+
+  public static void main(String[] args) throws Exception {
+    // 加载核心类库的 BootStrap ClassLoader
+    System.out.println(
+        "核心类库加载器："
+            + ClassLoaderView.class
+                .getClassLoader()
+                .loadClass("java.lang.String")
+                .getClassLoader());
+
+    // 加载拓展库的 Extension ClassLoader
+    System.out.println(
+        "拓展类库加载器："
+            + ClassLoaderView.class
+                .getClassLoader()
+                .loadClass("com.sun.nio.zipfs.ZipCoder")
+                .getClassLoader());
+
+    // 加载应用程序的 Application ClassLoader
+    System.out.println("应用程序库加载器：" + ClassLoaderView.class.getClassLoader());
+  }
+}
+
+//运行结果：
+核心类库加载器：null
+拓展类库加载器：sun.misc.Launcher$ExtClassLoader@7f31245a
+应用程序库加载器：sun.misc.Launcher$AppClassLoader@18b4aac2
+</code></code></pre>
+<h3 id="jvm-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">JVM如何知道我们的类在何方</h3>
+<p style="margin: 0px 0px 1.2em !important;">class信息可以存在不同的地方，那么JVM是如何知道我们的类存在什么地方的哪？通过查看sun.misc.Launcher.AppClassLoader的源码我们可以看到，它会读取java.class.path这个配置来获取那些地址加载类资源。参考以下代码示例,利用jsp和jcmd两个命令可以进行验证。</p>
+<p style="margin: 0px 0px 1.2em !important;">代码示例：</p>
+<pre><code><code style="font-size: 0.85em; font-family: Consolas, Inconsolata, Courier, monospace; margin: 0px 0.15em; padding: 0.5em 0.7em; white-space: pre; border: 1px solid #cccccc; background-color: #f8f8f8; border-radius: 3px; display: block !important; overflow: auto;">public class HelloWord {
+
+  public static void main(String[] args) throws IOException {
+    System.out.println("Hello Word");
+    System.in.read();
+  }
+}
+</code></code></pre>
+<p style="margin: 0px 0px 1.2em !important;">jsp命令可以查看本机Java进程，jcmd命令可以查看运行时配置：jcmd 进程号 VM.system_properties</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制3.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">双亲委派模型</h3>
+<p style="margin: 0px 0px 1.2em !important;">Java中的类并不会重复加载，同一类加载器，同一类名，代表的是同一个类。而避免类重复加载的主要原因在于JVM在加载类时默认采用的是双亲委派模型。所谓的双亲委派模型，就是某个特定的类加载器在接到类的加载请求时，首先将加载任务委托给父加载器，依次递归，如果父加载器可以完成类加载任务，就成功返回；只有父加载器无法完成此加载任务时，才自己去加载。由下到上逐级委托，由上到下逐级查找，双亲委派模型保证了Java核心库的类型安全</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制4.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">类的卸载</h3>
+<p style="margin: 0px 0px 1.2em !important;">JVM中的类不可能一直存在，在满足一定条件的情况下类会被卸载掉。在满足该Class的所有实例都已被垃圾回收，同时加载该类的ClassLoader实例也已经被垃圾回收，那么这个类会被JVM卸载掉。在JVM启动中增加-verbose:class参数，可以输出类加载和卸载的日志信息。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/JVM类加载机制5.png" alt="" /></p>
+<src style="height: 0; width: 0; max-height: 0; max-width: 0; overflow: hidden; font-size: 0em; padding: 0; margin: 0;" title="MDH:PHByZT48YnI+SmF2YeeahOeoi+W6j+imgei/kOihjOmcgOimgeWwhue8luivkeWlveeahGNsYXNz
+5paH5Lu25Yqg6L295YiwSlZN6L+Q6KGM5pe25pWw5o2u5Yy644CCPGJyPjxicj4hW2ltZ10oaHR0
+cHM6Ly9naXRlZS5jb20vbW8tc2UtZGUtZmVuZy9ub3Rlcy9yYXcvbWFzdGVyLyVFOSVBQiU5OCVF
+NiU4MCVBNyVFOCU4MyVCRCVFNyVCQyU5NiVFNyVBOCU4QiVFNCVCOCU5MyVFOSVBMiU5OC9pbWFn
+ZXMvMS4xLjElMjBKVk0lRTglQkYlOTAlRTglQTElOEMlRTYlOTclQjYlRTYlOTUlQjAlRTYlOEQl
+QUUlRTUlOEMlQkEuUE5HKSA8YnI+PGJyPuWcqOS6huino+exu+eahOWKoOi9veacuuWItuS5i+WJ
+je+8jOaIkeS7rOmcgOimgeS6huino+S4gOS4i+exu+eahOeUn+WRveWRqOacn+OAgkphdmHnsbvk
+u47ooqvliqDovb3liLBKVk3lhoXlrZjlvIDlp4vvvIzliLDljbjovb3lh7rlhoXlrZjkuLrmraLv
+vIzlroPnmoTmlbTkuKrnlJ/lkb3lkajmnJ/ljIXmi6zkuobvvJrliqDovb3vvIhMb2FkaW5n77yJ
+77yM6aqM6K+B77yIVmVyaWZpY2F0aW9u77yJ77yM5YeG5aSH77yIUHJlcGFyYXRpb27vvInvvIzo
+p6PmnpDvvIhSZXNvbHV0aW9u77yJ77yM5Yid5aeL5YyW77yISW5pdGlhbGl6YXRpb27vvInvvIzk
+vb/nlKjvvIhVc2luZ++8ieWSjOWNuOi9ve+8iFVubG9hZGluZ++8ieS4g+S4qumYtuauteOAgjxi
+cj48YnI+IVtpbWddKGh0dHBzOi8vZ2l0ZWUuY29tL21vLXNlLWRlLWZlbmcvbm90ZXMvcmF3L21h
+c3Rlci8lRTklQUIlOTglRTYlODAlQTclRTglODMlQkQlRTclQkMlOTYlRTclQTglOEIlRTQlQjgl
+OTMlRTklQTIlOTgvaW1hZ2VzLzMuMS4xJTIwJUU3JUIxJUJCJUU3JTk0JTlGJUU1JTkxJUJEJUU1
+JTkxJUE4JUU2JTlDJTlGLlBORyk8YnI+PGJyPiMjIyDnsbvliqDovb3lmag8YnI+PGJyPkphdmHn
+sbvnmoTliqDovb3pnIDopoHnlKjliLDnsbvliqDovb3lmajjgILnsbvliqDovb3lmajotJ/otKPo
+o4XlhaXnsbvvvIzmkJzntKLnvZHnu5zvvIxqYXLvvIx6aXDvvIzmlofku7blpLnvvIzkuozov5vl
+iLbmlbDmja7vvIzlhoXlrZjnrYnmjIflrprkvY3nva7nmoTotYTmupDjgILkuIDkuKpKYXZh56iL
+5bqP6L+Q6KGM77yM6Iez5bCR5pyJM+S4quS4jeWQjOeahOexu+WKoOi9veWZqOWunuS+i++8jOi0
+n+i0o+WKoOi9veS4jeWQjOeahOexu+OAgui/meS4ieS4quexu+WKoOi9veWZqOWIhuWIq+S4uu+8
+jOWQr+WKqOexu+WKoOi9veWZqO+8iEJvb3RzdHJhcCBDbGFzc0xvYWRlcu+8ie+8jOaJqeWxleex
+u+WKoOi9veWZqO+8iEV4dGVuc2lvbiBDbGFzc0xvYWRlcu+8ie+8jOW6lOeUqOeoi+W6j+exu+WK
+oOi9veWZqO+8iEFwcGxpY2F0aW9uIENsYXNzTG9hZGVy77yJ44CCPGJyPjxicj4hW2ltZ10oaHR0
+cHM6Ly9naXRlZS5jb20vbW8tc2UtZGUtZmVuZy9ub3Rlcy9yYXcvbWFzdGVyLyVFOSVBQiU5OCVF
+NiU4MCVBNyVFOCU4MyVCRCVFNyVCQyU5NiVFNyVBOCU4QiVFNCVCOCU5MyVFOSVBMiU5OC9pbWFn
+ZXMvMy4xLjElMjAlRTclQjElQkIlRTUlOEElQTAlRTglQkQlQkQlRTUlOTklQTguUE5HKTxicj48
+YnI+6YCa6L+HSkRL5o+Q5L6b55qEQVBJ77yaamF2YS5sYW5nLkNsYXNzLmdldENsYXNzTG9hZGVy
+KCkg5Y+v5Lul6L+b6KGM57G75Yqg6L295Zmo55qE5p+l55yL77yM6K+lQVBJ5Lya6L+U5Zue6KOF
+6L2957G755qE57G75Yqg6L295Zmo77yM5aaC5p6c6L+Z5Liq57G75piv55SxQm9vdHN0cmFwIENs
+YXNzTG9hZGVy5Yqg6L2955qE77yM6YKj5Liq6L+Z5Liq5pa55rOV5Lya6L+U5ZuebnVsbOOAgjxi
+cj48YnI+5Luj56CB56S65L6L77yaPGJyPjxicj5gYGA8YnI+cHVibGljIGNsYXNzIENsYXNzTG9h
+ZGVyVmlldyB7PGJyPjxicj4gIHB1YmxpYyBzdGF0aWMgdm9pZCBtYWluKFN0cmluZ1tdIGFyZ3Mp
+IHRocm93cyBFeGNlcHRpb24gezxicj4gICAgLy8g5Yqg6L295qC45b+D57G75bqT55qEIEJvb3RT
+dHJhcCBDbGFzc0xvYWRlcjxicj4gICAgU3lzdGVtLm91dC5wcmludGxuKDxicj4gICAgICAgICLm
+oLjlv4PnsbvlupPliqDovb3lmajvvJoiPGJyPiAgICAgICAgICAgICsgQ2xhc3NMb2FkZXJWaWV3
+LmNsYXNzPGJyPiAgICAgICAgICAgICAgICAuZ2V0Q2xhc3NMb2FkZXIoKTxicj4gICAgICAgICAg
+ICAgICAgLmxvYWRDbGFzcygiamF2YS5sYW5nLlN0cmluZyIpPGJyPiAgICAgICAgICAgICAgICAu
+Z2V0Q2xhc3NMb2FkZXIoKSk7PGJyPjxicj4gICAgLy8g5Yqg6L295ouT5bGV5bqT55qEIEV4dGVu
+c2lvbiBDbGFzc0xvYWRlcjxicj4gICAgU3lzdGVtLm91dC5wcmludGxuKDxicj4gICAgICAgICLm
+i5PlsZXnsbvlupPliqDovb3lmajvvJoiPGJyPiAgICAgICAgICAgICsgQ2xhc3NMb2FkZXJWaWV3
+LmNsYXNzPGJyPiAgICAgICAgICAgICAgICAuZ2V0Q2xhc3NMb2FkZXIoKTxicj4gICAgICAgICAg
+ICAgICAgLmxvYWRDbGFzcygiY29tLnN1bi5uaW8uemlwZnMuWmlwQ29kZXIiKTxicj4gICAgICAg
+ICAgICAgICAgLmdldENsYXNzTG9hZGVyKCkpOzxicj48YnI+ICAgIC8vIOWKoOi9veW6lOeUqOeo
+i+W6j+eahCBBcHBsaWNhdGlvbiBDbGFzc0xvYWRlcjxicj4gICAgU3lzdGVtLm91dC5wcmludGxu
+KCLlupTnlKjnqIvluo/lupPliqDovb3lmajvvJoiICsgQ2xhc3NMb2FkZXJWaWV3LmNsYXNzLmdl
+dENsYXNzTG9hZGVyKCkpOzxicj4gIH08YnI+fTxicj48YnI+Ly/ov5DooYznu5PmnpzvvJo8YnI+
+5qC45b+D57G75bqT5Yqg6L295Zmo77yabnVsbDxicj7mi5PlsZXnsbvlupPliqDovb3lmajvvJpz
+dW4ubWlzYy5MYXVuY2hlciRFeHRDbGFzc0xvYWRlckA3ZjMxMjQ1YTxicj7lupTnlKjnqIvluo/l
+upPliqDovb3lmajvvJpzdW4ubWlzYy5MYXVuY2hlciRBcHBDbGFzc0xvYWRlckAxOGI0YWFjMjxi
+cj48YnI+YGBgPGJyPjxicj4jIyMgSlZN5aaC5L2V55+l6YGT5oiR5Lus55qE57G75Zyo5L2V5pa5
+PGJyPjxicj5jbGFzc+S/oeaBr+WPr+S7peWtmOWcqOS4jeWQjOeahOWcsOaWue+8jOmCo+S5iEpW
+TeaYr+WmguS9leefpemBk+aIkeS7rOeahOexu+WtmOWcqOS7gOS5iOWcsOaWueeahOWTqu+8n+mA
+mui/h+afpeeci3N1bi5taXNjLkxhdW5jaGVyLkFwcENsYXNzTG9hZGVy55qE5rqQ56CB5oiR5Lus
+5Y+v5Lul55yL5Yiw77yM5a6D5Lya6K+75Y+WamF2YS5jbGFzcy5wYXRo6L+Z5Liq6YWN572u5p2l
+6I635Y+W6YKj5Lqb5Zyw5Z2A5Yqg6L2957G76LWE5rqQ44CC5Y+C6ICD5Lul5LiL5Luj56CB56S6
+5L6LLOWIqeeUqGpzcOWSjGpjbWTkuKTkuKrlkb3ku6Tlj6/ku6Xov5vooYzpqozor4HjgII8YnI+
+PGJyPuS7o+eggeekuuS+i++8mjxicj48YnI+YGBgPGJyPnB1YmxpYyBjbGFzcyBIZWxsb1dvcmQg
+ezxicj48YnI+ICBwdWJsaWMgc3RhdGljIHZvaWQgbWFpbihTdHJpbmdbXSBhcmdzKSB0aHJvd3Mg
+SU9FeGNlcHRpb24gezxicj4gICAgU3lzdGVtLm91dC5wcmludGxuKCJIZWxsbyBXb3JkIik7PGJy
+PiAgICBTeXN0ZW0uaW4ucmVhZCgpOzxicj4gIH08YnI+fTxicj5gYGA8YnI+PGJyPmpzcOWRveS7
+pOWPr+S7peafpeeci+acrOacukphdmHov5vnqIvvvIxqY21k5ZG95Luk5Y+v5Lul5p+l55yL6L+Q
+6KGM5pe26YWN572u77yaamNtZCDov5vnqIvlj7cgVk0uc3lzdGVtX3Byb3BlcnRpZXM8YnI+PGJy
+PiFbaW1nXShodHRwczovL2dpdGVlLmNvbS9tby1zZS1kZS1mZW5nL25vdGVzL3Jhdy9tYXN0ZXIv
+JUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgzJUJEJUU3JUJDJTk2JUU3JUE4JThCJUU0JUI4JTkzJUU5
+JUEyJTk4L2ltYWdlcy8zLjEuMSUyMCVFNiU5RiVBNSVFNyU5QyU4QiVFNyVCQyU5NiVFOCVBRiU5
+MSVFNCVCRCU4RCVFNyVCRCVBRS5QTkcpPGJyPjxicj4jIyMg5Y+M5Lqy5aeU5rS+5qih5Z6LPGJy
+Pjxicj5KYXZh5Lit55qE57G75bm25LiN5Lya6YeN5aSN5Yqg6L2977yM5ZCM5LiA57G75Yqg6L29
+5Zmo77yM5ZCM5LiA57G75ZCN77yM5Luj6KGo55qE5piv5ZCM5LiA5Liq57G744CC6ICM6YG/5YWN
+57G76YeN5aSN5Yqg6L2955qE5Li76KaB5Y6f5Zug5Zyo5LqOSlZN5Zyo5Yqg6L2957G75pe26buY
+6K6k6YeH55So55qE5piv5Y+M5Lqy5aeU5rS+5qih5Z6L44CC5omA6LCT55qE5Y+M5Lqy5aeU5rS+
+5qih5Z6L77yM5bCx5piv5p+Q5Liq54m55a6a55qE57G75Yqg6L295Zmo5Zyo5o6l5Yiw57G755qE
+5Yqg6L296K+35rGC5pe277yM6aaW5YWI5bCG5Yqg6L295Lu75Yqh5aeU5omY57uZ54i25Yqg6L29
+5Zmo77yM5L6d5qyh6YCS5b2S77yM5aaC5p6c54i25Yqg6L295Zmo5Y+v5Lul5a6M5oiQ57G75Yqg
+6L295Lu75Yqh77yM5bCx5oiQ5Yqf6L+U5Zue77yb5Y+q5pyJ54i25Yqg6L295Zmo5peg5rOV5a6M
+5oiQ5q2k5Yqg6L295Lu75Yqh5pe277yM5omN6Ieq5bex5Y675Yqg6L2944CC55Sx5LiL5Yiw5LiK
+6YCQ57qn5aeU5omY77yM55Sx5LiK5Yiw5LiL6YCQ57qn5p+l5om+77yM5Y+M5Lqy5aeU5rS+5qih
+5Z6L5L+d6K+B5LqGSmF2YeaguOW/g+W6k+eahOexu+Wei+WuieWFqDxicj48YnI+IVtpbWddKGh0
+dHBzOi8vZ2l0ZWUuY29tL21vLXNlLWRlLWZlbmcvbm90ZXMvcmF3L21hc3Rlci8lRTklQUIlOTgl
+RTYlODAlQTclRTglODMlQkQlRTclQkMlOTYlRTclQTglOEIlRTQlQjglOTMlRTklQTIlOTgvaW1h
+Z2VzLzMuMS4xJTIwJUU1JThGJThDJUU0JUJBJUIyJUU1JUE3JTk0JUU2JUI0JUJFJUU2JUE4JUEx
+JUU1JTlFJThCLlBORyk8YnI+PGJyPiMjIyDnsbvnmoTljbjovb08YnI+PGJyPkpWTeS4reeahOex
+u+S4jeWPr+iDveS4gOebtOWtmOWcqO+8jOWcqOa7oei2s+S4gOWumuadoeS7tueahOaDheWGteS4
+i+exu+S8muiiq+WNuOi9veaOieOAguWcqOa7oei2s+ivpUNsYXNz55qE5omA5pyJ5a6e5L6L6YO9
+5bey6KKr5Z6D5Zy+5Zue5pS277yM5ZCM5pe25Yqg6L296K+l57G755qEQ2xhc3NMb2FkZXLlrp7k
+vovkuZ/lt7Lnu4/ooqvlnoPlnL7lm57mlLbvvIzpgqPkuYjov5nkuKrnsbvkvJrooqtKVk3ljbjo
+vb3mjonjgILlnKhKVk3lkK/liqjkuK3lop7liqAtdmVyYm9zZTpjbGFzc+WPguaVsO+8jOWPr+S7
+pei+k+WHuuexu+WKoOi9veWSjOWNuOi9veeahOaXpeW/l+S/oeaBr+OAgjxicj48YnI+PGJyPjwv
+cHJlPjxwPjxpbWcgc3JjPSJodHRwczovL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xNzM1ODQx
+LzIwMTkxMC8xNzM1ODQxLTIwMTkxMDE1MjAyMTA3NDYwLTIwMjg5NzMyODQucG5nIiBhbHQ9IiIg
+ZGF0YS1tY2Utc3JjPSJodHRwczovL2ltZzIwMTguY25ibG9ncy5jb20vYmxvZy8xNzM1ODQxLzIw
+MTkxMC8xNzM1ODQxLTIwMTkxMDE1MjAyMTA3NDYwLTIwMjg5NzMyODQucG5nIj48L3A+PHByZT48
+YnI+PC9wcmU+">​
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

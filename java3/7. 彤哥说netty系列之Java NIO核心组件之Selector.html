@@ -1,0 +1,246 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修7. 彤哥说netty系列之Java NIO核心组件之Selector' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>7. 彤哥说netty系列之Java NIO核心组件之Selector</center></div><div class='banquan'>原文出处:本文由博客园博主彤哥读源码提供。<br/>
+原文连接:https://www.cnblogs.com/tong-yuan/p/11992860.html</div><br>
+    <p align="right">——日拱一卒，不期而至！</p>
+<p><img src="./images/7. 彤哥说netty系列之Java NIO核心组件之Selector0.png" alt="nio" /></p>
+<p>你好，我是彤哥，本篇是netty系列的第七篇。</p>
+<h1 id="简介">简介</h1>
+<p>上一章我们一起学习了Java NIO的核心组件Buffer，它通常跟Channel一起使用，但是它们在网络IO中又该如何使用呢，今天我们将一起学习另一个NIO核心组件——<strong>Selector</strong>，没有它可以说就干不起来网络IO。</p>
+<h1 id="概念">概念</h1>
+<p>我们先来看两段Selector的注释，见类<code>java.nio.channels.Selector</code>。</p>
+<h2 id="注释i">注释I</h2>
+<blockquote>
+<p>A multiplexor of {@link SelectableChannel} objects.</p>
+</blockquote>
+<p><strong>它是<code>SelectableChannel</code>对象的多路复用器</strong>，从这里我们也可以知道Java NIO实际上是多路复用IO。</p>
+<p><code>SelectableChannel</code>有几个子类，你会非常熟悉：</p>
+<ul>
+<li>DatagramChannel，UDP协议连接</li>
+<li>SocketChannel，TCP协议连接</li>
+<li>ServerSocketChannel，专门处理TCP协议Accept事件</li>
+</ul>
+<p>我们有必要复习一下<strong>多路复用IO的流程</strong>：</p>
+<p><img src="./images/7. 彤哥说netty系列之Java NIO核心组件之Selector1.png" alt="multiplexing-io" /></p>
+<p>第一阶段通过select去轮询检查有没有连接准备好数据，第二阶段把数据从内核空间拷贝到用户空间。</p>
+<p>在Java中，就是通过<code>Selector</code>这个多路复用器来实现第一阶段的。</p>
+<h2 id="注释ii">注释II</h2>
+<blockquote>
+<p>A selector may be created by invoking the {@link #open open} method of this class, which will use the system's default {@link java.nio.channels.spi.SelectorProvider selector provider} to create a new selector. A selector may also be created by invoking the {@link java.nio.channels.spi.SelectorProvider#openSelector openSelector} method of a custom selector provider. A selector remains open until it is closed via its {@link #close close} method.</p>
+</blockquote>
+<p><code>Selector</code>可以通过它自己的<code>open()</code>方法创建，它将通过默认的<code>java.nio.channels.spi.SelectorProvider</code>类创建一个新的Selector。也可以通过实现<code>java.nio.channels.spi.SelectorProvider</code>类的抽象方法<code>openSelector()</code>来自定义实现一个Selector。Selector一旦创建将会一直处于open状态直到调用了<code>close()</code>方法为止。</p>
+<p>那么，<strong>默认使用的Selector究竟是哪个呢？</strong></p>
+<p>通过跟踪源码：</p>
+<pre><code><code>&gt; java.nio.channels.Selector#open()
+  1&gt; java.nio.channels.spi.SelectorProvider#provider()
+    1.1&gt; sun.nio.ch.DefaultSelectorProvider#create() // 返回WindowsSelectorProvider
+  2&gt; sun.nio.ch.WindowsSelectorProvider#openSelector() // 返回WindowsSelectorImpl</code></code></pre>
+<p>可以看到，在Windows平台下，默认实现的Provider是<code>WindowsSelectorProvider</code>，它的<code>openSelector()</code>方法返回的是<code>WindowsSelectorImpl</code>，它就是Windows平台默认的Selector实现。</p>
+<p><strong>为什么要提到在Windows平台呢，难道在Linux下面实现不一样？</strong></p>
+<p>是滴，因为网络IO是跟操作系统息息相关的，不同的操作系统的实现可能都不一样，Linux下面JDK的实现完全不一样，那么我们为什么没有感知到呢？我的代码在Windows下面写的，拿到Linux下面不是一样运行？那是Java虚拟机（或者说Java运行时环境）帮我们把这个事干了，它屏蔽了跟操作系统相关的细节，这也是Java代码可以“Write Once, Run Anywhere”的精髓所在。</p>
+<h1 id="selector与channel的关系">Selector与Channel的关系</h1>
+<p>上面我们说了selector是多路复用器，它是在网络IO的第一阶段用来轮询检查有没有连接准备好数据的，那么它和Channel是什么关系呢？</p>
+<p><img src="./images/7. 彤哥说netty系列之Java NIO核心组件之Selector2.png" alt="nio" /></p>
+<p>Selector通过不断轮询的方式同时监听多个Channel的事件，注意，这里是<code>同时监听</code>，一旦有Channel准备好了，它就会返回这些准备好了的Channel，交给处理线程去处理。</p>
+<p>所以，在NIO编程中，通过Selector我们就实现了一个线程同时处理多个连接请求的目标，也可以一定程序降低服务器资源的消耗。</p>
+<h1 id="基本用法">基本用法</h1>
+<h2 id="创建selector">创建Selector</h2>
+<p>通过调用<code>Selector.open()</code>方法是我们常用的方式：</p>
+<pre class="java"><code>Selector selector = Selector.open();</code></code></pre>
+<p>当然，也可以通过实现<code>java.nio.channels.spi.SelectorProvider.openSelector()</code>抽象方法自定义一个Selector。</p>
+<h2 id="将channel注册到selector上">将Channel注册到Selector上</h2>
+<p>为了将Channel跟Selector绑定在一起，需要将Channel注册到Selector上，调用Channel的<code>register()</code>方法即可：</p>
+<pre class="java"><code>channel.configureBlocking(false);
+
+SelectionKey key = channel.register(selector, SelectionKey.OP_READ);</code></code></pre>
+<p>Channel必须是非阻塞模式才能注册到Selector上，所以，无法将一个FileChannel注册到Selector，因为FileChannel没有所谓的阻塞还是非阻塞模式，本文来源于工从号彤哥读源码。</p>
+<p>注册的时候第二个参数传入的是监听的事件，一共有四种事件：</p>
+<ul>
+<li>Connect</li>
+<li>Accept</li>
+<li>Read</li>
+<li>Write</li>
+</ul>
+<p>当Channel触发了某个事件，通常也叫作那个事件就绪了。比如，数据准备好可以读取了就叫作读就绪了，同样地，还有写就绪、连接就绪、接受就绪，当然后面两个不常听到。</p>
+<p>在Java中，这四种监听事件是定义在<code>SelectionKey</code>中的：</p>
+<ul>
+<li>SelectionKey.OP_READ，值为 1 &lt;&lt; 0 = 0000 0001</li>
+<li>SelectionKey.OP_WRITE，值 为 1 &lt;&lt; 2 = 0000 0100</li>
+<li>SelectionKey.OP_CONNECT，值为 1 &lt;&lt; 3 = 0000 1000</li>
+<li>SelectionKey.OP_ACCEPT，值为 1 &lt;&lt; 4 = 0001 0000</li>
+</ul>
+<p>所以，也可以通过<code>位或</code>命令监听多个感兴趣的事件：</p>
+<pre class="java"><code>int interestSet = SelectionKey.OP_READ | SelectionKey.OP_WRITE;</code></code></pre>
+<h2 id="selectionkey">SelectionKey</h2>
+<p>正如上面所看到的，Channel注册到Selector后返回的是一个<code>SelectionKey</code>，所以<code>SelectionKey</code>又可以看作是Channel和Selector之间的一座桥梁，把两者绑定在了一起。</p>
+<p><code>SelectionKey</code>具有以下几个重要属性：</p>
+<ul>
+<li>interest set，感兴趣的事件集</li>
+<li>ready set，就绪的事件集</li>
+<li>保存着的Channel</li>
+<li>保存着的Selector</li>
+<li>attached object，附件</li>
+</ul>
+<h3 id="interest-set">interest set</h3>
+<p>里面保存了注册Channel到Selector时传入的第二个参数，即感兴趣的事件集。</p>
+<pre class="java"><code>int interestSet = selectionKey.interestOps();
+
+boolean isInterestedInAccept  = interestSet &amp; SelectionKey.OP_ACCEPT;
+boolean isInterestedInConnect = interestSet &amp; SelectionKey.OP_CONNECT;
+boolean isInterestedInRead    = interestSet &amp; SelectionKey.OP_READ;
+boolean isInterestedInWrite   = interestSet &amp; SelectionKey.OP_WRITE;    </code></code></pre>
+<p>可以通过<code>位与</code>运算查看是否注册了相应的事件。</p>
+<h3 id="ready-set">ready set</h3>
+<p>里面保存了就绪了的事件集。</p>
+<pre class="java"><code>int readySet = selectionKey.readyOps();
+selectionKey.isAcceptable();
+selectionKey.isConnectable();
+selectionKey.isReadable();
+selectionKey.isWritable();</code></code></pre>
+<p>可以通过<code>readyOps()</code>方法获取所有就绪了的事件，也可以通过<code>isXxxable()</code>方法检查某个事件是否就绪。</p>
+<h3 id="保存的channel和selector">保存的Channel和Selector</h3>
+<pre class="java"><code>Channel  channel  = selectionKey.channel();
+
+Selector selector = selectionKey.selector();    </code></code></pre>
+<p>通过<code>channel()</code>和<code>selector()</code>方法可以获取绑定的Channel和Selector。</p>
+<h3 id="attachment">attachment</h3>
+<p>可以调用<code>attach(obj)</code>方法绑定一个对象到<code>SelectionKey</code>上，并在后面需要用到的时候通过<code>attachment()</code>方法取出绑定的对象，也可以翻译为<code>附件</code>，它可以看作是数据传递的一种媒介，跟ThreadLocal有点类似，在前面绑定数据，在后面使用。</p>
+<pre class="java"><code>selectionKey.attach(theObject);
+
+Object attachedObj = selectionKey.attachment();</code></code></pre>
+<p>当然，也可以在注册Channel到Selector的时候就绑定附件：</p>
+<pre class="java"><code>SelectionKey key = channel.register(selector, SelectionKey.OP_READ, theObject);</code></code></pre>
+<h2 id="selector.select">Selector.select()</h2>
+<p>一旦将一个或多个Channel注册到Selector上了，我们就可以调用它的<code>select()</code>方法了，它会返回注册时感兴趣的事件中就绪的事件，本文来源于工从号彤哥读源码。</p>
+<p>select()方法有三种变体：</p>
+<ul>
+<li>select()，无参数，阻塞直到某个Channel有就绪的事件了才返回（当然是我们注册的感兴趣的事件）</li>
+<li>select(timeout)，带超时，阻塞直到某个Channel有就绪的事件了，或者超时了才返回</li>
+<li>selectNow()，立即返回，不会阻塞，不管有没有就绪的Channel都立即返回</li>
+</ul>
+<p>select()的返回值为int类型，表示两次select()之间就绪的Channel，即使上一次调用select()时返回的就绪Channel没有被处理，下一次调用select()也不会再返回上一次就绪的Channel。比如，第一次调用select()返回了一个就绪的Channel，但是没有处理它，第二次调用select()时又有一个Channel就绪了，那也只会返回1，而不是2。</p>
+<h2 id="selector.selectedkeys">Selector.selectedKeys()</h2>
+<p>一旦调用select()方法返回了有就绪的Channel，我们就可以使用<code>selectedKeys()</code>方法来获取就绪的Channel了。</p>
+<pre class="java"><code>Set&lt;SelectionKey&gt; selectedKeys = selector.selectedKeys();    </code></code></pre>
+<p>然后，就可以遍历这些SelectionKey来查看感兴趣的事件是否就绪了：</p>
+<pre class="java"><code>Set&lt;SelectionKey&gt; selectedKeys = selector.selectedKeys();
+
+Iterator&lt;SelectionKey&gt; keyIterator = selectedKeys.iterator();
+
+while(keyIterator.hasNext()) {
+    
+    SelectionKey key = keyIterator.next();
+
+    if(key.isAcceptable()) {
+        // a connection was accepted by a ServerSocketChannel.
+
+    } else if (key.isConnectable()) {
+        // a connection was established with a remote server.
+
+    } else if (key.isReadable()) {
+        // a channel is ready for reading
+
+    } else if (key.isWritable()) {
+        // a channel is ready for writing
+    }
+
+    keyIterator.remove();
+}</code></code></pre>
+<p>最后，一定要记得调用<code>keyIterator.remove();</code>移除已经处理的SelectionKey。</p>
+<h2 id="selector.wakeup">Selector.wakeup()</h2>
+<p>前面我们说了调用select()方法时，调用者线程会进入阻塞状态，直到有就绪的Channel才会返回。其实也不一定，wakeup()就是用来破坏规则的，可以在另外一个线程调用wakeup()方法强行唤醒这个阻塞的线程，这样select()方法也会立即返回。</p>
+<p>如果调用wakeup()时并没有线程阻塞在select()上，那么，下一次调用select()将立即返回，不会进入阻塞状态。这跟LockSupport.unpark()方法是比较类似的。</p>
+<h2 id="selector.close">Selector.close()</h2>
+<p>调用close()方法将会关闭Selector，同时也会将关联的SelectionKey失效，但不会关闭Channel。</p>
+<h1 id="举个栗子">举个栗子</h1>
+<p><img src="./images/7. 彤哥说netty系列之Java NIO核心组件之Selector3.png" alt="nio" /></p>
+<pre class="java"><code>public class EchoServer {
+    public static void main(String[] args) throws IOException {
+        // 创建一个Selector
+        Selector selector = Selector.open();
+        // 创建ServerSocketChannel
+        ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        // 绑定8080端口
+        serverSocketChannel.bind(new InetSocketAddress(8080));
+        // 设置为非阻塞模式，本文来源于工从号彤哥读源码
+        serverSocketChannel.configureBlocking(false);
+        // 将Channel注册到selector上，并注册Accept事件
+        serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+        while (true) {
+            // 阻塞在select上
+            selector.select();
+
+            // 如果使用的是select(timeout)或selectNow()需要判断返回值是否大于0
+
+            // 有就绪的Channel
+            Set&lt;SelectionKey&gt; selectionKeys = selector.selectedKeys();
+            // 遍历selectKeys
+            Iterator&lt;SelectionKey&gt; iterator = selectionKeys.iterator();
+            while (iterator.hasNext()) {
+                SelectionKey selectionKey = iterator.next();
+                // 如果是accept事件
+                if (selectionKey.isAcceptable()) {
+                    // 强制转换为ServerSocketChannel
+                    ServerSocketChannel ssc = (ServerSocketChannel) selectionKey.channel();
+                    SocketChannel socketChannel = ssc.accept();
+                    System.out.println(&quot;accept new conn: &quot; + socketChannel.getRemoteAddress());
+                    socketChannel.configureBlocking(false);
+                    // 将SocketChannel注册到Selector上，并注册读事件
+                    socketChannel.register(selector, SelectionKey.OP_READ);
+                } else if (selectionKey.isReadable()) {
+                    // 如果是读取事件
+                    // 强制转换为SocketChannel
+                    SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
+                    // 创建Buffer用于读取数据
+                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    // 将数据读入到buffer中
+                    int length = socketChannel.read(buffer);
+                    if (length &gt; 0) {
+                        buffer.flip();
+                        byte[] bytes = new byte[buffer.remaining()];
+                        // 将数据读入到byte数组中
+                        buffer.get(bytes);
+
+                        // 换行符会跟着消息一起传过来
+                        String content = new String(bytes, &quot;UTF-8&quot;).replace(&quot;\r\n&quot;, &quot;&quot;);
+                        if (content.equalsIgnoreCase(&quot;quit&quot;)) {
+                            selectionKey.cancel();
+                            socketChannel.close();
+                        } else {
+                            System.out.println(&quot;receive msg: &quot; + content);
+                        }
+                    }
+                }
+                iterator.remove();
+            }
+        }
+    }
+}</code></code></pre>
+<h1 id="总结">总结</h1>
+<p>今天我们学习了Java NIO核心组件Selector，到这里，NIO的三个最重要的核心组件我们就学习完毕了，说实话，NIO这块最重要的还是思维的问题，时刻记着在NIO中一个线程是可以处理多个连接的。</p>
+<p>看着Java原生NIO实现网络编程似乎也没什么困难的吗？那么为什么还要有Netty呢？下一章我们将正式进入Netty的学习之中，我们将在其中寻找答案。</p>
+<p>最后，也欢迎来我的工从号<strong>彤哥读源码</strong>系统地学习<strong>源码&amp;架构</strong>的知识。</p>
+<p><img src="./images/7. 彤哥说netty系列之Java NIO核心组件之Selector4.png" alt="nio" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

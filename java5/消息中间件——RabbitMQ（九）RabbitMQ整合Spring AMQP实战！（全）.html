@@ -1,0 +1,949 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）</center></div><div class='banquan'>原文出处:本文由博客园博主Coder编程提供。<br/>
+原文连接:https://www.cnblogs.com/coder-programming/p/11465987.html</div><br>
+    <p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）0.png" alt="求关注" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）1.png" alt="RabbitMQ整合Spring AMQP实战！（全）" /></p>
+<h2 id="前言">前言</h2>
+<h2 id="amqp-核心组件">1. AMQP 核心组件</h2>
+<ul>
+<li>RabbitAdmin</li>
+<li>SpringAMQP声明</li>
+<li>RabbitTemplate</li>
+<li>SimpleMessageListenerContainer</li>
+<li>MessageListenerAdapter</li>
+<li>MessageConverter</li>
+</ul>
+<h2 id="rabbitadmin">2. RabbitAdmin</h2>
+<p>RabbitAdmin类可以很好的才注意RabbitMQ,在Spring中直接进行诸如即可。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）2.png" alt="RabbitAdmin" /></p>
+<blockquote>
+<p>注意：</p>
+</blockquote>
+<ul>
+<li>autoStartUp必须要设置为true,否则Spring容器不会加载RabbitAdmin类</li>
+<li>RabbitAdmin底层实现就是从Spring容器中获取Exchange、Bingding、RoutingKey以及Queue的@Bean声明</li>
+<li>使用RabbitTemplate的execute方法执行对应的什么、修改、删除等一系列RabbitMQ基础功能操作</li>
+<li>例如：添加一个交换机、删除一个绑定、清空一个队列里的消息等等</li>
+</ul>
+<h3 id="代码演示">2.1 代码演示</h3>
+<h4 id="引入pom文件">2.1.1 引入Pom文件</h4>
+<pre><code><code>
+&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot;
+    xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+    &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+
+    &lt;groupId&gt;com.cp&lt;/groupId&gt;
+    &lt;artifactId&gt;rabbitmq-spring&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+    &lt;packaging&gt;jar&lt;/packaging&gt;
+
+    &lt;name&gt;rabbitmq-spring&lt;/name&gt;
+    &lt;description&gt;rabbitmq-spring&lt;/description&gt;
+
+    &lt;parent&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-starter-parent&lt;/artifactId&gt;
+        &lt;version&gt;1.5.14.RELEASE&lt;/version&gt;
+        &lt;relativePath/&gt; &lt;!-- lookup parent from repository --&gt;
+    &lt;/parent&gt;
+
+    &lt;properties&gt;
+        &lt;project.build.sourceEncoding&gt;UTF-8&lt;/project.build.sourceEncoding&gt;
+        &lt;project.reporting.outputEncoding&gt;UTF-8&lt;/project.reporting.outputEncoding&gt;
+        &lt;java.version&gt;1.8&lt;/java.version&gt;
+    &lt;/properties&gt;
+
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-test&lt;/artifactId&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;com.rabbitmq&lt;/groupId&gt;
+            &lt;artifactId&gt;amqp-client&lt;/artifactId&gt;
+            &lt;version&gt;3.6.5&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-amqp&lt;/artifactId&gt;
+        &lt;/dependency&gt;       
+    &lt;/dependencies&gt;
+
+    &lt;build&gt;
+        &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;/plugin&gt;
+        &lt;/plugins&gt;
+    &lt;/build&gt;
+
+
+&lt;/project&gt;
+
+</code></code></pre>
+<h4 id="配置bean">2.1.2 配置Bean</h4>
+<pre class="java"><code>
+@Configuration
+@ComponentScan({&quot;com.cp.spring.*&quot;})
+public class RabbitMQConfig {
+
+    //相当于&lt;Bean id=&quot;connectionFactory&quot;&gt;&lt;/Bean&gt;
+    @Bean
+    public ConnectionFactory connectionFactory(){
+        CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
+        connectionFactory.setAddresses(&quot;127.0.0.1:5672&quot;);
+        connectionFactory.setUsername(&quot;user_cp&quot;);
+        connectionFactory.setPassword(&quot;123456&quot;);
+        connectionFactory.setVirtualHost(&quot;/vhost_cp&quot;);
+        return connectionFactory;
+    }
+    
+    //形参名称要与bean的方法名保持一致
+    @Bean
+    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        RabbitAdmin rabbitAdmin = new RabbitAdmin(connectionFactory);
+        rabbitAdmin.setAutoStartup(true);
+        return rabbitAdmin;
+    }
+}
+    
+</code></code></pre>
+<h4 id="测试类">2.1.3 测试类</h4>
+<pre class="java"><code>
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class ApplicationTests {
+
+    @Test
+    public void contextLoads() {
+    }
+    
+    @Autowired
+    private RabbitAdmin rabbitAdmin;
+    
+    @Test
+    public void testAdmin() throws Exception {
+        //直连监听
+        rabbitAdmin.declareExchange(new DirectExchange(&quot;test.direct&quot;, false, false));
+        
+        rabbitAdmin.declareExchange(new TopicExchange(&quot;test.topic&quot;, false, false));
+        
+        rabbitAdmin.declareExchange(new FanoutExchange(&quot;test.fanout&quot;, false, false));
+        
+        rabbitAdmin.declareQueue(new Queue(&quot;test.direct.queue&quot;, false));
+        
+        rabbitAdmin.declareQueue(new Queue(&quot;test.topic.queue&quot;, false));
+        
+        rabbitAdmin.declareQueue(new Queue(&quot;test.fanout.queue&quot;, false));
+
+        //第一个参数：具体的队列 第二个参数：绑定的类型 第三个参数：交换机 第四个参数：路由key 第五个参数：arguments 参数
+        rabbitAdmin.declareBinding(new Binding(&quot;test.direct.queue&quot;,
+                Binding.DestinationType.QUEUE,
+                &quot;test.direct&quot;, &quot;direct&quot;, new HashMap&lt;&gt;()));
+
+        //BindingBuilder 链式编程
+        rabbitAdmin.declareBinding(
+                BindingBuilder
+                .bind(new Queue(&quot;test.topic.queue&quot;, false))     //直接创建队列
+                .to(new TopicExchange(&quot;test.topic&quot;, false, false))  //直接创建交换机 建立关联关系
+                .with(&quot;user.#&quot;));   //指定路由Key
+        
+        
+        rabbitAdmin.declareBinding(
+                BindingBuilder
+                .bind(new Queue(&quot;test.fanout.queue&quot;, false))        
+                .to(new FanoutExchange(&quot;test.fanout&quot;, false, false)));
+        
+        //清空队列数据
+        rabbitAdmin.purgeQueue(&quot;test.topic.queue&quot;, false);
+    }
+}
+</code></code></pre>
+<p>通过以上代码，可以自行测试一下结果。</p>
+<h3 id="rabbitadmin源码">RabbitAdmin源码</h3>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）3.png" alt="RabbitAdmin源码UML图" /></p>
+<p>实现了<code>InitializingBean</code>接口，表明在Bean配置加载完后再加载RabbitAdmin配置。找到afterPropertiesSet()方法中最要的initialize()初始化方法。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）4.png" alt="afterPropertiesSet方法" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）5.png" alt="initialize方法" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）6.png" alt="initialize" /></p>
+<pre class="java"><code>this.applicationContext.getBeansOfType(Collection.class, false, false).values()</code></code></pre>
+<p>可以看到Exchange、Queue、Binding都是从Spring容器中获取三种类型，加载到上方定义的contextExchanges、contextQueues、contextBindings三种容器中。<br />
+后续的源码中，也可以看出通过筛选Spring容器中RabbitMQ的信息之后，再去建立RabbitMQ服务器的连接。主要通过Spring以@Bean的方式，将配置加载到Spring容器之后，再从容器中获取相关信息，再去建立连接。</p>
+<h2 id="springamqp声明">3. SpringAMQP声明</h2>
+<ul>
+<li>在Rabbit基础API里面声明一个Exchange、声明一个绑定、一个队列</li>
+</ul>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）7.png" alt="channel" /></p>
+<p>-使用SpringAMQP去声明，就需要使用SpringAMQP的如下模式，即声明@Bean方式</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）8.png" alt="声明AMQP" /></p>
+<h3 id="代码演示-1">3.1 代码演示</h3>
+<pre class="java"><code>
+@Configuration
+@ComponentScan({&quot;com.cp.spring.*&quot;})
+public class RabbitMQConfig {
+
+    //相当于&lt;Bean id=&quot;connectionFactory&quot;&gt;&lt;/Bean&gt;
+    @Bean
+    public ConnectionFactory connectionFactory(){
+        CachingConnectionFactory connectionFactory = new CachingConnectionFactory();
+        connectionFactory.setAddresses(&quot;127.0.0.1:5672&quot;);
+        connectionFactory.setUsername(&quot;user_cp&quot;);
+        connectionFactory.setPassword(&quot;123456&quot;);
+        connectionFactory.setVirtualHost(&quot;/vhost_cp&quot;);
+        return connectionFactory;
+    }
+    
+    //形参名称要与bean的方法名保持一致
+    @Bean
+    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        RabbitAdmin rabbitAdmin = new RabbitAdmin(connectionFactory);
+        rabbitAdmin.setAutoStartup(true);
+        return rabbitAdmin;
+    }
+    
+    /**  
+     * 针对消费者配置  
+     * 1. 设置交换机类型  
+     * 2. 将队列绑定到交换机  
+        FanoutExchange: 将消息分发到所有的绑定队列，无routingkey的概念  
+        HeadersExchange ：通过添加属性key-value匹配  
+        DirectExchange:按照routingkey分发到指定队列  
+        TopicExchange:多关键字匹配  
+     */  
+    @Bean  
+    public TopicExchange exchange001() {  
+        return new TopicExchange(&quot;topic001&quot;, true, false);  
+    }  
+
+    @Bean  
+    public Queue queue001() {  
+        return new Queue(&quot;queue001&quot;, true); //队列持久  
+    }  
+    
+    @Bean  
+    public Binding binding001() {  
+        return BindingBuilder.bind(queue001()).to(exchange001()).with(&quot;spring.*&quot;);  
+    }  
+    
+    @Bean  
+    public TopicExchange exchange002() {  
+        return new TopicExchange(&quot;topic002&quot;, true, false);  
+    }  
+    
+    @Bean  
+    public Queue queue002() {  
+        return new Queue(&quot;queue002&quot;, true); //队列持久  
+    }
+    
+    @Bean  
+    public Binding binding002() {  
+        return BindingBuilder.bind(queue002()).to(exchange002()).with(&quot;rabbit.*&quot;);  
+    } 
+    
+    @Bean  
+    public Queue queue003() {  
+        return new Queue(&quot;queue003&quot;, true); //队列持久  
+    }
+    
+    @Bean  
+    public Binding binding003() {  
+        //同一个Exchange绑定了2个队列
+        return BindingBuilder.bind(queue003()).to(exchange001()).with(&quot;mq.*&quot;);  
+    } 
+}
+</code></code></pre>
+<p>再次运行ApplicationTests类中testAdmin()方法，可以在控制台中，查看到一个Exchange绑定两个Queue。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）9.png" alt="运行结果" /></p>
+<h2 id="rabbittemplate">4. RabbitTemplate</h2>
+<p>RabbitTemplate，即消息模板</p>
+<ul>
+<li>我们在与SpringAMQP整合的时候进行发送消息的关键词</li>
+<li><p>该类提供了丰富的发送消息方法，包括可靠性投递消息方法、回调监听消息接口ConfirmCallback、返回值确认接口ReturnCallback等等。同样我们需要进行注入到Spring容器中，然后直接使用</p></li>
+<li><p>在与SPring整合时需要实例化，但是在与SpringBoot整合时，在配置文件里添加配置即可</p></li>
+</ul>
+<h3 id="代码演示-2">4.1 代码演示</h3>
+<h4 id="rabbitmqconfig类">4.1.1 RabbitMQConfig类</h4>
+<p>在RabbitMQConfig类中写RabbitTemplate配置</p>
+<pre class="java"><code>
+@Bean
+public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+    RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+    return rabbitTemplate;
+}
+</code></code></pre>
+<h4 id="applicationtests类">4.1.2 ApplicationTests类</h4>
+<p>在ApplicationTests测试类中添加测试方法，进行测试。</p>
+<pre class="java"><code>
+@Autowired
+    private RabbitTemplate rabbitTemplate;
+
+
+    @Test
+    public void testSendMessage() throws Exception {
+        //1 创建消息
+        MessageProperties messageProperties = new MessageProperties();
+        messageProperties.getHeaders().put(&quot;desc&quot;, &quot;信息描述..&quot;);
+        messageProperties.getHeaders().put(&quot;type&quot;, &quot;自定义消息类型..&quot;);
+        //消息体，与参数
+        Message message = new Message(&quot;Hello RabbitMQ&quot;.getBytes(), messageProperties);
+        //转换并发送
+        //MessagePostProcessor 在消息发送完毕后再做一次转换进行再加工，匿名接口，需要重写方法
+        rabbitTemplate.convertAndSend(&quot;topic001&quot;, &quot;spring.amqp&quot;, message, new MessagePostProcessor() {
+            @Override
+            public Message postProcessMessage(Message message) throws AmqpException {
+                System.err.println(&quot;------添加额外的设置---------&quot;);
+                message.getMessageProperties().getHeaders().put(&quot;desc&quot;, &quot;额外修改的信息描述&quot;);
+                message.getMessageProperties().getHeaders().put(&quot;attr&quot;, &quot;额外新加的属性&quot;);
+                return message;
+            }
+        });
+    }
+</code></code></pre>
+<h4 id="查看管控台">4.1.3 查看管控台</h4>
+<p>运行前，可以看到<code>queue001</code>中是没有消息的。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）10.png" alt="执行前Queue001" /></p>
+<p>运行testSendMessage()方法。并获取消息。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）11.png" alt="执行后Queue001" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）12.png" alt="获取消息" /></p>
+<h4 id="简单写法">4.1.4 简单写法</h4>
+<pre class="java"><code>
+@Test
+public void testSendMessage2() throws Exception {
+    //1 创建消息
+    MessageProperties messageProperties = new MessageProperties();
+    messageProperties.setContentType(&quot;text/plain&quot;);
+    Message message = new Message(&quot;mq 消息1234&quot;.getBytes(), messageProperties);
+
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.abc&quot;, message);
+
+    rabbitTemplate.convertAndSend(&quot;topic001&quot;, &quot;spring.amqp&quot;, &quot;hello object message send!&quot;);
+    rabbitTemplate.convertAndSend(&quot;topic002&quot;, &quot;rabbit.abc&quot;, &quot;hello object message send!&quot;);
+}
+</code></code></pre>
+<p>我们往topic001中发送了两条消息，topic002中发送了一条消息。运行testSendMessage2() 接下来再查看下<code>管控台</code>。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）13.png" alt="查看管控台" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）14.png" alt="获取消息1" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）15.png" alt="获取消息2" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）16.png" alt="获取消息3" /></p>
+<p>可以看到topic001中已经有了三条消息，刚才发送的消息也还在。GetMessage并不是消费消息，而只是获取消息。</p>
+<h2 id="simplemessagelistenercontainer">5. SimpleMessageListenerContainer</h2>
+<p><strong>简单消息监听容器</strong></p>
+<ul>
+<li>这个类非常的强大，我们可以对它进行很多设置，对于消费者的配置项，这个类都可以满足</li>
+<li>监听队列(多个队列)、自动启动、自动声明功能</li>
+<li>设置事务特性、事务管理器、事务属性、事务容器(并发)、是否开启事务、回滚消息等</li>
+<li>设置消费者数量、最小最大数量、批量消费</li>
+<li>设置消息确认和自动确认模式、是否重回队列、异常捕捉handler函数</li>
+<li>设置消费者标签生成策略、是否独占模式、消费者属性等</li>
+<li>设置具体的监听器、消息转换器等等。</li>
+</ul>
+<blockquote>
+<p>注意：</p>
+</blockquote>
+<ul>
+<li>SimpleMessageListenerContainer可以进行动态设置，比如在运行中的应用可以动态的修改其消费者数量的大小、接收消息的模式等</li>
+<li>很多机遇RabbitMQ的自制定话后端管控台在进行动态设置的时候，也是根据这一特性去实现的。所以可以看出SpringAMQP非常的强大</li>
+</ul>
+<p><strong>思考</strong></p>
+<p>SimpleMessageListenerContainer为什么可以动态感知配置变更？</p>
+<h3 id="代码演示-3">5.1 代码演示</h3>
+<h4 id="rabbitmqconfig类-1">5.1.1 RabbitMQConfig类</h4>
+<p>配置中添加如下代码：</p>
+<pre class="java"><code>
+@Bean
+public SimpleMessageListenerContainer messageContainer(ConnectionFactory connectionFactory) {
+    
+    SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+    //添加多个队列进行监听
+    container.setQueues(queue001(), queue002(), queue003(), queue_image(), queue_pdf());
+    //当前消费者数量
+    container.setConcurrentConsumers(1);
+    //最大消费者数量
+    container.setMaxConcurrentConsumers(5);
+    //设置重回队列，一般设置false
+    container.setDefaultRequeueRejected(false);
+    //设置自动签收机制
+    container.setAcknowledgeMode(AcknowledgeMode.AUTO);
+    //设置listener外露
+    container.setExposeListenerChannel(true);
+    //消费端标签生成策略
+    container.setConsumerTagStrategy(new ConsumerTagStrategy() {
+        @Override
+        public String createConsumerTag(String queue) {
+            //每个消费端都有自己独立的标签
+            return queue + &quot;_&quot; + UUID.randomUUID().toString();
+        }
+    });
+
+    //消息监听
+    container.setMessageListener(new ChannelAwareMessageListener() {
+        @Override
+        public void onMessage(Message message, Channel channel) throws Exception {
+            String msg = new String(message.getBody());
+            System.err.println(&quot;----------消费者: &quot; + msg);
+        }
+    });
+    return container;
+}
+
+</code></code></pre>
+<p>运行之前写的testSendMessage2()方法，查看管控台中的相关信息以及控制台打印信息</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）17.png" alt="查看Channel1" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）18.png" alt="查看Channel2" /></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）19.png" alt="打印信息" /></p>
+<h2 id="messagelisteneradapter">6. MessageListenerAdapter</h2>
+<p><strong>MessageListenerAdapter 即消息监听适配器</strong></p>
+<h3 id="代码演示-4">6.1 代码演示</h3>
+<h4 id="适配器使用方式1">6.1.1 适配器使用方式1</h4>
+<p>我们把之前的消息监听代码注释，可以不用直接加消息监听，而是采用MessageListenerAdapter的方式，通过适配器方式1，我们来学习下如何使用默认的handleMessage，自定义方法名，自定义转换器。</p>
+<p><strong>使用默认handleMessage</strong></p>
+<pre class="java"><code>
+//消息监听
+/*container.setMessageListener(new ChannelAwareMessageListener() {
+    @Override
+    public void onMessage(Message message, Channel channel) throws Exception {
+        String msg = new String(message.getBody());
+        System.err.println(&quot;----------消费者: &quot; + msg);
+    }
+});*/
+
+
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+container.setMessageListener(adapter);
+
+</code></code></pre>
+<p>MessageListenerAdapter 适配器类，熟悉适配器模式的朋友肯定了解适配器模式的话，可以通过适配器，适配自己的实现，这里我们适配自定义的<code>MessageDelegate</code>类。我们就可以不采用监听的方式，采用适配的方式。</p>
+<p><strong>自定义MessageDelegate</strong></p>
+<pre><code><code>public class MessageDelegate {
+
+    public void handleMessage(byte[] messageBody) {
+        System.err.println(&quot;默认方法, 消息内容:&quot; + new String(messageBody));
+    }
+}
+</code></code></pre>
+<p>MessageDelegate类中，方法名与参数<code>handleMessage(byte[] messageBody)</code>是固定的。为什么呢？</p>
+<p><strong>MessageListenerAdapter源码分析</strong></p>
+<p>我们来看下MessageListenerAdapter底层代码</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）20.png" alt="MessageListenerAdapter" /></p>
+<p>MessageListenerAdapter类中</p>
+<pre class="java"><code>
+public static final String ORIGINAL_DEFAULT_LISTENER_METHOD = &quot;handleMessage&quot;;</code></code></pre>
+<p>默认方法名就是叫handleMessage。当然也可以自己去指定设置。通过messageListenerAdapter的代码我们可以看出如下核心属性</p>
+<ul>
+<li>defaultListenerMethod默认监听方法名称：用于设置监听方法名称</li>
+<li>Delegate 委托对象：实际真实的委托对象，用于处理消息</li>
+<li>queueOrTagToMethodName 队列标识与方法名称组成集合</li>
+<li>可以一一进行队列与方法名称的匹配</li>
+<li>队列和方法名称绑定，即指定队列里的消息会被绑定的方法所接受处理</li>
+</ul>
+<p>测试一下默认使用的handleMessage方法。启动ApplicationTests类，运行testSendMessage()测试方法。</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）21.png" alt="打印消息" /></p>
+<p><strong>自定义方法名</strong></p>
+<pre class="java"><code>MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+container.setMessageListener(adapter);</code></code></pre>
+<p>修改MessageDelegate()类</p>
+<pre><code><code>public class MessageDelegate {
+    
+    public void consumeMessage(byte[] messageBody) {
+        System.err.println(&quot;字节数组方法, 消息内容:&quot; + new String(messageBody));
+    }
+}
+</code></code></pre>
+<p><strong>自定义TextMessageConverter转换器</strong></p>
+<pre class="java"><code>
+public class TextMessageConverter implements MessageConverter {
+
+    @Override
+    public Message toMessage(Object object, MessageProperties messageProperties) throws MessageConversionException {
+        return new Message(object.toString().getBytes(), messageProperties);
+    }
+
+    @Override
+    public Object fromMessage(Message message) throws MessageConversionException {
+        String contentType = message.getMessageProperties().getContentType();
+        if(null != contentType &amp;&amp; contentType.contains(&quot;text&quot;)) {
+            return new String(message.getBody());
+        }
+        return message.getBody();
+    }
+
+}
+
+</code></code></pre>
+<p>修改RabbitMQConfig类</p>
+<pre class="java"><code>
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+adapter.setMessageConverter(new TextMessageConverter());
+container.setMessageListener(adapter);
+</code></code></pre>
+<p>修改MessageDelegate类</p>
+<pre class="java"><code>
+public class MessageDelegate {
+
+    public void consumeMessage(String messageBody) {
+        System.err.println(&quot;字符串方法, 消息内容:&quot; + messageBody);
+    }
+}
+</code></code></pre>
+<p>运行testSendMessage4Text()测试方法</p>
+<pre class="java"><code>
+@Test
+public void testSendMessage2() throws Exception {
+    //1 创建消息
+    MessageProperties messageProperties = new MessageProperties();
+    messageProperties.setContentType(&quot;text/plain&quot;);
+    Message message = new Message(&quot;mq 消息1234&quot;.getBytes(), messageProperties);
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.abc&quot;, message);
+    rabbitTemplate.convertAndSend(&quot;topic001&quot;, &quot;spring.amqp&quot;, &quot;hello object message send!&quot;);
+    rabbitTemplate.convertAndSend(&quot;topic002&quot;, &quot;rabbit.abc&quot;, &quot;hello object message send!&quot;);
+}</code></code></pre>
+<blockquote>
+<p>注意：在发消息的时候，必须符合自己的转换器。</p>
+</blockquote>
+<p><strong>打印结果</strong><br />
+<img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）22.png" alt="打印结果" /></p>
+<h4 id="适配器使用方式2">6.1.2 适配器使用方式2</h4>
+<p>自定义队列名称和方法名称。</p>
+<pre class="java"><code>/**
+* 2 适配器方式: 我们的队列名称 和 方法名称 也可以进行一一的匹配
+* /
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setMessageConverter(new TextMessageConverter());
+Map&lt;String, String&gt; queueOrTagToMethodName = new HashMap&lt;&gt;();
+queueOrTagToMethodName.put(&quot;queue001&quot;, &quot;method1&quot;);
+queueOrTagToMethodName.put(&quot;queue002&quot;, &quot;method2&quot;);
+adapter.setQueueOrTagToMethodName(queueOrTagToMethodName);
+container.setMessageListener(adapter);    
+</code></code></pre>
+<pre class="java"><code>public class MessageDelegate {
+    public void method1(String messageBody) {
+        System.err.println(&quot;method1 收到消息内容:&quot; + new String(messageBody));
+    }
+    
+    public void method2(String messageBody) {
+        System.err.println(&quot;method2 收到消息内容:&quot; + new String(messageBody));
+    }
+    
+}</code></code></pre>
+<p>运行 测试方法</p>
+<pre class="java"><code>@Test
+public void testSendMessage4Text() throws Exception {
+    //1 创建消息
+    MessageProperties messageProperties = new MessageProperties();
+    messageProperties.setContentType(&quot;text/plain&quot;);
+    Message message = new Message(&quot;mq 消息1234&quot;.getBytes(), messageProperties);
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.abc&quot;, message);
+    rabbitTemplate.send(&quot;topic002&quot;, &quot;rabbit.abc&quot;, message);
+}
+</code></code></pre>
+<p>运行结果：</p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）23.png" alt="打印结果" /></p>
+<h2 id="messageconverter消息转换器">7. MessageConverter消息转换器</h2>
+<p>我们在进行发送消息的时候，正常情况下消息体为二进制的数据方式进行传输，如果希望内部帮我们进行转换，或者指定自定义的转换器，就需要用到MessageConverter</p>
+<ul>
+<li>自定义常用转换器：MessageConverter，一般来讲都需要实现这个接口</li>
+<li>重写下面两个方法：<br />
+toMessage:java对象转换为Message<br />
+fromMessage:Message对象转换为java对象</li>
+<li>Json转换器：Jackson2JsonMessageConverter:可以进行Java对象的转换功能</li>
+<li>DefaultJackson2JavaTypeMapper映射器：可以进行java对象的映射关系</li>
+<li>自定义二进制转换器：比如图片类型、PDF、PPT、流媒体</li>
+</ul>
+<h3 id="代码演示-5">7.1 代码演示</h3>
+<p>其实我们在介绍MessageListenerAdapter的时候，中间就介绍到了TextMessageConverter转换器，将二进制数据转换成字符串数据。</p>
+<h4 id="添加json格式的转换器">7.1.1 添加json格式的转换器</h4>
+<p><strong>修改RabbitMQConfig类</strong></p>
+<pre class="java"><code>
+// 1.1 支持json格式的转换器
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+//重点，加入json格式的转换器 json对应Map对象
+Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+adapter.setMessageConverter(jackson2JsonMessageConverter);
+
+container.setMessageListener(adapter);</code></code></pre>
+<p><strong>修改MessageDelegate</strong></p>
+<pre class="java"><code>public class MessageDelegate {
+    //json对应Map对象
+    public void consumeMessage(Map messageBody) {
+        System.err.println(&quot;map方法, 消息内容:&quot; + messageBody);
+    }
+}</code></code></pre>
+<p><strong>定义一个Order对象</strong></p>
+<pre class="java"><code>
+public class Order {
+    private String id;
+    private String name;
+    private String content;
+    ...省略get/set等方法
+}</code></code></pre>
+<p><strong>定义测试方法</strong></p>
+<pre class="java"><code>@Test
+public void testSendJsonMessage() throws Exception {
+
+    Order order = new Order();
+    order.setId(&quot;001&quot;);
+    order.setName(&quot;消息订单&quot;);
+    order.setContent(&quot;描述信息&quot;);
+    ObjectMapper mapper = new ObjectMapper();
+    String json = mapper.writeValueAsString(order);
+    System.err.println(&quot;order 4 json: &quot; + json);
+
+    MessageProperties messageProperties = new MessageProperties();
+    //这里注意一定要修改contentType为 application/json
+    messageProperties.setContentType(&quot;application/json&quot;);
+    Message message = new Message(json.getBytes(), messageProperties);
+
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.order&quot;, message);
+}
+  </code></code></pre>
+<p><strong>打印结果：</strong><br />
+<img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）24.png" alt="打印结果" /></p>
+<h4 id="添加支持java对象转换">7.1.2 添加支持Java对象转换</h4>
+<p><strong>修改RabbitMQConfig类</strong></p>
+<pre class="java"><code>
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+
+Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+
+//需要将javaTypeMapper放入到Jackson2JsonMessageConverter对象中
+DefaultJackson2JavaTypeMapper javaTypeMapper = new DefaultJackson2JavaTypeMapper();
+jackson2JsonMessageConverter.setJavaTypeMapper(javaTypeMapper);
+
+adapter.setMessageConverter(jackson2JsonMessageConverter);
+container.setMessageListener(adapter);
+</code></code></pre>
+<p><strong>修改MessageDelegate</strong></p>
+<pre class="java"><code>public class MessageDelegate {
+    public void consumeMessage(Order order) {
+        System.err.println(&quot;order对象, 消息内容, id: &quot; + order.getId() + 
+                &quot;, name: &quot; + order.getName() + 
+                &quot;, content: &quot;+ order.getContent());
+    }
+}</code></code></pre>
+<p><strong>定义测试方法</strong></p>
+<pre><code><code>@Test
+public void testSendJavaMessage() throws Exception {
+
+    Order order = new Order();
+    order.setId(&quot;001&quot;);
+    order.setName(&quot;订单消息&quot;);
+    order.setContent(&quot;订单描述信息&quot;);
+    ObjectMapper mapper = new ObjectMapper();
+    String json = mapper.writeValueAsString(order);
+    System.err.println(&quot;order 4 json: &quot; + json);
+
+    MessageProperties messageProperties = new MessageProperties();
+    //这里注意一定要修改contentType为 application/json
+    messageProperties.setContentType(&quot;application/json&quot;);
+    //添加typeid 与类的全路径
+    messageProperties.getHeaders().put(&quot;__TypeId__&quot;, &quot;com.cp.spring.entity.Order&quot;);
+    Message message = new Message(json.getBytes(), messageProperties);
+
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.order&quot;, message);
+}
+</code></code></pre>
+<p><strong>打印结果：</strong></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）25.png" alt="打印结果" /></p>
+<h4 id="添加支持java对象多映射转换">7.1.3 添加支持java对象多映射转换</h4>
+<p><strong>修改RabbitMQConfig类</strong></p>
+<pre class="java"><code>
+//1.3 DefaultJackson2JavaTypeMapper &amp; Jackson2JsonMessageConverter 支持java对象多映射转换
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+DefaultJackson2JavaTypeMapper javaTypeMapper = new DefaultJackson2JavaTypeMapper();
+
+//key表示标签 对应一个类的具体全路径。类和标签绑定之后，标签是order，意思就是转换成order类
+Map&lt;String, Class&lt;?&gt;&gt; idClassMapping = new HashMap&lt;String, Class&lt;?&gt;&gt;();
+idClassMapping.put(&quot;order&quot;, com.cp.spring.entity.Order.class);
+idClassMapping.put(&quot;packaged&quot;, com.cp.spring.entity.Packaged.class);
+
+javaTypeMapper.setIdClassMapping(idClassMapping);
+//一层套一层
+jackson2JsonMessageConverter.setJavaTypeMapper(javaTypeMapper);
+adapter.setMessageConverter(jackson2JsonMessageConverter);
+container.setMessageListener(adapter);
+</code></code></pre>
+<p><strong>修改MessageDelegate</strong></p>
+<pre class="java"><code>public class MessageDelegate {
+    //json对应Map对象
+    public void consumeMessage(Order order) {
+        System.err.println(&quot;order对象, 消息内容, id: &quot; + order.getId() + 
+                &quot;, name: &quot; + order.getName() + 
+                &quot;, content: &quot;+ order.getContent());
+    }
+     
+    public void consumeMessage(Packaged pack) {
+        System.err.println(&quot;package对象, 消息内容, id: &quot; + pack.getId() + 
+                &quot;, name: &quot; + pack.getName() + 
+                &quot;, content: &quot;+ pack.getDescription());
+    }
+}</code></code></pre>
+<p><strong>定义一个Packaged对象</strong></p>
+<pre class="java"><code>
+public class Packaged {
+    private String id;
+    private String name;
+    private String description;
+    ...省略get/set等方法
+}</code></code></pre>
+<p><strong>定义测试方法</strong></p>
+<pre class="java"><code>
+@Test
+public void testSendMappingMessage() throws Exception {
+
+    ObjectMapper mapper = new ObjectMapper();
+
+    Order order = new Order();
+    order.setId(&quot;001&quot;);
+    order.setName(&quot;订单消息&quot;);
+    order.setContent(&quot;订单描述信息&quot;);
+
+    String json1 = mapper.writeValueAsString(order);
+    System.err.println(&quot;order 4 json: &quot; + json1);
+
+    MessageProperties messageProperties1 = new MessageProperties();
+    //这里注意一定要修改contentType为 application/json
+    messageProperties1.setContentType(&quot;application/json&quot;);
+    //设置的是标签，而不是全路径
+    messageProperties1.getHeaders().put(&quot;__TypeId__&quot;, &quot;order&quot;);
+    Message message1 = new Message(json1.getBytes(), messageProperties1);
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.order&quot;, message1);
+
+    Packaged pack = new Packaged();
+    pack.setId(&quot;002&quot;);
+    pack.setName(&quot;包裹消息&quot;);
+    pack.setDescription(&quot;包裹描述信息&quot;);
+
+    String json2 = mapper.writeValueAsString(pack);
+    System.err.println(&quot;pack 4 json: &quot; + json2);
+
+    MessageProperties messageProperties2 = new MessageProperties();
+    //这里注意一定要修改contentType为 application/json
+    messageProperties2.setContentType(&quot;application/json&quot;);
+    //设置的是标签，而不是全路径
+    messageProperties2.getHeaders().put(&quot;__TypeId__&quot;, &quot;packaged&quot;);
+    Message message2 = new Message(json2.getBytes(), messageProperties2);
+    rabbitTemplate.send(&quot;topic001&quot;, &quot;spring.pack&quot;, message2);
+}
+
+</code></code></pre>
+<p><strong>打印结果：</strong></p>
+<p><img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）26.png" alt="打印结果" /></p>
+<p>在通过单元测试运行testSendMappingMessage()方法时会存在一个问题：委派对象MessageDelegate可能会收不到对象。<br />
+因为单元测试spring容器在运行完毕之后就停止，不会等到消费者消费完消息之后再停止，所以需要通过正常启动springboot项目，可以看到正常消费消息。</p>
+<h4 id="添加全局转换器">7.1.4 添加全局转换器</h4>
+<p><strong>修改RabbitMQConfig类</strong></p>
+<pre class="java"><code>
+@Bean  
+public Queue queue_image() {  
+    return new Queue(&quot;image_queue&quot;, true); //队列持久  
+}
+
+@Bean  
+public Queue queue_pdf() {  
+    return new Queue(&quot;pdf_queue&quot;, true); //队列持久  
+}
+
+//1.4 ext convert
+MessageListenerAdapter adapter = new MessageListenerAdapter(new MessageDelegate());
+adapter.setDefaultListenerMethod(&quot;consumeMessage&quot;);
+
+//全局的转换器:所有小的Converter都可以放到这个大的Converter中
+ContentTypeDelegatingMessageConverter convert = new ContentTypeDelegatingMessageConverter();
+
+TextMessageConverter textConvert = new TextMessageConverter();
+//text走文本转换器
+convert.addDelegate(&quot;text&quot;, textConvert);
+convert.addDelegate(&quot;html/text&quot;, textConvert);
+convert.addDelegate(&quot;xml/text&quot;, textConvert);
+convert.addDelegate(&quot;text/plain&quot;, textConvert);
+//json走json转换器
+Jackson2JsonMessageConverter jsonConvert = new Jackson2JsonMessageConverter();
+convert.addDelegate(&quot;json&quot;, jsonConvert);
+convert.addDelegate(&quot;application/json&quot;, jsonConvert);
+//图片走图片转换器
+ImageMessageConverter imageConverter = new ImageMessageConverter();
+convert.addDelegate(&quot;image/png&quot;, imageConverter);
+convert.addDelegate(&quot;image&quot;, imageConverter);
+//pdf走pdf转换器
+PDFMessageConverter pdfConverter = new PDFMessageConverter();
+convert.addDelegate(&quot;application/pdf&quot;, pdfConverter);
+
+
+adapter.setMessageConverter(convert);
+container.setMessageListener(adapter);
+</code></code></pre>
+<p><strong>修改MessageDelegate</strong></p>
+<pre class="java"><code>public class MessageDelegate {
+
+    public void handleMessage(byte[] messageBody) {
+        System.err.println(&quot;默认方法, 消息内容:&quot; + new String(messageBody));
+    }
+    
+    public void consumeMessage(byte[] messageBody) {
+        System.err.println(&quot;字节数组方法, 消息内容:&quot; + new String(messageBody));
+    }
+    
+    public void consumeMessage(String messageBody) {
+        System.err.println(&quot;字符串方法, 消息内容:&quot; + messageBody);
+    }
+    
+    public void method1(String messageBody) {
+        System.err.println(&quot;method1 收到消息内容:&quot; + new String(messageBody));
+    }
+    
+    public void method2(String messageBody) {
+        System.err.println(&quot;method2 收到消息内容:&quot; + new String(messageBody));
+    }
+    
+    //json对应Map对象
+    public void consumeMessage(Map messageBody) {
+        System.err.println(&quot;map方法, 消息内容:&quot; + messageBody);
+    }
+    public void consumeMessage(Order order) {
+        System.err.println(&quot;order对象, 消息内容, id: &quot; + order.getId() + 
+                &quot;, name: &quot; + order.getName() + 
+                &quot;, content: &quot;+ order.getContent());
+    }
+    public void consumeMessage(Packaged pack) {
+        System.err.println(&quot;package对象, 消息内容, id: &quot; + pack.getId() + 
+                &quot;, name: &quot; + pack.getName() + 
+                &quot;, content: &quot;+ pack.getDescription());
+    }
+    public void consumeMessage(File file) {
+        System.err.println(&quot;文件对象 方法, 消息内容:&quot; + file.getName());
+    }
+}
+</code></code></pre>
+<p><strong>添加PDFMessageConverter</strong></p>
+<pre class="java"><code>
+public class PDFMessageConverter implements MessageConverter {
+
+    @Override
+    public Message toMessage(Object object, MessageProperties messageProperties) throws MessageConversionException {
+        throw new MessageConversionException(&quot; convert error ! &quot;);
+    }
+
+    @Override
+    public Object fromMessage(Message message) throws MessageConversionException {
+        System.err.println(&quot;-----------PDF MessageConverter----------&quot;);
+        
+        byte[] body = message.getBody();
+        String fileName = UUID.randomUUID().toString();
+        String path = &quot;d:/010_test/&quot; + fileName + &quot;.pdf&quot;;
+        File f = new File(path);
+        try {
+            Files.copy(new ByteArrayInputStream(body), f.toPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return f;
+    }
+
+}
+
+</code></code></pre>
+<p><strong>添加ImageMessageConverter</strong></p>
+<pre class="java"><code>
+public class ImageMessageConverter implements MessageConverter {
+
+    @Override
+    public Message toMessage(Object object, MessageProperties messageProperties) throws MessageConversionException {
+        throw new MessageConversionException(&quot; convert error ! &quot;);
+    }
+
+    @Override
+    public Object fromMessage(Message message) throws MessageConversionException {
+        System.err.println(&quot;-----------Image MessageConverter----------&quot;);
+        
+        Object _extName = message.getMessageProperties().getHeaders().get(&quot;extName&quot;);
+        String extName = _extName == null ? &quot;png&quot; : _extName.toString();
+        
+        byte[] body = message.getBody();
+        String fileName = UUID.randomUUID().toString();
+        //将接受到的图片放到该位置
+        String path = &quot;d:/010_test/&quot; + fileName + &quot;.&quot; + extName;
+        File f = new File(path);
+        try {
+            Files.copy(new ByteArrayInputStream(body), f.toPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return f;
+    }
+}</code></code></pre>
+<p><strong>定义测试方法</strong></p>
+<pre class="java"><code>
+@Test
+public void testSendExtConverterMessage() throws Exception {
+//      byte[] body = Files.readAllBytes(Paths.get(&quot;d:/002_books&quot;, &quot;picture.png&quot;));
+//      MessageProperties messageProperties = new MessageProperties();
+//      messageProperties.setContentType(&quot;image/png&quot;);
+//      messageProperties.getHeaders().put(&quot;extName&quot;, &quot;png&quot;);
+//      Message message = new Message(body, messageProperties);
+//      rabbitTemplate.send(&quot;&quot;, &quot;image_queue&quot;, message);
+
+        byte[] body = Files.readAllBytes(Paths.get(&quot;d:/002_books&quot;, &quot;mysql.pdf&quot;));
+        MessageProperties messageProperties = new MessageProperties();
+        messageProperties.setContentType(&quot;application/pdf&quot;);
+        Message message = new Message(body, messageProperties);
+        rabbitTemplate.send(&quot;&quot;, &quot;pdf_queue&quot;, message);
+}
+</code></code></pre>
+<p>可以自己测试下图片和pdf的保存。</p>
+<p>源码地址：https://gitee.com/573059382/rabbitmq-demos</p>
+<h2 id="文末">文末</h2>
+<blockquote>
+<p>欢迎关注个人微信公众号：<strong>Coder编程</strong><br />
+获取最新原创技术文章和免费学习资料，更有大量精品思维导图、面试资料、PMP备考资料等你来领，方便你随时随地学习技术知识！<br />
+新建了一个qq群：315211365，欢迎大家进群交流一起学习。谢谢了！也可以介绍给身边有需要的朋友。</p>
+</blockquote>
+<blockquote>
+<p>文章收录至<br />
+Github: https://github.com/CoderMerlin/coder-programming<br />
+Gitee: https://gitee.com/573059382/coder-programming<br />
+欢迎<strong>关注</strong>并star~<br />
+<img src="./images/消息中间件——RabbitMQ（九）RabbitMQ整合Spring AMQP实战！（全）27.png" alt="微信公众号" /></p>
+</blockquote>
+<p>参考文章：</p>
+<p>《RabbitMQ消息中间件精讲》</p>
+<p>推荐文章：</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzIwMTg3NzYyOA==&amp;mid=2247483879&amp;idx=1&amp;sn=b3f89d2cb50271727b27e04a315c0a0f&amp;chksm=96e670f4a191f9e208248fd6006926a3a7c45209646e871e8115180ee45b7ebd4e287862a456&amp;token=1187527588&amp;lang=zh_CN#rd">消息中间件——RabbitMQ（六）理解Exchange交换机核心概念!</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzIwMTg3NzYyOA==&amp;mid=2247483883&amp;idx=1&amp;sn=62d40c527796dc49d85305217cc2ac1c&amp;chksm=96e670f8a191f9eefe63910e7dcf2fc4bc7e212345cbf98874b2df4d4e9e058fc214f76c179c&amp;token=1732599988&amp;lang=zh_CN#rd">消息中间件——RabbitMQ（七）高级特性全在这里!（上）</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzIwMTg3NzYyOA==&amp;mid=2247483887&amp;idx=1&amp;sn=21ca669e4cd0baf1cd230ae75027f032&amp;chksm=96e670fca191f9ea0a10c715731fa5eb16c8ecd4f00999ef6afedd359e4770a7554666076af7&amp;token=471354809&amp;lang=zh_CN#rd">消息中间件——RabbitMQ（八）高级特性全在这里!（下）</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

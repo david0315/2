@@ -1,0 +1,184 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修一台Linux服务器可以负载多少个连接？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>一台Linux服务器可以负载多少个连接？</center></div><div class='banquan'>原文出处:本文由博客园博主alterem提供。<br/>
+原文连接:https://www.cnblogs.com/alterem/p/11479597.html</div><br>
+    <p><img src="./images/一台Linux服务器可以负载多少个连接？0.png" alt="img" /></p>
+<p>首先我们来看如何标识一个TCP连接？系统是通过一个四元组来识别，(src_ip,src_port,dst_ip,dst_port)即源IP、源端口、目标IP、目标端口。比如我们有一台服务192.168.0.1，开启端口80.那么所有的客户端都会连接到这台服务的80端口上面。有一种误解，就是我们常说一台机器有65536个端口，那么承载的连接数就是65536个，这个说法是极其错误的，这就混淆了源端口和访问目标端口。我们做压测的时候，利用压测客户端，这个客户端的连接数是受到端口数的限制，但是服务器上面的连接数可以达到成千上万个，一般可以达到百万（4C8G配置），至于上限是多少，需要看优化的程度。具体做法如下：</p>
+<p>我们在压测一台目标服务器，想看下负载的连接数，当我们压到一定数量的时候，控制台突然报&quot;too many open files&quot;，这是因为linux系统创建一个TCP连接的时候，都会创建一个socket句柄，每个socket句柄就是一个文件句柄。操作系统对打开的文件句柄数量是有限制的。Unix/Linux 基本哲学之一就是 &quot;一切皆文件&quot;，要提高TCP承载量，就需要调整文件句柄。</p>
+<h4 id="第一步修改文件句柄数量限制">第一步：修改文件句柄数量限制</h4>
+<pre><code><code># 查看当前用户允许TCP打开的文件句柄最大数
+ulimit -n
+
+# 修改文件句柄
+vim /etc/security/limits.conf
+
+* soft nofile 655350
+* hard nofile 655350</code></code></pre>
+<p>修改后，退出终端窗口，重新登录(不需要重启服务器)，就能看到最新的结果了。这是优化的第一步，修改文件句柄限制。</p>
+<blockquote>
+<p><strong>注意：</strong><br />
+soft nofile （软限制）是指Linux在当前系统能够承受的范围内进一步限制用户同时打开的文件数<br />
+hard nofile （硬限制）是根据系统硬件资源状况(主要是系统内存)计算出来的系统最多可同时打开的文件数量<br />
+通常软限制小于或等于硬限制</p>
+</blockquote>
+<h4 id="第二步tcp参数调优">第二步：TCP参数调优</h4>
+<table>
+<thead>
+<tr class="header">
+<th>参数</th>
+<th>默认配置</th>
+<th>调整配置</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>fs.file-max</td>
+<td>1048576</td>
+<td>9999999</td>
+<td>所有进程打开的文件描述符数</td>
+</tr>
+<tr class="even">
+<td>fs.nr_open</td>
+<td>1635590</td>
+<td>1635590</td>
+<td>单个进程可分配的最大文件数</td>
+</tr>
+<tr class="odd">
+<td>net.core.rmem_default</td>
+<td>124928</td>
+<td>262144</td>
+<td>默认的TCP读取缓冲区</td>
+</tr>
+<tr class="even">
+<td>net.core.wmem_default</td>
+<td>124928</td>
+<td>262144</td>
+<td>默认的TCP发送缓冲区</td>
+</tr>
+<tr class="odd">
+<td>net.core.rmem_max</td>
+<td>124928</td>
+<td>8388608</td>
+<td>默认的TCP最大读取缓冲区</td>
+</tr>
+<tr class="even">
+<td>net.core.wmem_max</td>
+<td>124928</td>
+<td>8388608</td>
+<td>默认的TCP最大发送缓冲区</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_wmem</td>
+<td>4096 16384 4194304</td>
+<td>4096 16384 8388608</td>
+<td>TCP发送缓冲区</td>
+</tr>
+<tr class="even">
+<td>net.ipv4.tcp_rmem</td>
+<td>4096 87380 4194304</td>
+<td>4096 87380 8388608</td>
+<td>TCP读取缓冲区</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_mem</td>
+<td>384657 512877 769314</td>
+<td>384657 512877 3057792</td>
+<td>TCP内存大小</td>
+</tr>
+<tr class="even">
+<td>net.core.netdev_max_backlog</td>
+<td>1000</td>
+<td>5000</td>
+<td>在每个网络接口接收数据包的速率比内核处理这些包的速率快时，允许送到队列的数据包的最大数目</td>
+</tr>
+<tr class="odd">
+<td>net.core.optmem_max</td>
+<td>20480</td>
+<td>81920</td>
+<td>每个套接字所允许的最大缓冲区的大小</td>
+</tr>
+<tr class="even">
+<td>net.core.somaxconn</td>
+<td>128</td>
+<td>2048</td>
+<td>每一个端口最大的监听队列的长度，这是个全局的参数</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_fin_timeout</td>
+<td>60</td>
+<td>30</td>
+<td>对于本端断开的socket连接，TCP保持在FIN-WAIT-2状态的时间（秒）。对方可能会断开连接或一直不结束连接或不可预料的进程死亡</td>
+</tr>
+<tr class="even">
+<td>net.core.netdev_max_backlog</td>
+<td>1000</td>
+<td>10000</td>
+<td>在每个网络接口接收数据包的速率比内核处理这些包的速率快时，允许送到队列的数据包的最大数目</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_max_syn_backlog</td>
+<td>1024</td>
+<td>2048</td>
+<td>对于还未获得对方确认的连接请求，可保存在队列中的最大数目。如果服务器经常出现过载，可以尝试增加这个数字</td>
+</tr>
+<tr class="even">
+<td>net.ipv4.tcp_max_tw_buckets</td>
+<td>5000</td>
+<td>5000</td>
+<td>系统在同时所处理的最大timewait sockets数目</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_tw_reuse</td>
+<td>0</td>
+<td>1</td>
+<td>是否允许将TIME-WAIT sockets重新用于新的TCP连接</td>
+</tr>
+<tr class="even">
+<td>net.ipv4.tcp_keepalive_time</td>
+<td>7200</td>
+<td>900</td>
+<td>表示TCP链接在多少秒之后没有数据报文传输时启动探测报文（发送空的报文）</td>
+</tr>
+<tr class="odd">
+<td>net.ipv4.tcp_keepalive_intvl</td>
+<td>75</td>
+<td>30</td>
+<td>表示前一个探测报文和后一个探测报文之间的时间间隔</td>
+</tr>
+<tr class="even">
+<td>net.ipv4.tcp_keepalive_probes</td>
+<td>9</td>
+<td>3</td>
+<td>表示探测的次数</td>
+</tr>
+</tbody>
+</table>
+<p>从上面的配置参数中我们可以知道，在Linux内核中为tcp发送和接收都做了缓冲队列，这样可以提高系统的吞吐量。<br />
+以上这些参数都是在 /etc/sysctl.conf 文件中定义的，有的参数在文件中可能没有定义，系统给定了默认值，需要修改的话，直接在文件中添加或修改，然后执行sysctl -p命令让其生效。</p>
+<blockquote>
+<p><strong>注意：</strong><br />
+参数值并不是设置的越大越好，有的需要考虑服务器的硬件配置，参数对服务器上其它服务的影响等。</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

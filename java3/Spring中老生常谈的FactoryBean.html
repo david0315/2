@@ -1,0 +1,192 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring中老生常谈的FactoryBean' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring中老生常谈的FactoryBean</center></div><div class='banquan'>原文出处:本文由博客园博主OKevin提供。<br/>
+原文连接:https://www.cnblogs.com/yulinfeng/p/11456587.html</div><br>
+    <p><strong>本文完整代码地址：<a href="https://github.com/yu-linfeng/BlogRepositories/tree/master/repositories/factorybean" class="uri">https://github.com/yu-linfeng/BlogRepositories/tree/master/repositories/factorybean</a></strong></p>
+<p><code>FactoryBean</code>和<code>BeanFactory</code>由于在命名上极其相似，一直以来困扰了不少的开发者。</p>
+<p><code>BeanFactory</code>，耳熟能详的Spring核心接口，提供IoC容器的最基本功能。但要解释<code>FactoryBean</code>一句话可能就说不清楚了。我们将从下面的例子逐步说明，FactoryBean是什么，它提供了什么样的能力。</p>
+<pre><code><code>/**
+ * 布料
+ * 包含颜色属性
+ * Created by OKevin On 2019/9/3
+ **/
+public class Cloth {
+    private Red red;
+    //省略setter/getter方法
+}</code></code></pre>
+<p>当初始化一个Cloth对象时，我希望Red对象也被赋值，此时我将在Cloth的构造方法中new一个Red对象。</p>
+<pre><code><code>public Cloth() {
+    red = new Red();
+}</code></code></pre>
+<p>但是随着业务的发展，我希望Cloth的颜色属性将是Blue蓝色，这时我将修改代码将Red和Blue类抽象出一个Color接口，Cloth代码将重构：</p>
+<pre><code><code>/**
+ * 布料
+ * 包含颜色属性
+ * Created by OKevin On 2019/9/3
+ **/
+public class Cloth {
+    private Color color;
+    public Cloth() {
+        color = new Blue();
+    }
+    //省略setter/getter方法
+}</code></code></pre>
+<p>业务又进一步发展，Cloth类中的颜色属性将会根据一定的条件赋值为Red红色，此时我们将代码继续重构：</p>
+<pre><code><code>/**
+ * 布料
+ * 包含颜色属性
+ * Created by OKevin On 2019/9/3
+ **/
+public class Cloth {
+    private Color color;
+    public Cloth() {
+        if (condition()) {
+            color = new Blue();    
+        } else {
+            color = new Red();
+        }
+    }
+    //省略setter/getter方法
+}</code></code></pre>
+<p>这样的代码的确能运行，但如果有新的条件继续加入到业务中，此时我们又将改动Cloth类的构造方法，而我们认为Cloth方法是一个比较核心的业务对象，<strong>不应该</strong>经常对它进行修改，并且在构造方法中对于Color对象创建过于冗余，不符合<strong>单一职责</strong>的原则，所以我们将Color对象的创建过程通过<strong>工厂方法模式</strong>来完成。</p>
+<h3 id="静态工厂方法">静态工厂方法</h3>
+<p>我们再次将Cloth类进行如下重构（为了使示例代码更加简洁，下面的示例将只创建Red对象）：</p>
+<pre><code><code>/**
+ * 布料
+ * 包含颜色属性
+ * Created by OKevin On 2019/9/3
+ **/
+public class Cloth {
+    private Color color;
+    public Cloth() {
+        color = StaticColorFactory.newInstance();
+    }
+    //省略setter/getter方法
+}</code></code></pre>
+<pre><code><code>/**
+ * 静态工厂方法
+ * Created by OKevin On 2019/9/3
+ **/
+public class StaticColorFactory {
+    public static Color getInstance() {
+        return new Red();
+    }
+}</code></code></pre>
+<p>如果我们在Spring容器中要通过静态工厂方法，创建具体的对象实例应该怎么做呢？</p>
+<p>众所周知，要将一个对象实例交由Spring容器管理，我们通常是通过以下XML配置：</p>
+<pre class="xml"><code>&lt;bean id=&quot;cloth&quot; class=&quot;com.coderbuff.bean.Cloth&quot;&gt;
+    &lt;property name=&quot;color&quot; ref=&quot;red&quot;/&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;red&quot; class=&quot;com.coderbuff.bean.Red&quot; /&gt;</code></code></pre>
+<p>但此时，Red对象实例并不是由Spring容器管理，而是由静态工厂方法创建的，此时我们应该讲XML配置修改为以下方式：</p>
+<pre class="xml"><code>&lt;bean id=&quot;cloth&quot; class=&quot;com.coderbuff.bean.Cloth&quot;&gt;
+    &lt;property name=&quot;color&quot; ref=&quot;red&quot;/&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;red&quot; class=&quot;com.coderbuff.factory.StaticColorFactory&quot; factory-method=&quot;getInstance&quot; /&gt;</code></code></pre>
+<p>这是Spring支持静态工厂方法创建对象实例的特定方式。这样我们就能在Spring中通过<strong>静态工厂方法</strong>创建对象实例。</p>
+<h3 id="实例工厂方法">实例工厂方法</h3>
+<p>有静态工厂方法，就有非静态工厂方法，区别就是方法不是静态的。</p>
+<pre><code><code>/**
+ * 实例工厂方法
+ * Created by OKevin On 2019/9/3
+ **/
+public class ColorFactory {
+    public Color getInstance() {
+        return new Red();
+    }
+}</code></code></pre>
+<p>实例工厂方法在Spring中XML配置略有不同：</p>
+<pre class="xml"><code>&lt;bean id=&quot;cloth&quot; class=&quot;com.coderbuff.bean.Cloth&quot;&gt;
+    &lt;property name=&quot;color&quot; ref=&quot;red&quot;/&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;colorFactory&quot; class=&quot;com.coderbuff.factory.ColorFactory&quot;/&gt;
+&lt;bean id=&quot;red&quot; factory-bean=&quot;colorFactory&quot; factory-method=&quot;getInstance&quot;/&gt;</code></code></pre>
+<p>通过配置可以看到，我们需要首先在Spring中实例化工厂，再通过工厂对象实例化Red对象。</p>
+<p>在有了对工厂方法在Spring中创建对象实例的认识后，FactoryBean实际上就是为我们简化这个操作。下面我们将通过FactoryBean来创建Red对象。</p>
+<h3 id="factorybean">FactoryBean</h3>
+<pre><code><code>/**
+ * Created by OKevin On 2019/9/3
+ **/
+public class ColorFactoryBean implements FactoryBean&lt;Color&gt; {
+    public Color getObject() throws Exception {
+        return new Red();
+    }
+    public Class&lt;?&gt; getObjectType() {
+        return Red.class;
+    }
+    public boolean isSingleton() {
+        return false;
+    }
+}</code></code></pre>
+<p>通过实现FactoryBean的方式，XML配置如下：</p>
+<pre class="xml"><code>&lt;bean id=&quot;cloth&quot; class=&quot;com.coderbuff.bean.Cloth&quot;&gt;
+    &lt;property name=&quot;color&quot; ref=&quot;red&quot;/&gt;
+&lt;/bean&gt;
+&lt;bean id=&quot;red&quot; class=&quot;com.coderbuff.factory.ColorFactoryBean&quot;/&gt;</code></code></pre>
+<p>这样就不用像工厂方法那样配置相应的属性，直接按照普通的Bean注入即可，由于Spring内部做了特殊处理，此时名称为“red”的Bean并不是ColorFactoryBean，而是它方法中getObject中返回的对象。如果实在想要获取ColorFactoryBean的对象实例，则在Bean的名称前加入“&amp;”即可（“&amp;red”）。</p>
+<p>看到这里，是否对FactoryBean有了一点认识呢？FactoryBean在Spring中最为典型的一个应用就是用来创建AOP的代理对象。</p>
+<p>我们知道AOP实际上是Spring在运行时创建了一个代理对象，也就是说这个对象，是我们在运行时创建的，而不是一开始就定义好的，这很符合工厂方法模式。更形象地说，AOP代理对象通过Java的反射机制，在运行时创建了一个代理对象，在代理对象的目标方法中根据业务要求织入了相应的方法。这个对象在Spring中就是——ProxyFactoryBean。</p>
+<h3 id="proxyfactorybean">ProxyFactoryBean</h3>
+<p>我们将通过比较“古老”的方式创建一个Red对象的切面，在它的print方法执行前和执行后分别执行一条语句。之所以古老是因为我们往往通过注解的方式，而不会这么折磨自己去写一个切面对象。</p>
+<pre><code><code>/**
+ * 环绕通知
+ * Created by OKevin On 2019/9/4
+ **/
+public class LogAround implements MethodInterceptor {
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        System.out.println(&quot;调用目标方法【前】打印日志&quot;);
+        Object result = invocation.proceed();
+        System.out.println(&quot;调用目标方法【后】打印日志&quot;);
+        return result;
+    }
+}</code></code></pre>
+<p>此时我们需要ProxyFactoryBean的介入为我们创建一个代理对象并由Spring容器管理，根据上面ColorFactoryBean的经验，ProxyFacoryBean也应该如下配置：</p>
+<pre class="xml"><code>&lt;bean id=&quot;xxx&quot; class=&quot;org.springframework.aop.framework.ProxyFactoryBean&quot; /&gt;</code></code></pre>
+<p>答案是肯定的，只是ProxyFactoryBean多了几个参数，既然是生成代理对象，那么目标对象、目标方法就必不可少，实际的XLM配置如下：</p>
+<pre class="xml"><code>&lt;bean id=&quot;logAround&quot; class=&quot;com.coderbuff.aop.LogAround&quot;/&gt;
+&lt;bean id=&quot;red&quot; class=&quot;com.coderbuff.bean.Red&quot;/&gt;
+&lt;bean id=&quot;proxyRed&quot; class=&quot;org.springframework.aop.framework.ProxyFactoryBean&quot;&gt;
+    &lt;property name=&quot;proxyInterfaces&quot; value=&quot;com.coderbuff.bean.Color&quot;/&gt;
+    &lt;property name=&quot;interceptorNames&quot; value=&quot;logAround&quot;/&gt;
+    &lt;property name=&quot;target&quot; ref=&quot;red&quot;/&gt;
+    &lt;property name=&quot;proxyTargetClass&quot; value=&quot;true&quot;/&gt;
+&lt;/bean&gt;</code></code></pre>
+<p>通过测试程序，ProxyFactoryBean的确生成了一个代理对象。</p>
+<pre><code><code>public class ProxyFactoryBeanTest {
+    private ClassPathXmlApplicationContext ctx;
+    @Before
+    public void init() {
+        ctx = new ClassPathXmlApplicationContext(&quot;spring-proxyfactorybean.xml&quot;);
+    }
+    @Test
+    public void testProxyFactory() {
+        Red proxyRed = (Red) ctx.getBean(&quot;proxyRed&quot;);
+        proxyRed.print();
+    }
+}</code></code></pre>
+<p>所以，FactoryBean为我们实例化Bean提供了一个更为灵活的方式，我们可以通过FactoryBean创建出更为复杂的Bean实例。</p>
+<p><strong>本文完整代码地址：<a href="https://github.com/yu-linfeng/BlogRepositories/tree/master/repositories/factorybean" class="uri">https://github.com/yu-linfeng/BlogRepositories/tree/master/repositories/factorybean</a></strong></p>
+<src align="center">这是一个能给程序员加buff的公众号 （CoderBuff）
+<src align="center"><img src="./images/Spring中老生常谈的FactoryBean0.png" />
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

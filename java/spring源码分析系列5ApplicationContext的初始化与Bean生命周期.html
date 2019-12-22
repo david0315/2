@@ -1,0 +1,149 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring源码分析系列5ApplicationContext的初始化与Bean生命周期' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring源码分析系列5ApplicationContext的初始化与Bean生命周期</center></div><div class='banquan'>原文出处:本文由博客园博主三人行{必有我师}提供。<br/>
+原文连接:https://www.cnblogs.com/smallstudent/p/11691358.html</div><br>
+    <p>回顾<a href="https://blog.csdn.net/wuqinduo/article/details/100751825">Bean与BeanDefinition的关系</a>. BeanFactory容器. ApplicationContext上下文.</p>
+<p>首先总结下:</p>
+<ol>
+<li>开发人员定义Bean信息：分为XML形式定义；注解式定义</li>
+<li>ApplicationContext搜集Bean的定义；存储到BeabFactory容器的中。</li>
+<li>BeanFactory根据这些BeanDefinition创建Bean.缓存起来供我们使用。</li>
+</ol>
+<p><code>[开发人员]--标注--&gt;[Bean定义] ---搜集 --&gt;[BeanDefinition]---创建--&gt;[Bean]</code></p>
+<p>此节:我们从代码层面分析此过程.</p>
+<h2 id="refresh">refresh()</h2>
+<p>refresh()方法描述了ApplicationContext的初始化过程，这个过程大部分工作都是执行Bean定义到BeanDefinition到Bean的过程。</p>
+<p>refresh()大致可以分为五部分来看：</p>
+<p><strong>1.BeanDefinition入库前准备阶段</strong>：</p>
+<ul>
+<li>prepareRefresh();：主要工作环境属性的初始化，校验。</li>
+<li>obtainFreshBeanFactory();： 准备一个beanFactory()（注：XML配置形式的Bean大多在此时执行了搜集入库）</li>
+<li>prepareBeanFactory(beanFactory);：配置beanFactory的相关信息，包括类加载；类加载器，解析器，需要的依赖和需要忽略的依赖，早期的Bean级别后处理器，创建环境相关Bean</li>
+<li>postProcessBeanFactory(beanFactory); 该方法只要是针对web类型的上下文中的增加配置beanFactory的相关属性。</li>
+</ul>
+<p>总的的来说，此阶段是在做beanFactory的相关配置。</p>
+<p><strong>2.BeanDefinition搜集入库阶段</strong>：</p>
+<ul>
+<li>invokeBeanFactoryPostProcessors(beanFactory)：此方法主要了搜集注解型BeanDefinition，注册这些BeanDefinition， 执行BeanFactoryPostProcessor.postProcessBeanFactory()方法，做入库时的修改操作。</li>
+</ul>
+<p>此过程非常的精妙。由PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors()全全负责，<br />
+PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors()方法上<strong>本质就干了两件事</strong>：</p>
+<ol>
+<li><strong>执行注册型BeanFactoryPostProcessor</strong>：此时有个重要的ConfigurationClassPostProcessor注册器，此类会将注解配置型的BeanDefinition找到，并注册到BeanFactory中。</li>
+<li><strong>执行普通类型的BeanFactoryPostProcessor</strong>：做入库的修改操作。</li>
+</ol>
+<p><strong>3.部分特殊功能的Bean提前创建</strong>：<br />
+此阶段把少部分特殊用处的BeanDefinition先创建Bean供使用。</p>
+<ul>
+<li>registerBeanPostProcessors(beanFactory);<strong>实例化一些BeanPostProcessor</strong>为将来的BeanDefinition生成Bean时做准备。。</li>
+<li>initMessageSource(); 初始化ApplicationContext的国际化相关组件Bean，消息绑定，消息解析</li>
+<li>initApplicationEventMulticaster();：初始化广播器组件Bean，用于初始化过程中广播阶段性事件。</li>
+<li>onRefresh(); 初始化子类中特殊Beans(也算是一个扩展点)</li>
+<li>registerListeners();:将容器中的监听器Bean，设置到广播器中去。</li>
+</ul>
+<p><strong>4.普通BeanDefinition生成Bean阶段</strong><br />
+此阶段是大部分BeanDefinition生成Bean的阶段。</p>
+<ul>
+<li><p>finishBeanFactoryInitialization(beanFactory);：<br />
+此过程，就是上篇文章说的 ，applicationContext上下文<strong>触发beanFactory内部的BeanDefinition创建Bean</strong>。</p>
+<p><strong>我们想象一个场景: 先往一个机器内先放入原料BeanDefinition后,然后再按下开关开始制造.ApplicationContext在此处就好比按下开关.开始Bean的制造,Bean的制作过程是一条流水线,流水线上有不同类型的机器对原料做不同的处理,最终得到Bean</strong></p></li>
+</ul>
+<p>ApplicationContext调用DefaultListableBeanFactory.preInstantiateSingletons()开始触发Bean的创建:</p>
+<p><strong>doGetBean:</strong></p>
+<ol>
+<li>首先检查仓库中是否已经创建过此Bean,有取出来</li>
+<li>没有就准备走流水线创建Bean创建.</li>
+<li>创建前先检查物料有没有?有，标记当前Bean在创建中</li>
+<li>检查是否有依赖,有的话,先去加载创建依赖Bean. 又回到了1</li>
+<li>判断作用域，上createBean()流水线准备执行。</li>
+</ol>
+<p><strong>doGetBean-&gt;createBean：</strong></p>
+<ol>
+<li>加载Bean的Class类</li>
+<li>验证以及准备需要覆盖的方法</li>
+</ol>
+<p><strong>doGetBean-&gt;createBean-&gt;代理对象</strong>: 返回代理对象</p>
+<ol>
+<li>创建代理对象：给BeanPostProcessors 一个机会来返回代理对象来代替真正的实例(<strong>此处返回的是针对自定义TargetSource的Bean</strong>)</li>
+</ol>
+<p><strong>doGetBean-&gt;createBean-&gt;doCreateBean</strong>：没有创建自定义代理对象继续执行</p>
+<ol>
+<li>使用合适的实例化策略来创建Bean（工厂方法、构造函数自动注入、简单初始化），并得到Bean包装类BeanWrapper对象。</li>
+<li>调用BeanDefinitionPostProcessor后置处理器，修改 BeanDefinition</li>
+<li>解决单例模式的循环依赖：解决办法是尽早暴露Bean的引用到缓存中，让其他对象可以能引用到他</li>
+<li>populateBean设置bean的属性</li>
+<li>initializeBean:</li>
+</ol>
+<p><strong>doGetBean-&gt;createBean-&gt;doCreateBean-&gt;initializeBean</strong> 实例化Bean</p>
+<ol>
+<li>invokeAwareMethods：执行_awre类型的方法</li>
+<li>applyBeanPostProcessorsBeforeInitialization执行BeanPostProcessor的前置方法</li>
+<li>invokeInitMethods: 执行InitializingBean接口的afterPropertiesSet ，invokeCustomInitMethod执行自定义的init-method方法</li>
+<li>applyBeanPostProcessorsAfterInitialization：执行BeanPostProcessor的后置方法</li>
+<li>返回Bean. 至此BeanDefinition到Bean的生产过程完成。</li>
+</ol>
+<p><strong>5.applicationContext的收尾阶段</strong></p>
+<ul>
+<li><p>finishRefresh();<br />
+收尾阶段其实也算是applicationContext的扩展点。Lifecycle接口生命周期接口，</p>
+<p>（1.首先会从Bean容器中获取LifecycleProcessor类型的Bean，如果没有则创建一个默认的DefaultLifecycleProcessor。LifecycleProcessor是干嘛用的？LifecycleProcessor是用来处理Lifecycle接口的bean的。</p>
+<p>（2.使用获得LifecycleProcessor执行实现了Lifecycle接口的Bean的start(）方法</p>
+<p>（3.发布上下文初始化完成事件</p>
+<p>（4.Participate in LiveBeansView MBean, if active.不是很清楚干嘛的。</p></li>
+</ul>
+<h2 id="bean的生命周期">Bean的生命周期</h2>
+<p>看完了refresh()方法。我们再来总结下Bean的生命周期。</p>
+<p>用一张图表示<br />
+<img src="./images/spring源码分析系列5ApplicationContext的初始化与Bean生命周期0.png" alt="在这里插入图片描述" /></p>
+<p>Bean的完整生命周期分为四个阶段：</p>
+<ol>
+<li><p>第一阶段：实例化阶段。<br />
+从Bean定义的收集到BeanDefinition的入库顺序执行<br />
+BeanDefinitionRegistryPostProcessor注册处理器，注册一些BeanDefinition<br />
+BeanFactoryPostProcessor，对入库的BeanDefinition进行定义的修改。<br />
+BeanWrapper的产生，BeanWrapper是Bean的早期产品。<br />
+populateBean()执行属性的设置<br />
+总结：此阶段是BeanDefinition-&gt;BeanWrapper ，各种属性的设置</p></li>
+<li><p>第二阶段：初始化阶段：主要是执行各种初始化方法<br />
+invokeAwareMethods(beanName, bean);执行Aware属性的相关设置。<br />
+BeanPostProcessor.postProcessBeforeInitialization前置方法的执行，<br />
+如果实现了InitializingBean.afterPropertiesSet()则执行此方法<br />
+执行自定义的initMethod方法。<br />
+BeanPostProcessor.postProcessBeforeInitialization后置方法的执行，</p></li>
+<li><p>第三阶段：使用阶段<br />
+getBean从容器的缓存中取出Bean</p></li>
+<li><p>第四阶段：销毁阶段<br />
+执行DisposableBean.distroy方法<br />
+执行自定义detry-method</p></li>
+</ol>
+<h2 id="总结">总结:</h2>
+<p>整个spring初始化过程可以看做是</p>
+<ul>
+<li>物料(BeanDefinition)的搜集入库(BeanFactory)</li>
+<li>生产线(getBean())取出物料创建成品(Bean)</li>
+<li>成品(Bean)入库(BeanFactory)</li>
+</ul>
+<p>欢迎大家关注我的公众号【源码行动】，最新个人理解及时奉送。<br />
+<img src="./images/spring源码分析系列5ApplicationContext的初始化与Bean生命周期1.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

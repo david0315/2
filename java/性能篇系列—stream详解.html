@@ -1,0 +1,164 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修性能篇系列—stream详解' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>性能篇系列—stream详解</center></div><div class='banquan'>原文出处:本文由博客园博主Java架构Monster提供。<br/>
+原文连接:https://www.cnblogs.com/sevencutekk/p/11599976.html</div><br>
+    <h1>Stream API</h1>
+<ol>
+<li>Java 8集合中的Stream相当于高级版的Iterator</li>
+</ol>
+<ul>
+<li class="ql-indent-1">Stream API通过Lambda表达式对集合进行各种非常便利高效的聚合操作，或者大批量数据操作</li>
+</ul>
+<ol>
+<li>Stream的聚合操作与数据库SQL的聚合操作sorted、filter、map等非常类似</li>
+<li>在数据操作方面，Stream不仅可以通过串行的方式实现数据操作，还可以通过并行的方式处理大批量数据，提高处理效率</li>
+</ol>
+<pre><code>// java.util.Collection<br />default Stream&lt;E&gt; stream() {<br /> return StreamSupport.stream(spliterator(), false);<br />}<br />default Stream&lt;E&gt; parallelStream() {<br /> return StreamSupport.stream(spliterator(), true);<br />}</code></pre>
+<pre><code>@Data<br />class Student {<br /> private Integer height;<br /> private String sex;<br />}<br />Map&lt;String, List&lt;Student&gt;&gt; map = Maps.newHashMap();<br />List&lt;Student&gt; list = Lists.newArrayList();<br />// 传统的迭代方式<br />for (Student student : list) {<br /> if (student.getHeight() &gt; 160) {<br /> String sex = student.getSex();<br /> if (!map.containsKey(sex)) {<br /> map.put(sex, Lists.newArrayList());<br /> }<br /> map.get(sex).add(student);<br /> }<br />}<br />// Stream API，串行实现<br />map = list.stream().filter((Student s) -&gt; s.getHeight() &gt; 160).collect(Collectors.groupingBy(Student::getSex));<br />// Stream API，并行实现<br />map = list.parallelStream().filter((Student s) -&gt; s.getHeight() &gt; 160).collect(Collectors.groupingBy(Student::getSex));</code></pre>
+<h1>优化遍历</h1>
+<p>Stream操作分类</p>
+<ol>
+<li>分为两大类：中间操作（Intermediate operations）和终结操作（Terminal operations）</li>
+<li>中间操作只对操作进行了记录，即只会返回一个流，不会进行计算操作，而终结操作是实现了计算操作</li>
+<li>中间操作又分为无状态（Stateless）操作和有状态（Stateful）操作</li>
+</ol>
+<ul>
+<li class="ql-indent-1">无状态操作：元素的处理不受之前元素的影响</li>
+<li class="ql-indent-1">有状态操作：该操作只有拿到所有元素之后才能继续下去</li>
+</ul>
+<ol>
+<li>终结操作又分为短路（Short-circuiting）操作与非短路（UnShort-circuiting）操作</li>
+</ol>
+<ul>
+<li class="ql-indent-1">短路操作：遇到某些符合条件的元素就可以得到最终结果</li>
+<li class="ql-indent-1">非短路操作：必须处理完所有元素才能得到最终结果</li>
+</ul>
+<ol>
+<li>通常会将中间操作称为懒操作，正是因为懒操作结合终结操作，数据源构成的处理管道（Pipeline），实现了Stream的高效</li>
+</ol>
+<src class="pgc-img"><img src="./images/性能篇系列—stream详解0.png" alt="性能篇系列&mdash;stream详解" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<p>Stream源码实现</p>
+<src class="pgc-img"><img src="./images/性能篇系列—stream详解1.png" alt="性能篇系列&mdash;stream详解" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<ol>
+<li>BaseStream和Stream为最顶端的接口类</li>
+</ol>
+<ul>
+<li class="ql-indent-1">BaseStream定义了流的基本接口方法，如spliterator、isParallel等</li>
+<li class="ql-indent-1">Stream定义了流的常用操作方法，如map、filter等</li>
+</ul>
+<ol>
+<li>ReferencePipeline是一个结构类，通过定义内部类组装各种操作流</li>
+</ol>
+<ul>
+<li class="ql-indent-1">内部定义了Head、StatelessOp和StatefulOp三个内部类，实现了BaseStream和Stream的接口方法</li>
+</ul>
+<ol>
+<li>Sink接口定义每个Stream操作之间关系的协议，包含了begin、end、cancellationRequested、accept方法</li>
+</ol>
+<ul>
+<li class="ql-indent-1">ReferencePipeline最终会将整个Stream流操作组装成一个调用链</li>
+<li class="ql-indent-1">而调用链上的每个Stream操作的上下文关系就是通过Sink接口来定义实现的</li>
+</ul>
+<p>Stream操作叠加</p>
+<src class="pgc-img"><img src="./images/性能篇系列—stream详解2.png" alt="性能篇系列&mdash;stream详解" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<ol>
+<li>一个Stream的各个操作是由处理管道组装的，并统一完成数据处理</li>
+<li>在JDK中，每次的中断操作都会以使用阶段（Stage）命名</li>
+<li>管道结构通常是由ReferencePipeline类实现的，ReferencePipeline包含Head、StatelessOp、StatefulOp三个内部类</li>
+</ol>
+<ul>
+<li class="ql-indent-1">Head类主要用来定义数据源操作，初次调用.stream()时，会初次加载Head对象</li>
+<li>接着加载中间操作，分为StatelessOp对象和StatefulOp对象</li>
+<li class="ql-indent-1">此时的Stage并没有执行，而是通过AbstractPipeline生成了中间操作的Stage链表</li>
+<li>当调用终结操作时，会生成一个最终的Stage</li>
+<li class="ql-indent-1">通过这个Stage触发之前的中间操作，从最后一个Stage开始，递归产生一个Sink链</li>
+</ul>
+<p>样例</p>
+<pre><code>List&lt;String&gt; names = Arrays.asList("张三", "李四", "王老五", "李三", "刘老四", "王小二", "张四", "张五六七");<br />String maxLenStartWithZ = names.stream()<br /> .filter(name -&gt; name.startsWith("张"))<br /> .mapToInt(String::length)<br /> .max()<br /> .toString();</code></pre>
+<p>names是ArrayList集合，names.stream会调用集合类基础接口Collection的stream方法</p>
+<pre><code>default Stream&lt;E&gt; stream() {<br /> return StreamSupport.stream(spliterator(), false);<br />}</code></pre>
+<p>Collection.stream方法会调用StreamSupport.stream方法，方法中初始化了一个ReferencePipeline的Head内部类对象</p>
+<pre><code>public static &lt;T&gt; Stream&lt;T&gt; stream(Spliterator&lt;T&gt; spliterator, boolean parallel) {<br /> Objects.requireNonNull(spliterator);<br /> return new ReferencePipeline.Head&lt;&gt;(spliterator,<br /> StreamOpFlag.fromCharacteristics(spliterator),<br /> parallel);<br />}</code></pre>
+<p>调用filter和map，两者都是无状态的中间操作，因此并没有执行任何操作，只是分别创建了一个Stage来标识用户的每一次操作</p>
+<p>通常情况下，Stream的操作需要一个回调函数，所以一个完整的Stage是由数据来源、操作、回调函数组成的三元组表示</p>
+<pre><code>@Override<br />public final Stream&lt;P_OUT&gt; filter(Predicate&lt;? super P_OUT&gt; predicate) {<br /> Objects.requireNonNull(predicate);<br /> return new StatelessOp&lt;P_OUT, P_OUT&gt;(this, StreamShape.REFERENCE,<br /> StreamOpFlag.NOT_SIZED) {<br /> @Override<br /> Sink&lt;P_OUT&gt; opWrapSink(int flags, Sink&lt;P_OUT&gt; sink) {<br /> return new Sink.ChainedReference&lt;P_OUT, P_OUT&gt;(sink) {<br /> @Override<br /> public void begin(long size) {<br /> downstream.begin(-1);<br /> }<br /> @Override<br /> public void accept(P_OUT u) {<br /> if (predicate.test(u))<br /> downstream.accept(u);<br /> }<br /> };<br /> }<br /> };<br />}</code></pre>
+<pre><code>@Override<br />@SuppressWarnings("unchecked")<br />public final &lt;R&gt; Stream&lt;R&gt; map(Function&lt;? super P_OUT, ? extends R&gt; mapper) {<br /> Objects.requireNonNull(mapper);<br /> return new StatelessOp&lt;P_OUT, R&gt;(this, StreamShape.REFERENCE,<br /> StreamOpFlag.NOT_SORTED | StreamOpFlag.NOT_DISTINCT) {<br /> @Override<br /> Sink&lt;P_OUT&gt; opWrapSink(int flags, Sink&lt;R&gt; sink) {<br /> return new Sink.ChainedReference&lt;P_OUT, R&gt;(sink) {<br /> @Override<br /> public void accept(P_OUT u) {<br /> downstream.accept(mapper.apply(u));<br /> }<br /> };<br /> }<br /> };<br />}</code></pre>
+<p>new StatelessOp会调用父类AbstractPipeline的构造函数，该构造函数会将前后的Stage联系起来，生成一个Stage链表</p>
+<pre><code>AbstractPipeline(AbstractPipeline&lt;?, E_IN, ?&gt; previousStage, int opFlags) {<br /> if (previousStage.linkedOrConsumed)<br /> throw new IllegalStateException(MSG_STREAM_LINKED);<br /> previousStage.linkedOrConsumed = true;<br /> previousStage.nextStage = this; // 将当前的Stage的next指针指向之前的Stage<br /> this.previousStage = previousStage; // 赋值当前Stage当全局变量previousStage<br /> this.sourceOrOpFlags = opFlags &amp; StreamOpFlag.OP_MASK;<br /> this.combinedFlags = StreamOpFlag.combineOpFlags(opFlags, previousStage.combinedFlags);<br /> this.sourceStage = previousStage.sourceStage;<br /> if (opIsStateful())<br /> sourceStage.sourceAnyStateful = true;<br /> this.depth = previousStage.depth + 1;<br />}</code></pre>
+<p>创建Stage时，会包含opWrapSink方法，该方法把一个操作的具体实现封装在Sink类中，Sink采用处理-&gt;转发的模式来叠加操作</p>
+<p>调用max，会调用ReferencePipeline的max方法</p>
+<p>由于max是终结操作，会创建一个TerminalOp操作，同时创建一个ReducingSink，并且将操作封装在Sink类中</p>
+<pre><code>@Override<br />public final Optional&lt;P_OUT&gt; max(Comparator&lt;? super P_OUT&gt; comparator) {<br /> return reduce(BinaryOperator.maxBy(comparator));<br />}</code></pre>
+<p>最后调用AbstractPipeline的wrapSink方法，生成一个Sink链表，Sink链表中的每一个Sink都封装了一个操作的具体实现</p>
+<pre><code>final &lt;P_IN&gt; Sink&lt;P_IN&gt; wrapSink(Sink&lt;E_OUT&gt; sink) {<br /> Objects.requireNonNull(sink);<br /> for ( @SuppressWarnings("rawtypes") AbstractPipeline p=AbstractPipeline.this; p.depth &gt; 0; p=p.previousStage) {<br /> sink = p.opWrapSink(p.previousStage.combinedFlags, sink);<br /> }<br /> return (Sink&lt;P_IN&gt;) sink;<br />}</code></pre>
+<p>当Sink链表生成完成后，Stream开始执行，通过Spliterator迭代集合，执行Sink链表中的具体操作</p>
+<pre><code>@Override<br />final &lt;P_IN&gt; void copyInto(Sink&lt;P_IN&gt; wrappedSink, Spliterator&lt;P_IN&gt; spliterator) {<br /> Objects.requireNonNull(wrappedSink);<br /> if (!StreamOpFlag.SHORT_CIRCUIT.isKnown(getStreamAndOpFlags())) {<br /> wrappedSink.begin(spliterator.getExactSizeIfKnown());<br /> spliterator.forEachRemaining(wrappedSink);<br /> wrappedSink.end();<br /> }<br /> else {<br /> copyIntoWithCancel(wrappedSink, spliterator);<br /> }<br />}</code></pre>
+<ol>
+<li>java 8中的forEachRemaining会迭代集合</li>
+<li>每迭代一次，都会执行一次filter操作，通过后就会触发map操作，然后将结果放入到临时数组object中，再进行下一次迭代</li>
+<li>完成中间操作后，最后触发终结操作max</li>
+</ol>
+<p>Stream并行处理</p>
+<pre><code>List&lt;String&gt; names = Arrays.asList("张三", "李四", "王老五", "李三", "刘老四", "王小二", "张四", "张五六七");<br />String maxLenStartWithZ = names.stream()<br /> .parallel()<br /> .filter(name -&gt; name.startsWith("张"))<br /> .mapToInt(String::length)<br /> .max()<br /> .toString();</code></pre>
+<p>Stream的并行处理在执行终结操作之前，跟串行处理的实现是一样的，在调用终结方法之后，会调用TerminalOp.evaluateParallel</p>
+<pre><code>final &lt;R&gt; R evaluate(TerminalOp&lt;E_OUT, R&gt; terminalOp) {<br /> assert getOutputShape() == terminalOp.inputShape();<br /> if (linkedOrConsumed)<br /> throw new IllegalStateException(MSG_STREAM_LINKED);<br /> linkedOrConsumed = true;<br /> return isParallel()<br /> ? terminalOp.evaluateParallel(this, sourceSpliterator(terminalOp.getOpFlags()))<br /> : terminalOp.evaluateSequential(this, sourceSpliterator(terminalOp.getOpFlags()));<br />}</code></pre>
+<ol>
+<li>并行处理指的是Stream结合了ForkJoin框架，对Stream处理进行了分片，Spliterator.estimateSize会估算出分片的数据量</li>
+<li>通过预估的数据量获取最小处理单元的阈值，如果当前分片大小大于最小处理单元的阈值，就继续切分集合</li>
+<li>每个分片都将会生成一个Sink链表，当所有分片操作完成后，ForkJoin框架将会合并分片任何结果集</li>
+</ol>
+<p>合理使用Stream</p>
+<ol>
+<li>在循环迭代次数较少的情况下，常规的迭代方式性能反而更好</li>
+<li>在单核CPU服务器配置环境中，也是常规迭代方式更有优势</li>
+<li>在大数据循环迭代中，如果服务器是多核CPU的情况，采用Stream的并行迭代优势明显</li>
+</ol>
+<p>小结</p>
+<ol>
+<li>Stream将整个操作分解成了链式结构，不仅简化了遍历操作，还为实现并行计算奠定了基础</li>
+<li>Stream将遍历元素的操作和对元素的计算分为中间操作和终结操作</li>
+</ol>
+<ul>
+<li class="ql-indent-1">中间操作又根据元素之间状态有无干扰分为有状态操作和无状态操作，实现了链式结构中的不同阶段</li>
+</ul>
+<ol>
+<li>串行处理</li>
+</ol>
+<ul>
+<li class="ql-indent-1">Stream在执行中间操作时，并不会做实际的数据操作处理，而是将这些中间操作串联起来，最终由终结操作触发</li>
+<li class="ql-indent-1">生成一个数据处理链表，通过Java 8的Spliterator迭代器进行数据处理</li>
+</ul>
+<ol>
+<li>并行处理</li>
+</ol>
+<ul>
+<li class="ql-indent-1">对中间操作的处理跟串行处理的方式是一样的，但在终结操作中，Stream将结合ForkJoin框架对集合进行切片处理</li>
+</ul>
+<p>我是小架，我们下篇文章再见！</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

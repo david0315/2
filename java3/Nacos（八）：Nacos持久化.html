@@ -1,0 +1,110 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Nacos（八）：Nacos持久化' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Nacos（八）：Nacos持久化</center></div><div class='banquan'>原文出处:本文由博客园博主larscheng提供。<br/>
+原文连接:https://www.cnblogs.com/larscheng/p/11422909.html</div><br>
+    <h1 id="参考和感谢">参考和感谢</h1>
+<p><a href="http://blog.didispace.com/spring-cloud-alibaba-4/">Spring Cloud Alibaba基础教程：Nacos的数据持久化</a></p>
+<h1 id="前言">前言</h1>
+<p>前景回顾：</p>
+<ul>
+<li><a href="https://www.larscheng.com/nacos-shareconfig/">Nacos（七）：Nacos共享配置</a></li>
+<li><a href="https://www.larscheng.com/nacos-namespace/">Nacos（六）：多环境下如何“管理”及“隔离”配置和服务</a></li>
+<li><a href="https://www.larscheng.com/config-profile/">Nacos（五）：多环境下如何“读取”Nacos中相应环境的配置</a></li>
+<li><a href="https://www.larscheng.com/config-service/">Nacos（四）：SpringCloud项目中接入Nacos作为配置中心</a></li>
+</ul>
+<p>前面的七篇文章，从Nacos介绍，到Nacos做注册中心、做配置中心，一直都没有提及持久化的问题。</p>
+<blockquote>
+<p>我们服务的信息、配置的信息都放在哪的？</p>
+</blockquote>
+<p>当我们使用默认配置启动Nacos时，所有配置文件都被Nacos保存在了内置的数据库中。</p>
+<blockquote>
+<p>在0.7版本之前，在单机模式时nacos使用嵌入式数据库实现数据的存储，不方便观察数据存储的基本情况。0.7版本增加了支持mysql数据源能力</p>
+</blockquote>
+<p>如果使用内嵌数据库，注定会有存储上限，本文带大家一起将Nacos中的数据实现持久化</p>
+<h1 id="我的环境">我的环境</h1>
+<ul>
+<li>Windows10</li>
+<li>JDK8</li>
+<li>SpringCloud：Finchley.RELEASE</li>
+<li>SpringBoot：2.0.4.RELEASE</li>
+<li>spring-cloud-alibaba-dependencies：0.2.2.RELEASE</li>
+<li>Nacos-server：1.0.1</li>
+</ul>
+<p><strong>本文的项目Demo继续沿用之前文章中的聚合工程<code>Nacos</code>,若小伙伴还没有之前的环境，可至<a href="https://github.com/larscheng/larscheng-learning-demo/tree/master/Nacos">源码地址</a>中下载</strong></p>
+<blockquote>
+<p>本文的演示环境为：windows平台</p>
+</blockquote>
+<h1 id="项目准备">项目准备</h1>
+<p>本文使用<a href="https://www.larscheng.com/config-service/">Nacos（四）</a>项目代码作为演示</p>
+<p>项目内容不做修改</p>
+<h1 id="安装数据库">安装数据库</h1>
+<p>目前Nacos仅支持<code>Mysql</code>数据库，且版本要求：<code>5.6.5+</code></p>
+<h1 id="初始化数据库">初始化数据库</h1>
+<p>Nacos的数据库脚本文件在我们下载Nacos-server时的压缩包中就有</p>
+<p>进入<code>nacos-server-1.0.1\nacos\conf</code>目录，初始化文件：<code>nacos-mysql.sql</code></p>
+<p>此处我创建一个名为 <code>mynacos</code> 的数据库，然后执行初始化脚本，成功后会生成 <code>11</code> 张表</p>
+<p><img src="./images/Nacos（八）：Nacos持久化0.png" alt="初始化数据库" /></p>
+<h1 id="修改配置文件">修改配置文件</h1>
+<p>这里是需要修改Nacos-server的配置文件</p>
+<p>Nacos-server其实就是一个Java工程或者说是一个Springboot项目，他的配置文件在<code>nacos-server-1.0.1\nacos\conf</code>目录下，名为 <code>application.properties</code>，在文件底部添加数据源配置：</p>
+<pre><code><code>spring.datasource.platform=mysql
+
+db.num=1
+db.url.0=jdbc:mysql://127.0.0.1:3306/mynacos?characterEncoding=utf8&amp;connectTimeout=1000&amp;socketTimeout=3000&amp;autoReconnect=true
+db.user=root
+db.password=123456
+</code></code></pre>
+<h1 id="启动nacos-server和nacos-config">启动Nacos-server和Nacos-config</h1>
+<p>先启动Nacos-server，启动方式不变，直接双击执行<code>nacos-server-1.0.1\nacos\bin</code>下的<code>startup.cmd</code>文件</p>
+<p>启动成功后进入Nacos控制台，此时的Nacos控制台中焕然一新，之前的数据都不见了</p>
+<blockquote>
+<p>因为加入了新的数据源，Nacos从mysql中读取所有的配置文件，而我们刚刚初始化的数据库是干干净净的，自然不会有什么数据和信息显示。</p>
+</blockquote>
+<p>在公共空间(public)中新建一个配置文件DataID: <code>nacos-config.yml</code>, 配置内容如下：</p>
+<pre class="yaml"><code>server: 
+    port: 9989
+nacos:
+    config: 配置文件已持久化到数据库中...</code></code></pre>
+<p>再启动<a href="https://www.larscheng.com/config-service/">Nacos（四）</a>中的demo项目。服务启动成功后，观察Nacos控制台如下</p>
+<p><img src="./images/Nacos（八）：Nacos持久化1.png" alt="nacos-consloe" /></p>
+<h1 id="验证是否持久化到数据库中">验证是否持久化到数据库中</h1>
+<p>观察数据库<code>mynacos</code>中的数据库表 <code>config_info</code> , 如下</p>
+<p><img src="./images/Nacos（八）：Nacos持久化2.png" alt="config_info" /><br />
+请求一下接口 <a href="http://127.0.0.1:9989/getValue" class="uri">http://127.0.0.1:9989/getValue</a> 返回结果：</p>
+<blockquote>
+<p>配置文件已持久化到数据库中...</p>
+</blockquote>
+<h1 id="总结">总结</h1>
+<p>Nacos通过集中式存储来保证数据的持久化，同时也为Nacos集群部署奠定了基础</p>
+<p>试想一下，如果我们以之前的方式启动Nacos，如果想组建Nacos集群，那各个节点中的数据唯一性就是最大的问题</p>
+<p>Nacos采用了单一数据源，直接解决了分布式和集群部署中的一致性问题。</p>
+<hr />
+<ul>
+<li>文章作者: <a href="https://www.larscheng.com/">LarsCheng</a></li>
+<li>文章链接: 本文首发于个人博客：<a href="https://www.larscheng.com/nacos-namespace/" class="uri">https://www.larscheng.com/nacos-namespace/</a></li>
+<li>发布方式：<a href="https://www.openwrite.cn/">OpenWrite 最懂你的科技自媒体管理平台</a></li>
+<li>版权声明: 本博客所有文章除特别声明外，均采用 CC BY-NC-SA 4.0 许可协议。转载请注明来自 LarsCheng's Blog！</li>
+</ul>
+<hr />
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

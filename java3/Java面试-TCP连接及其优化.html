@@ -1,0 +1,110 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java面试-TCP连接及其优化' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java面试-TCP连接及其优化</center></div><div class='banquan'>原文出处:本文由博客园博主jianjianqq提供。<br/>
+原文连接:https://www.cnblogs.com/death00/p/11510827.html</div><br>
+    <p>作为一个后端程序员，网络连接这块是一个绕不过的砍，当你在做服务器优化的时候，网络优化也是其中一环，那么作为网络连接中最基础的部分-<code>TCP连接</code>你了解吗？今天我们来仔细看看这个部分。<br />
+<!-- more --></p>
+<h2 id="tcp建立连接-三次握手">TCP建立连接-三次握手</h2>
+<h3 id="详解">详解</h3>
+<p><img src="./images/Java面试-TCP连接及其优化0.png" alt="三次握手" /></p>
+<ol>
+<li>客户端和服务器还未建立连接，但服务器一般处于<code>listen</code>状态</li>
+<li>客户端主动建立连接，向服务器发送SYN报文，客户端变为<code>SYN_SENT</code>状态</li>
+<li>服务器收到客户端发送的报文，也回了一个SYN报文，包含了一个ack。此时，服务器变为<code>SYN_RCVD</code>状态</li>
+<li>客户端收到了服务器发送的SYN报文，确认了ack，它将向服务器发送一个ACK报文。此时，客户端变为<code>ESTABLISHED</code></li>
+<li>服务器收到客户端的ACK报文，确认了ack。此时，服务器也变为<code>ESTABLISHED</code></li>
+<li>服务器和客户端可以正常通信了</li>
+</ol>
+<p>其中步骤2~4就是三次握手，那么为什么需要三次握手呢？为什么不是一次或者两次握手呢？</p>
+<p>首先，我们需要知道，只有当服务器和客户端都能确保自己能够发消息和接收消息，这次网络通信才算成功的。</p>
+<p>步骤2的作用是让服务器知道了自己是可以接收消息的。</p>
+<p>步骤3的作用是让客户端知道自己发送消息和接收消息的功能是OK的，发送消息的能力是通过服务器返回的<code>ack=x+1</code>确认的，因为这个值基于当初客户端发送的消息<code>seq=x</code>。接收消息的能力是因为收到了服务器的返回。</p>
+<p>步骤4的作用是让服务器端知道自己发送消息的能力是OK的（和步骤3类似）。</p>
+<h3 id="linux查看">linux查看</h3>
+<p>linux服务器可以利用<code>netstat -anp | grep tcp</code>命令，查看服务器上各个端口和应用的连接状态。</p>
+<p>你还可以通过修改linux的配置文件<code>/etc/sysctl.conf</code>，调整各个状态的数量</p>
+<h4 id="syn_sent状态相关"><code>SYN_SENT</code>状态相关</h4>
+<ul>
+<li>主动建立连接时，发SYN（步骤2）的重试次数</li>
+</ul>
+<pre><code><code>nct.ipv4.tcp_syn_rctries = 6</code></code></pre>
+<ul>
+<li>建立连接时的本地端口可用范围</li>
+</ul>
+<pre><code><code>net.ipv4.ip_local_port_range = 32768 60999</code></code></pre>
+<h4 id="syn_rcvd状态相关"><code>SYN_RCVD</code>状态相关</h4>
+<ul>
+<li><code>SYN_RCVD</code>状态连接的最大个数</li>
+</ul>
+<pre><code><code>net.ipv4.tcp_max_syn_backlog</code></code></pre>
+<ul>
+<li>被动建立连接时，发SYN/ACK（步骤3）重试次数</li>
+</ul>
+<pre><code><code>net.ipv4.tcp_synack_retries</code></code></pre>
+<p>说完了TCP建立连接，接下来，我们再来看看TCP正常断开连接的过程</p>
+<h2 id="tcp断开连接-四次挥手">TCP断开连接-四次挥手</h2>
+<h3 id="详解-1">详解</h3>
+<p><img src="./images/Java面试-TCP连接及其优化1.png" alt="四次挥手" /></p>
+<ol>
+<li>客户端与服务器端正常传输数据</li>
+<li>客户端主动断开连接，向服务器端发送FIN报文，客户端变为<code>FIN_WAIT1</code>状态</li>
+<li>服务器收到客户端的FIN后，向客户端发送ACK报文，服务器变为<code>CLOSE_WAIT</code>状态</li>
+<li>客户端收到服务器的ACK报文后，客户端变为<code>FIN_WAIT2</code>状态</li>
+<li>服务器向客户端发送FIN报文，服务器变为<code>LAST_ACK</code>状态</li>
+<li>客户端收到服务器发送的FIN报文后，向服务器发送ACK报文，客户端变为<code>TIME_WAIT</code>状态</li>
+<li>服务器收到客户端的ACK报文后，服务器变为<code>CLOSED</code>状态</li>
+<li>客户端经过2MSL(max segment lifetime，报文最大生存时间)时间后，也变为<code>CLOSED</code>状态</li>
+</ol>
+<p>其中，步骤2、3、5、6即为4次挥手。</p>
+<h3 id="time_wait状态及其优化"><code>TIME_WAIT</code>状态及其优化</h3>
+<p>看完之后，大家想必会有一个疑问，为什么<code>TIME_WAIT</code>状态需要保持2MSL？因为这可以保证至少一次报文的往返时间内，端口是不可复用的。</p>
+<p>假设<code>TIME_WAIT</code>状态的持续时间很短，我们来模拟下面这种场景：<br />
+<img src="./images/Java面试-TCP连接及其优化2.png" /></p>
+<ul>
+<li>客户端向服务器端发送了三条报文，其中第3条报文卡在网络中，服务器只收到了前两条，向客户单发送ACK=2，客户端重新发送第三条报文。</li>
+<li>服务器主动发送FIN报文，客户端收到后发送FIN、ACK，服务器端收到后发送ACK并进入<code>TIME_WAIT</code>状态（假设这个状态很短）。</li>
+<li>现在服务器又再次和客户端建立连接，三次握手之后开始发送正常数据，结果之前卡住的第三条报文，现在终于发送到服务器，但服务器也不知道该如何处理这条报文。</li>
+</ul>
+<p>因此这也是<code>TIME_WAIT</code>状态需要保持2MSL的原因，如果这么长时间也没有收到报文，即使有正确的报文从客户端发出，也已经过期了，因此不会影响到之后的通信。</p>
+<p>但这同样也会带来一个问题，<code>TIME_WAIT</code>状态保持的时间较长，假设服务器端有大量<code>TIME_WAIT</code>状态的TCP连接，就相当于白白浪费掉大量的服务器资源(端口)。此时，我们可以通过修改以下配置进行服务器调优：</p>
+<pre><code><code>net.ipv4.tcp_tw_reuse = 1</code></code></pre>
+<ul>
+<li>开启后，作为客户端时新连接可以使用仍然处于<code>TIME_WAIT</code>状态的端口</li>
+<li>由于timestamp的存在，操作系统可以拒绝迟到的报文（例如上面说的第三条报文），可以利用以下配置：</li>
+</ul>
+<pre><code><code>net.ipv4.tcp_timestamps = 1</code></code></pre>
+<h3 id="其他状态的优化">其他状态的优化</h3>
+<h4 id="close_wait状态"><code>CLOSE_WAIT</code>状态</h4>
+<p>如果服务器端有大量<code>CLOSE_WAIT</code>状态的连接，很有可能是应用进程出现bug，没有及时关闭连接。</p>
+<h4 id="fin_wait1状态"><code>FIN_WAIT1</code>状态</h4>
+<p>调整发送FIN报文的重试次数，0相当于8</p>
+<pre><code><code>net.ipv4.tcp_orphan_retries = 0</code></code></pre>
+<h4 id="fin_wait2状态"><code>FIN_WAIT2</code>状态</h4>
+<p>调整保持在<code>FIN_WAIT2</code>状态的时间</p>
+<pre><code><code>net.ipv4.tcp_fin_timeout = 60</code></code></pre>
+<h2 id="总结">总结</h2>
+<p>看到这里，想必你应该对TCP连接有了一个大致的了解。现在服务器大多都用了nginx做了负载均衡，因此，我们可能需要在此基础上了解一些nginx相关的配置原理，这样应该会对我们的服务器性能调优会有更大的帮助。有兴趣的同学不妨可以去了解一下，如果有什么新发现想和作者探讨的，欢迎在下方留言。</p>
+<p>有兴趣的话可以关注我的公众号，说不定会有意外的惊喜。</p>
+<p><img src="./images/Java面试-TCP连接及其优化3.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,579 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修如何从 if-else 的参数校验中解放出来？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>如何从 if-else 的参数校验中解放出来？</center></div><div class='banquan'>原文出处:本文由博客园博主风尘博客提供。<br/>
+原文连接:https://www.cnblogs.com/vandusty/p/11509569.html</div><br>
+    <h4 id="背景">背景</h4>
+<blockquote>
+<p>在开发中经常需要写一些字段校验的代码，比如非空，长度限制，邮箱格式验证等等，导致充满了<code>if-else</code> 的代码,不仅相当冗长,而且很让人抓狂。</p>
+</blockquote>
+<p><code>hibernate validator</code>（<a href="http://hibernate.org/validator/documentation/">官方文档</a>）提供了一套比较完善、便捷的验证实现方式。它定义了很多常用的校验注解，我们可以直接将这些注解加在我们<code>JavaBean</code>的属性上面，就可以在需要校验的时候进行校验了。在<code>Spring Boot</code> 火热的现在，该工具已经包含在<code>spring-boot-starter-web</code>中，不需额外引入其他包。</p>
+<h3 id="一快速入门">一、快速入门</h3>
+<h4 id="在userdto中声明要检查的参数">1.1 在<code>UserDTO</code>中声明要检查的参数</h4>
+<blockquote>
+<p>校验说明见代码中注释</p>
+</blockquote>
+<pre><code><code>@Data
+public class UserDTO {
+
+    /**
+     性别（不校验）
+     */
+    private String sex;
+
+    /** 
+     用户名（校验：不能为空，不能超过20个字符串）
+     */
+    @NotBlank(message = &quot;用户名不能为空&quot;)
+    @Length(max = 20, message = &quot;用户名不能超过20个字符&quot;)
+    private String userName;
+
+    /** 
+     * 手机号（校验：不能为空且按照正则校验格式）
+     */
+    @NotBlank(message = &quot;手机号不能为空&quot;)
+    @Pattern(regexp = &quot;^[1][3,4,5,6,7,8,9][0-9]{9}$&quot;, message = &quot;手机号格式有误&quot;)
+    private String mobile;
+
+    /** 
+     邮箱（校验：不能唯恐且校验邮箱格式）
+     */
+    @NotBlank(message = &quot;联系邮箱不能为空&quot;)
+    @Email(message = &quot;邮箱格式不对&quot;)
+    private String email;
+}</code></code></pre>
+<h4 id="接口处声明要检查的参数">1.2 接口处声明要检查的参数</h4>
+<blockquote>
+<p>需要在<code>Controller</code>层的入参位置用<code>@Validated</code> 注解声明</p>
+</blockquote>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/demo&quot;)
+public class ValidatorDemoController {
+
+    /**
+     * 注解参数校验案例
+     * @param userDTO
+     * @return
+     */
+    @PostMapping(&quot;/test&quot;)
+    public HttpResult test(@Validated UserDTO userDTO) {
+        return HttpResult.success(userDTO);
+    }
+}</code></code></pre>
+<blockquote>
+<p>这里的<code>HttpResult</code> 是Van 自己封装的一个结果集，详见文末Github地址的源码。</p>
+</blockquote>
+<h4 id="web全局异常捕获">1.3 Web全局异常捕获</h4>
+<p><code>@Valid</code> 在 <code>Spring Boot</code>中进行绑定参数校验时会抛出异常,需要在<code>Spring Boot</code>中处理。</p>
+<pre><code><code>@RestControllerAdvice
+@Slf4j
+public class WebExceptionHandler {
+
+
+    /**
+     * 方法参数校验
+     * @param e
+     * @return
+     */
+    @ExceptionHandler(BindException.class)
+    public HttpResult handleMethodArgumentNotValidException(BindException e) {
+        log.error(e.getMessage(), e);
+        return HttpResult.failure(400,e.getBindingResult().getFieldError().getDefaultMessage());
+    }
+
+    @ExceptionHandler(Exception.class)
+    public HttpResult handleException(Exception e) {
+        log.error(e.getMessage(), e);
+        return HttpResult.failure(400, &quot;系统繁忙,请稍后再试&quot;);
+    }
+}</code></code></pre>
+<h4 id="测试">1.4 测试</h4>
+<blockquote>
+<p>测试工具采用的<code>postman</code></p>
+</blockquote>
+<ul>
+<li>请求方式：POST</li>
+<li>请求地址：localhost:8080/demo/test</li>
+<li>请求参数：</li>
+</ul>
+<pre><code><code>userName:Van
+mobile:17098705205
+email:123</code></code></pre>
+<ul>
+<li>返回结果：</li>
+</ul>
+<pre><code><code>{
+    &quot;success&quot;: false,
+    &quot;code&quot;: 400,
+    &quot;data&quot;: null,
+    &quot;message&quot;: &quot;邮箱格式不对&quot;
+}</code></code></pre>
+<ul>
+<li>说明</li>
+</ul>
+<ol>
+<li>更多注解，请各位自行尝试；</li>
+<li>测试结果证明：参数校验生效，且按照我们设定的结果集返回异常信息。</li>
+</ol>
+<h4 id="常见的校验注解">1.5 常见的校验注解</h4>
+<ol>
+<li><code>@Null</code>：被注释的元素必须为 <code>null</code><br />
+</li>
+<li><code>@NotNull</code>：被注释的元素必须不为 <code>null</code><br />
+</li>
+<li><code>@AssertTrue</code>：被注释的元素必须为 <code>true</code><br />
+</li>
+<li><code>@AssertFalse</code>：被注释的元素必须为 <code>false</code><br />
+</li>
+<li><code>@Min(value)</code>：被注释的元素必须是一个数字，其值必须大于等于指定的最小值</li>
+<li><code>@Max(value)</code>：被注释的元素必须是一个数字，其值必须小于等于指定的最大值</li>
+<li><code>@DecimalMin(value)</code>：被注释的元素必须是一个数字，其值必须大于等于指定的最小值</li>
+<li><code>@DecimalMax(value)</code>：被注释的元素必须是一个数字，其值必须小于等于指定的最大值</li>
+<li><code>@Size(max=, min=)</code>：被注释的元素的大小必须在指定的范围内<br />
+</li>
+<li><code>@Digits (integer, fraction)</code>：被注释的元素必须是一个数字，其值必须在可接受的范围内</li>
+<li><code>@Past</code>：被注释的元素必须是一个过去的日期<br />
+<code>@Future</code>：被注释的元素必须是一个将来的日期<br />
+</li>
+<li><code>@Pattern(regex=,flag=)</code>：被注释的元素必须符合指定的正则表达式</li>
+<li><code>@NotBlank(message =)</code>：验证字符串非<code>null</code>，且长度必须大于0<br />
+</li>
+<li><code>@Email</code>：被注释的元素必须是电子邮箱地址<br />
+</li>
+<li><code>@Length(min=,max=)</code>：被注释的字符串的大小必须在指定的范围内<br />
+</li>
+<li><code>@NotEmpty</code>：被注释的字符串的必须非空<br />
+</li>
+<li><code>@Range(min=,max=,message=)</code>：被注释的元素必须在合适的范围内</li>
+</ol>
+<h3 id="二自定义注解校验">二、自定义注解校验</h3>
+<p><code>hibernate validator</code> 自带的注解可以搞定简单的参数校验，加上正则的写法，能解决绝大多数参数校验情况。但是，有些情况，比如：校验是否登录，就需要我们自定义注解校验了。为了方便测试，我这里以身份证校验为例完成自定义校验的过程。</p>
+<h4 id="身份证校验工具类">2.1 身份证校验工具类</h4>
+<pre><code><code>public class IdCardValidatorUtils {
+
+    protected String codeAndCity[][] = {{&quot;11&quot;, &quot;北京&quot;}, {&quot;12&quot;, &quot;天津&quot;},
+            {&quot;13&quot;, &quot;河北&quot;}, {&quot;14&quot;, &quot;山西&quot;}, {&quot;15&quot;, &quot;内蒙古&quot;}, {&quot;21&quot;, &quot;辽宁&quot;},
+            {&quot;22&quot;, &quot;吉林&quot;}, {&quot;23&quot;, &quot;黑龙江&quot;}, {&quot;31&quot;, &quot;上海&quot;}, {&quot;32&quot;, &quot;江苏&quot;},
+            {&quot;33&quot;, &quot;浙江&quot;}, {&quot;34&quot;, &quot;安徽&quot;}, {&quot;35&quot;, &quot;福建&quot;}, {&quot;36&quot;, &quot;江西&quot;},
+            {&quot;37&quot;, &quot;山东&quot;}, {&quot;41&quot;, &quot;河南&quot;}, {&quot;42&quot;, &quot;湖北&quot;}, {&quot;43&quot;, &quot;湖南&quot;},
+            {&quot;44&quot;, &quot;广东&quot;}, {&quot;45&quot;, &quot;广西&quot;}, {&quot;46&quot;, &quot;海南&quot;}, {&quot;50&quot;, &quot;重庆&quot;},
+            {&quot;51&quot;, &quot;四川&quot;}, {&quot;52&quot;, &quot;贵州&quot;}, {&quot;53&quot;, &quot;云南&quot;}, {&quot;54&quot;, &quot;西藏&quot;},
+            {&quot;61&quot;, &quot;陕西&quot;}, {&quot;62&quot;, &quot;甘肃&quot;}, {&quot;63&quot;, &quot;青海&quot;}, {&quot;64&quot;, &quot;宁夏&quot;},
+            {&quot;65&quot;, &quot;新疆&quot;}, {&quot;71&quot;, &quot;台湾&quot;}, {&quot;81&quot;, &quot;香港&quot;}, {&quot;82&quot;, &quot;澳门&quot;},
+            {&quot;91&quot;, &quot;国外&quot;}};
+
+    private String cityCode[] = {&quot;11&quot;, &quot;12&quot;, &quot;13&quot;, &quot;14&quot;, &quot;15&quot;, &quot;21&quot;, &quot;22&quot;,
+            &quot;23&quot;, &quot;31&quot;, &quot;32&quot;, &quot;33&quot;, &quot;34&quot;, &quot;35&quot;, &quot;36&quot;, &quot;37&quot;, &quot;41&quot;, &quot;42&quot;, &quot;43&quot;,
+            &quot;44&quot;, &quot;45&quot;, &quot;46&quot;, &quot;50&quot;, &quot;51&quot;, &quot;52&quot;, &quot;53&quot;, &quot;54&quot;, &quot;61&quot;, &quot;62&quot;, &quot;63&quot;,
+            &quot;64&quot;, &quot;65&quot;, &quot;71&quot;, &quot;81&quot;, &quot;82&quot;, &quot;91&quot;};
+
+
+    // 每位加权因子
+    private static int power[] = {7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2};
+
+    // 第18位校检码
+    private String verifyCode[] = {&quot;1&quot;, &quot;0&quot;, &quot;X&quot;, &quot;9&quot;, &quot;8&quot;, &quot;7&quot;, &quot;6&quot;, &quot;5&quot;,
+            &quot;4&quot;, &quot;3&quot;, &quot;2&quot;};
+
+    /**
+     * 验证所有的身份证的合法性
+     *
+     * @param idcard
+     * @return
+     */
+    public static boolean isValidatedAllIdcard(String idcard) {
+        if (idcard.length() == 15) {
+            idcard = convertIdcarBy15bit(idcard);
+        }
+        return isValidate18Idcard(idcard);
+    }
+
+    /**
+     * 将15位的身份证转成18位身份证
+     *
+     * @param idcard
+     * @return
+     */
+    public static String convertIdcarBy15bit(String idcard) {
+        String idcard17 = null;
+        // 非15位身份证
+        if (idcard.length() != 15) {
+            return null;
+        }
+
+        if (isDigital(idcard)) {
+            // 获取出生年月日
+            String birthday = idcard.substring(6, 12);
+            Date birthdate = null;
+            try {
+                birthdate = new SimpleDateFormat(&quot;yyMMdd&quot;).parse(birthday);
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+            Calendar cday = Calendar.getInstance();
+            cday.setTime(birthdate);
+            String year = String.valueOf(cday.get(Calendar.YEAR));
+
+            idcard17 = idcard.substring(0, 6) + year + idcard.substring(8);
+
+            char c[] = idcard17.toCharArray();
+            String checkCode = &quot;&quot;;
+
+            if (null != c) {
+                int bit[] = new int[idcard17.length()];
+
+                // 将字符数组转为整型数组
+                bit = converCharToInt(c);
+                int sum17 = 0;
+                sum17 = getPowerSum(bit);
+
+                // 获取和值与11取模得到余数进行校验码
+                checkCode = getCheckCodeBySum(sum17);
+                // 获取不到校验位
+                if (null == checkCode) {
+                    return null;
+                }
+
+                // 将前17位与第18位校验码拼接
+                idcard17 += checkCode;
+            }
+        } else { // 身份证包含数字
+            return null;
+        }
+        return idcard17;
+    }
+
+    /**
+     * @param idCard
+     * @return
+     */
+    public static boolean isValidate18Idcard(String idCard) {
+        // 非18位为假
+        if (idCard.length() != 18) {
+            return false;
+        }
+        // 获取前17位
+        String idcard17 = idCard.substring(0, 17);
+        // 获取第18位
+        String idcard18Code = idCard.substring(17, 18);
+        char c[] = null;
+        String checkCode = &quot;&quot;;
+        // 是否都为数字
+        if (isDigital(idcard17)) {
+            c = idcard17.toCharArray();
+        } else {
+            return false;
+        }
+
+        if (null != c) {
+            int bit[] = new int[idcard17.length()];
+            bit = converCharToInt(c);
+            int sum17 = 0;
+            sum17 = getPowerSum(bit);
+
+            // 将和值与11取模得到余数进行校验码判断
+            checkCode = getCheckCodeBySum(sum17);
+            if (null == checkCode) {
+                return false;
+            }
+            // 将身份证的第18位与算出来的校码进行匹配，不相等就为假
+            if (!idcard18Code.equalsIgnoreCase(checkCode)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 18位身份证号码的基本数字和位数验校
+     *
+     * @param idCard
+     * @return
+     */
+    public boolean is18Idcard(String idCard) {
+        return Pattern.matches(&quot;^[1-9]\\d{5}[1-9]\\d{3}((0\\d)|(1[0-2]))(([0|1|2]\\d)|3[0-1])\\d{3}([\\d|x|X]{1})$&quot;, idCard);
+    }
+
+    /**
+     * 数字验证
+     *
+     * @param str
+     * @return
+     */
+    public static boolean isDigital(String str) {
+        return str == null || &quot;&quot;.equals(str) ? false : str.matches(&quot;^[0-9]*$&quot;);
+    }
+
+    /**
+     * 将身份证的每位和对应位的加权因子相乘之后，再得到和值
+     *
+     * @param bit
+     * @return
+     */
+    public static int getPowerSum(int[] bit) {
+
+        int sum = 0;
+
+        if (power.length != bit.length) {
+            return sum;
+        }
+
+        for (int i = 0; i &lt; bit.length; i++) {
+            for (int j = 0; j &lt; power.length; j++) {
+                if (i == j) {
+                    sum = sum + bit[i] * power[j];
+                }
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * 将和值与11取模得到余数进行校验码判断
+     *
+     * @param sum17
+     * @return 校验位
+     */
+    public static String getCheckCodeBySum(int sum17) {
+        String checkCode = null;
+        switch (sum17 % 11) {
+            case 10:
+                checkCode = &quot;2&quot;;
+                break;
+            case 9:
+                checkCode = &quot;3&quot;;
+                break;
+            case 8:
+                checkCode = &quot;4&quot;;
+                break;
+            case 7:
+                checkCode = &quot;5&quot;;
+                break;
+            case 6:
+                checkCode = &quot;6&quot;;
+                break;
+            case 5:
+                checkCode = &quot;7&quot;;
+                break;
+            case 4:
+                checkCode = &quot;8&quot;;
+                break;
+            case 3:
+                checkCode = &quot;9&quot;;
+                break;
+            case 2:
+                checkCode = &quot;x&quot;;
+                break;
+            case 1:
+                checkCode = &quot;0&quot;;
+                break;
+            case 0:
+                checkCode = &quot;1&quot;;
+                break;
+        }
+        return checkCode;
+    }
+
+    /**
+     * 将字符数组转为整型数组
+     *
+     * @param c
+     * @return
+     * @throws NumberFormatException
+     */
+    public static int[] converCharToInt(char[] c) throws NumberFormatException {
+        int[] a = new int[c.length];
+        int k = 0;
+        for (char temp : c) {
+            a[k++] = Integer.parseInt(String.valueOf(temp));
+        }
+        return a;
+    }
+
+
+    public static void main(String[] args) {
+        String idCardForFalse = &quot;350583199108290106&quot;;
+        String idCardForTrue = &quot;350583197106150219&quot;;
+        if (IdCardValidatorUtils.isValidatedAllIdcard(idCardForTrue)) {
+            System.out.println(&quot;身份证校验正确&quot;);
+        } else {
+            System.out.println(&quot;身份证校验错误！&quot;);
+        }
+    }
+}</code></code></pre>
+<h4 id="自定义注解">2.2 自定义注解</h4>
+<pre><code><code>@Documented
+@Target({ElementType.PARAMETER, ElementType.FIELD})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = IdentityCardNumberValidator.class)
+public @interface IdentityCardNumber {
+
+    String message() default &quot;身份证号码格式不正确&quot;;
+
+    Class&lt;?&gt;[] groups() default {};
+
+    Class&lt;? extends Payload&gt;[] payload() default {};
+}</code></code></pre>
+<blockquote>
+<p>仔细的你会发现，相对于一般的自定义注解，该注解：<br />
+<code>@Constraint(validatedBy = IdentityCardNumberValidator.class)</code>,该注解的作用就是调用身份证校验的工具。</p>
+</blockquote>
+<h4 id="在userdto-需要校验的字段添加声明">2.3 在<code>UserDTO</code> 需要校验的字段添加声明</h4>
+<pre><code><code>/**
+ * 身份证号（校验：自定义注解校验）
+ */
+@IdentityCardNumber
+private String idNumber;</code></code></pre>
+<h4 id="控制层接口">2.4 控制层接口</h4>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/custom&quot;)
+public class ValidatorCustomController {
+
+    /**
+     * 自定义注解参数校验案例
+     * @param userDTO
+     * @return
+     */
+    @PostMapping(&quot;/test&quot;)
+    public HttpResult test(@Validated UserDTO userDTO) {
+        return HttpResult.success(userDTO);
+    }
+
+}</code></code></pre>
+<h4 id="自定义注解的测试">2.5 自定义注解的测试</h4>
+<ul>
+<li>请求方式：POST</li>
+<li>请求地址：localhost:8080/private/test</li>
+<li>请求参数：</li>
+</ul>
+<pre class="xml"><code>userName:Van
+mobile:17098705205
+email:110@qq.com
+idNumber:350583199108290106</code></code></pre>
+<ul>
+<li>返回结果：</li>
+</ul>
+<pre><code><code>{
+    &quot;success&quot;: false,
+    &quot;code&quot;: 400,
+    &quot;data&quot;: null,
+    &quot;message&quot;: &quot;身份证号码格式不正确&quot;
+}</code></code></pre>
+<h3 id="三分组校验">三、分组校验</h3>
+<p>除了上述的校验外，可能还有这种需求：</p>
+<p>在创建用户信息时，不需要校验<code>userId</code>;但在更新用户信息时，需要校验<code>userId</code>,而用户名，邮箱等两种情况都得校验。这种情况，就可以<strong>分组校验</strong>来解决了。</p>
+<h4 id="定义分组接口">3.1 定义分组接口</h4>
+<ul>
+<li><code>Create.java</code></li>
+</ul>
+<pre><code><code>import javax.validation.groups.Default;
+
+public interface Create extends Default {
+}</code></code></pre>
+<ul>
+<li><code>Update.java</code></li>
+</ul>
+<pre><code><code>import javax.validation.groups.Default;
+
+public interface Update extends Default {
+}</code></code></pre>
+<h4 id="在userdto-需要校验的字段添加声明-1">3.2 在<code>UserDTO</code> 需要校验的字段添加声明</h4>
+<pre><code><code>/**
+     * 用户id(只有在有Update分组中校验非空)
+     */
+    @NotNull(message = &quot;id 不能为空&quot;, groups = Update.class)
+    private Long userId;</code></code></pre>
+<h4 id="控制层入参位置进行声明">3.3 控制层入参位置进行声明</h4>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/groups&quot;)
+public class ValidatorGroupsController {
+
+    /**
+     * 更新数据，需要传入userID
+     * @param userDTO
+     * @return
+     */
+    @PostMapping(&quot;/update&quot;)
+    public HttpResult updateData(@Validated(Update.class)UserDTO userDTO) {
+        return HttpResult.success(userDTO);
+    }
+    /**
+     * 新增数据，不需要传入userID
+     * @param userDTO
+     * @return
+     */
+    @PostMapping(&quot;/create&quot;)
+    public HttpResult createData(@Validated(Create.class)UserDTO userDTO) {
+        return HttpResult.success(userDTO);
+    }
+}</code></code></pre>
+<h4 id="分组校验的测试-新增测试">3.4 分组校验的测试-新增测试</h4>
+<ul>
+<li>请求方式：POST</li>
+<li>请求地址：localhost:8080/groups/create</li>
+<li>请求参数：</li>
+</ul>
+<pre class="xml"><code>userName:Van
+mobile:17098705205
+email:110@qq.com
+idNumber:350583197106150219
+userId:</code></code></pre>
+<ul>
+<li>返回结果：</li>
+</ul>
+<pre><code><code>{
+    &quot;success&quot;: true,
+    &quot;code&quot;: 200,
+    &quot;data&quot;: {
+        &quot;userId&quot;: null,
+        &quot;sex&quot;: null,
+        &quot;userName&quot;: &quot;Van&quot;,
+        &quot;mobile&quot;: &quot;17098705205&quot;,
+        &quot;email&quot;: &quot;110@qq.com&quot;,
+        &quot;idNumber&quot;: &quot;350583197106150219&quot;,
+        &quot;passWord&quot;: null
+    },
+    &quot;message&quot;: null
+}</code></code></pre>
+<p>请求成功，说明新增请求，不检验<code>userId</code>，即<code>userId</code>可以为空。</p>
+<h4 id="分组校验的测试-更新测试">3.5 分组校验的测试-更新测试</h4>
+<ul>
+<li>请求方式：POST</li>
+<li>请求地址：localhost:8080/groups/update</li>
+<li>请求参数：同上（3.4）</li>
+<li>返回结果：</li>
+</ul>
+<pre><code><code>{
+    &quot;success&quot;: false,
+    &quot;code&quot;: 400,
+    &quot;data&quot;: null,
+    &quot;message&quot;: &quot;id 不能为空&quot;
+}</code></code></pre>
+<p>请求失败，说明更新请求，检验<code>userId</code>，即<code>userId</code>不能为空。</p>
+<blockquote>
+<p>结合 3.4 与 3.5 的测试结果，说明分组校验成功。</p>
+</blockquote>
+<h3 id="四总结">四、总结</h3>
+<p>希望大家写的每一行代码都是业务需要，而不是无聊且无穷无尽的参数校验。</p>
+<p><a href="https://github.com/vanDusty/SpringBoot-Home/tree/master/springboot-demo-parameter/validator-demo">Github 示例代码</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

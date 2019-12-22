@@ -1,0 +1,522 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11837057.html</div><br>
+    <p>Spring Boot默认使用Tomcat作为嵌入式的Servlet容器，只要引入了spring-boot-start-web依赖，则默认是用Tomcat作为Servlet容器：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<h2>Servlet容器的使用</h2>
+<h3>默认servlet容器</h3>
+<p>我们看看spring-boot-starter-web这个starter中有什么</p>
+<p><img src="./images/SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）0.png" alt="" /></p>
+<p>核心就是引入了tomcat和SpringMvc，我们先来看tomcat</p>
+<p>Spring Boot默认支持Tomcat，Jetty，和Undertow作为底层容器。如图：</p>
+<p><img src="./images/SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）1.png" alt="" /></p>
+<p>而Spring Boot默认使用Tomcat，一旦引入spring-boot-starter-web模块，就默认使用Tomcat容器。</p>
+<h3>切换servlet容器</h3>
+<p>那如果我么想切换其他Servlet容器呢，只需如下两步：</p>
+<ul>
+<li>将tomcat依赖移除掉</li>
+<li>引入其他Servlet容器依赖</li>
+</ul>
+<p>引入jetty：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">exclusions</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">exclusion</span><span style="color: #0000ff;">&gt;</span>
+        <strong>    <span style="color: #008000;">&lt;!--</span><span style="color: #008000;">移除spring-boot-starter-web中的tomcat</span><span style="color: #008000;">--&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-tomcat<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span></strong>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">exclusion</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">exclusions</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+ <strong>   <span style="color: #008000;">&lt;!--</span><span style="color: #008000;">引入jetty</span><span style="color: #008000;">--&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-jetty<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span></strong>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<h2>Servlet容器自动配置原理</h2>
+<h3>EmbeddedServletContainerAutoConfiguration</h3>
+<src>
+<src>其中<strong>EmbeddedServletContainerAutoConfiguration</strong>是嵌入式Servlet容器的自动配置类，该类在<strong>spring-boot-autoconfigure.jar中的web模块</strong>可以找到。
+
+<p><img src="./images/SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）2.png" alt="" /></p>
+<p>我们可以看到<strong>EmbeddedServletContainerAutoConfiguration被配置在spring.factories中，</strong>看过我前面文章的朋友应该知道SpringBoot自动配置的原理，这里将EmbeddedServletContainerAutoConfiguration配置类加入到IOC容器中，接着我们来具体看看这个配置类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE)
+@Configuration
+@ConditionalOnWebApplication</span><span style="color: #008000;">//</span><span style="color: #008000;"> 在Web环境下才会起作用</span>
+@Import(BeanPostProcessorsRegistrar.<span style="color: #0000ff;">class</span>)<span style="color: #008000;">//</span><span style="color: #008000;"> 会Import一个内部类BeanPostProcessorsRegistrar</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EmbeddedServletContainerAutoConfiguration {
+
+    @Configuration
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> Tomcat类和Servlet类必须在classloader中存在
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 文章开头我们已经导入了web的starter，其中包含tomcat和SpringMvc
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 那么classPath下会存在Tomcat.class和Servlet.class</span>
+    @ConditionalOnClass({ Servlet.<span style="color: #0000ff;">class</span>, Tomcat.<span style="color: #0000ff;">class</span><span style="color: #000000;"> })
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当前Spring容器中不存在EmbeddedServletContainerFactory类型的实例</span>
+    @ConditionalOnMissingBean(value = EmbeddedServletContainerFactory.<span style="color: #0000ff;">class</span>, search =<span style="color: #000000;"> SearchStrategy.CURRENT)
+    </span></strong><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EmbeddedTomcat {
+
+        @Bean
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> TomcatEmbeddedServletContainerFactory tomcatEmbeddedServletContainerFactory() {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 上述条件注解成立的话就会构造TomcatEmbeddedServletContainerFactory这个EmbeddedServletContainerFactory</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> TomcatEmbeddedServletContainerFactory();</strong>
+        }
+    }
+    
+    @Configuration
+    @ConditionalOnClass({ Servlet.</span><span style="color: #0000ff;">class</span>, Server.<span style="color: #0000ff;">class</span>, Loader.<span style="color: #0000ff;">class</span><span style="color: #000000;">,
+            WebAppContext.</span><span style="color: #0000ff;">class</span><span style="color: #000000;"> })
+    @ConditionalOnMissingBean(value </span>= EmbeddedServletContainerFactory.<span style="color: #0000ff;">class</span>, search =<span style="color: #000000;"> SearchStrategy.CURRENT)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EmbeddedJetty {
+
+        @Bean
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JettyEmbeddedServletContainerFactory jettyEmbeddedServletContainerFactory() {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> JettyEmbeddedServletContainerFactory();
+        }
+
+    }
+    
+    @Configuration
+    @ConditionalOnClass({ Servlet.</span><span style="color: #0000ff;">class</span>, Undertow.<span style="color: #0000ff;">class</span>, SslClientAuthMode.<span style="color: #0000ff;">class</span><span style="color: #000000;"> })
+    @ConditionalOnMissingBean(value </span>= EmbeddedServletContainerFactory.<span style="color: #0000ff;">class</span>, search =<span style="color: #000000;"> SearchStrategy.CURRENT)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EmbeddedUndertow {
+
+        @Bean
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> UndertowEmbeddedServletContainerFactory undertowEmbeddedServletContainerFactory() {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UndertowEmbeddedServletContainerFactory();
+        }
+
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">other code...</span>
+}</code></pre>
+
+<p>在这个自动配置类中配置了三个容器工厂的Bean，分别是：</p>
+<src>
+<ul>
+<li>
+<p><strong>TomcatEmbeddedServletContainerFactory</strong></p>
+</li>
+<li>
+<p><strong>JettyEmbeddedServletContainerFactory</strong></p>
+</li>
+<li>
+<p><strong>UndertowEmbeddedServletContainerFactory</strong></p>
+</li>
+</ul>
+
+<src>
+<src>这里以大家熟悉的Tomcat为例，首先Spring Boot会判断当前环境中是否引入了Servlet和Tomcat依赖，并且当前容器中没有自定义的<strong>EmbeddedServletContainerFactory</strong>的情况下，则创建Tomcat容器工厂。其他Servlet容器工厂也是同样的道理。
+
+<h3>EmbeddedServletContainerFactory</h3>
+<ul>
+<li>嵌入式Servlet容器工厂</li>
+</ul>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> EmbeddedServletContainerFactory {
+
+    EmbeddedServletContainer <strong>getEmbeddedServletContainer</strong>( ServletContextInitializer... initializers);
+}</span></code></pre>
+
+<p>内部只有一个方法，用于获取嵌入式的Servlet容器。</p>
+<p>该工厂接口主要有三个实现类，分别对应三种嵌入式Servlet容器的工厂类，如图所示：</p>
+<p><img src="./images/SpringBoot 源码解析 （六）----- Spring Boot的核心能力 - 内置Servlet容器源码分析（Tomcat）3.png" alt="" /></p>
+<h3>TomcatEmbeddedServletContainerFactory</h3>
+<p>以Tomcat容器工厂TomcatEmbeddedServletContainerFactory类为例：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TomcatEmbeddedServletContainerFactory </span><span style="color: #0000ff;">extends</span> AbstractEmbeddedServletContainerFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ResourceLoaderAware {
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">other code...</span>
+<span style="color: #000000;">    
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> EmbeddedServletContainer <strong>getEmbeddedServletContainer</strong>( ServletContextInitializer... initializers) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">创建一个Tomcat</span>
+        Tomcat tomcat = <span style="color: #0000ff;">new</span><span style="color: #000000;"> Tomcat();
+        
+       </span></strong><strong><span style="color: #008000;">//</span><span style="color: #008000;">配置Tomcat的基本环节</span></strong>
+        File baseDir = (<span style="color: #0000ff;">this</span>.baseDirectory != <span style="color: #0000ff;">null</span> ? <span style="color: #0000ff;">this</span><span style="color: #000000;">.baseDirectory: createTempDir(</span>"tomcat"<span style="color: #000000;">));
+       <strong> tomcat.setBaseDir(baseDir.getAbsolutePath());</strong>
+        Connector connector </span>= <span style="color: #0000ff;">new</span> Connector(<span style="color: #0000ff;">this</span><span style="color: #000000;">.protocol);
+      <strong>  tomcat.getService().addConnector(connector);</strong>
+        customizeConnector(connector);
+     <strong>   tomcat.setConnector(connector);
+        tomcat.getHost().setAutoDeploy(</strong></span><strong><span style="color: #0000ff;">false</span></strong><span style="color: #000000;"><strong>);</strong>
+        configureEngine(tomcat.getEngine());
+        </span><span style="color: #0000ff;">for</span> (Connector additionalConnector : <span style="color: #0000ff;">this</span><span style="color: #000000;">.additionalTomcatConnectors) {
+            tomcat.getService().addConnector(additionalConnector);
+        }
+        prepareContext(tomcat.getHost(), initializers);
+        
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">包装tomcat对象，返回一个嵌入式Tomcat容器，内部会启动该tomcat容器</span>
+        <span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> getTomcatEmbeddedServletContainer(tomcat);</strong>
+    }
+}</span></code></pre>
+
+<p>首先会创建一个Tomcat的对象，并设置一些属性配置，最后调用<strong>getTomcatEmbeddedServletContainer(tomcat)方法，内部会启动tomcat，</strong>我们来看看：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> TomcatEmbeddedServletContainer getTomcatEmbeddedServletContainer(
+    Tomcat tomcat) {
+    </span><span style="color: #0000ff;">return</span> <strong><span style="color: #0000ff;">new</span> TomcatEmbeddedServletContainer(tomcat, getPort() &gt;= 0</strong><span style="color: #000000;"><strong>);</strong>
+}</span></code></pre>
+
+<p>该函数很简单，就是来创建Tomcat容器并返回。看看TomcatEmbeddedServletContainer类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> TomcatEmbeddedServletContainer <span style="color: #0000ff;">implements</span><span style="color: #000000;"> EmbeddedServletContainer {
+
+    </span><span style="color: #0000ff;">public</span> TomcatEmbeddedServletContainer(Tomcat tomcat, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> autoStart) {
+        Assert.notNull(tomcat, </span>"Tomcat Server must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.tomcat =<span style="color: #000000;"> tomcat;
+        </span><span style="color: #0000ff;">this</span>.autoStart =<span style="color: #000000;"> autoStart;
+        
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">初始化嵌入式Tomcat容器，并启动Tomcat</span>
+</strong><span style="color: #000000;"><strong>        initialize();</strong>
+    }
+    
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> initialize() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> EmbeddedServletContainerException {
+        TomcatEmbeddedServletContainer.logger
+                .info(</span>"Tomcat initialized with port(s): " + getPortsDescription(<span style="color: #0000ff;">false</span><span style="color: #000000;">));
+        </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.monitor) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                addInstanceIdToEngineName();
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    </span><span style="color: #0000ff;">final</span> Context context =<span style="color: #000000;"> findContext();
+                    context.addLifecycleListener(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> LifecycleListener() {
+
+                        @Override
+                        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> lifecycleEvent(LifecycleEvent event) {
+                            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (context.equals(event.getSource())
+                                    </span>&amp;&amp;<span style="color: #000000;"> Lifecycle.START_EVENT.equals(event.getType())) {
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Remove service connectors so that protocol
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> binding doesn't happen when the service is
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> started.</span>
+<span style="color: #000000;">                                removeServiceConnectors();
+                            }
+                        }
+
+                    });
+
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Start the server to trigger initialization listeners
+                    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">启动tomcat</span>
+                    <span style="color: #0000ff;">this</span><span style="color: #000000;">.tomcat.start();
+
+                    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> We can re-throw failure exception directly in the main thread</span>
+<span style="color: #000000;">                    rethrowDeferredStartupExceptions();
+
+                    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                        ContextBindings.bindClassLoader(context, getNamingToken(context),
+                                getClass().getClassLoader());
+                    }
+                    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (NamingException ex) {
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Naming is not enabled. Continue</span>
+<span style="color: #000000;">                    }
+
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Unlike Jetty, all Tomcat threads are daemon threads. We create a
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> blocking non-daemon to stop immediate shutdown</span>
+<span style="color: #000000;">                    startDaemonAwaitThread();
+                }
+                </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+                    containerCounter.decrementAndGet();
+                    </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex;
+                }
+            }
+            </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception ex) {
+                stopSilently();
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> EmbeddedServletContainerException(
+                        </span>"Unable to start embedded Tomcat"<span style="color: #000000;">, ex);
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>到这里就启动了嵌入式的Servlet容器，其他容器类似。</p>
+<h2>Servlet容器启动原理</h2>
+<h3>SpringBoot启动过程</h3>
+<p>我们回顾一下前面讲解的SpringBoot启动过程，也就是run方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ConfigurableApplicationContext run(String... args) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 计时工具</span>
+    StopWatch stopWatch = <span style="color: #0000ff;">new</span><span style="color: #000000;"> StopWatch();
+    stopWatch.start();
+
+    ConfigurableApplicationContext context </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    Collection</span>&lt;SpringBootExceptionReporter&gt; exceptionReporters = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+
+    configureHeadlessProperty();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第一步：获取并启动监听器</span>
+    SpringApplicationRunListeners listeners =<span style="color: #000000;"> getRunListeners(args);
+    listeners.starting();
+    
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ApplicationArguments applicationArguments </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultApplicationArguments(args);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第二步：根据SpringApplicationRunListeners以及参数来准备环境</span>
+        ConfigurableEnvironment environment =<span style="color: #000000;"> prepareEnvironment(listeners,applicationArguments);
+        configureIgnoreBeanInfo(environment);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 准备Banner打印器 - 就是启动Spring Boot的时候打印在console上的ASCII艺术字体</span>
+        Banner printedBanner =<span style="color: #000000;"> printBanner(environment);
+
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 第三步：创建Spring容器</span>
+        context =</strong><span style="color: #000000;"><strong> createApplicationContext();</strong>
+
+        exceptionReporters </span>=<span style="color: #000000;"> getSpringFactoriesInstances(
+                SpringBootExceptionReporter.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">,
+                </span><span style="color: #0000ff;">new</span> Class[] { ConfigurableApplicationContext.<span style="color: #0000ff;">class</span><span style="color: #000000;"> }, context);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第四步：Spring容器前置处理</span>
+<span style="color: #000000;">        prepareContext(context, environment, listeners, applicationArguments,printedBanner);
+
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 第五步：刷新容器</span>
+</strong><span style="color: #000000;"><strong>        refreshContext(context);</strong>
+
+　　　　 </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第六步：Spring容器后置处理</span>
+<span style="color: #000000;">        afterRefresh(context, applicationArguments);
+
+  　　　 </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第七步：发出结束执行的事件</span>
+<span style="color: #000000;">        listeners.started(context);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 第八步：执行Runners</span>
+        <span style="color: #0000ff;">this</span><span style="color: #000000;">.callRunners(context, applicationArguments);
+        stopWatch.stop();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 返回容器</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> context;
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable ex) {
+        handleRunFailure(context, listeners, exceptionReporters, ex);
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IllegalStateException(ex);
+    }
+}</span></code></pre>
+
+<p>我们回顾一下<strong>第三步：创建Spring容器</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String DEFAULT_CONTEXT_CLASS = "org.springframework.context."
+            + "annotation.AnnotationConfigApplicationContext"<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String DEFAULT_WEB_CONTEXT_CLASS = "org.springframework."
+            + "boot.context.embedded.<strong>AnnotationConfigEmbeddedWebApplicationContext</strong>"<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> ConfigurableApplicationContext createApplicationContext() {
+    Class</span>&lt;?&gt; contextClass = <span style="color: #0000ff;">this</span><span style="color: #000000;">.applicationContextClass;
+    </span><span style="color: #0000ff;">if</span> (contextClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">根据应用环境，创建不同的IOC容器</span>
+            contextClass = Class.forName(<span style="color: #0000ff;">this</span><span style="color: #000000;">.webEnvironment
+                                         </span>?</strong><span style="color: #000000;"><strong> DEFAULT_WEB_CONTEXT_CLASS : DEFAULT_CONTEXT_CLASS);</strong>
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> (ConfigurableApplicationContext) BeanUtils.instantiate(contextClass);
+}</span></code></pre>
+
+<src>创建IOC容器，如果是web应用，则创建<strong>AnnotationConfigEmbeddedWebApplicationContext</strong>的IOC容器；如果不是，则创建AnnotationConfigApplicationContext的IOC容器；很明显我们创建的容器是AnnotationConfigEmbeddedWebApplicationContext<strong>，</strong>接着我们来看看<strong><strong>第五步，刷新容器</strong></strong><strong>refreshContext(context);</strong>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> refreshContext(ConfigurableApplicationContext context) {
+    refresh(context);
+}
+
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> refresh(ApplicationContext applicationContext) {
+    Assert.isInstanceOf(AbstractApplicationContext.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, applicationContext);
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">调用容器的refresh()方法刷新容器</span>
+</strong><span style="color: #000000;"><strong>    ((AbstractApplicationContext) applicationContext).refresh();</strong>
+}</span></code></pre>
+
+<h3>容器刷新过程</h3>
+
+<p>调用抽象父类AbstractApplicationContext的<strong>refresh</strong>()方法；</p>
+<p class="line-numbers  language-java"><strong><code class="java  language-java"><span class="token comment">AbstractApplicationContext</span></code></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> refresh() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException, IllegalStateException {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.startupShutdownMonitor) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 4</span> <span style="color: #008000;">         * 刷新上下文环境
+</span><span style="color: #008080;"> 5</span>          <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 6</span> <span style="color: #000000;">        prepareRefresh();
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span>         <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 9</span> <span style="color: #008000;">         * 初始化BeanFactory，解析XML，相当于之前的XmlBeanFactory的操作，
+</span><span style="color: #008080;">10</span>          <span style="color: #008000;">*/</span>
+<span style="color: #008080;">11</span>         ConfigurableListableBeanFactory beanFactory =<span style="color: #000000;"> obtainFreshBeanFactory();
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span>         <span style="color: #008000;">/**</span>
+<span style="color: #008080;">14</span> <span style="color: #008000;">         * 为上下文准备BeanFactory，即对BeanFactory的各种功能进行填充，如常用的注解@Autowired @Qualifier等
+</span><span style="color: #008080;">15</span> <span style="color: #008000;">         * 添加ApplicationContextAwareProcessor处理器
+</span><span style="color: #008080;">16</span> <span style="color: #008000;">         * 在依赖注入忽略实现*Aware的接口，如EnvironmentAware、ApplicationEventPublisherAware等
+</span><span style="color: #008080;">17</span> <span style="color: #008000;">         * 注册依赖，如一个bean的属性中含有ApplicationEventPublisher(beanFactory)，则会将beanFactory的实例注入进去
+</span><span style="color: #008080;">18</span>          <span style="color: #008000;">*/</span>
+<span style="color: #008080;">19</span> <span style="color: #000000;">        prepareBeanFactory(beanFactory);
+</span><span style="color: #008080;">20</span> 
+<span style="color: #008080;">21</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">22</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">23</span> <span style="color: #008000;">             * 提供子类覆盖的额外处理，即子类处理自定义的BeanFactoryPostProcess
+</span><span style="color: #008080;">24</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">25</span> <span style="color: #000000;">            postProcessBeanFactory(beanFactory);
+</span><span style="color: #008080;">26</span> 
+<span style="color: #008080;">27</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">28</span> <span style="color: #008000;">             * 激活各种BeanFactory处理器,包括BeanDefinitionRegistryBeanFactoryPostProcessor和普通的BeanFactoryPostProcessor
+</span><span style="color: #008080;">29</span> <span style="color: #008000;">             * 执行对应的postProcessBeanDefinitionRegistry方法 和  postProcessBeanFactory方法
+</span><span style="color: #008080;">30</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">31</span> <span style="color: #000000;">            invokeBeanFactoryPostProcessors(beanFactory);
+</span><span style="color: #008080;">32</span> 
+<span style="color: #008080;">33</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">34</span> <span style="color: #008000;">             * 注册拦截Bean创建的Bean处理器，即注册BeanPostProcessor，不是BeanFactoryPostProcessor，注意两者的区别
+</span><span style="color: #008080;">35</span> <span style="color: #008000;">             * 注意，这里仅仅是注册，并不会执行对应的方法，将在bean的实例化时执行对应的方法
+</span><span style="color: #008080;">36</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">37</span> <span style="color: #000000;">            registerBeanPostProcessors(beanFactory);
+</span><span style="color: #008080;">38</span> 
+<span style="color: #008080;">39</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">40</span> <span style="color: #008000;">             * 初始化上下文中的资源文件，如国际化文件的处理等
+</span><span style="color: #008080;">41</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">42</span> <span style="color: #000000;">            initMessageSource();
+</span><span style="color: #008080;">43</span> 
+<span style="color: #008080;">44</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">45</span> <span style="color: #008000;">             * 初始化上下文事件广播器，并放入applicatioEventMulticaster,如ApplicationEventPublisher
+</span><span style="color: #008080;">46</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">47</span> <span style="color: #000000;">            initApplicationEventMulticaster();
+</span><span style="color: #008080;">48</span> 
+<span style="color: #008080;">49</span>           <strong>  <span style="color: #008000;">/**</span>
+<span style="color: #008080;">50</span> <span style="color: #008000;">             * 给子类扩展初始化其他Bean
+</span><span style="color: #008080;">51</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">52</span> <span style="color: #000000;">            onRefresh();
+</span></strong><span style="color: #008080;">53</span> 
+<span style="color: #008080;">54</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">55</span> <span style="color: #008000;">             * 在所有bean中查找listener bean，然后注册到广播器中
+</span><span style="color: #008080;">56</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">57</span> <span style="color: #000000;">            registerListeners();
+</span><span style="color: #008080;">58</span> 
+<span style="color: #008080;">59</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">60</span> <span style="color: #008000;">             * 设置转换器
+</span><span style="color: #008080;">61</span> <span style="color: #008000;">             * 注册一个默认的属性值解析器
+</span><span style="color: #008080;">62</span> <span style="color: #008000;">             * 冻结所有的bean定义，说明注册的bean定义将不能被修改或进一步的处理
+</span><span style="color: #008080;">63</span> <span style="color: #008000;">             * 初始化剩余的非惰性的bean，即初始化非延迟加载的bean
+</span><span style="color: #008080;">64</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">65</span> <span style="color: #000000;">            finishBeanFactoryInitialization(beanFactory);
+</span><span style="color: #008080;">66</span> 
+<span style="color: #008080;">67</span>             <span style="color: #008000;">/**</span>
+<span style="color: #008080;">68</span> <span style="color: #008000;">             * 通过spring的事件发布机制发布ContextRefreshedEvent事件，以保证对应的监听器做进一步的处理
+</span><span style="color: #008080;">69</span> <span style="color: #008000;">             * 即对那种在spring启动后需要处理的一些类，这些类实现了ApplicationListener&lt;ContextRefreshedEvent&gt;，
+</span><span style="color: #008080;">70</span> <span style="color: #008000;">             * 这里就是要触发这些类的执行(执行onApplicationEvent方法)
+</span><span style="color: #008080;">71</span> <span style="color: #008000;">             * spring的内置Event有ContextClosedEvent、ContextRefreshedEvent、ContextStartedEvent、ContextStoppedEvent、RequestHandleEvent
+</span><span style="color: #008080;">72</span> <span style="color: #008000;">             * 完成初始化，通知生命周期处理器lifeCycleProcessor刷新过程，同时发出ContextRefreshEvent通知其他人
+</span><span style="color: #008080;">73</span>              <span style="color: #008000;">*/</span>
+<span style="color: #008080;">74</span> <span style="color: #000000;">            finishRefresh();
+</span><span style="color: #008080;">75</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">76</span> 
+<span style="color: #008080;">77</span>         <span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">78</span>     
+<span style="color: #008080;">79</span> <span style="color: #000000;">            resetCommonCaches();
+</span><span style="color: #008080;">80</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">81</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">82</span> }</code></pre>
+
+<p>我们看第52行的方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> onRefresh() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+
+}</span></code></pre>
+
+<p>很明显抽象父类AbstractApplicationContext中的onRefresh是一个空方法，并且使用protected修饰，也就是其子类可以重写onRefresh方法，那我们看看其子类AnnotationConfigEmbeddedWebApplicationContext中的onRefresh方法是如何重写的，AnnotationConfigEmbeddedWebApplicationContext又继承EmbeddedWebApplicationContext，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AnnotationConfigEmbeddedWebApplicationContext <span style="color: #0000ff;">extends</span> <strong>EmbeddedWebApplicationContext</strong> {</code></pre>
+
+<p>那我们看看其父类EmbeddedWebApplicationContext 是如何重写onRefresh方法的：</p>
+<p><strong>EmbeddedWebApplicationContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onRefresh() {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">.onRefresh();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">核心方法：会获取嵌入式的Servlet容器工厂，并通过工厂来获取Servlet容器</span>
+</strong><span style="color: #000000;"><strong>        createEmbeddedServletContainer();</strong>
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable ex) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ApplicationContextException("Unable to start embedded container"<span style="color: #000000;">, ex);
+    }
+}</span></code></pre>
+
+<p>在createEmbeddedServletContainer方法中会获取嵌入式的Servlet容器工厂，并通过工厂来获取Servlet容器：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> createEmbeddedServletContainer() {
+</span><span style="color: #008080;"> 2</span>     EmbeddedServletContainer localContainer = <span style="color: #0000ff;">this</span><span style="color: #000000;">.embeddedServletContainer;
+</span><span style="color: #008080;"> 3</span>     ServletContext localServletContext =<span style="color: #000000;"> getServletContext();
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">if</span> (localContainer == <span style="color: #0000ff;">null</span> &amp;&amp; localServletContext == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 5</span>       <strong>  <span style="color: #008000;">//</span><span style="color: #008000;">先获取嵌入式Servlet容器工厂</span>
+<span style="color: #008080;"> 6</span>         EmbeddedServletContainerFactory containerFactory =<span style="color: #000000;"> getEmbeddedServletContainerFactory();
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;">根据容器工厂来获取对应的嵌入式Servlet容器</span>
+<span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">this</span>.embeddedServletContainer =<span style="color: #000000;"> containerFactory.getEmbeddedServletContainer(getSelfInitializer());
+</span></strong><span style="color: #008080;"> 9</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">10</span>     <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (localServletContext != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">11</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            getSelfInitializer().onStartup(localServletContext);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ServletException ex) {
+</span><span style="color: #008080;">15</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ApplicationContextException("Cannot initialize servlet context"<span style="color: #000000;">,ex);
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">    initPropertySources();
+</span><span style="color: #008080;">19</span> }</code></pre>
+
+<p>关键代码在第6和第8行，<strong>先获取Servlet容器工厂，然后</strong><strong>根据容器工厂来获取对应的嵌入式Servlet容器</strong></p>
+<h3>获取Servlet容器工厂</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> EmbeddedServletContainerFactory getEmbeddedServletContainerFactory() {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">从Spring的IOC容器中获取EmbeddedServletContainerFactory.class类型的Bean</span>
+    String[] beanNames = getBeanFactory().getBeanNamesForType(EmbeddedServletContainerFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">调用getBean实例化EmbeddedServletContainerFactory.class</span>
+    <span style="color: #0000ff;">return</span> getBeanFactory().getBean(beanNames[0], EmbeddedServletContainerFactory.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>);</strong>
+}</span></code></pre>
+
+<p>我们看到先从Spring的IOC容器中获取EmbeddedServletContainerFactory.class类型的Bean，然后调用getBean实例化EmbeddedServletContainerFactory.class，大家还记得我们第一节Servlet容器自动配置类EmbeddedServletContainerAutoConfiguration中注入Spring容器的对象是什么吗？当我们引入spring-boot-starter-web这个启动器后，会注入<strong>TomcatEmbeddedServletContainerFactory</strong>这个对象到Spring容器中，所以这里获取到的<strong>Servlet容器工厂是<strong>TomcatEmbeddedServletContainerFactory</strong></strong>，然后调用</p>
+<p>TomcatEmbeddedServletContainerFactory的getEmbeddedServletContainer方法获取Servlet容器，并且启动Tomcat，大家可以看看文章开头的getEmbeddedServletContainer方法。</p>
+<p>大家看一下第8行代码获取Servlet容器方法的参数getSelfInitializer()，这是个啥？我们点进去看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> ServletContextInitializer getSelfInitializer() {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">创建一个ServletContextInitializer对象，并重写onStartup方法，很明显是一个回调方法</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServletContextInitializer() {
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+            EmbeddedWebApplicationContext.</span><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.selfInitialize(servletContext);
+        }
+    };</strong>
+}</span></code></pre>
+
+<p>创建一个ServletContextInitializer对象，并重写onStartup方法，很明显是一个回调方法，这里给大家留一点疑问：</p>
+<ul>
+<li><strong>ServletContextInitializer对象创建过程是怎样的？</strong></li>
+<li><strong>onStartup是何时调用的？</strong></li>
+<li><strong>onStartup方法的作用是什么？</strong></li>
+</ul>
+<p><strong><code>ServletContextInitializer</code>是 Servlet 容器初始化的时候，提供的初始化接口。这里涉及到Servlet、Filter实例的注册，我们留在下一篇具体讲<br /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

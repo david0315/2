@@ -1,0 +1,125 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Zuul【工作原理】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Zuul【工作原理】</center></div><div class='banquan'>原文出处:本文由博客园博主KingJames、提供。<br/>
+原文连接:https://www.cnblogs.com/idoljames/p/11741382.html</div><br>
+    <p>zuul的核心逻辑都是由一系列filter过滤器链实现的，但是filter的类型不同，执行的时机也不同，效果自然也不一样，主要特点如下：</p>
+<ol>
+<li>filter的类型：filter的类型，决定了它在整个filter链中的执行顺序，可能在端点路由前执行，也可能在端点路由时执行，还有可能在端点路由后执行，甚至是端点路由发生异常时执行。</li>
+<li>filter的执行顺序：同一种类型的filter，可以通过filterOrder()方法设置执行顺序，一般都是根据业务场景自定义filter执行顺序。</li>
+<li>filter执行条件：filter运行所需的标准，或条件。</li>
+<li>filter执行效果：符合某个filter执行条件，产生执行效果。</li>
+</ol>
+<p>zuul内部有一套完整的机制，可以动态读取编译运行filter机制，filter与filter之间不直接通信，在请求线程中会通过RequestContext来共享状态，它内部是用ThreadLocal实现的，例如HttpServletRequest、HttpServletResponse、异常信息等。部分源码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> RequestContext <span style="color: #0000ff;">extends</span> ConcurrentHashMap&lt;String, Object&gt;<span style="color: #000000;"> {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> Logger LOG = LoggerFactory.getLogger(RequestContext.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> Class&lt;? <span style="color: #0000ff;">extends</span> RequestContext&gt; contextClass = RequestContext.<span style="color: #0000ff;">class</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> RequestContext testContext = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+    </span><strong><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> ThreadLocal&lt;? <span style="color: #0000ff;">extends</span> RequestContext&gt; threadLocal = <span style="color: #0000ff;">new</span> ThreadLocal&lt;RequestContext&gt;<span style="color: #000000;">() {
+        @Override
+        </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> RequestContext initialValue() {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> contextClass.newInstance();
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable e) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> RuntimeException(e);
+            }
+        }
+    };<br /></strong><br />　　//.......<br />}</span></code></pre>
+
+<p>zuul中不同类型的filter执行逻辑的核心在ZuulServlet类中，主要代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ZuulServlet <span style="color: #0000ff;">extends</span><span style="color: #000000;"> HttpServlet {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span> serialVersionUID = -3374242278843351500L<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ZuulRunner zuulRunner;
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> init(ServletConfig config) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">.init(config);
+
+        String bufferReqsStr </span>= config.getInitParameter("buffer-requests"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">boolean</span> bufferReqs = bufferReqsStr != <span style="color: #0000ff;">null</span> &amp;&amp; bufferReqsStr.equals("true") ? <span style="color: #0000ff;">true</span> : <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+
+        zuulRunner </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ZuulRunner(bufferReqs);
+    }
+
+    <strong>@Override
+    </strong></span><strong><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> service(javax.servlet.ServletRequest servletRequest, javax.servlet.ServletResponse servletResponse) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            init((HttpServletRequest) servletRequest, (HttpServletResponse) servletResponse);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Marks this request as having passed through the "Zuul engine", as opposed to servlets
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> explicitly bound in web.xml, for which requests will not have the same data attached</span>
+            RequestContext context =<span style="color: #000000;"> RequestContext.getCurrentContext();
+            context.setZuulEngineRan();
+
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                preRoute(); //如果preRoute方法在执行的时候出现异常，直接就抛出500异常，不会走catch中的error方法，见下图FilterProcessor类中的preRoute方法。
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ZuulException e) {
+                error(e); //如果preRoute在执行过程中，抛出Zuul异常，这里被捕捉到以后，会执行error方法，打印堆栈信息，见下图FilterProcessor类中的error方法。
+                postRoute();
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                route();
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ZuulException e) {
+                error(e);
+                postRoute();
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                postRoute();
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ZuulException e) {
+                error(e);
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable e) {
+            error(</span><span style="color: #0000ff;">new</span> ZuulException(e, 500, "UNHANDLED_EXCEPTION_" +<span style="color: #000000;"> e.getClass().getName()));
+        } </span><span style="color: #0000ff;">finally</span></strong><span style="color: #000000;"><strong> {
+            RequestContext.getCurrentContext().unset();
+        }
+    }</strong><br /><br />　　//.......
+}</span></code></pre>
+
+<p><img src="./images/Zuul【工作原理】0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><img src="./images/Zuul【工作原理】1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>zuul一共有4种不同的生命周期：</p>
+<ol>
+<li>pre：在zuul网关按照规则路由到下级服务之前执行，如果需要对请求进行预处理，可以使用这种类型的过滤器。如：认证鉴权，限流等。</li>
+<li>route：这种过滤器是zuul路由动作的执行者，是Apache HttpClient或Ribbon构建和发送原始HTTP请求的地方，现在也支持OKHTTP。</li>
+<li>post：这种过滤器是在端点请求完毕，返回结果或者发生异常后执行的filter。如果需要对返回的结果进行再次处理，可以在这种过滤中处理逻辑。</li>
+<li>error： 这种过滤器是在整个生命周期内，如果发生异常，就执行该filter，可以做全局异常处理。</li>
+</ol>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

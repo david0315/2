@@ -1,0 +1,77 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot~高并发下耗时操作的实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot~高并发下耗时操作的实现</center></div><div class='banquan'>原文出处:本文由博客园博主张占岭提供。<br/>
+原文连接:https://www.cnblogs.com/lori/p/11877556.html</div><br>
+    <h1 id="高并发下的耗时操作">高并发下的耗时操作</h1>
+<p>官方文档中说DeferredResult和Callable都是为了异步生成返回值提供基本的支持。简单来说就是一个请求进来，如果你使用了DeferredResult或者Callable，在没有得到返回数据之前，DispatcherServlet和所有Filter就会退出Servlet容器线程，但响应保持打开状态，一旦返回数据有了，这个DispatcherServlet就会被再次调用并且处理，以异步产生的方式，向请求端返回值。<br />
+这么做的好处就是请求不会长时间占用服务连接池，提高服务器的吞吐量。</p>
+<blockquote>
+<p>高并发下，就是请求在一个时间点比较多时，很多写的请求打过来时，你的服务器承受很大的压力，当你的一个请求处理时间长时，这些请求将会把你的服务器线程耗尽，即你的主线程池里的线程将不会再有空闲状态的，再打过来的请求，将会是502了。</p>
+</blockquote>
+<h1 id="请求流程图">请求流程图</h1>
+<pre><code><code>http1        http2                http3
+thread1    thread2            thread3
+</code></code></pre>
+<h1 id="解决方案">解决方案</h1>
+<p>使用<code>DeferredResult</code>来实现异步的操作，当一个请求打过来时，先把它放到一个队列时，然后在后台有一个订阅者，有相关主题的消息发过来时，这个订阅者就去消费它，这一步可以是分布式的，比如一个秒杀场景，当N多的请求打过来时，有一些请求命中后，它们进行写操作，这时写操作压力很大，1个请求可以要处理3秒，对于高并发场景这是不能容许的，因为你这样占用的服务器线程资源太长了，很快你的服务器就没有可用的线程资源了，这时就可以用到DeferredResult这处理。</p>
+<h1 id="代码实现">代码实现</h1>
+<p>建立订单的接口，只负责简单的校验和事件的发布</p>
+<pre><code><code>   /**
+     * 异步建立高并发的订单.
+     *
+     * @return
+     */
+    @GetMapping(&quot;/create-order&quot;)
+    public DeferredResult&lt;Object&gt; createOrder() {
+        DeferredResult&lt;Object&gt; deferredResult = new DeferredResult&lt;&gt;((long) 3000, &quot;error order&quot;);
+        logger.info(&quot;发布建立订单的事件&quot;);
+        applicationEventPublisher.publishEvent(deferredResult);
+        return deferredResult;
+    }</code></code></pre>
+<p>异步的订单处理核心逻辑，也是耗时的操作</p>
+<pre><code><code>@Component
+@EnableAsync
+public class OrderListener {
+
+    static Logger logger = LoggerFactory.getLogger(OrderListener.class);
+
+    /**
+     * 事实上它是一个订单队列的消费者，在后台写订单，本例使用简单的事件监听器实现异步处理的功能.
+     *
+     * @return
+     */
+    @EventListener
+    @Async
+    public String processOrder(DeferredResult&lt;Object&gt; deferredResult) throws InterruptedException {
+        logger.info(&quot;处理订单并返回到对应的Http上下文&quot;);
+        String order = UUID.randomUUID().toString();
+        Thread.sleep(2000);//假设处理数据需要5秒，前端需要阻塞5秒，但http主线程已经释放了，比较适合IO密集型场合
+        //当设置之后，create-order将成功响应
+        deferredResult.setResult(order);
+        return order;
+    }
+}</code></code></pre>
+<h1 id="测试结果">测试结果</h1>
+<p>当请求/create-order后，服务器在处理2秒后，返回结果，而spring后台真正做的是，线程1在事件发布后，它成为空闲状态，其它请求可以复用它，当processOrder后台处理结果后，spring又会用线程池中拿一个新的线程处理剩下的逻辑！</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

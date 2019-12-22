@@ -1,0 +1,226 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot整合redis缓存一些知识点' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot整合redis缓存一些知识点</center></div><div class='banquan'>原文出处:本文由博客园博主遇见那只猫提供。<br/>
+原文连接:https://www.cnblogs.com/backnow/p/11824061.html</div><br>
+    <h1><span style="font-size: 16px;">前言</span></h1>
+<p>最近在做智能家居平台，考虑到家居的控制需要快速的响应于是打算使用redis缓存。一方面减少数据库压力另一方面又能提高响应速度。项目中使用的技术栈基本上都是大家熟悉的springboot全家桶，在springboot2.x以后操作redis的客户端推荐使用lettuce(生菜)取代jedis。</p>
+<p>jedis的劣势主要在于直连redis，又无法做到弹性收缩。</p>
+<h1><span style="font-size: 16px; color: #0000ff;">一、配置文件</span></h1>
+<h1><span style="color: #ff6600;"><em><span style="font-size: 14px;">application.yml文件中的内容</span></em></span></h1>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  application:
+    name: simple</span>-<span style="color: #000000;">lettuce
+  cache:
+    type: redis
+    redis:
+      # 缓存超时时间ms
+      </span><span style="color: #0000ff;">time</span>-to-live: <span style="color: #800080;">60000</span><span style="color: #000000;">
+      # 是否缓存空值
+      cache</span>-<span style="color: #0000ff;">null</span>-values: <span style="color: #0000ff;">true</span><span style="color: #000000;">
+  redis:
+    host: </span><span style="color: #800080;">127.0</span>.<span style="color: #800080;">0.1</span><span style="color: #000000;">
+    port: </span><span style="color: #800080;">6379</span><span style="color: #000000;">
+    password: </span><span style="color: #800080;">123456</span><span style="color: #000000;">
+    # 连接超时时间（毫秒）
+    timeout: </span><span style="color: #800080;">60000</span><span style="color: #000000;">
+    # Redis默认情况下有16个分片，这里配置具体使用的分片，默认是0
+    database: </span><span style="color: #800080;">1</span><span style="color: #000000;">
+    # spring2.x redis client 采用了lettuce(生菜)，放弃使用jedis
+    lettuce:
+      # 关闭超时时间
+      shutdown</span>-timeout: <span style="color: #800080;">30000</span><span style="color: #000000;">
+      pool:
+        # 连接池最大连接数（使用负值表示没有限制） 默认 </span><span style="color: #800080;">8</span><span style="color: #000000;">
+        max</span>-active: <span style="color: #800080;">30</span><span style="color: #000000;">
+        # 连接池最大阻塞等待时间（使用负值表示没有限制） 默认 </span>-<span style="color: #800080;">1</span><span style="color: #000000;">
+        max</span>-<span style="color: #0000ff;">wait</span>: -<span style="color: #800080;">1</span><span style="color: #000000;">
+        # 连接池中的最大空闲连接 默认 </span><span style="color: #800080;">8</span><span style="color: #000000;">
+        max</span>-idle: <span style="color: #800080;">8</span><span style="color: #000000;">
+        # 连接池中的最小空闲连接 默认 </span><span style="color: #800080;">0</span><span style="color: #000000;">
+        min</span>-idle: <span style="color: #800080;">0</span></code></pre>
+
+<p>说明：</p>
+<ul>
+<li>spring.cache.type: redis</li>
+</ul>
+<p>已经表明使用项目采用redis做为缓存方式。</p>
+<ul>
+<li>spring.cache.redis.<span style="color: #000000;">cache-<span style="color: #0000ff;">null-values</span></span>: true</li>
+</ul>
+<p>表示是否缓存空值，一般情况下是允许的。因为这涉及到缓存的三大问题：缓存穿透、缓存雪崩、缓存击穿。</p>
+<p>如果设置false即不允许缓存空值，这样会导致很多请求数据库没有的数据时，不会缓存到redis导致每次都会请求到数据库。这种情况即：缓存穿透。</p>
+<p>具体想初步了解这些概念可以参考文章：<em><strong><a href="https://mp.weixin.qq.com/s?__biz=MzI3ODcxMzQzMw==&amp;mid=2247488314&amp;idx=2&amp;sn=ced574141a22cf106684e256549dfefb&amp;chksm=eb53960cdc241f1a2a2add4cec5b331c8046a5f53a1fa6ff998b631ff62556ebfd522a5b4bac&amp;scene=21#wechat_redirect" target="_blank">缓存三大问题及解决方案！</a></strong></em></p>
+<h1><span style="font-size: 16px; color: #0000ff;">二、config配置类</span></h1>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">
+@Configuration
+@EnableCaching
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> RedisTemplateConfig <span style="color: #0000ff;">extends</span><span style="color: #000000;"> CachingConfigurerSupport {</span>
+
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> Map&lt;String, RedisCacheConfiguration&gt; cacheMap =<span style="color: #000000;"> Maps.newHashMap();
+
+    @Bean(name </span>= "stringRedisTemplate"<span style="color: #000000;">)
+    @ConditionalOnMissingBean(name </span>= "stringRedisTemplate") <span style="color: #008000;">//</span><span style="color: #008000;">表示：如果容器已经有redisTemplate bean就不再注入</span>
+    <span style="color: #0000ff;">public</span><span style="color: #000000;"> StringRedisTemplate stringRedisTemplate(LettuceConnectionFactory redisConnectionFactory) {</span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringRedisTemplate(redisConnectionFactory);</span><span style="color: #000000;">
+    }
+
+    @Bean(name </span>= "redisTemplate"<span style="color: #000000;">)
+    @ConditionalOnMissingBean(name </span>= "redisTemplate"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> RedisTemplate&lt;String, Object&gt;<span style="color: #000000;"> redisTemplate(LettuceConnectionFactory lettuceConnectionFactory) {
+        System.out.println(</span>"RedisTemplateConfig.RedisTemplate"<span style="color: #000000;">);
+        RedisTemplate</span>&lt;String, Object&gt; template = <span style="color: #0000ff;">new</span> RedisTemplate&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> key的序列化采用StringRedisSerializer</span>
+<span style="color: #000000;">        template.setKeySerializer(keySerializer());
+        template.setHashKeySerializer(keySerializer());
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> value值的序列化采用fastJsonRedisSerializer</span>
+        template.setValueSerializer(valueSerializer()); <span style="color: #008000;">//</span><span style="color: #008000;">使用fastjson序列化</span>
+        template.setHashValueSerializer(valueSerializer()); <span style="color: #008000;">//</span><span style="color: #008000;">使用fastjson序列化</span>
+<span style="color: #000000;">        template.setConnectionFactory(lettuceConnectionFactory);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> template;
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 添加自定义缓存异常处理
+     * 当缓存读写异常时,忽略异常
+     * 参考：</span><span style="color: #008000; text-decoration: underline;">https://blog.csdn.net/sz85850597/article/details/89301331</span>
+     <span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> CacheErrorHandler errorHandler() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IgnoreCacheErrorHandler();
+    }
+
+    @SuppressWarnings(</span>"Duplicates"<span style="color: #000000;">)
+    @Bean
+    @Primary</span><span style="color: #008000;">//</span><span style="color: #008000;">当有多个管理器的时候，必须使用该注解在一个管理器上注释：表示该管理器为默认的管理器</span>
+    <span style="color: #0000ff;">public</span><span style="color: #000000;"> RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 默认配置</span>
+        RedisCacheConfiguration defaultCacheConfig =<span style="color: #000000;"> RedisCacheConfiguration.defaultCacheConfig()
+                .serializeKeysWith(keyPair())
+                .serializeValuesWith(valuePair())
+                .entryTtl(Duration.ofSeconds(DEFAULT_TTL_SECS)) </span><span style="color: #008000;">//</span><span style="color: #008000;">设置过期时间</span>
+<span style="color: #000000;">                .disableCachingNullValues();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 其它配置</span>
+        <span style="color: #0000ff;">for</span><span style="color: #000000;">(MyCaches cache : MyCaches.values()) {
+            cacheMap.put(cache.name(),
+                    RedisCacheConfiguration.defaultCacheConfig()
+                            .serializeKeysWith(keyPair())
+                            .serializeValuesWith(valuePair())
+                            .entryTtl(cache.getTtl())
+                            </span><span style="color: #008000;">//</span><span style="color: #008000;"> .disableCachingNullValues() // 表示不允许缓存空值</span>
+<span style="color: #000000;">                            .disableKeyPrefix() // 不使用默认前缀
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> .prefixKeysWith("mytest") // 添加自定义前缀</span>
+<span style="color: #000000;">            );
+        }
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;"> 遍历MyCaches添加缓存配置</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        RedisCacheManager cacheManager </span>=<span style="color: #000000;"> RedisCacheManager.builder(
+                RedisCacheWriter.nonLockingRedisCacheWriter(connectionFactory)
+        )
+                .cacheDefaults(defaultCacheConfig)
+                .withInitialCacheConfigurations(cacheMap)
+                .transactionAware()
+                .build();
+
+        ParserConfig.getGlobalInstance().addAccept(</span>"mypackage.db.entity."<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheManager;
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * key序列化方式
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> RedisSerializationContext.SerializationPair&lt;String&gt;<span style="color: #000000;"> keyPair() {
+        RedisSerializationContext.SerializationPair</span>&lt;String&gt; keyPair =<span style="color: #000000;">
+                RedisSerializationContext.SerializationPair.fromSerializer(keySerializer());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> keyPair;
+    }
+
+    </span><span style="color: #0000ff;">private</span> RedisSerializer&lt;String&gt;<span style="color: #000000;"> keySerializer() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringRedisSerializer();
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * value序列化方式
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> RedisSerializationContext.SerializationPair&lt;Object&gt;<span style="color: #000000;"> valuePair() {
+        RedisSerializationContext.SerializationPair</span>&lt;Object&gt; valuePair =<span style="color: #000000;">
+                RedisSerializationContext.SerializationPair.fromSerializer(valueSerializer());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> valuePair;
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 使用fastjson序列化
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> RedisSerializer&lt;Object&gt;<span style="color: #000000;"> valueSerializer() {
+        MyFastJsonRedisSerializer</span>&lt;Object&gt; fastJsonRedisSerializer = <span style="color: #0000ff;">new</span> MyFastJsonRedisSerializer&lt;&gt;(Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> fastJsonRedisSerializer;</span>
+<span style="color: #000000;">    }
+
+    @Getter
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"> MyCaches {
+        defaultCache(Duration.ofDays(</span>1<span style="color: #000000;">)),
+        MyCaches(Duration.ofMinutes(</span>10<span style="color: #000000;">));
+
+        MyCaches(Duration ttl) {
+            </span><span style="color: #0000ff;">this</span>.ttl =<span style="color: #000000;"> ttl;
+        }
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;"> 失效时间 </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">private</span> Duration ttl = Duration.ofHours(1<span style="color: #000000;">);
+    }
+}<br /></span></code></pre>
+
+<p><strong><span style="color: #ff0000;">&nbsp;说明</span></strong></p>
+<p><span style="color: #000000;">1. 类上的注解<span style="color: #000000;">@EnableCaching</span></span></p>
+<p><span style="color: #000000;">表明开启缓存功能。</span></p>
+<p><span style="color: #000000;">2. <span style="color: #0000ff;">extends<span style="color: #000000;"> CachingConfigurerSupport</span></span></span></p>
+<p><span style="color: #000000;">这个类就很丰富了，其实如果没有什么特别操作也可以不用继承这个类。</span></p>
+<p><span style="color: #000000;">这个类可以支持动态选择缓存方式，比如项目中不止一种缓存方案，有可能有ehcache那么可以自定义在什么情况下使用redis使用情况下使用ehcache。还有一些有关异常的处理。我也不是很懂具体可以参考：</span></p>
+<src style="color: #f8f8f2; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-size: 13.5px; line-height: 18px; white-space: pre;">
+<src><em><strong><a href="https://blog.csdn.net/sz85850597/article/details/89301331" target="_blank"><span style="color: #000000; background-color: #ffffff;">springboot(25)自定义缓存读写机制CachingConfigurerSupport</span></a></strong></em>
+<p><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">3. StringRedisTemplate和RedisTemplate的使用</span></p>
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">（1）两者的主要差别是：如果你只想缓存简单的字符串选择StringRedisTemplate是一个明智的举措。如果想使用redis缓存一些对象数据肯定是要选择RedisTemplate。</span>
+<src>&nbsp;
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">（2）RedisTemplate需要注意一点就是要怎么选择序列化工具。默认使用jdk的序列化缓存数据后即value值是无法直接阅读的而存的二进制数据。</span>
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">通常我们会选择jackson或者fastjson来序列化对象，把对象转换成json格式。两者序列化对象后都会在头部加上一个对象类路径如：@type com.mypackage.entity.User。这个也算是一种安全策略。</span>
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">比如使用fastjosn就会在cacheManager中指定序列化对象的包所在位置白名单：<span style="color: #000000;">ParserConfig.getGlobalInstance().addAccept("mypackage.db.entity."<span style="color: #000000;">);</span></span></span>
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;"><span style="color: #000000;"><span style="color: #000000;">fastjson官方说明：https://github.com/alibaba/fastjson/wiki/enable_autotype</span></span></span>
+<src>&nbsp;
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">（3）还有需要注意如果value是string类型。RedisTemplate会在字符串外围再加一对双引号，如""abc""。如果使用RedisTemplate读取则能得到abc，但是我在项目使用Jedis读取就成了"abc"这就导致这些字符串无法被反序列化。</span>
+<src>&nbsp;
+<src><span style="color: #000000; background-color: #ffffff; font-family: Microsoft YaHei; font-size: 13px;">（4）<span style="color: #000000; font-family: Microsoft YaHei; font-size: 13px;">StringRedisTemplate和RedisTemplate两者数据是相互隔离的，如果使用StringRedisTemplate存入的数据使用RedisTemplate是无法读取、删除的。</span></span>
+<src>&nbsp;
+<src>&nbsp;
+<h1><strong><span style="color: #0000ff; background-color: #ffffff; font-size: 16px;">三、缓存注解使用</span></strong></h1>
+<p><span style="color: #000000;">@Cacheable 使用在查询方法上</span></p>
+<p><span style="color: #000000;">@CachePut 使用在更新、保存方法上</span></p>
+<p><span style="color: #000000;">@CacheEvict 使用在删除方法上</span></p>
+<p><span style="color: #000000;">需要注意的是<span style="color: #000000;">@Cacheable</span>、<span style="color: #000000;">@CachePut</span>方法一定要有返回被缓存对象。因为注解使用的AOP切面如果没有返回值表示缓存对象为空值。</span></p>
+<p><span style="color: #000000;">@CacheConfig注解在类上，可以选择使用哪个缓存、缓存管理器、Key生成器</span></p>
+<p>&nbsp;</p>
+<p><span style="color: #000000;">好了以上就是最近在项目中的一些知识点总结，如果以后使用缓存有新的体会我会同步更新的。</span></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

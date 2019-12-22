@@ -1,0 +1,201 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java中往zip压缩包追加文件' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java中往zip压缩包追加文件</center></div><div class='banquan'>原文出处:本文由博客园博主gdjlc提供。<br/>
+原文连接:https://www.cnblogs.com/gdjlc/p/12019833.html</div><br>
+    <p>有个需求，从某个接口下载的一个zip压缩包，往里面添加一个说明文件。搜索了一下，没有找到往zip直接添加文件的方法，最终解决方法是先解压、再压缩。</p>
+<p>具体过程如下：</p>
+<p><span style="font-size: 15px;"><strong>1、一个zip文件的压缩和解压工具类</strong></span></p>
+<p>压缩和解压工具类来自https://www.iteye.com/blog/songfeng-123-2243016，但是原文代码因为用的是Java自带的java.util.zip，有中文乱码的bug，所以需要修改部分代码，并且修改为引用org.apache.tools.zip.*，pom.xml加入依赖包，如下：</p>
+<src class="cnblogs_code">
+<pre><code>        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.apache.ant<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>ant<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.10.7<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>工具类代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.example.demo;
+
+</span><span style="color: #0000ff;">import</span> java.io.*<span style="color: #000000;">;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Enumeration;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.zip.ZipException;
+
+</span><span style="color: #0000ff;">import</span> org.apache.tools.zip.*<span style="color: #000000;">;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ZipUtil {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> BUFFERSIZE = 1024<span style="color: #000000;">;
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 压缩
+     *
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> paths
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> fileName
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> zip(List&lt;String&gt;<span style="color: #000000;"> paths, String fileName) {
+        ZipOutputStream zos </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            zos </span>= <span style="color: #0000ff;">new</span> ZipOutputStream(<span style="color: #0000ff;">new</span><span style="color: #000000;"> FileOutputStream(fileName));
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String filePath : paths) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 递归压缩文件</span>
+                File file = <span style="color: #0000ff;">new</span><span style="color: #000000;"> File(filePath);
+                String relativePath </span>=<span style="color: #000000;"> file.getName();
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (file.isDirectory()) {
+                    relativePath </span>+=<span style="color: #000000;"> File.separator;
+                }
+                zipFile(file, relativePath, zos);
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">if</span> (zos != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    zos.close();
+                }
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> zipFile(File file, String relativePath, ZipOutputStream zos) {
+        InputStream is </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">file.isDirectory()) {
+                ZipEntry zp </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ZipEntry(relativePath);
+                zos.putNextEntry(zp);
+                is </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> FileInputStream(file);
+                </span><span style="color: #0000ff;">byte</span>[] buffer = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span><span style="color: #000000;">[BUFFERSIZE];
+                </span><span style="color: #0000ff;">int</span> length = 0<span style="color: #000000;">;
+                </span><span style="color: #0000ff;">while</span> ((length = is.read(buffer)) &gt;= 0<span style="color: #000000;">) {
+                    zos.write(buffer, </span>0<span style="color: #000000;">, length);
+                }
+                zos.setEncoding(</span>"gbk");<span style="color: #008000;">//</span><span style="color: #008000;">解决文件名中文乱码</span>
+<span style="color: #000000;">                zos.flush();
+                zos.closeEntry();
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                String tempPath </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (File f : file.listFiles()) {
+                    tempPath </span>= relativePath +<span style="color: #000000;"> f.getName();
+                    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (f.isDirectory()) {
+                        tempPath </span>+=<span style="color: #000000;"> File.separator;
+                    }
+                    zipFile(f, tempPath, zos);
+                }
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">if</span> (is != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    is.close();
+                }
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 解压缩
+     *
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> fileName
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> path
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;String&gt;<span style="color: #000000;"> unzip(String fileName, String path) {
+        FileOutputStream fos </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        InputStream is </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        List</span>&lt;String&gt; filePaths = <span style="color: #0000ff;">new</span> ArrayList&lt;String&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            ZipFile zf </span>= <span style="color: #0000ff;">new</span> ZipFile(<span style="color: #0000ff;">new</span><span style="color: #000000;"> File(fileName), "UTF-8");
+            Enumeration&lt;?&gt; en </span>=<span style="color: #000000;"> zf.getEntries();
+            </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (en.hasMoreElements()) {
+                ZipEntry zn </span>=<span style="color: #000000;"> (ZipEntry) en.nextElement();
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">zn.isDirectory()) {
+                    is </span>=<span style="color: #000000;"> zf.getInputStream(zn);
+                    File f </span>= <span style="color: #0000ff;">new</span> File(path +<span style="color: #000000;"> zn.getName());
+                    File file </span>=<span style="color: #000000;"> f.getParentFile();
+                    file.mkdirs();
+                    fos </span>= <span style="color: #0000ff;">new</span> FileOutputStream(path +<span style="color: #000000;"> zn.getName());
+                    </span><span style="color: #0000ff;">int</span> len = 0<span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">byte</span> bufer[] = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span><span style="color: #000000;">[BUFFERSIZE];
+                    </span><span style="color: #0000ff;">while</span> (-1 != (len =<span style="color: #000000;"> is.read(bufer))) {
+                        fos.write(bufer, </span>0<span style="color: #000000;">, len);
+                    }
+                    fos.close();
+                    filePaths.add(path </span>+<span style="color: #000000;"> zn.getName());
+                }
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ZipException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">null</span> !=<span style="color: #000000;"> is) {
+                    is.close();
+                }
+                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">null</span> !=<span style="color: #000000;"> fos) {
+                    fos.close();
+                }
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> filePaths;
+    }
+ }</span></code></pre>
+
+<p><span style="font-size: 15px;"><strong>2、测试</strong></span></p>
+<p>有如下目录结构：<br />D:\测试\文档.zip<br />D:\测试\说明.pdf<br />把&ldquo;说明.pdf&rdquo;添加到&ldquo;文档.zip&rdquo;里面，生成一个新压缩包&ldquo;文档(新).zip&rdquo;。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.example.demo;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.File;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ZipUtilTest {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">解压</span>
+        List&lt;String&gt; files = ZipUtil.unzip("D:/测试/文档.zip", "D:/测试/"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">集合添加文件</span>
+        files.add("D:/测试/说明.pdf"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">压缩</span>
+        ZipUtil.zip(files,"D:/测试/文档(新).zip"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">保留说明.pdf</span>
+        files.remove(files.size()-1<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">删除上面解压出来的文件</span>
+        <span style="color: #0000ff;">for</span><span style="color: #000000;">(String f : files){
+            File file </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> File(f);
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(file.exists()){
+                file.delete();
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

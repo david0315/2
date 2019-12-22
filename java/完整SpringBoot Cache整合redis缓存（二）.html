@@ -1,0 +1,439 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修完整SpringBoot Cache整合redis缓存（二）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>完整SpringBoot Cache整合redis缓存（二）</center></div><div class='banquan'>原文出处:本文由博客园博主Raicho提供。<br/>
+原文连接:https://www.cnblogs.com/lzhdonald/p/11589518.html</div><br>
+    <h1>缓存注解概念</h1>
+<table style="width: 919px; height: 275px;" border="10" cellpadding="10" align="left">
+<thead>
+<tr align="left" valign="middle">
+<td>
+<p>名称</p>
+</td>
+<td>解释</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cache</td>
+<td>缓存接口，定义缓存操作。实现有：RedisCache、EhCacheCache、ConcurrentMapCache等</td>
+</tr>
+<tr>
+<td>CacheManager</td>
+<td>缓存管理器，管理各种缓存（cache）组件</td>
+</tr>
+<tr>
+<td>@Cacheable</td>
+<td>主要针对方法配置，能够根据方法的请求参数对其进行缓存</td>
+</tr>
+<tr>
+<td>@CacheEvict</td>
+<td>清空缓存</td>
+</tr>
+<tr>
+<td>@CachePut</td>
+<td>保证方法被调用，又希望结果被缓存与@Cacheable区别在于是否每次都调用方法，常用于更新</td>
+</tr>
+<tr style="height: 10px;" align="left" valign="middle">
+<td>@EnableCaching</td>
+<td>开启基于注解的缓存</td>
+</tr>
+<tr>
+<td>keyGenerator</td>
+<td>缓存数据时key生成策略</td>
+</tr>
+<tr>
+<td>serialize</td>
+<td>缓存数据时value序列化策略</td>
+</tr>
+<tr>
+<td>@CacheConfig</td>
+<td>统一配置本类的缓存注解的属性</td>
+</tr>
+</tbody>
+</table>
+<h1><strong>安装docker、redis</strong></h1>
+<p>安装docker</p>
+<src class="cnblogs_code">
+<pre><code>yum -y install docker-ce</code></pre>
+
+<p>&nbsp;开机启动docker</p>
+<src class="cnblogs_code">
+<pre><code>systemctl start docker</code></pre>
+
+<p>检验docker是否安装成功</p>
+<src class="cnblogs_code">
+<pre><code>docker version</code></pre>
+
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）0.png" alt="" /></p>
+<p>docker安装redis</p>
+<src class="cnblogs_code">
+<pre><code>docker pull redis</code></pre>
+
+<p>docker检测是否安装成功redis</p>
+<src class="cnblogs_code">
+<pre><code>docker images</code></pre>
+
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）1.png" alt="" /></p>
+<p>docker启动redis并设置端口映射（-d表示后台运行）</p>
+<src class="cnblogs_code">
+<pre><code>docker run -p 6379:6379 -d redis:latest myredis</code></pre>
+
+<p>查看redis是否启动成功</p>
+<src class="cnblogs_code">
+<pre><code>docker ps</code></pre>
+
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）2.png" alt="" /></p>
+<h1>&nbsp;代码实现</h1>
+<p>在看代码前先看看目录结构吧（在这里使用ssm来整合redis）</p>
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）3.png" alt="" /></p>
+<p>数据库表结构</p>
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）4.png" alt="" /></p>
+<p>pom.xml文件，这里主要是引入spring-boot-starter-cache依赖</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.projectlombok<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>lombok<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">optional</span><span style="color: #0000ff;">&gt;</span>true<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">optional</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-cache<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> mybatis 与 spring boot 2.x的整合包 </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.mybatis.spring.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>mybatis-spring-boot-starter<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.3.2<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;">mysql JDBC驱动 </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>mysql<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>mysql-connector-java<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>5.1.39<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>配置文件application.yml，配置redis</p>
+<src class="cnblogs_code">
+<pre><code>spring:<br />  datasource:<br />    url: jdbc:mysql://localhost:3306/spring_boot_cache?useUnicode=true<br />    driver-class-name: com.mysql.jdbc.Driver<br />    username: root<br />    password: lzh<br /><br />  redis:<br />    # 这是redis所在服务器的ip<br />    host: 192.168.126.129<br />    timeout: 10000ms<br />    database: 0<br />    lettuce:<br />      pool:<br />        max-wait: -1ms<br />        max-active: 8<br />        max-idle: 8<br />        min-idle: 0<br />  cache:<br />    type: redis</code></pre>
+
+<p>启动类加入@EnableCaching注解</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.EnableCaching;
+
+@SpringBootApplication
+@EnableCaching
+public class SpringBootStudyTestCacheApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringBootStudyTestCacheApplication.class, args);
+    }
+}</code></pre>
+
+<p>UserController 类暴露接口</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.controller;
+
+import com.lzh.springbootstudytestcache.model.User;
+import com.lzh.springbootstudytestcache.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * @author lzh
+ * create 2019-09-24-20:34
+ */
+@RestController
+public class UserController {
+
+    @Autowired
+    UserService userService;
+
+    @GetMapping("/user/save")
+    public User saveUser(@RequestParam Integer id,@RequestParam String name,@RequestParam Integer age){
+        User user= userService.save(new User(id,name,age));
+        return user;
+    }
+
+    @GetMapping("/user/{id}")
+    public User getUserById(@PathVariable Integer id){
+
+        System.out.println("id="+id);
+        User user = userService.findUserById(id);
+
+        System.out.println("getUserById - "+user);
+        return user;
+    }
+
+    @GetMapping("/user/update")
+    public User updateUser(@RequestParam Integer id,@RequestParam String name,@RequestParam Integer age){
+        User user= userService.updateUser(new User(id,name,age));
+
+        return user;
+    }
+
+    @GetMapping("/user/del/{id}")
+    public String deleteUser(@PathVariable Integer id){
+        System.out.println("id="+id);
+        int num = userService.deleteUser(id);
+        if (num &gt; 0){
+            return "删除成功";
+        } else {
+            return "删除失败";
+        }
+    }
+
+}</code></pre>
+
+<pre class="brush:java;gutter:true;"><code>UserService接口</code></code></pre>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.service;
+
+import com.lzh.springbootstudytestcache.model.User;
+
+/**
+ * @author lzh
+ * create 2019-09-24-9:14
+ */
+public interface UserService {
+
+    User save(User user);
+
+    User findUserById(Integer id);
+
+    User updateUser(User user);
+
+    int deleteUser(Integer id);
+}</code></pre>
+
+<p>UserService实现类</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.service.impl;
+
+import com.lzh.springbootstudytestcache.mapper.UserMapper;
+import com.lzh.springbootstudytestcache.model.User;
+import com.lzh.springbootstudytestcache.service.UserService;
+import lombok.extern.log4j.Log4j2;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+/**
+ * @author lzh
+ * create 2019-09-24-9:14
+ */
+@Service
+@Log4j2
+public class UserServiceImpl implements UserService {
+
+    @Autowired
+    UserMapper userMapper;
+
+    @Cacheable(value = "user",key = "#user.id")
+    @Override
+    public User save(User user) {
+        int saveNum = userMapper.saveUser(user);
+        System.out.println("saveNum="+saveNum);
+        return user;
+    }
+
+    @Cacheable(value = "user",key = "#id")
+    @Override
+    public User findUserById(Integer id) {
+        log.info("进入findUserById方法");
+        return userMapper.findUserById(id);
+    }
+
+    @CachePut(value = "user", key = "#user.id")
+    @Override
+    public User updateUser(User user) {
+        int num = userMapper.updateUser(user);
+        System.out.println("num="+num);
+        return user;
+    }
+
+    @CacheEvict(value = "user")
+    @Override
+    public int deleteUser(Integer id) {
+        return userMapper.deleteUser(id);
+    }
+}</code></pre>
+
+<p>User实体类，加入@Data相当于加入getset方法，@AllArgsConstructor全参构造方法，@ToString重写tostring方法，引入Lombok简化代码</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.model;
+
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.ToString;
+
+import java.io.Serializable;
+
+/**
+ * @author Levin
+ * @since 2018/5/10 0007
+ */
+@Data
+@AllArgsConstructor
+@ToString
+public class User implements Serializable {
+
+    private Integer id;
+    private String name;
+    private Integer age;
+
+}
+</code></pre>
+
+<p>UserMapper持久层，使用mybatis注解@Select、@Update、@Insert、@Delete实现</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.mapper;
+
+import com.lzh.springbootstudytestcache.model.User;
+import org.apache.ibatis.annotations.*;
+
+/**
+ * @author lzh
+ * create 2019-09-24-20:39
+ */
+@Mapper
+public interface UserMapper {
+
+
+    @Select("SELECT * FROM User WHERE id = #{id}")
+    User findUserById(Integer id);
+
+    @Update("update user set name=#{name},age=#{age} where id=#{id}")
+    int updateUser(User user);
+
+    @Insert("insert into user set name=#{name},age=#{age}")
+    int saveUser(User user);
+
+    @Delete("DELETE FROM USER WHERE id=#{id}")
+    int deleteUser(Integer id);
+}
+</code></pre>
+
+<p>改变默认jdk序列化器</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">package com.lzh.springbootstudytestcache.config;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.*;
+
+/**
+ * @author lzh
+ * create 2019-09-24-22:22
+ */
+import org.springframework.cache.CacheManager;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
+
+import java.time.Duration;
+
+//@Configuration
+public class MyRedisConfig {
+
+    //@Bean(name = "redisTemplate")
+    public RedisTemplate&lt;String,Object&gt; redisTemplate(RedisConnectionFactory redisConnectionFactory){
+
+        RedisTemplate&lt;String,Object&gt; redisTemplate = new RedisTemplate&lt;&gt;();
+
+        redisTemplate.setConnectionFactory(redisConnectionFactory);
+        redisTemplate.setKeySerializer(keySerializer());
+        redisTemplate.setHashKeySerializer(keySerializer());
+        redisTemplate.setValueSerializer(valueSerializer());
+        redisTemplate.setHashValueSerializer(valueSerializer());
+        return redisTemplate;
+    }
+
+    //@Primary
+    //@Bean
+    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory){
+        //缓存配置对象
+        RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig();
+
+        redisCacheConfiguration = redisCacheConfiguration.entryTtl(Duration.ofMinutes(30L)) //设置缓存的默认超时时间：30分钟
+                .disableCachingNullValues()             //如果是空值，不缓存
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(keySerializer()))         //设置key序列化器
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer((valueSerializer())));  //设置value序列化器
+
+        return RedisCacheManager
+                .builder(RedisCacheWriter.nonLockingRedisCacheWriter(redisConnectionFactory))
+                .cacheDefaults(redisCacheConfiguration).build();
+    }
+
+
+    private RedisSerializer&lt;String&gt; keySerializer() {
+        return new StringRedisSerializer();
+    }
+
+    private RedisSerializer&lt;Object&gt; valueSerializer() {
+        return new GenericJackson2JsonRedisSerializer();
+    }
+}
+</code></pre>
+
+<h1>测试</h1>
+<p><code><span style="font-size: 18px;">启动srpingboot访问<a href="http://localhost:8080/user/1">http://localhost:8080/user/1</a></span></code></p>
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）5.png" alt="" /></p>
+<p>&nbsp;使用redis可视化工具查看发现多了一个user对象，这就是在执行查询语句的时候保存的缓存</p>
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）6.png" alt="" /></p>
+<p>&nbsp;看控制台这里打印出了日志，这是第一次查询，说明执行了sql语句</p>
+<p><img src="./images/完整SpringBoot Cache整合redis缓存（二）7.png" alt="" /></p>
+<p>&nbsp;再次访问<a href="http://localhost:8080/user/1">http://localhost:8080/user/1</a>，没有执行findUserById方法说明没有执行sql语句，而是直接从redis缓存中读取</p>
+<p><img style="font-family: 'Courier New'; font-size: 12px;" src="./images/完整SpringBoot Cache整合redis缓存（二）8.png" alt="" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

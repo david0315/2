@@ -1,0 +1,232 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mycat分布式数据库架构解决方案--Mycat实现数据库分表' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mycat分布式数据库架构解决方案--Mycat实现数据库分表</center></div><div class='banquan'>原文出处:本文由博客园博主xlecho提供。<br/>
+原文连接:https://www.cnblogs.com/xlecho/p/11796650.html</div><br>
+    <p>echo编辑整理，欢迎转载，转载请声明文章来源。欢迎添加echo微信(微信号：t2421499075)交流学习。 百战不败，依不自称常胜，百败不颓，依能奋力前行。——这才是真正的堪称强大！！！</p>
+<hr />
+<h3 id="准备工作">准备工作：</h3>
+<ul>
+<li>请先在服务器上面安装Mycat，安装教程：<a href="https://blog.csdn.net/xlecho/article/details/102755484" class="uri">https://blog.csdn.net/xlecho/article/details/102755484</a></li>
+<li>了解一下他的核心配置文件：<a href="https://blog.csdn.net/xlecho/article/details/102758706">Server.xml详解</a>、<a href="https://blog.csdn.net/xlecho/article/details/102758706">schema.xml详解</a>、<a href="https://note.youdao.com/">rule.xml详解</a></li>
+<li>准备三台服务器，都需要安装mysql</li>
+<li>搭建一主两从的MySQL读写分离环境：<a href="https://blog.csdn.net/xlecho/article/details/102869048">Mycat分布式数据库架构解决方案--搭建MySQL读写分离环境--一主多从</a></li>
+<li>下载一份Mycat的原码（在服务器上面编写不方便，本地更改好，替换服务器配置文件更方便）<a href="https://github.com/MyCATApache/Mycat-download/tree/master/1.6-RELEASE">Mycat下载</a></li>
+</ul>
+<blockquote>
+<p>如果前面的准备工作都做好了，并且有配置Mycat实现读写分离，就能很快的上手Mycat实现数据库分库分表。Mycat实现读写分离请参考：<a href="https://blog.csdn.net/xlecho/article/details/102897050" class="uri">https://blog.csdn.net/xlecho/article/details/102897050</a></p>
+</blockquote>
+<p>由于我们的Mycat实现读写分离配置好了登录用户名和密码，所以配置Mycat实现数据库分库分表的工作就不在需要去配置server.mxl了，但是我们使用分表规则的时候，要涉及两个新的配置文件</p>
+<ul>
+<li>rule.xml</li>
+<li>autopartition-long.txt</li>
+</ul>
+<h3 id="配置schema">配置schema</h3>
+<p>实现数据库分库分表它和读写分离最大的不同就是dataHost该标签的配置，读写分离，只需要一个dataHost即可。但是dataHost如果只配置一个，就没有办法实现多库读写。我们要实现分表，当然要考虑每一个库对应的表都需要能够读写。所以我们在配置table的时候，对应的每一个库，就需要对应到每一个可以写的库。同时和读写分离不同的是，我们既然要分库分表就需要分表的规则，这里新增了分表规则auto-sharding-long</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;!DOCTYPE mycat:schema SYSTEM &quot;schema.dtd&quot;&gt;
+&lt;mycat:schema xmlns:mycat=&quot;http://io.mycat/&quot;&gt;
+
+    &lt;schema name=&quot;userDB&quot; checkSQLschema=&quot;true&quot; sqlMaxLimit=&quot;100&quot;&gt;
+        &lt;table name=&quot;user&quot; dataNode=&quot;dn1,dn2,dn3&quot; primaryKey=&quot;id&quot; rule=&quot;auto-sharding-long&quot;/&gt;
+    &lt;/schema&gt;
+    &lt;dataNode name=&quot;dn1&quot; dataHost=&quot;testNode1&quot; database=&quot;test&quot;/&gt;
+    &lt;dataNode name=&quot;dn2&quot; dataHost=&quot;testNode2&quot; database=&quot;test&quot;/&gt;
+    &lt;dataNode name=&quot;dn3&quot; dataHost=&quot;testNode3&quot; database=&quot;test&quot;/&gt;
+
+    &lt;dataHost name=&quot;testNode1&quot; maxCon=&quot;1000&quot; minCon=&quot;10&quot; balance=&quot;1&quot; writeType=&quot;0&quot; dbType=&quot;mysql&quot; dbDriver=&quot;native&quot; switchType=&quot;-1&quot; slaveThreshold=&quot;100&quot;&gt;
+        &lt;heartbeat&gt;select user()&lt;/heartbeat&gt;
+        &lt;writeHost host=&quot;hostM1&quot; url=&quot;192.168.222.132:3306&quot; user=&quot;root&quot; password=&quot;123456&quot; /&gt;
+    &lt;/dataHost&gt;
+
+    &lt;dataHost name=&quot;testNode2&quot; maxCon=&quot;1000&quot; minCon=&quot;10&quot; balance=&quot;1&quot; writeType=&quot;0&quot; dbType=&quot;mysql&quot; dbDriver=&quot;native&quot; switchType=&quot;-1&quot; slaveThreshold=&quot;100&quot;&gt;
+        &lt;heartbeat&gt;select user()&lt;/heartbeat&gt;
+        &lt;writeHost host=&quot;hostM2&quot; url=&quot;192.168.222.133:3306&quot; user=&quot;root&quot; password=&quot;123456&quot; /&gt;
+    &lt;/dataHost&gt;
+
+    &lt;dataHost name=&quot;testNode3&quot; maxCon=&quot;1000&quot; minCon=&quot;10&quot; balance=&quot;1&quot; writeType=&quot;0&quot; dbType=&quot;mysql&quot; dbDriver=&quot;native&quot; switchType=&quot;-1&quot; slaveThreshold=&quot;100&quot;&gt;
+        &lt;heartbeat&gt;select user()&lt;/heartbeat&gt;
+        &lt;writeHost host=&quot;hostM3&quot; url=&quot;192.168.222.134:3306&quot; user=&quot;root&quot; password=&quot;123456&quot; /&gt;
+    &lt;/dataHost&gt;
+
+&lt;/mycat:schema&gt;
+</code></code></pre>
+<h3 id="配置rule.xml">配置rule.xml</h3>
+<p>我们在schema中配置了auto-sharding-long的规则就需要在rule.xml中配置对应的规则。（Mycat原始的rule配置文件中就已经有了我们需要配置的规则，所以我们这里不需要改动，但是auto-sharding-long对应的autopartition-long.txt文档，由于演示需要，我们更改一下）</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;!-- - - Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+        - you may not use this file except in compliance with the License. - You
+        may obtain a copy of the License at - - http://www.apache.org/licenses/LICENSE-2.0
+        - - Unless required by applicable law or agreed to in writing, software -
+        distributed under the License is distributed on an &quot;AS IS&quot; BASIS, - WITHOUT
+        WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. - See the
+        License for the specific language governing permissions and - limitations
+        under the License. --&gt;
+&lt;!DOCTYPE mycat:rule SYSTEM &quot;rule.dtd&quot;&gt;
+&lt;mycat:rule xmlns:mycat=&quot;http://io.mycat/&quot;&gt;
+    &lt;tableRule name=&quot;rule1&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;func1&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;rule2&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;user_id&lt;/columns&gt;
+            &lt;algorithm&gt;func1&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+
+    &lt;tableRule name=&quot;sharding-by-intfile&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;sharding_id&lt;/columns&gt;
+            &lt;algorithm&gt;hash-int&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;auto-sharding-long&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;rang-long&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;mod-long&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;mod-long&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;sharding-by-murmur&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;murmur&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;crc32slot&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;crc32slot&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;sharding-by-month&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;create_time&lt;/columns&gt;
+            &lt;algorithm&gt;partbymonth&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;latest-month-calldate&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;calldate&lt;/columns&gt;
+            &lt;algorithm&gt;latestMonth&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+
+    &lt;tableRule name=&quot;auto-sharding-rang-mod&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;rang-mod&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+    &lt;tableRule name=&quot;jch&quot;&gt;
+        &lt;rule&gt;
+            &lt;columns&gt;id&lt;/columns&gt;
+            &lt;algorithm&gt;jump-consistent-hash&lt;/algorithm&gt;
+        &lt;/rule&gt;
+    &lt;/tableRule&gt;
+
+    &lt;function name=&quot;murmur&quot; class=&quot;io.mycat.route.function.PartitionByMurmurHash&quot;&gt;
+        &lt;property name=&quot;seed&quot;&gt;0&lt;/property&gt;&lt;!-- 默认是0 --&gt;
+        &lt;property name=&quot;count&quot;&gt;2&lt;/property&gt;&lt;!-- 要分片的数据库节点数量，必须指定，否则没法分片 --&gt;
+        &lt;property name=&quot;virtualBucketTimes&quot;&gt;160&lt;/property&gt;&lt;!-- 一个实际的数据库节点被映射为这么多虚拟节点，默认是160倍，也就是虚拟节点数是物理节点数的160倍 --&gt;
+        &lt;!-- &lt;property name=&quot;weightMapFile&quot;&gt;weightMapFile&lt;/property&gt; 节点的权重，没有指定权重的节点默认是1。以properties文件的格式填写，以从0开始到count-1的整数值也就是节点索
+引为key，以节点权重值为值。所有权重值必须是正整数，否则以1代替 --&gt;
+        &lt;!-- &lt;property name=&quot;bucketMapPath&quot;&gt;/etc/mycat/bucketMapPath&lt;/property&gt;
+                用于测试时观察各物理节点与虚拟节点的分布情况，如果指定了这个属性，会把虚拟节点的murmur hash值与物理节点的映射按行输出到这个文件，没有默认值，如果不指定，就不&gt;会输出任何东西 --&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;crc32slot&quot; class=&quot;io.mycat.route.function.PartitionByCRC32PreSlot&quot;&gt;
+        &lt;property name=&quot;count&quot;&gt;2&lt;/property&gt;&lt;!-- 要分片的数据库节点数量，必须指定，否则没法分片 --&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;hash-int&quot;
+        class=&quot;io.mycat.route.function.PartitionByFileMap&quot;&gt;
+        &lt;property name=&quot;mapFile&quot;&gt;partition-hash-int.txt&lt;/property&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;rang-long&quot;
+        class=&quot;io.mycat.route.function.AutoPartitionByLong&quot;&gt;
+        &lt;property name=&quot;mapFile&quot;&gt;autopartition-long.txt&lt;/property&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;mod-long&quot; class=&quot;io.mycat.route.function.PartitionByMod&quot;&gt;
+        &lt;!-- how many data nodes --&gt;
+        &lt;property name=&quot;count&quot;&gt;3&lt;/property&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;func1&quot; class=&quot;io.mycat.route.function.PartitionByLong&quot;&gt;
+        &lt;property name=&quot;partitionCount&quot;&gt;8&lt;/property&gt;
+        &lt;property name=&quot;partitionLength&quot;&gt;128&lt;/property&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;latestMonth&quot; class=&quot;io.mycat.route.function.LatestMonthPartion&quot;&gt;
+        &lt;property name=&quot;splitOneDay&quot;&gt;24&lt;/property&gt;
+    &lt;/function&gt;
+    &lt;function name=&quot;partbymonth&quot;
+        class=&quot;io.mycat.route.function.PartitionByMonth&quot;&gt;
+        &lt;property name=&quot;dateFormat&quot;&gt;yyyy-MM-dd&lt;/property&gt;
+        &lt;property name=&quot;sBeginDate&quot;&gt;2015-01-01&lt;/property&gt;
+    &lt;/function&gt;
+
+    &lt;function name=&quot;rang-mod&quot; class=&quot;io.mycat.route.function.PartitionByRangeMod&quot;&gt;
+        &lt;property name=&quot;mapFile&quot;&gt;partition-range-mod.txt&lt;/property&gt;
+    &lt;/function&gt;
+
+    &lt;function name=&quot;jump-consistent-hash&quot; class=&quot;io.mycat.route.function.PartitionByJumpConsistentHash&quot;&gt;
+        &lt;property name=&quot;totalBuckets&quot;&gt;3&lt;/property&gt;
+    &lt;/function&gt;
+&lt;/mycat:rule&gt;</code></code></pre>
+<h3 id="配置autopartition-long.txt">配置autopartition-long.txt</h3>
+<p>该配置文件的原本配置是M为单位，这样的数据太大，测试的时候，计算麻烦，我们更改配置如下：</p>
+<pre><code><code>0-2000=0 # 代表id的大小在0-2000中间就是用dn1服务器
+2000-4000=1 # 代表id的大小在2000-4000中间就是用dn2服务器
+4000-8000=2 # 代表id的大小在4000-8000中间就是用dn3服务器</code></code></pre>
+<blockquote>
+<p>我们有三个节点，相当于一个有一个服务器集合，每台服务器都是根据下标来对应的，都是从0开始计数，0就代表我们的dn1</p>
+</blockquote>
+<h3 id="测试">测试：</h3>
+<p>插入三条数据，根据我们配置的规则进行插入</p>
+<pre class="sql"><code>
+INSERT INTO `user`(`id`, `user_name`, `pass_word`) VALUES (1000, &#39;a&#39;, &#39;123456&#39;);
+INSERT INTO `user`(`id`, `user_name`, `pass_word`) VALUES (3000, &#39;b&#39;, &#39;123456&#39;);
+INSERT INTO `user`(`id`, `user_name`, `pass_word`) VALUES (6000, &#39;c&#39;, &#39;123456&#39;);</code></code></pre>
+<p>插入完成之后，我们连接Mycat查看数据，如下图：<br />
+<img src="./images/Mycat分布式数据库架构解决方案--Mycat实现数据库分表0.png" alt="在这里插入图片描述" /></p>
+<blockquote>
+<p>这里我们有3条1000的数据原因是因为我们id等于1000，所以插入到dn1服务里面，但是dn1是我们对应的MySQL主从复制的主服务器132，所以，插入该服务器之后，另外两台从服务器133/134都会直接将数据复制过去。</p>
+</blockquote>
+<h3 id="验证">验证</h3>
+<p>服务器dn1，应该id=1000的三台服务器都有，id=3000在我们的133从服务器上，id=6000在我们134服务器上</p>
+<ul>
+<li>主服务器132<br />
+<img src="./images/Mycat分布式数据库架构解决方案--Mycat实现数据库分表1.png" alt="在这里插入图片描述" /></li>
+<li>从服务器133<br />
+<img src="./images/Mycat分布式数据库架构解决方案--Mycat实现数据库分表2.png" alt="在这里插入图片描述" /></li>
+<li>从服务器134<br />
+<img src="./images/Mycat分布式数据库架构解决方案--Mycat实现数据库分表3.png" alt="在这里插入图片描述" /></li>
+</ul>
+<hr />
+<p>做一个有底线的博客主</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

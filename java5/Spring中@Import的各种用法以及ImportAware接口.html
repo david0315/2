@@ -1,0 +1,174 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring中@Import的各种用法以及ImportAware接口' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring中@Import的各种用法以及ImportAware接口</center></div><div class='banquan'>原文出处:本文由博客园博主Coder小黑提供。<br/>
+原文连接:https://www.cnblogs.com/coderxiaohei/p/11691491.html</div><br>
+    <h1 id="import-注解">@Import 注解</h1>
+<p><code>@Import</code>注解提供了和XML中<code>&lt;import/&gt;</code>元素等价的功能，实现导入的一个或多个配置类。<code>@Import</code>即可以在类上使用，也可以作为元注解使用。</p>
+<pre><code><code>@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface Import {
+
+    /**
+     * {@link Configuration}, {@link ImportSelector}, {@link ImportBeanDefinitionRegistrar}
+     * or regular component classes to import.
+     */
+    Class&lt;?&gt;[] value();
+
+}</code></code></pre>
+<p>注解中只有一个<code>value();</code>。支持导入<code>@Configuration</code>标注的配置类，实现<code>ImportSelector</code>接口的类、实现<code>ImportBeanDefinitionRegistrar</code>接口的类和普通的<code>@component</code>类。</p>
+<h2 id="作为元注解使用">作为元注解使用</h2>
+<p><code>@Import</code>可以作为元注解使用，可以在<code>@Import</code>的继承上封装一层。我的理解是，这样做不会对外（使用方）暴露我内部的具体实现细节。</p>
+<p>举个例子：例如<code>@EnableAspectJAutoProxy</code>注解。</p>
+<pre><code><code>@Import(AspectJAutoProxyRegistrar.class)
+public @interface EnableAspectJAutoProxy {</code></code></pre>
+<p><code>@EnableAspectJAutoProxy</code>就是被<code>@Import</code>这个元注解所标志了，我们（程序员）通过使用<code>@EnableAspectJAutoProxy</code>来开启AspectJAutoProxy，而Spring底层是通过<code>@Import</code>导入相应的配置类来实现的。</p>
+<h2 id="导入实现importselector接口的类">导入实现ImportSelector接口的类</h2>
+<p>先来看一下<code>ImportSelector</code>接口，该接口中只有一个方法：</p>
+<pre><code><code>public interface ImportSelector {
+    String[] selectImports(AnnotationMetadata importingClassMetadata);
+}</code></code></pre>
+<p>ImportSelector，输入选择器。该接口就是用来根据给定的条件，选择导入哪些配置类。</p>
+<p>举个例子：例如<code>@EnableTransactionManagement</code>注解。</p>
+<pre><code><code>@Import(TransactionManagementConfigurationSelector.class)
+public @interface EnableTransactionManagement {</code></code></pre>
+<p>在<code>@EnableTransactionManagement</code>注解中使用了<code>@Import(TransactionManagementConfigurationSelector.class)</code>注解，其中<code>TransactionManagementConfigurationSelector</code>类就是实现了<code>ImportSelector</code>接口。</p>
+<pre><code><code>public class TransactionManagementConfigurationSelector extends AdviceModeImportSelector&lt;EnableTransactionManagement&gt; {
+    @Override
+    protected String[] selectImports(AdviceMode adviceMode) {
+        switch (adviceMode) {
+            case PROXY:
+                return new String[] {AutoProxyRegistrar.class.getName(),
+                        ProxyTransactionManagementConfiguration.class.getName()};
+            case ASPECTJ:
+                return new String[] {
+                        TransactionManagementConfigUtils.TRANSACTION_ASPECT_CONFIGURATION_CLASS_NAME};
+            default:
+                return null;
+        }
+    }
+}</code></code></pre>
+<p>方法的内部实现逻辑也很简单，就是根据不同的<code>AdviceMode</code>导入不同的配置类，来实现事务管理。</p>
+<h2 id="导入实现importbeandefinitionregistrar接口的类">导入实现ImportBeanDefinitionRegistrar接口的类</h2>
+<p><code>ImportBeanDefinitionRegistrar</code>接口中也只有一个方法：</p>
+<pre><code><code>public interface ImportBeanDefinitionRegistrar {
+    void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry);
+}</code></code></pre>
+<p>该接口允许我们根据所给的注解元数据，按需注册额外的<code>BeanDefinition</code>。</p>
+<p>举个例子：例如<code>@EnableAspectJAutoProxy</code>注解。</p>
+<pre><code><code>@Import(AspectJAutoProxyRegistrar.class)
+public @interface EnableAspectJAutoProxy {</code></code></pre>
+<p><code>@EnableAspectJAutoProxy</code>注解引入了<code>AspectJAutoProxyRegistrar.class</code>类，这个类就是实现了<code>ImportBeanDefinitionRegistrar</code>接口。</p>
+<pre><code><code>class AspectJAutoProxyRegistrar implements ImportBeanDefinitionRegistrar {
+
+    @Override
+    public void registerBeanDefinitions(
+            AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+
+        AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary(registry);
+
+        AnnotationAttributes enableAspectJAutoProxy =
+                AnnotationConfigUtils.attributesFor(importingClassMetadata, EnableAspectJAutoProxy.class);
+        if (enableAspectJAutoProxy != null) {
+            if (enableAspectJAutoProxy.getBoolean(&quot;proxyTargetClass&quot;)) {
+                AopConfigUtils.forceAutoProxyCreatorToUseClassProxying(registry);
+            }
+            if (enableAspectJAutoProxy.getBoolean(&quot;exposeProxy&quot;)) {
+                AopConfigUtils.forceAutoProxyCreatorToExposeProxy(registry);
+            }
+        }
+    }
+}</code></code></pre>
+<p><code>registerBeanDefinitions</code>中调用了<code>AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary(registry);</code>方法，这个方法就是在往传入的<code>BeanDefinitionRegistry registry</code>中注册<code>BeanDefinition</code>。注册了<code>BeanDefinition</code>之后，Spring就会去实例化这个Bean，从而达到AspectJAutoProxy作用。</p>
+<h2 id="导入configuration类">导入@Configuration类</h2>
+<p>这次<code>@Import</code>最常见是使用方法。我们可以拆分配置类，然后在程序中按需导入相应的配置。</p>
+<p>举个例子：例如<code>@EnableRetry</code>注解。使用这个注解可以开启retry功能。</p>
+<pre><code><code>@EnableAspectJAutoProxy(proxyTargetClass = false)
+@Import(RetryConfiguration.class)
+public @interface EnableRetry {</code></code></pre>
+<p>其内部就是导入了<code>RetryConfiguration</code>这个配置类。</p>
+<h1 id="importaware接口">ImportAware接口</h1>
+<p><code>ImportAware</code>接口是需要和<code>@Import</code>一起使用的。在<code>@Import</code>作为元注解使用时，通过<code>@Import</code>导入的配置类如果实现了<code>ImportAware</code>接口就可以获取到导入该配置类接口的数据配置。有点绕，我们直接上代码。</p>
+<p>举个例子：<code>@EnableAsync</code>注解。</p>
+<pre><code><code>@Import(AsyncConfigurationSelector.class)
+public @interface EnableAsync {
+//AsyncConfigurationSelector源码
+public class AsyncConfigurationSelector extends AdviceModeImportSelector&lt;EnableAsync&gt; {
+
+    private static final String ASYNC_EXECUTION_ASPECT_CONFIGURATION_CLASS_NAME =
+            &quot;org.springframework.scheduling.aspectj.AspectJAsyncConfiguration&quot;;
+    @Override
+    @Nullable
+    public String[] selectImports(AdviceMode adviceMode) {
+        switch (adviceMode) {
+            case PROXY:
+                return new String[] {ProxyAsyncConfiguration.class.getName()};
+            case ASPECTJ:
+                return new String[] {ASYNC_EXECUTION_ASPECT_CONFIGURATION_CLASS_NAME};
+            default:
+                return null;
+        }
+    }
+}</code></code></pre>
+<p>默认情况下使用<code>AdviceMode</code>为<code>PROXY</code>，导入了<code>ProxyAsyncConfiguration</code>类。</p>
+<pre><code><code>@Configuration
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+public class ProxyAsyncConfiguration extends AbstractAsyncConfiguration {
+
+    @Bean(name = TaskManagementConfigUtils.ASYNC_ANNOTATION_PROCESSOR_BEAN_NAME)
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    public AsyncAnnotationBeanPostProcessor asyncAdvisor() {
+        Assert.notNull(this.enableAsync, &quot;@EnableAsync annotation metadata was not injected&quot;);
+        AsyncAnnotationBeanPostProcessor bpp = new AsyncAnnotationBeanPostProcessor();
+        Class&lt;? extends Annotation&gt; customAsyncAnnotation = this.enableAsync.getClass(&quot;annotation&quot;);
+        if (customAsyncAnnotation != AnnotationUtils.getDefaultValue(EnableAsync.class, &quot;annotation&quot;)) {
+            bpp.setAsyncAnnotationType(customAsyncAnnotation);
+        }
+        if (this.executor != null) {
+            bpp.setExecutor(this.executor);
+        }
+        if (this.exceptionHandler != null) {
+            bpp.setExceptionHandler(this.exceptionHandler);
+        }
+        bpp.setProxyTargetClass(this.enableAsync.getBoolean(&quot;proxyTargetClass&quot;));
+        bpp.setOrder(this.enableAsync.&lt;Integer&gt;getNumber(&quot;order&quot;));
+        return bpp;
+    }
+}</code></code></pre>
+<p>在<code>ProxyAsyncConfiguration</code>的<code>asyncAdvisor</code>方法中需要获取到<code>@EnableAsync</code>上的一些设置值，例如：<code>this.enableAsync.getBoolean(&quot;proxyTargetClass&quot;)</code>,<code>this.enableAsync.&lt;Integer&gt;getNumber(&quot;order&quot;)</code>。</p>
+<p><code>this.enableAsync</code>是其父类<code>AbstractAsyncConfiguration</code>的属性。<code>AbstractAsyncConfiguration</code>实现了<code>ImportAware</code>接口，从而就可以获取到<code>@EnableAsync</code>上的信息了。</p>
+<pre><code><code>// AbstractAsyncConfiguration#setImportMetadata 源码
+public void setImportMetadata(AnnotationMetadata importMetadata) {
+    this.enableAsync = AnnotationAttributes.fromMap(
+            importMetadata.getAnnotationAttributes(EnableAsync.class.getName(), false));
+    if (this.enableAsync == null) {
+        throw new IllegalArgumentException(
+                &quot;@EnableAsync is not present on importing class &quot; + importMetadata.getClassName());
+    }
+}</code></code></pre>
+<p>可能这个例子有点复杂的，还有一个稍微简单一点的例子：<code>EnableRedisHttpSession</code>。关于这个，读者可以自己去看一下源码debug学习一下。</p>
+<hr />
+<p>欢迎关注公众号，大家一起学习成长。<br />
+<img src="./images/Spring中@Import的各种用法以及ImportAware接口0.png" alt="Coder小黑" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

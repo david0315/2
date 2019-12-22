@@ -1,0 +1,127 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修利用 DFA 算法实现文字过滤' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>利用 DFA 算法实现文字过滤</center></div><div class='banquan'>原文出处:本文由博客园博主JMCui提供。<br/>
+原文连接:https://www.cnblogs.com/jmcui/p/11925777.html</div><br>
+    <h2 id="一dea-算法简介">一、DEA 算法简介</h2>
+<p>在实现文字过滤的算法中，DFA是唯一比较好的实现算法。</p>
+<p>DFA 全称为：Deterministic Finite Automaton，即确定有穷自动机。其特征为：有一个有限状态集合和一些从一个状态通向另一个状态的边，每条边上标记有一个符号，其中一个状态是初态，某些状态是终态。但不同于不确定的有限自动机，DFA 中不会有从同一状态出发的两条边标志有相同的符号。</p>
+<p><img src="./images/利用 DFA 算法实现文字过滤0.png" /></p>
+<p>简单点说就是，它是是通过 event 和当前的 state 得到下一个 state，即 event + state= nextstate。理解为系统中有多个节点，通过传递进入的 event，来确定走哪个路由至另一个节点，而节点是有限的。</p>
+<h2 id="二dea-算法实践敏感词过滤">二、DEA 算法实践敏感词过滤</h2>
+<h3 id="敏感词库构造">1. 敏感词库构造</h3>
+<p>以王八蛋和王八羔子两个敏感词来进行描述，首先构建敏感词库，该词库名称为SensitiveMap，这两个词的二叉树构造为：<br />
+<img src="./images/利用 DFA 算法实现文字过滤1.png" /></p>
+<p>用 hash 表构造为：</p>
+<pre><code><code>{
+    &quot;王&quot;:{
+        &quot;isEnd&quot;:&quot;0&quot;,
+        &quot;八&quot;:{
+            &quot;羔&quot;:{
+                &quot;子&quot;:{
+                    &quot;isEnd&quot;:&quot;1&quot;
+                },
+                &quot;isEnd&quot;:&quot;0&quot;
+            },
+            &quot;isEnd&quot;:&quot;0&quot;,
+            &quot;蛋&quot;:{
+                &quot;isEnd&quot;:&quot;1&quot;
+            }
+        }
+    }
+}</code></code></pre>
+<p>怎么用代码实现这种数据结构呢？</p>
+<pre><code><code>    /**
+     * 读取敏感词库，将敏感词放入HashSet中，构建一个DFA算法模型
+     *
+     * @param keyWordSet 敏感词库
+     */
+    public Map&lt;String, Object&gt; addSensitiveWordToHashMap(Set&lt;String&gt; keyWordSet) {
+        //初始化敏感词容器，减少扩容操作
+        Map&lt;String, Object&gt; map = new HashMap(Math.max((int) (keyWordSet.size() / .75f) + 1, 16));
+        //迭代keyWordSet
+        for (String aKeyWordSet : keyWordSet) {
+            Map nowMap = map;
+            for (int i = 0; i &lt; aKeyWordSet.length(); i++) {
+                //转换成char型
+                char keyChar = aKeyWordSet.charAt(i);
+                //获取
+                Object wordMap = nowMap.get(keyChar);
+                //如果存在该key，直接赋值
+                if (wordMap != null) {
+                    nowMap = (Map) wordMap;
+                } else {     //不存在则，则构建一个map，同时将isEnd设置为0
+                    Map&lt;String, String&gt; newWorMap = new HashMap&lt;&gt;(3);
+                    newWorMap.put(&quot;isEnd&quot;, &quot;0&quot;);
+                    nowMap.put(keyChar, newWorMap);
+                    nowMap = newWorMap;
+                }
+                //判断最后一个
+                if (i == aKeyWordSet.length() - 1) {
+                    nowMap.put(&quot;isEnd&quot;, &quot;1&quot;);
+                }
+            }
+        }
+        return map;
+    }</code></code></pre>
+<h3 id="敏感词过滤">2. 敏感词过滤</h3>
+<p>以上面例子构造出来的 SensitiveMap 为敏感词库进行示意，假设这里输入的关键字为：王八不好，流程图如下：<br />
+<img src="./images/利用 DFA 算法实现文字过滤2.png" /></p>
+<p>怎么用代码实现这个流程图逻辑呢？</p>
+<pre><code><code>    /**
+     * 查找字符串中是否包含敏感字符
+     *
+     * @param txt 输入的字符串
+     * @return 如果存在，则返回敏感字符串；不存在，则返回空字符串
+     */
+    public static String findSensitiveWord(String txt) {
+        SensitiveWordInit sensitiveWordInit = SpringContextHolder.getBean(SensitiveWordInit.class);
+        Map&lt;String, Object&gt; sensitiveWordMap = sensitiveWordInit.getSensitiveWordMap();
+        StringBuilder sensitiveWord = new StringBuilder();
+        // 敏感词结束标志位，表示匹配到了最后一位
+        boolean flag = false;
+        for (int i = 0; i &lt; txt.length(); i++) {
+            char word = txt.charAt(i);
+            // 获取指定 key
+            sensitiveWordMap = (Map) sensitiveWordMap.get(word);
+            // 不存在，直接返回没有敏感词
+            if (sensitiveWordMap == null) {
+                break;
+            }
+            //存在，存储该敏感词，并判断是否为最后一个
+            sensitiveWord.append(word);
+            //如果为最后一个匹配规则，结束循环
+            if (&quot;1&quot;.equals(sensitiveWordMap.get(&quot;isEnd&quot;))) {
+                flag = true;
+                break;
+            }
+        }
+        // 表示匹配到了完整敏感词
+        if (flag == true) {
+            return sensitiveWord.toString();
+        }
+        return &quot;&quot;;
+    }</code></code></pre>
+<h2 id="三优化思路">三、优化思路</h2>
+<p>对于“王*八&amp;&amp;蛋”这样的词，中间填充了无意义的字符来混淆，在我们做敏感词搜索时，同样应该做一个无意义词的过滤，当循环到这类无意义的字符时进行跳过，避免干扰。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

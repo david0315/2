@@ -1,0 +1,518 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Struts2】进阶' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Struts2】进阶</center></div><div class='banquan'>原文出处:本文由博客园博主这个世界~提供。<br/>
+原文连接:https://www.cnblogs.com/haoworld/p/bstruts2-jin-jie.html</div><br>
+    <ul>
+<li>
+<a href="#toc_0">一、Action处理请求参数</a>
+<ul>
+<li>
+<a href="#toc_1">1.1 属性驱动</a>
+</li>
+<li>
+<a href="#toc_2">1.2 模型驱动</a>
+</li>
+<li>
+<a href="#toc_3">1.3 扩展</a>
+<ul>
+<li>
+<a href="#toc_4">将数据封装到List集合</a>
+</li>
+<li>
+<a href="#toc_5">将数据封装到Map集合</a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<a href="#toc_6">二、类型转换</a>
+<ul>
+<li>
+<a href="#toc_7">2.1 自定义类型转换器:</a>
+<ul>
+<li>
+<a href="#toc_8">1.创建一个自定义类型转换器</a>
+</li>
+<li>
+<a href="#toc_9">2.注册一个自定义类型转换器.</a>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<a href="#toc_10">三、数据校验</a>
+<ul>
+<li>
+<a href="#toc_11">3.1 手动校验</a>
+</li>
+<li>
+<a href="#toc_12">3.2 配置校验(xml)</a>
+</li>
+</ul>
+</li>
+</ul>
+
+
+<h2 id="toc_0">一、Action处理请求参数</h2>
+
+<ul>
+<li>在Struts2中获取请求参数:有两类方式(三种方法)</li>
+</ul>
+
+<h3 id="toc_1">1.1 属性驱动</h3>
+
+<ol>
+<li>直接将action做一个model,就可以得到请求参数.
+<ul>
+<li>问题1:action封装请求参数，会不会存在线程安全问题?</li>
+<li>不会:因为每一次请求，都是一个新的action。</li>
+<li>缺点:会有重复代码，需要单独定义javaBean,将action中属性copy到javaBean中。<br/></li>
+<li>优点:简单。<br/></li>
+<li>这种方式 ，底层是通过反射来实现的。</li>
+</ul></li>
+<li><p>在action中声明一个model。</p>
+<ul>
+<li>private User user;提供get/set方法</li>
+<li>在页面上使用ognl来描述</li>
+</ul>
+<pre><code><code class="language-jsp">&lt;input type=&quot;text&quot; name=&quot;user.username&quot;&gt;
+</code></code></pre>
+<ul>
+<li>优点:简单，解决了第一种封装的问题</li>
+<li>缺点:在页面上使用了ognl表达式，页面不通用了。实际开发中的页面 都要通用，换了另一种框架保证页面还可以正常显示。</li>
+<li>问题:这种方式，数据是怎样封装的?</li>
+<li>是通过struts2中的interceptor进行了数据封装.</li>
+<li>在struts-default.xml 中有默认的拦截器</li>
+</ul>
+<pre><code><code class="language-markup">&lt;interceptor name=&quot;params&quot; class=&quot;com.opensymphony.xwork2.interceptor.ParametersInterceptor&quot;/&gt;
+</code></code></pre></li>
+</ol>
+
+<h3 id="toc_2">1.2 模型驱动</h3>
+
+<ul>
+<li>此种方式在开发中应用的比较多</li>
+<li>步骤：
+<ul>
+<li>1.让action类实现ModelDriven</li>
+<li>2.重写getModel方法</li>
+<li>3.在action中实现化一个model对象，让getModel方法返回这个对象。</li>
+</ul></li>
+<li>代码如下：</li>
+</ul>
+
+<pre><code><code class="language-java">//获取请求参数  模型驱动  
+public class Login3Action extends ActionSupport implements ModelDriven&lt;User&gt; {
+
+    private User user = new User();
+
+    public User getModel() {
+        return user;
+    }
+
+    @Override
+    public String execute() throws Exception {
+        HttpServletRequest request = ServletActionContext.getRequest();
+        // 2.判断用户名与密码是否正确
+        if (&quot;tom&quot;.equals(user.getUsername())
+                &amp;&amp; &quot;123&quot;.equals(user.getPassword())) {
+
+            request.getSession().setAttribute(&quot;username&quot;, user.getUsername());
+
+            return SUCCESS;
+        } else {
+            request.setAttribute(&quot;login.message&quot;, &quot;用户名或密码错误&quot;);
+            return &quot;failer&quot;;
+        }
+    }
+
+}
+</code></code></pre>
+
+<ul>
+<li>优点:解决了属性驱动存在的问题</li>
+<li>缺点:一次只能封装一个model对象.</li>
+<li>struts2 有很多围绕模型驱动的特性 </li>
+</ul>
+
+<pre><code><code class="language-markup">&lt;interceptor name=&quot;modelDriven&quot; class=&quot;com.opensymphony.xwork2.interceptor.ModelDrivenInterceptor&quot;/&gt; 
+</code></code></pre>
+
+<h3 id="toc_3">1.3 扩展</h3>
+
+<h4 id="toc_4">将数据封装到List集合</h4>
+
+<ul>
+<li>JSP页面:</li>
+</ul>
+
+<pre><code><code class="language-jsp">username1:&lt;input type=&quot;text&quot; name=&quot;users[0].username&quot;&gt;&lt;br&gt;
+password1:&lt;input type=&quot;password&quot; name=&quot;users[0].password&quot;&gt;&lt;br&gt;
+username2:&lt;input type=&quot;text&quot; name=&quot;users[1].username&quot;&gt;&lt;br&gt;
+password2:&lt;input type=&quot;password&quot; name=&quot;users[1].password&quot;&gt;&lt;br&gt;
+</code></code></pre>
+
+<ul>
+<li>Action类:</li>
+</ul>
+
+<pre><code><code class="language-java">private List&lt;User&gt; users;
+
+public List&lt;User&gt; getUsers() {
+    return users;
+}
+
+public void setUsers(List&lt;User&gt; users) {
+    this.users = users;
+}
+</code></code></pre>
+
+<h4 id="toc_5">将数据封装到Map集合</h4>
+
+<ul>
+<li>JSP页面:</li>
+</ul>
+
+<pre><code><code class="language-jsp">username1:&lt;input type=&quot;text&quot; name=&quot;map[&#39;aaa&#39;].username&quot;&gt;&lt;br&gt;
+password1:&lt;input type=&quot;password&quot; name=&quot;map[&#39;aaa&#39;].password&quot;&gt;&lt;br&gt;
+username2:&lt;input type=&quot;text&quot; name=&quot;map[&#39;bbb&#39;].username&quot;&gt;&lt;br&gt;
+password2:&lt;input type=&quot;password&quot; name=&quot;map[&#39;bbb&#39;].password&quot;&gt;&lt;br&gt;
+</code></code></pre>
+
+<ul>
+<li>Action类:</li>
+</ul>
+
+<pre><code><code class="language-java">private Map&lt;String, User&gt; map;
+public Map&lt;String, User&gt; getMap() {
+    return map;
+}
+public void setMap(Map&lt;String, User&gt; map) {
+    this.map = map;
+}
+</code></code></pre>
+
+<h2 id="toc_6">二、类型转换</h2>
+
+<ul>
+<li>在属性驱动和模型驱动的实现中利用到了beanutils 直接将表单数据封装到了javaBean中，其中beanutils中自己提供了一部分的类型转换</li>
+<li>在web中我们使用beanutils直接将表单数据封装到javaBean中。---类型转换</li>
+<li>struts2中action得到请求参数，也可以直接封装到javaBean.</li>
+<li>struts2 内部提供大量类型转换器，用来完成数据类型转换问题 </li>
+<li>boolean 和 Boolean</li>
+<li>char和 Character</li>
+<li>int 和 Integer</li>
+<li>long 和 Long</li>
+<li>float 和 Float</li>
+<li>double 和 Double</li>
+<li>Date 可以接收 yyyy-MM-dd格式字符串</li>
+<li>数组  可以将多个同名参数，转换到数组中</li>
+<li>集合  支持将数据保存到 List 或者 Map 集合</li>
+<li><p>例如:日期类型，我们传递  yyyy-MM-dd  yyyy年MM月dd日格式都可以，但是如果是yyyy/MM/dd ,就会出现问题.</p></li>
+<li><p>struts2中的类型转换器根接口是：<code>com.opensymphony.xwork2.conversion.TypeConverter</code></p></li>
+</ul>
+
+<h3 id="toc_7">2.1 自定义类型转换器:</h3>
+
+<ul>
+<li>步骤:</li>
+<li>1.创建一个类实现TypeConverter接口.</li>
+<li>2.重写接口中方法，实现类型转换操作.</li>
+<li><p>3.注册类型转换器.</p></li>
+<li><p>详解说明:</p></li>
+</ul>
+
+<h4 id="toc_8">1.创建一个自定义类型转换器</h4>
+
+<ul>
+<li>有下面的几种方式</li>
+<li>实现TypeConverter需要重写</li>
+</ul>
+
+<pre><code><code class="language-java">public Object convertValue(Map&lt;String, Object&gt; context, Object target, Member member, String propertyName, Object value, Class toType);
+// 如果实现接口，这个方法参数太多(6个)
+</code></code></pre>
+
+<ul>
+<li>不推荐实现接口，可以继承 DefaultTypeConverter类,优点:重写的方法参数没有那么多,需要重写下面的方法</li>
+</ul>
+
+<pre><code><code class="language-java">public Object convertValue(Map&lt;String, Object&gt; context, Object value, Class toType) {
+    return convertValue(value, toType);
+}
+    
+</code></code></pre>
+
+<ul>
+<li>推荐使用 ，继承DefaultTypeConverter类的一个子类StrutsTypeConverter.<br/>
+原因:在这个类中将从页面传递的数据怎样封装，以及action中的数据怎样在页面上显示做了分离.需要重写下面的两个方法：</li>
+</ul>
+
+<pre><code><code class="language-java">public abstract Object convertFromString(Map context, String[] values, Class toClass);
+public abstract String convertToString(Map context, Object o);
+</code></code></pre>
+
+<h4 id="toc_9">2.注册一个自定义类型转换器.</h4>
+
+<ul>
+<li>1.局部--针对于Action (这种方式好像是需要属性驱动的)
+<ul>
+<li>配置文件所在位置以及名称: 在Action类所在包 创建 <code>Action类名-conversion.properties</code> </li>
+<li>配置文件书写格式: <code>属性名称=类型转换器的全类名</code> </li>
+</ul></li>
+<li>2.局部--针对于Model
+<ul>
+<li>配置文件所在位置以及名称: 在Model类所在包 创建 <code>model类名-conversion.properties</code> </li>
+<li>配置文件书写格式: <code>属性名称=类型转换器的全类名</code></li>
+</ul></li>
+<li><p>3.全局</p>
+<ul>
+<li>配置文件所在位置以及名称:在src下创建一个<code>xwork-conversion.properties</code></li>
+<li>配置文件书写格式: <code>要转换的类型全名=类型转换器的全类名</code></li>
+</ul></li>
+<li><p>注意:</p></li>
+<li><p>对于struts2中类型转换器，如果表单数据提交时，将数据向model封装，出现了问题，会报错: No result defined for action com.hao.action.RegistAction and result input</p></li>
+<li><p>上面的意思是说，在RegistAction的配置中没有配置input结果视图.</p></li>
+<li><p>要在struts.xml 的action中添加input 视图</p></li>
+</ul>
+
+<pre><code><code class="language-markup">&lt;action name=&quot;regist&quot; class=&quot;cn.itcast.action.RegistAction&quot;&gt;
+&lt;result name=&quot;input&quot;&gt;/success.jsp&lt;/result&gt;
+&lt;/action&gt;
+</code></code></pre>
+
+<ul>
+<li>如果配置了，出现类型转换问题，就会跳转到input指定的视图。</li>
+<li>为什么会向input视图跳转呢，这 是因为struts2中的默认的拦截器(interceptor).<br/>
+如下：</li>
+</ul>
+
+<pre><code><code class="language-markup">&lt;interceptor name=&quot;conversionError&quot; class=&quot;org.apache.struts2.interceptor.StrutsConversionErrorInterceptor&quot;/&gt;
+</code></code></pre>
+
+<pre><code><code class="language-markup">&lt;interceptor name=&quot;workflow&quot; class=&quot;com.opensymphony.xwork2.interceptor.DefaultWorkflowInterceptor&quot;/&gt;
+</code></code></pre>
+
+<ul>
+<li>用于得到问题，向input视图跳转。 分析见下图：</li>
+</ul>
+
+<p><figure><img src="./images/【Struts2】进阶0.png" alt="关于类型转换设置input视图分析"/><figcaption>关于类型转换设置input视图分析</figcaption></figure></p>
+
+<ul>
+<li>关于错误信息展示:</li>
+<li>通过分析拦截器作用，得知当类型转换出错时，自动跳转input视图 ，在input视图页面中 <code>&lt;s:fieldError/&gt;</code> 显示错误信息<br/></li>
+<li>在Action所在包中，创建 <code>ActionName.properties</code>，在局部资源文件中配置提示信息: <code>invalid.fieldvalue.属性名 = 错误信息</code></li>
+<li>如果是自定义类型转换器，出现类型转换问题，要跳转到input视图，在类型转换器中，必须抛出异常才可以。</li>
+</ul>
+
+<h2 id="toc_10">三、数据校验</h2>
+
+<ul>
+<li>在开发中，请求参数是需要校验的。</li>
+<li>客户端校验----&gt;js</li>
+<li>服务器校验----&gt;java代码。</li>
+<li><p>struts2中提供的校验-----服务器端校验。</p></li>
+<li><p>分成两种:</p></li>
+<li><p>1.手动校验(编码校验)</p></li>
+<li><p>2.配置校验(annotation,xml) 我们讲的是xml。</p></li>
+</ul>
+
+<h3 id="toc_11">3.1 手动校验</h3>
+
+<ul>
+<li>要求:Action类必须继承自ActionSupport。需要重写一个方法 validate</li>
+<li>通过测试发现在Action中重写的validate方法执行了。并且是在请求处理方法(execute)之前执行的。</li>
+<li>对于struts2提供的校验，它也是通过拦截器实现的。</li>
+<li>问题:在validate方法中怎样存储校验错误信息?</li>
+<li>在validate方法中   <code>this.addFieldError(Sting name,String value);</code></li>
+<li>问题:在页面上怎样获取错误信息?(在input视图上)</li>
+<li><code>&lt;s:fielderror&gt;</code>展示所有错误信息
+*<code>&lt;s:fielderror fieldName=&quot;&quot;&gt;</code> 展示特定名称的错误信息.</li>
+<li>问题:在同一个<code>Action</code>中有多个请求处理方法<code>(login,regist)</code>那么有些方法是需要校验的，有些是不需要的，怎样处理?</li>
+<li>解决方案:创建一个名称叫 <code>validate+请求处理方法名</code>   例如:请求处理方法叫  <code>regist()</code> 校验的方法名 <code>validateRegist()</code> </li>
+</ul>
+
+<h3 id="toc_12">3.2 配置校验(xml)</h3>
+
+<ul>
+<li><code>struts2</code>的校验框架。</li>
+<li>已经完成了校验操作(做了很多校验方法)。</li>
+<li>而我们在使用时，只需要将它们调用就可以(通过配置文件)</li>
+<li>要求:<code>action</code>类必须继承自<code>ActionSupport</code>。</li>
+<li>问题:配置文件怎样配置?</li>
+<li>位置:<code>xml</code>文件要与<code>action</code>类在同一个包下</li>
+<li>名称:<code>action类名-validation.xml</code></li>
+</ul>
+
+<p>示例如下：</p>
+
+<pre><code><code class="language-markup">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;!DOCTYPE validators PUBLIC
+        &quot;-//Apache Struts//XWork Validator 1.0.3//EN&quot;
+        &quot;http://struts.apache.org/dtds/xwork-validator-1.0.3.dtd&quot;&gt;
+
+&lt;validators&gt;
+    &lt;!-- 对username属性进行校验 --&gt;
+    &lt;field name=&quot;username&quot;&gt;
+        &lt;!-- 指定username不能为空 --&gt;
+        &lt;field-validator type=&quot;requiredstring&quot;&gt;
+            &lt;!-- 错误信息 --&gt;
+            &lt;message&gt;用户名不能为空--------&lt;/message&gt;
+        &lt;/field-validator&gt;
+        &lt;!-- 长度校验，规定用户名必须在6-10位之间 --&gt;
+        &lt;field-validator type=&quot;stringlength&quot;&gt;
+            &lt;param name=&quot;maxLength&quot;&gt;10&lt;/param&gt;
+            &lt;param name=&quot;minLength&quot;&gt;6&lt;/param&gt;
+            &lt;message&gt;用户名必须在${minLength}-${maxLength}位之间&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;!-- 对age进行校验，规定年龄必须在10-40之间 --&gt;
+    &lt;field name=&quot;age&quot;&gt;
+        &lt;field-validator type=&quot;int&quot;&gt;
+            &lt;param name=&quot;min&quot;&gt;10&lt;/param&gt;
+            &lt;param name=&quot;max&quot;&gt;40&lt;/param&gt;
+            &lt;message&gt;年龄必须在${min}--${max}之间&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;!-- 对birthday进行校验 --&gt;
+    &lt;field name=&quot;birthday&quot;&gt;
+        &lt;field-validator type=&quot;date&quot;&gt;
+            &lt;param name=&quot;min&quot;&gt;1974-01-01&lt;/param&gt;
+            &lt;param name=&quot;max&quot;&gt;2004-12-31&lt;/param&gt;
+            &lt;message&gt;生日必须在${min}年到${max}年之间&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;!-- 校验邮箱 --&gt;
+    &lt;field name=&quot;email&quot;&gt;
+        &lt;field-validator type=&quot;email&quot;&gt;
+            &lt;message&gt;邮箱格式不正确&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;!-- url校验 --&gt;
+
+    &lt;field name=&quot;url&quot;&gt;
+        &lt;field-validator type=&quot;url&quot;&gt;
+            &lt;message&gt;url不能这空，类似于http://www.baidu.com&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;!-- 使用正则 --&gt;
+    &lt;field name=&quot;telphone&quot;&gt;
+        &lt;field-validator type=&quot;regex&quot;&gt;
+            &lt;param name=&quot;regexExpression&quot;&gt;&lt;![CDATA[^135[0-9]{8}$]]&gt;&lt;/param&gt;
+            &lt;message&gt;电话号码必须是135xxxxxxxx&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+    &lt;field name=&quot;repassword&quot;&gt;
+        &lt;field-validator type=&quot;fieldexpression&quot;&gt;
+            &lt;param name=&quot;expression&quot;&gt;&lt;![CDATA[(password==repassword)]]&gt;&lt;/param&gt;
+            &lt;message&gt;两次密码输入不一致&lt;/message&gt;
+        &lt;/field-validator&gt;
+    &lt;/field&gt;
+
+&lt;/validators&gt;   
+</code></code></pre>
+
+<ul>
+<li><p>示例分析</p></li>
+<li><p>1.约束: <code>xwork-core-*.jar</code> 中 <code>xwork-validator.dtd</code> 下</p></li>
+</ul>
+
+<pre><code><code class="language-markup">&lt;!DOCTYPE validators PUBLIC
+&quot;-//Apache Struts//XWork Validator //EN&quot;
+&quot;http://struts.apache.org/dtds/xwork-validator.dtd&quot;&gt;
+</code></code></pre>
+
+<ul>
+<li>2.标签</li>
+</ul>
+
+<pre><code><code class="language-markup">1.根元素
+&lt;validators&gt;
+2.子元素
+&lt;field name=&quot;属性名称&quot;&gt;&lt;/field&gt; 
+3.&lt;field&gt;子元素    
+&lt;field-validator type=&quot;校验器&quot;&gt; 这个是指定校验器
+</code></code></pre>
+
+<ul>
+<li>3.问题:校验器有哪些?</li>
+<li><code>xwork-core-*jar</code> 中 <code>/com/opensymphony/xwork2/validator/validators/default.xml</code>下</li>
+</ul>
+
+<pre><code><code class="language-markup">&lt;validator name=&quot;required&quot; class=&quot;com.opensymphony.xwork2.validator.validators.RequiredFieldValidator&quot;/&gt;
+&lt;validator name=&quot;requiredstring&quot; class=&quot;com.opensymphony.xwork2.validator.validators.RequiredStringValidator&quot;/&gt;
+&lt;validator name=&quot;int&quot; class=&quot;com.opensymphony.xwork2.validator.validators.IntRangeFieldValidator&quot;/&gt;
+&lt;validator name=&quot;long&quot; class=&quot;com.opensymphony.xwork2.validator.validators.LongRangeFieldValidator&quot;/&gt;
+&lt;validator name=&quot;short&quot; class=&quot;com.opensymphony.xwork2.validator.validators.ShortRangeFieldValidator&quot;/&gt;
+&lt;validator name=&quot;double&quot; class=&quot;com.opensymphony.xwork2.validator.validators.DoubleRangeFieldValidator&quot;/&gt;
+&lt;validator name=&quot;date&quot; class=&quot;com.opensymphony.xwork2.validator.validators.DateRangeFieldValidator&quot;/&gt;
+&lt;validator name=&quot;expression&quot; class=&quot;com.opensymphony.xwork2.validator.validators.ExpressionValidator&quot;/&gt;
+&lt;validator name=&quot;fieldexpression&quot; class=&quot;com.opensymphony.xwork2.validator.validators.FieldExpressionValidator&quot;/&gt;
+&lt;validator name=&quot;email&quot; class=&quot;com.opensymphony.xwork2.validator.validators.EmailValidator&quot;/&gt;
+&lt;validator name=&quot;url&quot; class=&quot;com.opensymphony.xwork2.validator.validators.URLValidator&quot;/&gt;
+&lt;validator name=&quot;visitor&quot; class=&quot;com.opensymphony.xwork2.validator.validators.VisitorFieldValidator&quot;/&gt;
+&lt;validator name=&quot;conversion&quot; class=&quot;com.opensymphony.xwork2.validator.validators.ConversionErrorFieldValidator&quot;/&gt;
+&lt;validator name=&quot;stringlength&quot; class=&quot;com.opensymphony.xwork2.validator.validators.StringLengthFieldValidator&quot;/&gt;
+&lt;validator name=&quot;regex&quot; class=&quot;com.opensymphony.xwork2.validator.validators.RegexFieldValidator&quot;/&gt;
+&lt;validator name=&quot;conditionalvisitor&quot; class=&quot;com.opensymphony.xwork2.validator.validators.ConditionalVisitorFieldValidator&quot;/&gt;
+
+</code></code></pre>
+
+<ul>
+<li>4.<code>&lt;field-validator&gt;</code>子元素<br/>
+<ul>
+<li><code>&lt;message&gt;错误信息&lt;/message&gt;</code></li>
+</ul></li>
+<li><p>5.<code>&lt;field-validator&gt;</code>子元素 </p>
+<ul>
+<li><code>&lt;param name=&quot;&quot;&gt;值&lt;/param&gt;</code> ，用于指定校验器中的参数.</li>
+</ul></li>
+<li><p>介绍:关于配置校验中的校验器:   </p></li>
+<li><p>required (必填校验器,要求被校验的属性值不能为null)</p></li>
+<li><p>requiredstring (必填字符串校验器,要求被校验的属性值不能为null，并且长度大于0,默认情况下会对字符串去前后空格)</p></li>
+<li><p>stringlength (字符串长度校验器，要求被校验的属性值必须在指定的范围内，否则校验失败,minLength参数指定最小长度，maxLength参数指定最大长度，trim参数指定校验field之前是否去除字符串前后的空格)</p></li>
+<li><p>regex (正则表达式校验器，检查被校验的属性值是否匹配一个正则表达式，expression参数指定正则表达式，caseSensitive参数指定进行正则表达式匹配时，是否区分大小写,默认值为true)</p></li>
+<li><p>int(整数校验器，要求field的整数值必须在指定范围内，min指定最小值，max指定最大值)</p></li>
+<li><p>double(双精度浮点数校验器,要求field的双精度浮点数必须在指定范围内,min指定最小值,max指定最大值)</p></li>
+<li><p>fieldexpression (字段OGNL表达式校验器,要求field满足一个ognl表达式，expression参数指定ognl表达式,该逻辑表达式基于ValueStack进行求值,返回true时校验通过，否则不通过)</p></li>
+<li><p>email(邮件地址校验器，要求如果被校验的属性值非空，则必须是合法的邮件地址)</p></li>
+<li><p>url(网址校验器,要求如果被校验的属性值非空,则必须是合法的url地址)</p></li>
+<li><p>date(日期校验器,要求field的日期值必须在指定范围内,min指定最小值,max指定最大值)</p></li>
+<li><p>问题:通过配置校验，怎样处理在同一个action中存在多个请求处理方法校验问题?</p></li>
+<li><p>只需要将校验xml文件名称修改就可以。</p></li>
+<li><p><code>action类名-valication.xml</code> 现在要对action类中某一个方法校验。</p></li>
+<li><p><code>action类名-action中要校验的方法名-validation.xml</code></p></li>
+<li><p><code>UserAction-login-validation.xml</code></p></li>
+</ul>
+
+<p><figure><img src="./images/【Struts2】进阶1.png" alt="关于struts2中校验操作分析"/><figcaption>关于struts2中校验操作分析</figcaption></figure></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

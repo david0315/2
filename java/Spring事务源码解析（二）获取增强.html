@@ -1,0 +1,262 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring事务源码解析（二）获取增强' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring事务源码解析（二）获取增强</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11456935.html</div><br>
+    <p>在上一篇文章<a href="https://mp.weixin.qq.com/s/FU3hznLFspCcHYJs-x8h2Q">@EnableTransactionManagement注解解析</a>中，我们搭建了源码阅读的环境，以及解析了开启Spring事务功能的注解<code>@EnableTransactionManagement</code>的实现逻辑</p>
+<p>在进行接下来的源码解析之前我想大家应该知道，当我们使用传统的jdbc应用事务的时候是不是做了如下操作：</p>
+<ol>
+<li>开启事务</li>
+<li>save、update、delete等操作</li>
+<li>出现异常进行回滚</li>
+<li>正常情况提交事务</li>
+</ol>
+<p>而在Spring中我们好像只需要关心第三步，也就是我们的业务，而其他的操作都不需要关心。那么我想你应该猜到了Spring是如何实现的呢？<br />
+答案就是基于<code>@Transactional</code>注解的SpringAOP实现，在接着往下阅读本篇文章的时候希望您对于SpringAOP的源码有一定的了解，如果不了解可以参考如下文章：</p>
+<ol>
+<li><a href="https://mp.weixin.qq.com/s/yMw1MZIRjQ4c504SSuPFaw">基于注解的SpringAOP源码解析（一）</a></li>
+<li><a href="https://mp.weixin.qq.com/s/kxbdat_T0io6xEnD48HK-g">基于注解的SpringAOP源码解析（二）</a></li>
+<li><a href="https://mp.weixin.qq.com/s/TORZGi2AX8hV1gNf1qNZUA">基于注解的SpringAOP源码解析（三）</a></li>
+</ol>
+<h5 id="获取增强">获取增强</h5>
+<p>在阅读完AOP的原理之后，我们知道，当一个bean实例化之后会尝试获取所有适用于此Bean的增强。而在上篇文章中，我们已经发现了，<code>@EnableTransactionManagement</code>注解会往Spring中注入一个增强<code>BeanFactoryTransactionAttributeSourceAdvisor</code>。经过一番代码调用以后，会进入这么一个方法，这里的第一个入参就是<code>BeanFactoryTransactionAttributeSourceAdvisor</code>增强</p>
+<pre><code><code>    public static boolean canApply(Advisor advisor, Class&lt;?&gt; targetClass, boolean hasIntroductions) {
+        if (advisor instanceof IntroductionAdvisor) {
+            return ((IntroductionAdvisor) advisor).getClassFilter().matches(targetClass);
+        }
+        else if (advisor instanceof PointcutAdvisor) {
+            PointcutAdvisor pca = (PointcutAdvisor) advisor;
+            return canApply(pca.getPointcut(), targetClass, hasIntroductions);
+        }
+        else {
+            return true;
+        }
+    }
+ public static boolean canApply(Pointcut pc, Class&lt;?&gt; targetClass, boolean hasIntroductions) {
+        Assert.notNull(pc, &quot;Pointcut must not be null&quot;);
+        if (!pc.getClassFilter().matches(targetClass)) {
+            return false;
+        }
+        MethodMatcher methodMatcher = pc.getMethodMatcher();
+        if (methodMatcher == MethodMatcher.TRUE) {
+            return true;
+        }
+
+        IntroductionAwareMethodMatcher introductionAwareMethodMatcher = null;
+        if (methodMatcher instanceof IntroductionAwareMethodMatcher) {
+            introductionAwareMethodMatcher = (IntroductionAwareMethodMatcher) methodMatcher;
+        }
+
+        Set&lt;Class&lt;?&gt;&gt; classes = new LinkedHashSet&lt;&gt;(ClassUtils.getAllInterfacesForClassAsSet(targetClass));
+        classes.add(targetClass);
+        for (Class&lt;?&gt; clazz : classes) {
+          //获取当前类的所有方法
+            Method[] methods = ReflectionUtils.getAllDeclaredMethods(clazz);
+            for (Method method : methods) {
+                if ((introductionAwareMethodMatcher != null &amp;&amp;
+                        introductionAwareMethodMatcher.matches(method, targetClass, hasIntroductions)) ||
+                        methodMatcher.matches(method, targetClass)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }</code></code></pre>
+<p>到这里的时候就进入事务相关的类<code>TransactionAttributeSourcePointcut</code>，看名字就能知道，这是个切点类.那么接下来的逻辑应该可以想象到，无非就是判断是否是个事务方法</p>
+<pre><code><code>public boolean matches(Method method, @Nullable Class&lt;?&gt; targetClass) {
+        if (targetClass != null &amp;&amp; TransactionalProxy.class.isAssignableFrom(targetClass)) {
+            return false;
+        }
+        TransactionAttributeSource tas = getTransactionAttributeSource();
+        return (tas == null || tas.getTransactionAttribute(method, targetClass) != null);
+    }
+    </code></code></pre>
+<p>如果是事务方法则继续往下走</p>
+<pre><code><code>public TransactionAttribute getTransactionAttribute(Method method, 
+      @Nullable Class&lt;?&gt; targetClass) {
+    // 如果当前方法是Object类中的方法，则直接返回
+    if (method.getDeclaringClass() == Object.class) {
+        return null;
+    }
+
+    // 获取当前方法缓存使用的key
+    Object cacheKey = getCacheKey(method, targetClass);
+    Object cached = this.attributeCache.get(cacheKey);
+    // 从缓存中获取当前方法解析的事务属性，如果解析过，则将解析结果返回
+    if (cached != null) {
+        if (cached == NULL_TRANSACTION_ATTRIBUTE) {
+            return null;
+        } else {
+            return (TransactionAttribute) cached;
+        }
+    } else {
+        // 解析当前方法的事务属性，这里很重要，下面说
+        TransactionAttribute txAttr = computeTransactionAttribute(method, targetClass);
+        if (txAttr == null) {
+            // 如果当前方法上没有事务属性，则缓存一个表示空事务属性的对象
+            this.attributeCache.put(cacheKey, NULL_TRANSACTION_ATTRIBUTE);
+        } else {
+            // 获取方法的签名
+            String methodIdentification = 
+                ClassUtils.getQualifiedMethodName(method, targetClass);
+            // 如果生成的事务属性是DefaultTransactionAttribute类型的，则将方法签名设置到其descriptor属性中
+            if (txAttr instanceof DefaultTransactionAttribute) {
+                ((DefaultTransactionAttribute) txAttr)
+                    .setDescriptor(methodIdentification);
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug(&quot;Adding transactional method &#39;&quot; + methodIdentification 
+                             + &quot;&#39; with attribute: &quot; + txAttr);
+            }
+            // 缓存当前方法的解析结果
+            this.attributeCache.put(cacheKey, txAttr);
+        }
+        return txAttr;
+    }
+}</code></code></pre>
+<p>接着看一下方法的事务属性是如何解析的</p>
+<pre><code><code>protected TransactionAttribute computeTransactionAttribute(Method method, 
+       @Nullable Class&lt;?&gt; targetClass) {
+    // 如果设置了只对public方法进行事务代理，并且当前方法不是public的，则返回null
+    if (allowPublicMethodsOnly() &amp;&amp; !Modifier.isPublic(method.getModifiers())) {
+        return null;
+    }
+
+    Class&lt;?&gt; userClass = (targetClass != null ? 
+        ClassUtils.getUserClass(targetClass) : null);
+    // 获取最为准确的方法，即如果传入的method只是一个接口方法，则会去找其实现类的同一方法进行解析
+    Method specificMethod = ClassUtils.getMostSpecificMethod(method, userClass);
+    // 如果当前方法是一个泛型方法，则会找Class文件中实际实现的方法
+    specificMethod = BridgeMethodResolver.findBridgedMethod(specificMethod);
+    // 解析目标方法，获取其是否存在事务属性，如果存在则直接返回
+    TransactionAttribute txAttr = findTransactionAttribute(specificMethod);
+    if (txAttr != null) {
+        return txAttr;
+    }
+
+    // 解析目标方法所在的类，判断其是否标注有事务属性，如果存在，并且目标方法是用户实现的方法，则直接返回
+    txAttr = findTransactionAttribute(specificMethod.getDeclaringClass());
+    if (txAttr != null &amp;&amp; ClassUtils.isUserLevelMethod(method)) {
+        return txAttr;
+    }
+
+    // 如果通过解析到的方法无法找到事务属性，则判断解析得到的方法与传入的目标方法是否为同一个方法，
+    // 如果不是同一个方法，则尝试对传入的方法及其所在的类进行事务属性解析
+    if (specificMethod != method) {
+        // 对传入方法解析事务属性，如果存在，则直接返回
+        txAttr = findTransactionAttribute(method);
+        if (txAttr != null) {
+            return txAttr;
+        }
+
+        // 对传入方法所在类进行事务属性解析，如果存在，则直接返回
+        txAttr = findTransactionAttribute(method.getDeclaringClass());
+        if (txAttr != null &amp;&amp; ClassUtils.isUserLevelMethod(method)) {
+            return txAttr;
+        }
+    }
+
+    return null;
+}</code></code></pre>
+<p>这里对事务属性的解析主要分为对目标方法进行解析和对传入方法进行解析，接着看<code>findTransactionAttribute</code>方法</p>
+<pre><code><code>protected TransactionAttribute findTransactionAttribute(Method method) {
+        return determineTransactionAttribute(method);
+    }
+    protected TransactionAttribute determineTransactionAttribute(AnnotatedElement ae) {
+        for (TransactionAnnotationParser annotationParser : this.annotationParsers) {
+            TransactionAttribute attr = annotationParser.parseTransactionAnnotation(ae);
+            if (attr != null) {
+                return attr;
+            }
+        }
+        return null;
+    }
+    public TransactionAttribute parseTransactionAnnotation(AnnotatedElement ae) {
+        AnnotationAttributes attributes = AnnotatedElementUtils.findMergedAnnotationAttributes(
+                ae, Transactional.class, false, false);
+        if (attributes != null) {
+            return parseTransactionAnnotation(attributes);
+        }
+        else {
+            return null;
+        }
+    }
+public TransactionAttribute parseTransactionAnnotation(AnnotatedElement ae) {
+    // 判断目标方法上是否存在@Transactional注解，如果不存在，则直接返回
+    AnnotationAttributes attributes = AnnotatedElementUtils
+        .findMergedAnnotationAttributes(ae, Transactional.class, false, false);
+    if (attributes != null) {
+        // 如果目标方法上存在@Transactional注解，则获取注解值，并且封装为TransactionAttribute返回
+        return parseTransactionAnnotation(attributes);
+    } else {
+        return null;
+    }
+}
+
+protected TransactionAttribute parseTransactionAnnotation(
+        AnnotationAttributes attributes) {
+    RuleBasedTransactionAttribute rbta = new RuleBasedTransactionAttribute();
+    // 获取注解上的propagation值
+    Propagation propagation = attributes.getEnum(&quot;propagation&quot;);
+    rbta.setPropagationBehavior(propagation.value());
+    // 获取注解上的isolation属性值
+    Isolation isolation = attributes.getEnum(&quot;isolation&quot;);
+    rbta.setIsolationLevel(isolation.value());
+    // 获取注解上的timeout属性值
+    rbta.setTimeout(attributes.getNumber(&quot;timeout&quot;).intValue());
+    // 获取注解上的readOnly属性值
+    rbta.setReadOnly(attributes.getBoolean(&quot;readOnly&quot;));
+    // 获取注解上的value属性值
+    rbta.setQualifier(attributes.getString(&quot;value&quot;));
+    ArrayList&lt;RollbackRuleAttribute&gt; rollBackRules = new ArrayList&lt;&gt;();
+    // 获取注解上的rollbackFor属性列表
+    Class&lt;?&gt;[] rbf = attributes.getClassArray(&quot;rollbackFor&quot;);
+    for (Class&lt;?&gt; rbRule : rbf) {
+        RollbackRuleAttribute rule = new RollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    // 获取注解上的rollbackForClassName属性列表
+    String[] rbfc = attributes.getStringArray(&quot;rollbackForClassName&quot;);
+    for (String rbRule : rbfc) {
+        RollbackRuleAttribute rule = new RollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    // 获取注解上的noRollbackFor属性列表
+    Class&lt;?&gt;[] nrbf = attributes.getClassArray(&quot;noRollbackFor&quot;);
+    for (Class&lt;?&gt; rbRule : nrbf) {
+        NoRollbackRuleAttribute rule = new NoRollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    // 获取注解上的noRollbackForClassName属性列表
+    String[] nrbfc = attributes.getStringArray(&quot;noRollbackForClassName&quot;);
+    for (String rbRule : nrbfc) {
+        NoRollbackRuleAttribute rule = new NoRollbackRuleAttribute(rbRule);
+        rollBackRules.add(rule);
+    }
+    rbta.getRollbackRules().addAll(rollBackRules);
+    return rbta;
+}</code></code></pre>
+<p>可以看到这里已经把方法上或者类上的<code>@Transactional</code>注解的属性封装成<code>TransactionAttribute</code>返回了，关于<code>@Transactional</code>注解的更多知识可参考我的这篇文章：<br />
+<a href="https://mp.weixin.qq.com/s/2sKG2-B-8HnXAoc3fkeLpQ">Spring@Transactional注解</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

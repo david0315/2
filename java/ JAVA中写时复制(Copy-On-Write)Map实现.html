@@ -1,0 +1,100 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修 JAVA中写时复制(Copy-On-Write)Map实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center> JAVA中写时复制(Copy-On-Write)Map实现</center></div><div class='banquan'>原文出处:本文由博客园博主Java博客手留余香提供。<br/>
+原文连接:https://www.cnblogs.com/yuxiang1/p/12059939.html</div><br>
+    <blockquote>
+<h3>本人免费整理了Java高级资料，涵盖了Java、Redis、MongoDB、MySQL、Zookeeper、Spring Cloud、Dubbo高并发分布式等教程，一共30G，需要自己领取。<br />传送门：<a class=" wrap external" href="https://link.zhihu.com/?target=https%3A//links.jianshu.com/go%3Fto%3Dhttps%253A%252F%252Flink.zhihu.com%252F%253Ftarget%253Dhttps%25253A%252F%252Fmp.weixin.qq.com%252Fs%252FJzddfH-7yNudmkjT0IRL8Q" rel="nofollow noreferrer" target="_blank" data-za-detail-view-id="1043">https://mp.weixin.qq.com/s/JzddfH-7yNudmkjT0IRL8Q</a></h3>
+</blockquote>
+<h2>&nbsp;</h2>
+<h2>1，什么是写时复制(Copy-On-Write)容器？</h2>
+<p>写时复制是指：在并发访问的情景下，当需要修改JAVA中Containers的元素时，不直接修改该容器，而是先复制一份副本，在副本上进行修改。修改完成之后，将指向原来容器的引用指向新的容器(副本容器)。</p>
+<p>&nbsp;</p>
+<h2>2，写时复制带来的影响</h2>
+<p>①由于不会修改原始容器，只修改副本容器。因此，可以对原始容器进行并发地读。其次，实现了读操作与写操作的分离，读操作发生在原始容器上，写操作发生在副本容器上。</p>
+<p>②数据一致性问题：读操作的线程可能不会立即读取到新修改的数据，因为修改操作发生在副本上。但最终修改操作会完成并更新容器，因此这是最终一致性。</p>
+<p>3，在JDK中提供了CopyOnWriteArrayList类和CopyOnWriteArraySet类，但是并没有提供CopyOnWriteMap的实现。因此，可以参考CopyOnWriteArrayList自己实现一个CopyOnWriteHashMap</p>
+<p>这里主要是实现 在写操作时，如何保证线程安全。</p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Collection;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Set;
+
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> CopyOnWriteMap&lt;K, V&gt; <span style="color: #0000ff;">implements</span> Map&lt;K, V&gt;<span style="color: #000000;">, Cloneable{
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">volatile</span> Map&lt;K, V&gt;<span style="color: #000000;"> internalMap;
+    
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> CopyOnWriteMap() {
+        internalMap </span>= <span style="color: #0000ff;">new</span> HashMap&lt;K, V&gt;(100);<span style="color: #008000;">//</span><span style="color: #008000;">初始大小应根据实际应用来指定</span>
+<span style="color: #000000;">    }
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> V put(K key, V value) {
+        </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">) {
+            Map</span>&lt;K, V&gt; newMap = <span style="color: #0000ff;">new</span> HashMap&lt;K, V&gt;(internalMap);<span style="color: #008000;">//</span><span style="color: #008000;">复制出一个新HashMap</span>
+            V val = newMap.put(key, value);<span style="color: #008000;">//</span><span style="color: #008000;">在新HashMap中执行写操作</span>
+            internalMap = newMap;<span style="color: #008000;">//</span><span style="color: #008000;">将原来的Map引用指向新Map</span>
+            <span style="color: #0000ff;">return</span><span style="color: #000000;"> val;
+        }
+    }
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> putAll(Map&lt;? <span style="color: #0000ff;">extends</span> K, ? <span style="color: #0000ff;">extends</span> V&gt;<span style="color: #000000;"> m) {
+        </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">) {
+            Map</span>&lt;K, V&gt; newMap = <span style="color: #0000ff;">new</span> HashMap&lt;K, V&gt;<span style="color: #000000;">(internalMap);
+            newMap.putAll(m);
+            internalMap </span>=<span style="color: #000000;"> newMap;
+        }
+        
+    }
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> V get(Object key) {
+        V result </span>=<span style="color: #000000;"> internalMap.get(key);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+    ......</span><span style="color: #008000;">//</span><span style="color: #008000;">other methods inherit from interface Map</span>
+}</code></pre>
+
+<p>&nbsp;</p>
+
+<p><br />从上可以看出，对于put() 和 putAll() 而言，需要加锁。而读操作则不需要，如get(Object key)。这样，当一个线程需要put一个新元素时，它先锁住当前CopyOnWriteMap对象，并复制一个新HashMap，而其他的读线程因为不需要加锁，则可继续访问原来的HashMap。</p>
+<p>&nbsp;</p>
+<h2>4，应用场景</h2>
+<p>CopyOnWrite容器适用于读多写少的场景。因为写操作时，需要复制一个容器，造成内存开销很大，也需要根据实际应用把握初始容器的大小。</p>
+<p>不适合于数据的强一致性场合。若要求数据修改之后立即能被读到，则不能用写时复制技术。因为它是最终一致性。</p>
+<p>总结：写时复制技术是一种很好的提高并发性的手段。</p>
+<p>&nbsp;</p>
+<h2>５，为什么会出现COW？</h2>
+<p>集合类(ArrayList、HashMap)上的常用操作是：向集合中添加元素、删除元素、遍历集合中的元素然后进行某种操作。</p>
+<p>&nbsp;</p>
+<p>当多个线程并发地对一个集合对象执行这些操作时就会引发ConcurrentModificationException，比如线程A在for-each中遍历ArrayList，而线程B同时又在删除ArrayList中的元素，就可能会抛出ConcurrentModificationException，可以在线程A遍历ArrayList时加锁，但由于遍历操作是一种常见的操作，加锁之后会影响程序的性能，因此for-each遍历选择了不对ArrayList加锁而是当有多个线程修改ArrayList时抛出ConcurrentModificationException，因此，这是一种设计上的权衡。</p>
+<p>&nbsp;</p>
+<p>为了应对多线程并发修改这种情况，一种策略就是本文的主题&ldquo;写时复制&rdquo;机制；另一种策略是：线程安全的容器类：</p>
+<p>ArrayList---&gt;CopyOnWriteArrayList</p>
+<p>HashMap---&gt;ConcurrentHashMap</p>
+<p>而ConcurrentHashMap并不是从&ldquo;复制&rdquo;这个角度来应对多线程并发修改，而是引入了分段锁(JDK7)；CAS、锁(JDK11)解决多线程并发修改的问题。</p>
+
+
+</div></div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

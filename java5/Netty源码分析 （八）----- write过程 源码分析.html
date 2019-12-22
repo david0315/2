@@ -1,0 +1,677 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty源码分析 （八）----- write过程 源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty源码分析 （八）----- write过程 源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11477385.html</div><br>
+    <p>上一篇文章主要讲了netty的read过程，本文主要分析一下write和writeAndFlush。</p>
+<h2>主要内容</h2>
+<p>本文分以下几个部分阐述一个java对象最后是如何转变成字节流，写到socket缓冲区中去的</p>
+<ol>
+<li>pipeline中的标准链表结构</li>
+<li>java对象编码过程</li>
+<li>write：写队列</li>
+<li>flush：刷新写队列</li>
+<li>writeAndFlush: 写队列并刷新</li>
+</ol>
+<h2>pipeline中的标准链表结构</h2>
+<p>一个标准的pipeline链式结构如下</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析0.png" alt="" /></p>
+<src>
+<src>数据从head节点流入，先拆包，然后解码成业务对象，最后经过业务Handler处理，调用write，将结果对象写出去。而写的过程先通过tail节点，然后通过encoder节点将对象编码成ByteBuf，最后将该ByteBuf对象传递到head节点，调用底层的Unsafe写到jdk底层管道
+<src>
+<h2>java对象编码过程</h2>
+<p>为什么我们在pipeline中添加了encoder节点，java对象就转换成netty可以处理的ByteBuf，写到管道里？</p>
+<p>我们先看下调用<code>write</code>的code</p>
+<p><strong>BusinessHandler</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> channelRead0(ChannelHandlerContext ctx, Request request) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    Response response </span>=<span style="color: #000000;"> doBusiness(request);
+
+    </span><span style="color: #0000ff;">if</span> (response != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+       <strong> ctx.channel().write(response);</strong>
+    }
+}</span></code></pre>
+
+<p>业务处理器接受到请求之后，做一些业务处理，返回一个<code>Response</code>，然后，response在pipeline中传递，落到&nbsp;<code>Encoder</code>节点，我们来跟踪一下<strong>&nbsp;ctx.channel().write(response);</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture write(Object msg) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.pipeline.write(msg);
+}</span></code></pre>
+
+<p>调用了Channel中的pipeline中的write方法，我们接着看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelFuture write(Object msg) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.tail.write(msg);
+}</span></code></pre>
+
+<p>pipeline中有属性tail，调用tail中的write，由此我们知道write消息的时候，从tail开始，接着往下看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> write(Object msg, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> flush, ChannelPromise promise) {
+    <strong>AbstractChannelHandlerContext next </strong></span><strong>= <span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.findContextOutbound();</strong>
+    Object m </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.pipeline.touch(msg, next);
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flush) {
+            next.invokeWriteAndFlush(m, promise);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+          <strong>  next.invokeWrite(m, promise);</strong>
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        Object task;
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flush) {
+            task </span>=<span style="color: #000000;"> AbstractChannelHandlerContext.WriteAndFlushTask.newInstance(next, m, promise);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            task </span>=<span style="color: #000000;"> AbstractChannelHandlerContext.WriteTask.newInstance(next, m, promise);
+        }
+
+        safeExecute(executor, (Runnable)task, promise, m);
+    }
+
+}</span></code></pre>
+
+<p>中间我省略了几个重载的方法，我们来看看第一行代码，<strong>next =&nbsp;</strong><strong>this</strong><strong>.findContextOutbound();</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AbstractChannelHandlerContext findContextOutbound() {
+    AbstractChannelHandlerContext ctx </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        <strong>ctx </strong></span><strong>=</strong><span style="color: #000000;"><strong> ctx.prev;</strong>
+    } </span><span style="color: #0000ff;">while</span>(<strong>!</strong><span style="color: #000000;"><strong>ctx.outbound</strong>);
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ctx;
+}</span></code></pre>
+
+<p>通过&nbsp;<strong>ctx </strong><strong>=</strong><strong> ctx.prev; 我们知道从tail开始找到pipeline中的第一个</strong><strong>outbound的handler，然后调用&nbsp;</strong><strong>invokeWrite(m, promise)，此时找到的第一个outbound的handler就是我们自定义的编码器Encoder</strong></p>
+<p>我们接着看&nbsp;next.invokeWrite(m, promise);</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWrite(Object msg, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.invokeHandler()) {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.invokeWrite0(msg, promise);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.write(msg, promise);
+    }
+
+}
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWrite0(Object msg, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ((ChannelOutboundHandler)</span><strong><span style="color: #0000ff;">this</span>.handler()</strong>).<strong>write</strong>(<span style="color: #0000ff;">this</span><span style="color: #000000;">, msg, promise);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var4) {
+        notifyOutboundHandlerException(var4, promise);
+    }
+
+}</span></code></pre>
+
+<p>一路代码跟下来，我们可以知道是调用了第一个outBound类型的handler中的write方法，也就是第一个调用的是我们自定义<strong>编码器Encoder的write方法</strong></p>
+<p>我们来看看自定义Encoder</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> Encoder <span style="color: #0000ff;">extends</span> <strong>MessageToByteEncoder</strong>&lt;Response&gt;<span style="color: #000000;"> {
+    @Override
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> encode(ChannelHandlerContext ctx, Response response, ByteBuf out) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        out.writeByte(response.getVersion());
+        out.writeInt(</span>4 +<span style="color: #000000;"> response.getData().length);
+        out.writeBytes(response.getData());
+    }
+}</span></code></pre>
+
+<p>自定义Encoder继承&nbsp;<strong>MessageToByteEncoder ，并且重写了&nbsp;</strong>encode方法，这就是编码器的核心，我们先来看&nbsp;<strong>MessageToByteEncoder</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> MessageToByteEncoder&lt;I&gt; <span style="color: #0000ff;">extends</span> <strong>ChannelOutboundHandlerAdapter</strong> {</code></pre>
+
+<p>我们看到&nbsp;MessageToByteEncoder 继承了&nbsp;<strong>ChannelOutboundHandlerAdapter，说明了&nbsp;</strong>Encoder 是一个&nbsp;<strong>Outbound的handler</strong></p>
+<p>我们来看看&nbsp;Encoder 的父类 MessageToByteEncoder中的write方法</p>
+<p><strong>MessageToByteEncoder</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    ByteBuf buf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 判断当前Handelr是否能处理写入的消息</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (acceptOutboundMessage(msg)) {
+            @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 强制换换</span>
+            I cast =<span style="color: #000000;"> (I) msg;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 分配一段ButeBuf</span>
+          <strong>  buf =<span style="color: #000000;"> allocateBuffer(ctx, cast, preferDirect);
+            </span></strong><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用encode，这里就调回到  `Encoder` 这个Handelr中    </span>
+<span style="color: #000000;"><strong>                encode(ctx, cast, buf);</strong>
+            } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 既然自定义java对象转换成ByteBuf了，那么这个对象就已经无用了，释放掉
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> (当传入的msg类型是ByteBuf的时候，就不需要自己手动释放了)</span>
+<span style="color: #000000;">                ReferenceCountUtil.release(cast);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果buf中写入了数据，就把buf传到下一个节点</span>
+           <strong> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (buf.isReadable()) {
+                ctx.write(buf, promise);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 否则，释放buf，将空数据传到下一个节点    </span>
+</strong><span style="color: #000000;"><strong>                buf.release();
+                ctx.write(Unpooled.EMPTY_BUFFER, promise);
+            }</strong>
+            buf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果当前节点不能处理传入的对象，直接扔给下一个节点处理</span>
+<span style="color: #000000;">            ctx.write(msg, promise);
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (EncoderException e) {
+        </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> e;
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable e) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> EncoderException(e);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当buf在pipeline中处理完之后，释放</span>
+        <span style="color: #0000ff;">if</span> (buf != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            buf.release();
+        }
+    }
+}</span></code></pre>
+
+<p>这里，我们详细阐述一下Encoder是如何处理传入的java对象的</p>
+<src>
+<src>
+<p>1.判断当前Handler是否能处理写入的消息，如果能处理，进入下面的流程，否则，直接扔给下一个节点处理<br data-filtered="filtered" />
+2.将对象强制转换成<code>Encoder</code>可以处理的 <code>Response</code>对象<br data-filtered="filtered" />
+3.分配一个ByteBuf<br data-filtered="filtered" />
+4.调用encoder，即进入到 <code>Encoder</code> 的 <code>encode</code>方法，该方法是用户代码，用户将数据写入ByteBuf<br data-filtered="filtered" />
+5.既然自定义java对象转换成ByteBuf了，那么这个对象就已经无用了，释放掉，(当传入的msg类型是ByteBuf的时候，就不需要自己手动释放了)<br data-filtered="filtered" />
+6.如果buf中写入了数据，就把buf传到下一个节点，否则，释放buf，将空数据传到下一个节点<br data-filtered="filtered" />
+7.最后，当buf在pipeline中处理完之后，释放节点</p>
+<p>总结一点就是，<code>Encoder</code>节点分配一个ByteBuf，调用<code>encode</code>方法，将java对象根据自定义协议写入到ByteBuf，然后再把ByteBuf传入到下一个节点，在我们的例子中，最终会传入到head节点，因为head节点是一个OutBount类型的handler</p>
+<p><strong>HeadContext</strong></p>
+
+
+
+
+
+
+
+
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    unsafe.write(msg, promise);
+}</span></code></pre>
+
+<p>这里的msg就是前面在<code>Encoder</code>节点中，载有java对象数据的自定义ByteBuf对象，进入下一节</p>
+<h2>write：写队列</h2>
+<p>我们来看看channel中unsafe的write方法，先来看看其中的一个属性</p>
+<p><strong>AbstractUnsafe</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractUnsafe <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Unsafe {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">volatile</span> ChannelOutboundBuffer outboundBuffer = <span style="color: #0000ff;">new</span> ChannelOutboundBuffer(AbstractChannel.<span style="color: #0000ff;">this</span>);</code></pre>
+
+<p>我们来看看&nbsp;ChannelOutboundBuffer 这个类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ChannelOutboundBuffer {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Channel channel;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ChannelOutboundBuffer.Entry flushedEntry;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ChannelOutboundBuffer.Entry unflushedEntry;
+    </span><span style="color: #0000ff;">private</span> ChannelOutboundBuffer.Entry tailEntry;</code></pre>
+
+<p>ChannelOutboundBuffer内部维护了一个Entry链表，并使用Entry封装msg。其中的属性我们下面会详细讲</p>
+<p>我们回到正题，接着看&nbsp;unsafe.write(msg, promise);</p>
+<p><strong>AbstractUnsafe</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> write(Object msg, ChannelPromise promise) {
+    assertEventLoop();
+
+   <strong> ChannelOutboundBuffer outboundBuffer </strong></span><strong>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.outboundBuffer;
+
+    </span></strong><span style="color: #0000ff;">int</span><span style="color: #000000;"> size;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+       <strong> msg </strong></span><strong>=</strong><span style="color: #000000;"><strong> filterOutboundMessage(msg);</strong>
+        size </span>=<span style="color: #000000;"> pipeline.estimatorHandle().size(msg);
+        </span><span style="color: #0000ff;">if</span> (size &lt; 0<span style="color: #000000;">) {
+            size </span>= 0<span style="color: #000000;">;
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        safeSetFailure(promise, t);
+        ReferenceCountUtil.release(msg);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+
+ <strong>   outboundBuffer.addMessage(msg, size, promise);</strong>
+}</span></code></pre>
+
+<p>1.调用&nbsp;<code>filterOutboundMessage()</code>&nbsp;方法，将待写入的对象过滤，把非<code>ByteBuf</code>对象和<code>FileRegion</code>过滤，把所有的非直接内存转换成直接内存<code>DirectBuffer</code></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Object filterOutboundMessage(Object msg) {
+    </span><span style="color: #0000ff;">if</span> (msg <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ByteBuf) {
+        ByteBuf buf </span>=<span style="color: #000000;"> (ByteBuf) msg;
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (buf.isDirect()) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> msg;
+        }
+
+        </span><strong><span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> newDirectBuffer(buf);</strong>
+    }
+
+    </span><span style="color: #0000ff;">if</span> (msg <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> FileRegion) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> msg;
+    }
+
+    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnsupportedOperationException(
+            </span>"unsupported message type: " + StringUtil.simpleClassName(msg) +<span style="color: #000000;"> EXPECTED_TYPES);
+}</span></code></pre>
+
+<p>2.接下来，估算出需要写入的ByteBuf的size<br data-filtered="filtered" />3.最后，调用&nbsp;<code>ChannelOutboundBuffer</code>&nbsp;的<code>addMessage(msg, size, promise)</code>&nbsp;方法，所以，接下来，我们需要重点看一下这个方法干了什么事情</p>
+<p><strong>ChannelOutboundBuffer</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> addMessage(Object msg, <span style="color: #0000ff;">int</span><span style="color: #000000;"> size, ChannelPromise promise) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建一个待写出的消息节点</span>
+    <strong>Entry entry =<span style="color: #000000;"> Entry.newInstance(msg, size, total(msg), promise);
+    </span></strong><span style="color: #0000ff;">if</span> (tailEntry == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        flushedEntry </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        tailEntry </span>=<span style="color: #000000;"> entry;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        Entry tail </span>=<span style="color: #000000;"> tailEntry;
+        tail.next </span>=<span style="color: #000000;"> entry;
+        tailEntry </span>=<span style="color: #000000;"> entry;
+    }
+    </span><span style="color: #0000ff;">if</span> (unflushedEntry == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        unflushedEntry </span>=<span style="color: #000000;"> entry;
+    }
+
+    incrementPendingOutboundBytes(size, </span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>想要理解上面这段代码，必须得掌握写缓存中的几个消息指针，如下图</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析1.png" alt="" /></p>
+<src>
+<src>
+<p>ChannelOutboundBuffer 里面的数据结构是一个单链表结构，每个节点是一个 <code>Entry</code>，<code>Entry</code> 里面包含了待写出<code>ByteBuf</code> 以及消息回调 <code>promise</code>，下面分别是三个指针的作用</p>
+<p>1.flushedEntry 指针表示第一个被写到操作系统Socket缓冲区中的节点<br data-filtered="filtered" />
+2.unFlushedEntry 指针表示第一个未被写入到操作系统Socket缓冲区中的节点<br data-filtered="filtered" />
+3.tailEntry指针表示ChannelOutboundBuffer缓冲区的最后一个节点</p>
+<p>初次调用 <code>addMessage</code> 之后，各个指针的情况为</p>
+
+
+
+
+
+
+
+
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析2.png" alt="" /></p>
+<p><code>fushedEntry</code>指向空，<code>unFushedEntry</code>和&nbsp;<code>tailEntry</code>&nbsp;都指向新加入的节点</p>
+<p>第二次调用&nbsp;<code>addMessage</code>之后，各个指针的情况为</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析3.png" alt="" /></p>
+<p>第n次调用&nbsp;<code>addMessage</code>之后，各个指针的情况为</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析4.png" alt="" /></p>
+<p>可以看到，调用n次<code>addMessage</code>，flushedEntry指针一直指向NULL，表示现在还未有节点需要写出到Socket缓冲区，而<code>unFushedEntry</code>之后有n个节点，表示当前还有n个节点尚未写出到Socket缓冲区中去</p>
+<h2>flush：刷新写队列</h2>
+<p>不管调用<code>channel.flush()</code>，还是<code>ctx.flush()</code>，最终都会落地到pipeline中的head节点</p>
+<p><strong>HeadContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> flush(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    unsafe.flush();
+}</span></code></pre>
+
+<p>之后进入到<code>AbstractUnsafe</code></p>
+<p><strong>AbstractUnsafe</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> flush() {
+   assertEventLoop();
+
+   ChannelOutboundBuffer outboundBuffer </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.outboundBuffer;
+   </span><span style="color: #0000ff;">if</span> (outboundBuffer == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+   }
+
+  <strong> outboundBuffer.addFlush();</strong>
+  <strong> flush0();</strong>
+}</span></code></pre>
+
+<p>flush方法中，先调用&nbsp;<code class="java">outboundBuffer.addFlush();</code></p>
+<p><strong>ChannelOutboundBuffer</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addFlush() {
+    Entry entry </span>=<span style="color: #000000;"> unflushedEntry;
+    </span><span style="color: #0000ff;">if</span> (entry != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (flushedEntry == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            flushedEntry </span>=<span style="color: #000000;"> entry;
+        }
+        </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+            flushed </span>++<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">entry.promise.setUncancellable()) {
+                </span><span style="color: #0000ff;">int</span> pending =<span style="color: #000000;"> entry.cancel();
+                decrementPendingOutboundBytes(pending, </span><span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            }
+            entry </span>=<span style="color: #000000;"> entry.next;
+        } </span><span style="color: #0000ff;">while</span> (entry != <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        unflushedEntry </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>可以结合前面的图来看，首先拿到&nbsp;<code>unflushedEntry</code>&nbsp;指针，然后将&nbsp;<code>flushedEntry</code>&nbsp;指向<code>unflushedEntry</code>所指向的节点，调用完毕之后，三个指针的情况如下所示</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>相当于所有的节点都即将开始推送出去</p>
+<p>接下来，调用&nbsp;<code>flush0();</code></p>
+<p><strong>AbstractUnsafe</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> flush0() {
+    doWrite(outboundBuffer);
+}</span></code></pre>
+
+<p>发现这里的核心代码就一个 doWrite，继续跟</p>
+<p><strong>AbstractNioByteChannel</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doWrite(ChannelOutboundBuffer in) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">int</span> writeSpinCount = -1<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">boolean</span> setOpWrite = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (;;) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 拿到第一个需要flush的节点的数据</span>
+      <strong>  Object msg =<span style="color: #000000;"> in.current();
+
+        </span></strong><span style="color: #0000ff;">if</span> (msg <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ByteBuf) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 强转为ByteBuf，若发现没有数据可读，直接删除该节点</span>
+            ByteBuf buf =<span style="color: #000000;"> (ByteBuf) msg;
+
+            </span><span style="color: #0000ff;">boolean</span> done = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">long</span> flushedAmount = 0<span style="color: #000000;">;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 拿到自旋锁迭代次数</span>
+            <span style="color: #0000ff;">if</span> (writeSpinCount == -1<span style="color: #000000;">) {
+                writeSpinCount </span>=<span style="color: #000000;"> config().getWriteSpinCount();
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 自旋，将当前节点写出</span>
+            <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = writeSpinCount - 1; i &gt;= 0; i --<span style="color: #000000;">) {
+                </span><strong><span style="color: #0000ff;">int</span> localFlushedAmount =<span style="color: #000000;"> doWriteBytes(buf);
+                </span></strong><span style="color: #0000ff;">if</span> (localFlushedAmount == 0<span style="color: #000000;">) {
+                    setOpWrite </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+
+                flushedAmount </span>+=<span style="color: #000000;"> localFlushedAmount;
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">buf.isReadable()) {
+                    done </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+            }
+
+            in.progress(flushedAmount);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 写完之后，将当前节点删除</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (done) {
+                <strong>in.remove();</strong>
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            }
+        } 
+    }
+}</span></code></pre>
+
+<p>这里略微有点复杂，我们分析一下</p>
+<p>1.第一步，调用<code>current()</code>先拿到第一个需要flush的节点的数据</p>
+<p>&nbsp;<strong>ChannelOutBoundBuffer</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object current() {
+    Entry entry </span>=<span style="color: #000000;"> flushedEntry;
+    </span><span style="color: #0000ff;">if</span> (entry == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> entry.msg;
+}</span></code></pre>
+
+<p>2.第二步,拿到自旋锁的迭代次数</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> (writeSpinCount == -1<span style="color: #000000;">) {
+    writeSpinCount </span>=<span style="color: #000000;"> config().getWriteSpinCount();
+}</span></code></pre>
+
+<p>3.自旋的方式将ByteBuf写出到jdk nio的Channel</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = writeSpinCount - 1; i &gt;= 0; i --<span style="color: #000000;">) {
+    </span><span style="color: #0000ff;">int</span> localFlushedAmount =<strong><span style="color: #000000;"> doWriteBytes(buf);
+    </span></strong><span style="color: #0000ff;">if</span> (localFlushedAmount == 0<span style="color: #000000;">) {
+        setOpWrite </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+    }
+
+    flushedAmount </span>+=<span style="color: #000000;"> localFlushedAmount;
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">buf.isReadable()) {
+        done </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p><code>doWriteBytes</code>&nbsp;方法跟进去</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">int</span> doWriteBytes(ByteBuf buf) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> expectedWrittenBytes =<span style="color: #000000;"> buf.readableBytes();
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> buf.readBytes(javaChannel(), expectedWrittenBytes);
+}</span></code></pre>
+
+<p>我们发现，出现了&nbsp;<code>javaChannel()</code>，表明已经进入到了jdk nio Channel的领域，我们来看看 buf.readBytes(javaChannel(), expectedWrittenBytes);</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> readBytes(GatheringByteChannel <span style="color: #0000ff;">out</span>, <span style="color: #0000ff;">int</span><span style="color: #000000;"> length) throws IOException {
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.checkReadableBytes(length);
+    </span><strong><span style="color: #0000ff;">int</span> readBytes = <span style="color: #0000ff;">this</span>.getBytes(<span style="color: #0000ff;">this</span>.readerIndex, <span style="color: #0000ff;">out</span><span style="color: #000000;">, length);
+    </span></strong><span style="color: #0000ff;">this</span>.readerIndex +=<span style="color: #000000;"> readBytes;
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> readBytes;
+}</span></code></pre>
+
+<p>我们来看关键代码&nbsp;<strong>this.getBytes(this.readerIndex, out, length)</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> getBytes(<span style="color: #0000ff;">int</span> index, GatheringByteChannel <span style="color: #0000ff;">out</span>, <span style="color: #0000ff;">int</span> length, boolean <span style="color: #0000ff;">internal</span><span style="color: #000000;">) throws IOException {
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.checkIndex(index, length);
+    </span><span style="color: #0000ff;">if</span> (length == <span style="color: #800080;">0</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #800080;">0</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        ByteBuffer tmpBuf;
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">internal</span><span style="color: #000000;">) {
+            tmpBuf </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.internalNioBuffer();
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            tmpBuf </span>= ((ByteBuffer)<span style="color: #0000ff;">this</span><span style="color: #000000;">.memory).duplicate();
+        }
+
+        index </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.idx(index);
+        tmpBuf.clear().position(index).limit(index </span>+<span style="color: #000000;"> length);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">将tmpBuf中的数据写到out中</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">out</span><span style="color: #000000;">.write(tmpBuf);
+    }
+}</span></code></pre>
+
+<p>我们来看看out.write(tmpBuf)</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> write(ByteBuffer src) throws IOException {
+    ensureOpen();
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">writable)
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NonWritableChannelException();
+    synchronized (positionLock) {
+        </span><span style="color: #0000ff;">int</span> n = <span style="color: #800080;">0</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> ti = -<span style="color: #800080;">1</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            begin();
+            ti </span>=<span style="color: #000000;"> threads.add();
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isOpen())
+                </span><span style="color: #0000ff;">return</span> <span style="color: #800080;">0</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+                <strong>n </strong></span><strong>= IOUtil.write(fd, src, -<span style="color: #800080;">1</span></strong><span style="color: #000000;"><strong>, nd);</strong>
+            } </span><span style="color: #0000ff;">while</span> ((n == IOStatus.INTERRUPTED) &amp;&amp;<span style="color: #000000;"> isOpen());
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> IOStatus.normalize(n);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            threads.remove(ti);
+            end(n </span>&gt; <span style="color: #800080;">0</span><span style="color: #000000;">);
+            assert IOStatus.check(n);
+        }
+    }
+}</span></code></pre>
+
+<p>和read实现一样，SocketChannelImpl的write方法通过IOUtil的write实现：关键代码&nbsp;<strong>n </strong><strong>= IOUtil.write(fd, src, -1</strong><strong>, nd);</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> write(FileDescriptor var0, ByteBuffer var1, <span style="color: #0000ff;">long</span><span style="color: #000000;"> var2, NativeDispatcher var4) throws IOException {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果是DirectBuffer，直接写，将堆外缓存中的数据拷贝到内核缓存中进行发送</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (var1 instanceof DirectBuffer) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> writeFromNativeBuffer(var0, var1, var2, var4);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">非DirectBuffer
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取已经读取到的位置</span>
+        <span style="color: #0000ff;">int</span> var5 =<span style="color: #000000;"> var1.position();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取可以读到的位置</span>
+        <span style="color: #0000ff;">int</span> var6 =<span style="color: #000000;"> var1.limit();
+
+        assert var5 </span>&lt;=<span style="color: #000000;"> var6;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">申请一个原buffer可读大小的DirectByteBuffer</span>
+        <span style="color: #0000ff;">int</span> var7 = var5 &lt;= var6 ? var6 - var5 : <span style="color: #800080;">0</span><span style="color: #000000;">;
+        ByteBuffer var8 </span>=<span style="color: #000000;"> Util.getTemporaryDirectBuffer(var7);
+
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> var10;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+
+            var8.put(var1);
+            var8.flip();
+            var1.position(var5);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">通过DirectBuffer写，将堆外缓存的数据拷贝到内核缓存中进行发送</span>
+            <span style="color: #0000ff;">int</span> var9 =<span style="color: #000000;"> writeFromNativeBuffer(var0, var8, var2, var4);
+            </span><span style="color: #0000ff;">if</span> (var9 &gt; <span style="color: #800080;">0</span><span style="color: #000000;">) {
+                var1.position(var5 </span>+<span style="color: #000000;"> var9);
+            }
+
+            var10 </span>=<span style="color: #000000;"> var9;
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">回收分配的DirectByteBuffer</span>
+<span style="color: #000000;">            Util.offerFirstTemporaryDirectBuffer(var8);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> var10;
+    }
+}</span></code></pre>
+
+<p>代码逻辑我们就不再讲了，代码注释已经很清楚了，这里我们关注一点，我们可以看看我们前面的一个方法&nbsp;<code>filterOutboundMessage()</code>，将待写入的对象过滤，把非<code>ByteBuf</code>对象和<code>FileRegion</code>过滤，把所有的非直接内存转换成直接内存<code>DirectBuffer</code></p>
+<p>说明到了这一步所有的&nbsp;var1 意境是直接内存<code>DirectBuffer，就不需要走到</code>else，<code>就不需要write两次了</code></p>
+<p>4.删除该节点</p>
+<p>节点的数据已经写入完毕，接下来就需要删除该节点</p>
+<p><strong>ChannelOutBoundBuffer</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> remove() {
+<strong>    Entry e </strong></span><strong>=</strong><span style="color: #000000;"><strong> flushedEntry;</strong>
+    Object msg </span>=<span style="color: #000000;"> e.msg;
+
+    ChannelPromise promise </span>=<span style="color: #000000;"> e.promise;
+    </span><span style="color: #0000ff;">int</span> size =<span style="color: #000000;"> e.pendingSize;
+
+    removeEntry(e);
+
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">e.cancelled) {
+        ReferenceCountUtil.safeRelease(msg);
+        safeSuccess(promise);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> recycle the entry</span>
+<span style="color: #000000;">    e.recycle();
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>首先拿到当前被flush掉的节点(flushedEntry所指)，然后拿到该节点的回调对象&nbsp;<code>ChannelPromise</code>, 调用&nbsp;<code>removeEntry()</code>方法移除该节点</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> removeEntry(Entry e) {
+    </span><span style="color: #0000ff;">if</span> (-- flushed == 0<span style="color: #000000;">) {
+        flushedEntry </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (e ==<span style="color: #000000;"> tailEntry) {
+            tailEntry </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            unflushedEntry </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+      <strong>  flushedEntry </strong></span><strong>=</strong><span style="color: #000000;"><strong> e.next;</strong>
+    }
+}</span></code></pre>
+
+<p>这里的remove是逻辑移除，只是将flushedEntry指针移到下个节点，调用完毕之后，节点图示如下</p>
+<p><img src="./images/Netty源码分析 （八）----- write过程 源码分析6.png" alt="" /></p>
+<h2>writeAndFlush: 写队列并刷新</h2>
+<p>理解了write和flush这两个过程，<code>writeAndFlush</code>&nbsp;也就不难了</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tail.writeAndFlush(msg);
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> writeAndFlush(msg, newPromise());
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
+    write(msg, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">, promise);
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> write(Object msg, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> flush, ChannelPromise promise) {
+    AbstractChannelHandlerContext next </span>=<span style="color: #000000;"> findContextOutbound();
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flush) {
+            next.invokeWriteAndFlush(m, promise);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            next.invokeWrite(m, promise);
+        }
+    } 
+}</span></code></pre>
+
+<p>可以看到，最终，通过一个boolean变量，表示是调用&nbsp;<code>invokeWriteAndFlush</code>，还是&nbsp;<code>invokeWrite</code>，<code>invokeWrite</code>便是我们上文中的<code>write</code>过程</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWriteAndFlush(Object msg, ChannelPromise promise) {
+    invokeWrite0(msg, promise);
+    invokeFlush0();
+}</span></code></pre>
+
+<p>可以看到，最终调用的底层方法和单独调用&nbsp;<code>write</code>&nbsp;和&nbsp;<code>flush</code>&nbsp;是一样的</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWrite(Object msg, ChannelPromise promise) {
+        invokeWrite0(msg, promise);
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeFlush(Object msg, ChannelPromise promise) {
+        invokeFlush0(msg, promise);
+}</span></code></pre>
+
+<p>由此看来，<code>invokeWriteAndFlush</code>基本等价于<code>write</code>方法之后再来一次<code>flush</code></p>
+<src>
+<src>
+<h2>总结</h2>
+<p>1.pipeline中的编码器原理是创建一个ByteBuf,将java对象转换为ByteBuf，然后再把ByteBuf继续向前传递<br data-filtered="filtered" />
+2.调用write方法并没有将数据写到Socket缓冲区中，而是写到了一个单向链表的数据结构中，flush才是真正的写出<br data-filtered="filtered" />
+3.writeAndFlush等价于先将数据写到netty的缓冲区，再将netty缓冲区中的数据写到Socket缓冲区中，写的过程与并发编程类似，用自旋锁保证写成功<br data-filtered="filtered" />
+4.netty中的缓冲区中的ByteBuf为DirectByteBuf</p>
+
+
+
+
+
+
+
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+
+
+
+
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

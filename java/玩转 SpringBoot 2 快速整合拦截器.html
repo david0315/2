@@ -1,0 +1,171 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修玩转 SpringBoot 2 快速整合拦截器' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>玩转 SpringBoot 2 快速整合拦截器</center></div><div class='banquan'>原文出处:本文由博客园博主桌前明月提供。<br/>
+原文连接:https://www.cnblogs.com/jerry126/p/11621350.html</div><br>
+    <h2 id="概述">概述</h2>
+<p>首先声明一下，这里所说的拦截器是 SpringMVC 的拦截器 HandlerInterceptor。使用SpringMVC 拦截器需要做如下操作：</p>
+<ol>
+<li>创建拦截器类需要实现 HandlerInterceptor</li>
+<li>在 xml 配置文件中配置该拦截器，具体配置代码如下：</li>
+</ol>
+<pre><code><code>&lt;mvc:interceptors&gt;
+    &lt;mvc:interceptor&gt;
+    &lt;!-- /test/** 这个是拦截路径以/test开头的所有的URL--&gt;
+    &lt;mvc:mapping path=&quot;/**&quot;/&gt;&lt;!—这个是拦截说有的路径--&gt;
+    &lt;!-- 配置拦截器类路径--&gt;
+    &lt;bean class=&quot;cn.ljk.springmvc.controller.MyInterceptor&quot;&gt;&lt;/bean&gt;
+    &lt;!-- 配置不拦截器URL路径--&gt;
+    &lt;mvc:exclude-mapping path=&quot;/fore/**&quot;/&gt;
+    &lt;/mvc:interceptor&gt;
+&lt;/mvc:interceptors&gt;</code></code></pre>
+<p>因为在SpringBoot 中没有 xml 文件，所以SpringBoot 为我们提供 Java Config 的方式来配置拦截器。配置方式有2种：</p>
+<ol>
+<li>继承 WebMvcConfigurerAdapter （官方已经不建议使用）</li>
+<li>实现 WebMvcConfigurer</li>
+</ol>
+<p>接下来开始 SpringBoot 整合拦截器操作详细介绍！</p>
+<h2 id="整合拦截器实战操作">整合拦截器实战操作</h2>
+<p><strong>第一步：声明拦截器类</strong></p>
+<p>通过实现 HandlerInterceptor 来完成。具体代码如下：</p>
+<pre class="java"><code>public class LoginInterceptor implements HandlerInterceptor{}</code></code></pre>
+<p><strong>第二步：实现 HandlerInterceptor 3 个拦截方法</strong></p>
+<ul>
+<li>preHandle：Controller逻辑执行之前进行拦截</li>
+<li>postHandle：Controller逻辑执行完毕但是视图解析器还为进行解析之前进行拦截</li>
+<li>afterCompletion：Controller逻辑和视图解析器执行完毕进行拦截</li>
+</ul>
+<p>实际开发中 preHandle使用频率比较高，postHandle 和 afterCompletion操作相对比较少。</p>
+<p>在下面的代码中 preHandle 方法中定义拦截所有访问项目 URL并进行日志信息记录。postHandle 中在视图解析前进行拦截，通过 Model 在次添加数据Request域中。</p>
+<blockquote>
+<p>afterCompletion 暂时没有想到使用场景，如果有使用过的场景可以在下面评论区中进行评论。</p>
+</blockquote>
+<p>拦截器详细代码如下：</p>
+<pre class="java"><code>public class LoginInterceptor implements HandlerInterceptor{
+    
+    private Logger log = LoggerFactory.getLogger(LoginInterceptor.class);
+    
+    //ControllerController逻辑执行之前
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info(&quot;preHandle....&quot;);
+        String uri = request.getRequestURI();
+        log.info(&quot;uri：&quot;+ uri);
+        if (handler instanceof HandlerMethod) {
+            HandlerMethod handlerMethod = (HandlerMethod) handler;
+            log.info(&quot;拦截 Controller：&quot;+ handlerMethod.getBean().getClass().getName());
+            log.info(&quot;拦截方法：&quot;+handlerMethod.getMethod().getName());
+        }
+        
+        return true;
+    }
+    
+    //Controller逻辑执行完毕但是视图解析器还为进行解析之前
+    @Override
+    public void postHandle(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o, ModelAndView modelAndView) throws Exception {
+        log.info(&quot;postHandle....&quot;);
+        Map&lt;String,Object&gt;map=modelAndView.getModel();
+        map.put(&quot;msg&quot;,&quot;postHandle add msg&quot;);
+    }
+    
+    //Controller逻辑和视图解析器执行完毕
+    @Override
+    public void afterCompletion(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o, Exception e) throws Exception {
+        log.info(&quot;afterCompletion....&quot;);
+    }
+}</code></code></pre>
+<p><strong>第三步：Java Config 的方式来配置拦截器</strong></p>
+<p>继承 WebMvcConfigurerAdapter 方式</p>
+<p>通过继承 WebMvcConfigurerAdapter并重写 addInterceptors方法，通过其参数 InterceptorRegistry将拦截器注入到 Spring的上下文中。</p>
+<p>另外拦截路径和不拦截的路径通过InterceptorRegistry 的 addPathPatterns和 excludePathPatterns方法进行设置。</p>
+<p>这种方式官方已经不建议使用，因为官方已将 WebMvcConfigurerAdapter 标记为@Deprecated 了。</p>
+<pre class="java"><code>@Deprecated
+public abstract class WebMvcConfigurerAdapter implements WebMvcConfigurer {</code></code></pre>
+<p>继承 WebMvcConfigurerAdapter 方式具体代码如下：</p>
+<pre class="java"><code>@Configuration
+    public class InterceptorConfigByExtendsWebMvcConfigurerAdapter extends  WebMvcConfigurerAdapter{
+
+    @Bean
+        public LoginInterceptor loginInterceptor(){
+                return new LoginInterceptor();
+        }
+
+        public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(loginInterceptor()).addPathPatterns(&quot;/**&quot;).excludePathPatterns(&quot;/*.html&quot;);
+        }
+}</code></code></pre>
+<p>实现 WebMvcConfigurer 方式</p>
+<p>通过实现 WebMvcConfigurer 接口并实现 addInterceptors方法，其他操作和继承 WebMvcConfigurerAdapter方式一样。具体代码如下：</p>
+<pre><code><code>```java
+@Configuration
+public class InterceptorConfigByImplWebMvcConfigurer implements WebMvcConfigurer{
+    
+    @Bean
+    public LoginInterceptor loginInterceptor(){
+        return new LoginInterceptor();
+    }
+     @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(loginInterceptor()).addPathPatterns(&quot;/**&quot;).excludePathPatterns(&quot;/*.html&quot;);
+    }
+}
+```</code></code></pre>
+<h2 id="测试">测试</h2>
+<p>编写普通Controller，具体代码如下：</p>
+<pre class="java"><code>@Controller
+public class IndexController {
+    
+    @GetMapping(&quot;/index&quot;)
+    public String index(ModelAndView modelAndView){
+        
+        return &quot;index&quot;;
+    }
+}</code></code></pre>
+<p>在 src/main/resource 下的 templates目录下创建 IndexController访问页面 index.ftl， 代码如下：</p>
+<pre><code><code>&lt;h1&gt;${msg}&lt;/h1&gt;</code></code></pre>
+<p>由于我这里使用的是 Freemarker当页面使用，说以需要引入 Freemarker starter依赖，具体点如下：</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-freemarker&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>通过游览器访问 localhost:8080/sbe/index，具体访问效果如下：</p>
+<p><img src="./images/玩转 SpringBoot 2 快速整合拦截器0.png" alt="在这里插入图片描述" /></p>
+<blockquote>
+<p>如上图所示在视图解析前通过 Model在次添加数据到 Request域中的msg 成功显示出来了！</p>
+</blockquote>
+<p>日志输出信息如下：拦截地址和拦截Controller 和具体方法进行日志输出</p>
+<pre><code><code>2019-09-24 15:53:04.144  INFO 7732 --- [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/sbe]    : Initializing Spring DispatcherServlet &#39;dispatcherServlet&#39;
+2019-09-24 15:53:04.145  INFO 7732 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet &#39;dispatcherServlet&#39;
+2019-09-24 15:53:04.153  INFO 7732 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 8 ms
+2019-09-24 15:53:04.155  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : preHandle....
+2019-09-24 15:53:04.155  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : uri：/sbe/index
+2019-09-24 15:53:04.155  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : 拦截 Controller：cn.lijunkui.controller.IndexController
+2019-09-24 15:53:04.155  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : 拦截方法：index
+2019-09-24 15:53:04.156  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : postHandle....
+2019-09-24 15:53:04.161  INFO 7732 --- [nio-8080-exec-1] c.lijunkui.interceptor.LoginInterceptor  : afterCompletion....</code></code></pre>
+<h2 id="小结">小结</h2>
+<p>SpringBoot 2 整合拦截器和整合 Filter的操作很像，都是通过一个注册类将其注入到Spring的上下文中，只不过Filter使用的是 FilterRegistrationBean 而 拦截器使用的是 InterceptorRegistry。</p>
+<p>个人觉得比使用 xml 配置的方式更为简单了，如果你还没有在 SpringBoot 项目中使用过拦截器，赶快来操作一下吧！</p>
+<h2 id="代码示例">代码示例</h2>
+<p>具体代码示例请在我的GitHub 仓库 springbootexamples 中模块名为 spring-boot-2.x-interceptor 项目中进行查看</p>
+<p>GitHub：https://github.com/zhuoqianmingyue/springbootexamples</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

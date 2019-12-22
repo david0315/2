@@ -1,0 +1,392 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka【Eureka Server在线扩容】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka【Eureka Server在线扩容】</center></div><div class='banquan'>原文出处:本文由博客园博主KingJames、提供。<br/>
+原文连接:https://www.cnblogs.com/idoljames/p/11620140.html</div><br>
+    <h3>1、准备工作</h3>
+<p>PS：为了偷懒，每个pom文件都要依赖的公共依赖配置放在下面：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;parent&gt;
+   &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+   &lt;artifactId&gt;spring-boot-starter-parent&lt;/artifactId&gt;
+   &lt;version&gt;2.0.3.RELEASE&lt;/version&gt;
+   &lt;relativePath/&gt; 
+&lt;/parent&gt;
+
+&lt;properties&gt;
+   &lt;project.build.sourceEncoding&gt;UTF-8&lt;/project.build.sourceEncoding&gt;
+   &lt;project.reporting.outputEncoding&gt;UTF-8&lt;/project.reporting.outputEncoding&gt;
+   &lt;java.version&gt;1.8&lt;/java.version&gt;
+   &lt;spring-cloud.version&gt;Finchley.RELEASE&lt;/spring-cloud.version&gt;
+&lt;/properties&gt;
+
+&lt;dependencyManagement&gt;
+   &lt;dependencies&gt;
+      &lt;dependency&gt;
+         &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+         &lt;artifactId&gt;spring-cloud-dependencies&lt;/artifactId&gt;
+         &lt;version&gt;${spring-cloud.version}&lt;/version&gt;
+         &lt;type&gt;pom&lt;/type&gt;
+         &lt;scope&gt;<span style="color: #0000ff;">import</span>&lt;/scope&gt;
+      &lt;/dependency&gt;
+   &lt;/dependencies&gt;
+&lt;/dependencyManagement&gt;</code></pre>
+
+<p>&nbsp;</p>
+<p>1.1、由于需要动态修改配置，这里需要创建config-server工程，pom依赖如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;!-- 加上上面的公共依赖配置 --&gt;</code></pre>
+<pre><code>&lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+&lt;/dependencies&gt;　　</code></pre>
+<pre><code>&lt;build&gt;<br />    &lt;plugins&gt;<br />        &lt;plugin&gt;<br />            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;<br />            &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;<br />        &lt;/plugin&gt;<br />    &lt;/plugins&gt;<br />&lt;/build&gt;</code></pre>
+
+<p>&nbsp;</p>
+<p>1.2、config-server工程启动类如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.config.server.EnableConfigServer;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 程序入口</span>
+ <span style="color: #008000;">*/</span><span style="color: #000000;">
+@SpringBootApplication
+@EnableConfigServer
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ConfigServerApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(ConfigServerApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>1.3、添加项目配置文件，资源路径：config-server\src\main\resources\bootstrap.yml</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  application:
+    name: config</span>-<span style="color: #000000;">server
+  profiles:
+    active: </span><span style="color: #0000ff;">native</span><span style="color: #000000;">
+server:
+  port: </span>8888</code></pre>
+
+<p>这里如果不明白bootstrap.yml/properties与application.yml/properties的文件区别，这里推荐看一下这篇文章：<a href="https://blog.csdn.net/ThinkWon/article/details/100007093" target="_blank">https://blog.csdn.net/ThinkWon/article/details/100007093</a></p>
+<p>为了便于演示效果，这里使用native的profile，即使用文件来存储配置，默认存放位置是resources\config目录下。另外为了演示eureka server的动态扩容，还需要创建eureka-server工程和eureka-client工程。</p>
+<p>&nbsp;</p>
+<p>1.4、eureka-server工程，pom配置如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;!-- 加上上面的公共依赖配置 --&gt;</code></pre>
+<pre><code>&lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-server&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+&lt;/dependencies&gt;
+
+&lt;build&gt;
+       &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;/plugin&gt;
+       &lt;/plugins&gt;
+&lt;/build&gt;</code></pre>
+
+<p>&nbsp;</p>
+<p>1.4.1、eureka-server工程启动类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.eureka.server.EnableEurekaServer;
+
+@SpringBootApplication
+@EnableEurekaServer
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EurekaServerApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(EurekaServerApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>1.4.2、eureka-server工程配置文件，路径：eureka-server\src\main\resources\bootstrap.yml，eureka-server\src\main\resources\application.yml</p>
+<p>bootstrap.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  application:
+    name: eureka</span>-<span style="color: #000000;">server
+  cloud:
+    config:
+      uri: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8888</span>
+<span style="color: #000000;">management:
+  endpoints:
+    web:
+      exposure:
+        include: </span>'*'</code></pre>
+
+<p>application.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">eureka:
+  server:
+    peer</span>-eureka-nodes-update-interval-ms: 10000<span style="color: #000000;"> #默认是10分钟即600000，这里为了验证改为10秒，
+#    指定peerUpdateTask调度的时间间隔，用于从配置文件刷新peerEurekaNodes节点的配置信息</span></code></pre>
+
+<p>&nbsp;</p>
+<p>1.5、eureka-client工程，pom文件配置如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;!-- 加上上面的公共依赖配置 --&gt;</code></pre>
+<pre><code>&lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+&lt;/dependencies&gt;
+
+&lt;build&gt;
+       &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;/plugin&gt;
+       &lt;/plugins&gt;
+&lt;/build&gt;</code></pre>
+
+<p>&nbsp;</p>
+<p>1.5.1、eureka-client工程启动类：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.eureka.EurekaClientConfigBean;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.GetMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping(</span>"/query"<span style="color: #000000;">)
+@SpringBootApplication
+@EnableDiscoveryClient
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EurekaClientApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(EurekaClientApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> EurekaClientConfigBean eurekaClientConfigBean;
+
+    @GetMapping(</span>"/eureka-server"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getEurekaServerUrl() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eurekaClientConfigBean.getServiceUrl();
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>1.5.2、eureka-client工程配置文件，路径：eureka-client\src\main\resources\bootstrap.yml，eureka-client\src\main\resources\application.yml</p>
+<p>bootstrap.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring:
+  application:
+    name: eureka</span>-<span style="color: #000000;">client
+  cloud:
+    config:
+      uri: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8888</span>
+<span style="color: #000000;">management:
+  endpoints:
+    web:
+      exposure:
+        include: </span>'*'</code></pre>
+
+<p>application.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">eureka:
+  client:
+    eureka</span>-service-url-poll-interval-seconds: 10 #默认为300秒，这里为了验证改为10秒</code></pre>
+
+<p>&nbsp;</p>
+<h3>2、添加config-server配置文件</h3>
+<p>2.1、添加eureka-client配置文件，路径：config-server\src\main\resources\config\eureka-client.yml</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">server:
+  port: </span>8081<span style="color: #000000;">
+
+spring:
+  application:
+    name: eureka</span>-<span style="color: #000000;">client1
+
+eureka:
+  client:
+    serviceUrl:
+#      defaultZone: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/ # one eureka server</span>
+#      defaultZone: http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8762/eureka/ # two eureka server</span>
+      defaultZone: http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8762/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8763/eureka/ # three eureka server</span></code></pre>
+
+<p>&nbsp;</p>
+<p>2.2、添加eureka-server配置文件，路径：config-server\src\main\resources\config\eureka-server-peer1.yml，config-server\src\main\resources\config\eureka-server-peer2yml，config-server\src\main\resources\config\eureka-server-peer3.yml</p>
+<p>config-server\src\main\resources\config\eureka-server-peer1.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">server:
+  port: </span>8761<span style="color: #000000;">
+
+spring:
+  application:
+    name: eureka</span>-<span style="color: #000000;">server
+eureka:
+  instance:
+    hostname: localhost
+    preferIpAddress: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+  client:
+    registerWithEureka: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    fetchRegistry: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    serviceUrl:
+#      defaultZone: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/ # one eureka server</span>
+#      defaultZone: http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8762/eureka/ # two eureka server</span>
+      defaultZone: http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8762/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8763/eureka/ # three eureka server</span>
+<span style="color: #000000;">  server:
+      waitTimeInMsWhenSyncEmpty: </span>0<span style="color: #000000;">
+      enableSelfPreservation: </span><span style="color: #0000ff;">false</span></code></pre>
+
+<p>config-server\src\main\resources\config\eureka-server-peer2.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">server:
+  port: </span>8762<span style="color: #000000;">
+
+eureka:
+  instance:
+    hostname: localhost
+    preferIpAddress: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+  client:
+    registerWithEureka: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    fetchRegistry: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    serviceUrl:
+#      defaultZone: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/ # two eureka server</span>
+      defaultZone: http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8763/eureka/ # three eureka server</span>
+<span style="color: #000000;">  server:
+      waitTimeInMsWhenSyncEmpty: </span>0<span style="color: #000000;">
+      enableSelfPreservation: </span><span style="color: #0000ff;">false</span></code></pre>
+
+<p>config-server\src\main\resources\config\eureka-server-peer3.yml：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">server:
+  port: </span>8763<span style="color: #000000;">
+
+eureka:
+  instance:
+    hostname: localhost
+    preferIpAddress: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+  client:
+    registerWithEureka: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    fetchRegistry: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+    serviceUrl:
+      defaultZone: http:</span><span style="color: #008000;">//</span><span style="color: #008000;">localhost:8761/eureka/,</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8762/eureka/ # three eureka server</span>
+<span style="color: #000000;">  server:
+      waitTimeInMsWhenSyncEmpty: </span>0<span style="color: #000000;">
+      enableSelfPreservation: </span><span style="color: #0000ff;">false</span></code></pre>
+
+<p>从配置文件可以看出，eureka-server一共有三个实例，都是两两互相注册，1-2、2-3、1-3。</p>
+<p>&nbsp;</p>
+<h3>3、启动工程</h3>
+<p>分别启动工程：config-server，eureka-server，eureka-client。</p>
+<p>启动config-server命令：</p>
+<p>　　mvn spring-boot:run</p>
+<p>启动eureka-server命令：</p>
+<p>　　mvn spring-boot:run -Dspring.profiles.active=peer1</p>
+<p>　　mvn spring-boot:run -Dspring.profiles.active=peer2</p>
+<p>　　mvn spring-boot:run -Dspring.profiles.active=peer3</p>
+<p>按照profiles启动的时候会报错</p>
+<src class="cnblogs_code">
+<pre><code>2019-10-03 17:10:07.519 ERROR 15853 --- [           main] com.netflix.discovery.DiscoveryClient    : DiscoveryClient_EUREKA-SERVER/10.2.240.30:eureka-server:8761 - was unable to refresh its cache! status =<span style="color: #000000;"> Cannot execute request on any known server
+
+com.netflix.discovery.shared.transport.TransportException: Cannot execute request on any known server
+    at com.netflix.discovery.shared.transport.decorator.RetryableEurekaHttpClient.execute(RetryableEurekaHttpClient.java:</span>112) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.getApplications(EurekaHttpClientDecorator.java:</span>134) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator$</span>6.execute(EurekaHttpClientDecorator.java:137) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.SessionedEurekaHttpClient.execute(SessionedEurekaHttpClient.java:</span>77) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.getApplications(EurekaHttpClientDecorator.java:</span>134) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.DiscoveryClient.getAndStoreFullRegistry(DiscoveryClient.java:</span>1051) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.DiscoveryClient.fetchRegistry(DiscoveryClient.java:</span>965) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.DiscoveryClient.</span>&lt;init&gt;(DiscoveryClient.java:414) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.DiscoveryClient.</span>&lt;init&gt;(DiscoveryClient.java:269) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at org.springframework.cloud.netflix.eureka.CloudEurekaClient.</span>&lt;init&gt;(CloudEurekaClient.java:63) [spring-cloud-netflix-eureka-client-2.0.0.RELEASE.jar:2.0.0<span style="color: #000000;">.RELEASE]
+    at org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration$RefreshableEurekaClientConfiguration.eurekaClient(EurekaClientAutoConfiguration.java:</span>269) [spring-cloud-netflix-eureka-client-2.0.0.RELEASE.jar:2.0.0<span style="color: #000000;">.RELEASE]
+    at org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration$RefreshableEurekaClientConfiguration$$EnhancerBySpringCGLIB$$ee9298f0.CGLIB$eurekaClient$</span>0(&lt;generated&gt;) [spring-cloud-netflix-eureka-client-2.0.0.RELEASE.jar:2.0.0<span style="color: #000000;">.RELEASE]
+    at org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration$RefreshableEurekaClientConfiguration$$EnhancerBySpringCGLIB$$ee9298f0$$FastClassBySpringCGLIB$$c9690964.invoke(</span>&lt;generated&gt;) [spring-cloud-netflix-eureka-client-2.0.0.RELEASE.jar:2.0.0<span style="color: #000000;">.RELEASE]
+    at org.springframework.cglib.proxy.MethodProxy.invokeSuper(MethodProxy.java:</span>228) [spring-core-5.0.7.RELEASE.jar:5.0.7<span style="color: #000000;">.RELEASE]
+    at org.springframework.context.annotation.ConfigurationClassEnhancer$BeanMethodInterceptor.intercept(ConfigurationClassEnhancer.java:</span>361) [spring-context-5.0.7.RELEASE.jar:5.0.7<span style="color: #000000;">.RELEASE]
+    at org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration$RefreshableEurekaClientConfiguration$$EnhancerBySpringCGLIB$$ee9298f0.eurekaClient(</span>&lt;generated&gt;) [spring-cloud-netflix-eureka-client-2.0.0.RELEASE.jar:2.0.0<span style="color: #000000;">.RELEASE]
+
+</span>2019-10-03 17:10:12.759 ERROR 15853 --- [nfoReplicator-0<span style="color: #000000;">] c.n.d.s.t.d.RedirectingEurekaHttpClient  : Request execution error
+
+com.sun.jersey.api.client.ClientHandlerException: java.net.ConnectException: Connection refused (Connection refused)
+    at com.sun.jersey.client.apache4.ApacheHttpClient4Handler.handle(ApacheHttpClient4Handler.java:</span>187) ~[jersey-apache-client4-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.sun.jersey.api.client.filter.GZIPContentEncodingFilter.handle(GZIPContentEncodingFilter.java:</span>123) ~[jersey-client-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.netflix.discovery.EurekaIdentityHeaderFilter.handle(EurekaIdentityHeaderFilter.java:</span>27) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.sun.jersey.api.client.Client.handle(Client.java:</span>652) ~[jersey-client-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.sun.jersey.api.client.WebResource.handle(WebResource.java:</span>682) ~[jersey-client-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.sun.jersey.api.client.WebResource.access$</span>200(WebResource.java:74) ~[jersey-client-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.sun.jersey.api.client.WebResource$Builder.post(WebResource.java:</span>570) ~[jersey-client-1.19.1.jar:1.19.1<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.jersey.AbstractJerseyEurekaHttpClient.register(AbstractJerseyEurekaHttpClient.java:</span>56) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator$</span>1.execute(EurekaHttpClientDecorator.java:59) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.MetricsCollectingEurekaHttpClient.execute(MetricsCollectingEurekaHttpClient.java:</span>73) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.register(EurekaHttpClientDecorator.java:</span>56) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator$</span>1.execute(EurekaHttpClientDecorator.java:59) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.RedirectingEurekaHttpClient.executeOnNewServer(RedirectingEurekaHttpClient.java:</span>118) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.RedirectingEurekaHttpClient.execute(RedirectingEurekaHttpClient.java:</span>79) ~[eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.register(EurekaHttpClientDecorator.java:</span>56) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator$</span>1.execute(EurekaHttpClientDecorator.java:59) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.RetryableEurekaHttpClient.execute(RetryableEurekaHttpClient.java:</span>120) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.register(EurekaHttpClientDecorator.java:</span>56) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator$</span>1.execute(EurekaHttpClientDecorator.java:59) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.SessionedEurekaHttpClient.execute(SessionedEurekaHttpClient.java:</span>77) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.shared.transport.decorator.EurekaHttpClientDecorator.register(EurekaHttpClientDecorator.java:</span>56) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.DiscoveryClient.register(DiscoveryClient.java:</span>829) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at com.netflix.discovery.InstanceInfoReplicator.run(InstanceInfoReplicator.java:</span>121) [eureka-client-1.9.2.jar:1.9.2<span style="color: #000000;">]
+    at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:</span>511) [na:1.8<span style="color: #000000;">.0_151]
+    at java.util.concurrent.FutureTask.run(FutureTask.java:</span>266) [na:1.8<span style="color: #000000;">.0_151]
+    at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$</span>201(ScheduledThreadPoolExecutor.java:180) [na:1.8<span style="color: #000000;">.0_151]
+    at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:</span>293) [na:1.8<span style="color: #000000;">.0_151]
+    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:</span>1149) [na:1.8<span style="color: #000000;">.0_151]
+    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:</span>624) [na:1.8<span style="color: #000000;">.0_151]
+    at java.lang.Thread.run(Thread.java:</span>748) [na:1.8.0_151]</code></pre>
+
+<p>这是因为这里为了后续演示扩容方便，peer1的fetchRegistry及fetchRegistry的属性设置为true的缘故，如果是standalone的eureka server，不想看到这个错误，可以自行设置为false。</p>
+<p>访问：localhost:8761<img src="./images/Eureka【Eureka Server在线扩容】0.png" alt="" /></p>
+<p>可以看到，此时eureka-server已经有了三个实例。</p>
+<p>启动eureka-client命令：</p>
+<p>　　mvn spring-boot:run</p>
+<p>访问：localhost:8081/query/eureka-server/<img src="./images/Eureka【Eureka Server在线扩容】1.png" alt="" /></p>
+<p>&nbsp;可以看到，得到是三个server实例，为了方便这里使用的是native的profile，如果有修改文件，需要重启后才能生效，如果使用的是git仓库或者是GitHub仓库，则无需重启config-server。&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

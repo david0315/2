@@ -1,0 +1,78 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JavaWeb问题记录——SessionIdGeneratorBase.createSecureRandom' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JavaWeb问题记录——SessionIdGeneratorBase.createSecureRandom</center></div><div class='banquan'>原文出处:本文由博客园博主鲨猫提供。<br/>
+原文连接:https://www.cnblogs.com/shamao/p/11944619.html</div><br>
+    <h1>JavaWeb问题记录&mdash;&mdash;SessionIdGeneratorBase.createSecureRandom</h1>
+<p>摘要：本文主要记录了在启动Tomcat时，出现的一个警告以及解决办法。</p>
+<p>部分内容来自以下博客：</p>
+<p>https://www.jianshu.com/p/30aa8e43a396</p>
+<p>http://hongjiang.info/jvm-random-and-entropy-source</p>
+<h2>问题重现</h2>
+<p>启动Tomcat时，后台打印警告：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> 27-Nov-2019 17:26:48.057 警告 [main] org.apache.catalina.util.SessionIdGeneratorBase.createSecureRandom Creation of SecureRandom instance for session ID generation using [SHA1PRNG] took [280] milliseconds.</code></pre>
+
+<p>Java的版本是1.8，Tomcat的版本是9.0.29。</p>
+<h2>解决办法</h2>
+<h3>修改Java的配置文件</h3>
+<p>在Java的安装目录下，找到&nbsp;<span class="cnblogs_code">jre\lib\security</span>&nbsp;目录，打开&nbsp;<span class="cnblogs_code">java.security</span>&nbsp;文件，找到如下配置：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> securerandom.source=file:/dev/random</code></pre>
+
+<p>改为：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> securerandom.source=file:/dev/./urandom</code></pre>
+
+<p>保存，然后重启Tomcat服务器即可，不建议使用这种方式，存在失败的情况。</p>
+<h3>修改Java运行环境的配置文件</h3>
+<p>在Tomcat的安装目录下，找到&nbsp;<span class="cnblogs_code">bin</span>&nbsp;目录，打开&nbsp;<span class="cnblogs_code">catalina.sh</span>&nbsp;文件，添加如下配置：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> JAVA_OPTS="$JAVA_OPTS&nbsp;-Djava.security.egd=file:/dev/./urandom"</code></pre>
+
+<p>保存，然后重启Tomcat服务器即可，建议使用这种方式，这也是官方推荐的方式。</p>
+<h2>问题说明</h2>
+<h3>从Tomcat的优化说起</h3>
+<p>在Tomcat的文档里面提到了一些启动时的优化项，其中一项是关于随机数生成时，采用了Entropy Source（熵源）的策略：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #000000;">Tomcat 7+ heavily relies on SecureRandom class to provide random values for its session ids and in other places. Depending on your JRE it can cause delays during startup if entropy source that is used to initialize SecureRandom is short of entropy. You will see warning in the logs when this happens, e.g.:
+</span><span style="color: #008080;">2</span> <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">DATE</span><span style="color: #0000ff;">&gt;</span><span style="color: #000000;"> org.apache.catalina.util.SessionIdGenerator createSecureRandom
+</span><span style="color: #008080;">3</span> INFO: Creation of SecureRandom instance for session ID generation using [SHA1PRNG] took [5172] milliseconds.</code></pre>
+
+<p>意思是说，Tomcat在7以后的版本里十分依赖SecureRandom类生成的随机数来做为session ID，如果用于初始化SecureRandom的熵源是个短熵（熵不够用），那么就会报文章开头说的警告了。</p>
+<h3>熵源</h3>
+<p>熵的概念最早起源于物理学，用于度量物体的混乱程度。在信息论里面，熵用来描述不确定度。</p>
+<p>熵源在类Unix系统中是一个特殊的设备文件，可以用作随机数发生器或伪随机数发生器，与之相关的是&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;和&nbsp;<span class="cnblogs_code">/dev/urandom</span>&nbsp;。</p>
+<p>熵源&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;是一个阻塞发生器，在读取时，&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;设备会返回小于熵池噪声总数的随机字节。&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;可生成高随机性的公钥或一次性密码本。若熵池空了，对&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;的读操作将会被阻塞，直到收集到了足够的环境噪声为止。</p>
+<p>而熵源&nbsp;<span class="cnblogs_code">/dev/urandom</span>&nbsp;则是一个非阻塞的发生器，是&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;的一个副本，它会重复使用熵池中的数据以产生伪随机数据。这表示对&nbsp;<span class="cnblogs_code">/dev/urandom</span>&nbsp;的读取操作不会产生阻塞，但其输出的熵可能小于&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;输出的熵。它可以作为生成较低强度密码的伪随机数生成器，不建议用于生成高强度长期密码。</p>
+<h3>Java中的相关配置</h3>
+<p>在Java的安装目录下，找到&nbsp;<span class="cnblogs_code">jre\lib\security</span>&nbsp;目录，打开&nbsp;<span class="cnblogs_code">java.security</span>&nbsp;文件，里面提到了SecureRandom类使用SHA1PRNG算法或NativePRNG算法生成随机数。</p>
+<p>在类Unix系统（比如Solaris/Linux/MacOS）上它们是基于某种特殊的熵收集设备作为种子来生成的随机数，如前面提到的&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;。</p>
+<p>在Windows系统上，如果指定的是&nbsp;<span class="cnblogs_code">file:/dev/random</span>&nbsp;或&nbsp;<span class="cnblogs_code">file:/dev/urandom</span>&nbsp;，那么会使用微软的CryptoAPI作为SHA1PRNG算法的种子产生器。</p>
+<p>通过配置&nbsp;<span class="cnblogs_code">java.security.egd</span>&nbsp;和&nbsp;<span class="cnblogs_code">securerandom.source</span>&nbsp;可以指定使用的熵收集设备，配置&nbsp;<span class="cnblogs_code">java.security.egd</span>&nbsp;会覆盖&nbsp;<span class="cnblogs_code">securerandom.source</span>&nbsp;。</p>
+<h3>官方建议</h3>
+<p>在Tomcat的文档里也给出了建议，那就是在Java的运行环境里通过设置&nbsp;<span class="cnblogs_code">java.security.egd</span>&nbsp;系统属性来使用非阻塞的熵源：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> -Djava.security.egd=file:/dev/./urandom</code></pre>
+
+<p>至于为什么是&nbsp;<span class="cnblogs_code">/dev/./urandom</span>&nbsp;，而不是&nbsp;<span class="cnblogs_code">/dev/urandom</span>&nbsp;，这源于Java的一个bug。大意是&nbsp;<span class="cnblogs_code">/dev/urandom</span>&nbsp;在某些情况下可能还是最终会转换成调用&nbsp;<span class="cnblogs_code">/dev/random</span>&nbsp;。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

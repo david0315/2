@@ -1,0 +1,313 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Hystrix工作流程解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Hystrix工作流程解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11790390.html</div><br>
+    <h5 id="搭建hystrix源码阅读环境">搭建Hystrix源码阅读环境</h5>
+<p>引入依赖</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;com.netflix.hystrix&lt;/groupId&gt;
+            &lt;artifactId&gt;hystrix-core&lt;/artifactId&gt;
+            &lt;version&gt;1.5.12&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>创建<code>Command</code>类</p>
+<pre><code><code>public class HelloCommand extends HystrixCommand&lt;String&gt; {
+
+    public HelloCommand() {
+        super(HystrixCommandGroupKey.Factory.asKey(&quot;test&quot;));
+    }
+
+    @Override
+    protected String run() throws Exception {
+        Thread.sleep(800);
+        return &quot;sucess&quot;;
+    }
+
+    @Override
+    protected String getFallback() {
+        System.out.println(&quot;执行了回退方法&quot;);
+        return &quot;error&quot;;
+    }
+
+}</code></code></pre>
+<p>创建测试类</p>
+<pre><code><code>public class CommandTest {
+    public static void main(String[] args) {
+        HelloCommand command = new HelloCommand();
+        String result = command.execute();
+        System.out.println(result);
+    }
+}
+</code></code></pre>
+<h5 id="hystrix工作流程">Hystrix工作流程</h5>
+<p><img src="./images/Hystrix工作流程解析0.png" alt="file" /></p>
+<p>首先我们看一下上方的这张图，这个图完整的描述了Hystrix的工作流程：<br />
+1.每次调用都会创建一个HystrixCommand<br />
+2.执行execute或queue做同步\异步调用<br />
+3.判断熔断器是否打开,如果打开跳到步骤8，否则进入步骤4<br />
+4.判断线程池/信号量是否跑满，如果跑满进入步骤8,否则进入步骤5<br />
+5.调用HystrixCommand的run方法，如果调用超时进入步骤8<br />
+6.判断是否调用成功，返回成功调用结果，如果失败进入步骤8<br />
+7.计算熔断器状态,所有的运行状态(成功, 失败, 拒绝,超时)上报给熔断器，用于统计从而判断熔断器状态<br />
+8.降级处理逻辑，根据上方的步骤可以得出以下四种情况会进入降级处理：</p>
+<ol>
+<li>熔断器打开</li>
+<li>线程池/信号量跑满</li>
+<li>调用超时</li>
+<li>调用失败</li>
+</ol>
+<p>9.返回执行成功结果</p>
+<h6 id="创建hystrixcommand">创建<code>HystrixCommand</code></h6>
+<p>接着我们结合源码看一下这个调用流程，直接执行测试类的main方法，可以看到入口就在<code>execute</code>方法上</p>
+<pre><code><code>    public R execute() {
+        try {
+            return queue().get();
+        } catch (Exception e) {
+            throw Exceptions.sneakyThrow(decomposeException(e));
+        }
+    }</code></code></pre>
+<h6 id="执行同步方法">执行同步方法</h6>
+<pre><code><code>public Future&lt;R&gt; queue() {
+        final Future&lt;R&gt; delegate = toObservable().toBlocking().toFuture();
+        //省略。。。
+};</code></code></pre>
+<p>接着看<code>toObservable()</code>方法</p>
+<pre><code><code> public Observable&lt;R&gt; toObservable() {
+        //省略。。。
+        return Observable.defer(new Func0&lt;Observable&lt;R&gt;&gt;() {
+            @Override
+            public Observable&lt;R&gt; call() {
+                if (!commandState.compareAndSet(CommandState.NOT_STARTED, CommandState.OBSERVABLE_CHAIN_CREATED)) {
+                    IllegalStateException ex = new IllegalStateException(&quot;This instance can only be executed once. Please instantiate a new instance.&quot;);
+                    //TODO make a new error type for this
+                    throw new HystrixRuntimeException(FailureType.BAD_REQUEST_EXCEPTION, _cmd.getClass(), getLogMessagePrefix() + &quot; command executed multiple times - this is not permitted.&quot;, ex, null);
+                }
+
+                commandStartTimestamp = System.currentTimeMillis();
+
+                if (properties.requestLogEnabled().get()) {
+                    // log this command execution regardless of what happened
+                    if (currentRequestLog != null) {
+                        currentRequestLog.addExecutedCommand(_cmd);
+                    }
+                }
+
+                final boolean requestCacheEnabled = isRequestCachingEnabled();
+                final String cacheKey = getCacheKey();
+                //如果开启请求缓存则查询缓存是否存在
+                if (requestCacheEnabled) {
+                    HystrixCommandResponseFromCache&lt;R&gt; fromCache = (HystrixCommandResponseFromCache&lt;R&gt;) requestCache.get(cacheKey);
+                    if (fromCache != null) {
+                        isResponseFromCache = true;
+                        return handleRequestCacheHitAndEmitValues(fromCache, _cmd);
+                    }
+                }
+
+                Observable&lt;R&gt; hystrixObservable =
+                        Observable.defer(applyHystrixSemantics)
+                                .map(wrapWithAllOnNextHooks);
+
+                Observable&lt;R&gt; afterCache;
+
+                if (requestCacheEnabled &amp;&amp; cacheKey != null) { 
+                    HystrixCachedObservable&lt;R&gt; toCache = HystrixCachedObservable.from(hystrixObservable, _cmd);
+                    HystrixCommandResponseFromCache&lt;R&gt; fromCache = (HystrixCommandResponseFromCache&lt;R&gt;) requestCache.putIfAbsent(cacheKey, toCache);
+                    if (fromCache != null) {
+                        // another thread beat us so we&#39;ll use the cached value instead
+                        toCache.unsubscribe();
+                        isResponseFromCache = true;
+                        return handleRequestCacheHitAndEmitValues(fromCache, _cmd);
+                    } else {
+                        // we just created an ObservableCommand so we cast and return it
+                        afterCache = toCache.toObservable();
+                    }
+                } else {
+                    afterCache = hystrixObservable;
+                }
+
+                return afterCache
+                        .doOnTerminate(terminateCommandCleanup)     // perform cleanup once (either on normal terminal state (this line), or unsubscribe (next line))
+                        .doOnUnsubscribe(unsubscribeCommandCleanup) // perform cleanup once
+                        .doOnCompleted(fireOnCompletedHook);
+            }
+        });
+    }</code></code></pre>
+<p>在上面这个方法中会有一个缓存的判断，如果存在缓存的话直接返回结果，否则进入方法<code>applyHystrixSemantics</code>方法</p>
+<h6 id="判断熔断器和线程池以及信号量">判断熔断器和线程池以及信号量</h6>
+<pre><code><code>private Observable&lt;R&gt; applyHystrixSemantics(final AbstractCommand&lt;R&gt; _cmd) {
+        executionHook.onStart(_cmd);
+
+        /* determine if we&#39;re allowed to execute */
+        //判断是否开启熔断器
+        if (circuitBreaker.attemptExecution()) {
+            //获取信号量实例
+            final TryableSemaphore executionSemaphore = getExecutionSemaphore();
+            final AtomicBoolean semaphoreHasBeenReleased = new AtomicBoolean(false);
+            final Action0 singleSemaphoreRelease = new Action0() {
+                @Override
+                public void call() {
+                    if (semaphoreHasBeenReleased.compareAndSet(false, true)) {
+                        executionSemaphore.release();
+                    }
+                }
+            };
+
+            final Action1&lt;Throwable&gt; markExceptionThrown = new Action1&lt;Throwable&gt;() {
+                @Override
+                public void call(Throwable t) {
+                    eventNotifier.markEvent(HystrixEventType.EXCEPTION_THROWN, commandKey);
+                }
+            };
+            //尝试获取信号量
+            if (executionSemaphore.tryAcquire()) {
+                try {
+                    /* used to track userThreadExecutionTime */
+                    executionResult = executionResult.setInvocationStartTime(System.currentTimeMillis());
+                    return executeCommandAndObserve(_cmd)
+                            .doOnError(markExceptionThrown)
+                            .doOnTerminate(singleSemaphoreRelease)
+                            .doOnUnsubscribe(singleSemaphoreRelease);
+                } catch (RuntimeException e) {
+                    return Observable.error(e);
+                }
+            } else {
+                //拒绝
+                return handleSemaphoreRejectionViaFallback();
+            }
+        } else {
+            //失败
+            return handleShortCircuitViaFallback();
+        }
+    }</code></code></pre>
+<p>在<code>applyHystrixSemantics</code>方法中，首先会判断是否开启熔断器，如果开启则直接进入失败处理的逻辑。否则会尝试获取信号量（如果使用的是线程池的模式则默认获取成功），获取成功进入<code>executeCommandAndObserve</code>方法</p>
+<h6 id="判断超时">判断超时</h6>
+<pre><code><code>private Observable&lt;R&gt; executeCommandAndObserve(final AbstractCommand&lt;R&gt; _cmd) {
+        final HystrixRequestContext currentRequestContext = HystrixRequestContext.getContextForCurrentThread();
+        //省略...
+
+        //判断是否开启超时设置
+        if (properties.executionTimeoutEnabled().get()) {
+           //list添加超时操作
+            execution = executeCommandWithSpecifiedIsolation(_cmd)
+                    .lift(new HystrixObservableTimeoutOperator&lt;R&gt;(_cmd));
+        } else {
+            execution = executeCommandWithSpecifiedIsolation(_cmd);
+        }</code></code></pre>
+<p>这里如果设置超时时间的话则会加上一个超时的处理，接着看<code>executeCommandWithSpecifiedIsolation</code>方法</p>
+<pre><code><code>private Observable&lt;R&gt; executeCommandWithSpecifiedIsolation(final AbstractCommand&lt;R&gt; _cmd) {
+        if (properties.executionIsolationStrategy().get() == ExecutionIsolationStrategy.THREAD) {
+            return Observable.defer(new Func0&lt;Observable&lt;R&gt;&gt;() {
+                @Override
+                public Observable&lt;R&gt; call() {
+                    executionResult = executionResult.setExecutionOccurred();
+                    if (!commandState.compareAndSet(CommandState.OBSERVABLE_CHAIN_CREATED, CommandState.USER_CODE_EXECUTED)) {
+                        return Observable.error(new IllegalStateException(&quot;execution attempted while in state : &quot; + commandState.get().name()));
+                    }
+                    metrics.markCommandStart(commandKey, threadPoolKey, ExecutionIsolationStrategy.THREAD);
+
+                    if (isCommandTimedOut.get() == TimedOutStatus.TIMED_OUT) {
+                        return Observable.error(new RuntimeException(&quot;timed out before executing run()&quot;));
+                    }
+                    if (threadState.compareAndSet(ThreadState.NOT_USING_THREAD, ThreadState.STARTED)) {
+                        HystrixCounters.incrementGlobalConcurrentThreads();
+                        threadPool.markThreadExecution();
+                        // store the command that is being run
+                        endCurrentThreadExecutingCommand = Hystrix.startCurrentThreadExecutingCommand(getCommandKey());
+                        executionResult = executionResult.setExecutedInThread();
+
+                        try {
+                            executionHook.onThreadStart(_cmd);
+                            executionHook.onRunStart(_cmd);
+                            executionHook.onExecutionStart(_cmd);
+                            return getUserExecutionObservable(_cmd);
+                        } catch (Throwable ex) {
+                            return Observable.error(ex);
+                        }
+                    } else {
+                        return Observable.empty();
+                    }
+                }
+            }).doOnTerminate(new Action0() {
+                @Override
+                public void call() {
+                    if (threadState.compareAndSet(ThreadState.STARTED, ThreadState.TERMINAL)) {
+                        handleThreadEnd(_cmd);
+                    }
+                    if (threadState.compareAndSet(ThreadState.NOT_USING_THREAD, ThreadState.TERMINAL)) {
+                    }
+                }
+            }).doOnUnsubscribe(new Action0() {
+                @Override
+                public void call() {
+                    if (threadState.compareAndSet(ThreadState.STARTED, ThreadState.UNSUBSCRIBED)) {
+                        handleThreadEnd(_cmd);
+                    }
+                    if (threadState.compareAndSet(ThreadState.NOT_USING_THREAD, ThreadState.UNSUBSCRIBED)) {
+                    }
+                }
+            }).subscribeOn(threadPool.getScheduler(new Func0&lt;Boolean&gt;() {
+                @Override
+                public Boolean call() {
+                    return properties.executionIsolationThreadInterruptOnTimeout().get() &amp;&amp; _cmd.isCommandTimedOut.get() == TimedOutStatus.TIMED_OUT;
+                }
+            }));
+        } else {
+            return Observable.defer(new Func0&lt;Observable&lt;R&gt;&gt;() {
+                @Override
+                public Observable&lt;R&gt; call() {
+                    executionResult = executionResult.setExecutionOccurred();
+                    if (!commandState.compareAndSet(CommandState.OBSERVABLE_CHAIN_CREATED, CommandState.USER_CODE_EXECUTED)) {
+                        return Observable.error(new IllegalStateException(&quot;execution attempted while in state : &quot; + commandState.get().name()));
+                    }
+
+                    metrics.markCommandStart(commandKey, threadPoolKey, ExecutionIsolationStrategy.SEMAPHORE);
+                    // semaphore isolated
+                    // store the command that is being run
+                    endCurrentThreadExecutingCommand = Hystrix.startCurrentThreadExecutingCommand(getCommandKey());
+                    try {
+                        executionHook.onRunStart(_cmd);
+                        executionHook.onExecutionStart(_cmd);
+                        return getUserExecutionObservable(_cmd);  //the getUserExecutionObservable method already wraps sync exceptions, so this shouldn&#39;t throw
+                    } catch (Throwable ex) {
+                        //If the above hooks throw, then use that as the result of the run method
+                        return Observable.error(ex);
+                    }
+                }
+            });
+        }
+    }</code></code></pre>
+<p>这段代码比较长，具体的执行逻辑为：</p>
+<ol>
+<li>进入方法会首先判断隔离策略，如果是使用的信号量模式则在当前线程上执行，否则进入下方的线程池逻辑</li>
+<li>更改HystrixCommand的状态为USER_CODE_EXECUTED</li>
+<li>判断HystrixCommand的超时状态，如果超时则抛出异常</li>
+<li>更改当前command的线程执行状态为STARTED</li>
+<li>调用getUserExecutionObservable执行具体的业务逻辑，也就是我们实现的那个run方法</li>
+<li>doOnTerminate：执行完毕后更改线程状态为TERMINAL</li>
+<li>doOnUnsubscribe：当Observable被取消订阅，更改线程状态为TERMINAL</li>
+<li>subscribeOn：指定scheduler</li>
+</ol>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

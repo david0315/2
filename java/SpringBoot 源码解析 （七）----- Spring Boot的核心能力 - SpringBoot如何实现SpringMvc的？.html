@@ -1,0 +1,660 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot 源码解析 （七）----- Spring Boot的核心能力 - SpringBoot如何实现SpringMvc的？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot 源码解析 （七）----- Spring Boot的核心能力 - SpringBoot如何实现SpringMvc的？</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11842611.html</div><br>
+    <p>上一篇我们讲了SpringBoot中Tomcat的启动过程，本篇我们接着讲在SpringBoot中如何向Tomcat中添加Servlet、Filter、Listener</p>
+<h2 id="自定义Servlet、Filter、Listener">自定义Servlet、Filter、Listener</h2>
+<h3>Spring容器中声明ServletRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean</h3>
+<src class="cnblogs_code">
+<pre><code><strong><span style="color: #000000;">@Bean
+</span></strong><span style="color: #0000ff;">public</span><span style="color: #000000;"> ServletRegistrationBean customServlet() {
+    </span><span style="color: #0000ff;">return</span> <strong><span style="color: #0000ff;">new</span> ServletRegistrationBean(<span style="color: #0000ff;">new</span> CustomServlet(), "/custom"</strong><span style="color: #000000;"><strong>);</strong>
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> <strong>CustomServlet</strong> <span style="color: #0000ff;">extends</span><span style="color: #000000;"> HttpServlet {
+    @Override
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> service(HttpServletRequest req, HttpServletResponse resp) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+        resp.getWriter().write(</span>"receive by custom servlet"<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>先自定义一个<strong>Servlet，重写</strong>service实现自己的业务逻辑，然后通过@Bean注解往Spring容器中注入一个<strong>ServletRegistrationBean类型的bean实例，并且实例化一个自定义的Servlet作为参数，这样就将自定义的Servlet加入Tomcat中了。</strong></p>
+<h3>@ServletComponentScan注解和@WebServlet、@WebFilter以及@WebListener注解配合使用</h3>
+<p>@ServletComponentScan注解启用ImportServletComponentScanRegistrar类，是个ImportBeanDefinitionRegistrar接口的实现类，会被Spring容器所解析。ServletComponentScanRegistrar内部会解析@ServletComponentScan注解，然后会在Spring容器中注册ServletComponentRegisteringPostProcessor，是个BeanFactoryPostProcessor，会去解析扫描出来的类是不是有@WebServlet、@WebListener、@WebFilter这3种注解，有的话把这3种类型的类转换成ServletRegistrationBean、FilterRegistrationBean或者ServletListenerRegistrationBean，然后让Spring容器去解析：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@SpringBootApplication
+<strong>@ServletComponentScan
+</strong></span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> EmbeddedServletApplication {
+ ... 
+}
+
+<strong>@WebServlet(urlPatterns </strong></span><strong>= "/simple"<span style="color: #000000;">)
+</span></strong><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> SimpleServlet <span style="color: #0000ff;">extends</span><span style="color: #000000;"> HttpServlet {
+
+    @Override
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> service(HttpServletRequest req, HttpServletResponse resp) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException, IOException {
+        resp.getWriter().write(</span>"receive by SimpleServlet"<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<h3>在Spring容器中声明Servlet、Filter或者Listener</h3>
+<src class="cnblogs_code">
+<pre><code><strong>@Bean(name = "dispatcherServlet"<span style="color: #000000;">)
+</span></strong><span style="color: #0000ff;">public</span><span style="color: #000000;"> DispatcherServlet myDispatcherServlet() {
+    </span><strong><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> DispatcherServlet();</strong>
+}</span></code></pre>
+
+<p>我们发现往Tomcat中添加Servlet、Filter或者Listener还是挺容易的，大家还记得以前SpringMVC是怎么配置<strong>DispatcherServlet</strong>的吗？在web.xml中：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>dispatcher<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span><strong>org.springframework.web.servlet.DispatcherServlet</strong><span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">init-param</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">param-name</span><span style="color: #0000ff;">&gt;</span>contextConfigLocation<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">param-name</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">param-value</span><span style="color: #0000ff;">&gt;</span>classpath:spring-mvc.xml<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">param-value</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">init-param</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>1<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>dispatcher<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>/<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>和我们SpringBoot中配置Servlet相比是不是复杂很多，虽然SpringBoot中自定义Servlet很简单，但是其底层却不简单，下面我们来分析一下其原理</p>
+<h2>ServletRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean</h2>
+<p>我们来看看这几个特殊的类:</p>
+<h3><strong>ServletRegistrationBean</strong></h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ServletRegistrationBean <span style="color: #0000ff;">extends</span><span style="color: #000000;"> RegistrationBean {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">存放目标Servlet实例</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Servlet servlet;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存放Servlet的urlMapping</span>
+    <span style="color: #0000ff;">private</span> Set&lt;String&gt;<span style="color: #000000;"> urlMappings;
+    </span></strong><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> alwaysMapUrl;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> loadOnStartup;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MultipartConfigElement multipartConfig;
+
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ServletRegistrationBean(Servlet servlet, String... urlMappings) {
+        </span><span style="color: #0000ff;">this</span>(servlet, <span style="color: #0000ff;">true</span><span style="color: #000000;">, urlMappings);
+    }
+
+    </span><span style="color: #0000ff;">public</span> ServletRegistrationBean(Servlet servlet, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> alwaysMapUrl, String... urlMappings) {
+        </span><span style="color: #0000ff;">this</span>.urlMappings = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedHashSet();
+        </span><span style="color: #0000ff;">this</span>.alwaysMapUrl = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">this</span>.loadOnStartup = -1<span style="color: #000000;">;
+        Assert.notNull(servlet, </span>"Servlet must not be null"<span style="color: #000000;">);
+        Assert.notNull(urlMappings, </span>"UrlMappings must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.servlet =<span style="color: #000000;"> servlet;
+        </span><span style="color: #0000ff;">this</span>.alwaysMapUrl =<span style="color: #000000;"> alwaysMapUrl;
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.urlMappings.addAll(Arrays.asList(urlMappings));
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+        Assert.notNull(</span><span style="color: #0000ff;">this</span>.servlet, "Servlet must not be null"<span style="color: #000000;">);
+        String name </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getServletName();
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.isEnabled()) {
+            logger.info(</span>"Servlet " + name + " was not registered (disabled)"<span style="color: #000000;">);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            logger.info(</span>"Mapping servlet: '" + name + "' to " + <span style="color: #0000ff;">this</span><span style="color: #000000;">.urlMappings);
+            Dynamic added </span>= servletContext.addServlet(name, <span style="color: #0000ff;">this</span><span style="color: #000000;">.servlet);
+            </span><span style="color: #0000ff;">if</span> (added == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                logger.info(</span>"Servlet " + name + " was not registered (possibly already registered?)"<span style="color: #000000;">);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.configure(added);
+            }
+        }
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略</span>
+}</code></pre>
+
+<p>在我们例子中我们通过return new ServletRegistrationBean(new CustomServlet(), "/custom");就知道，ServletRegistrationBean里会存放目标Servlet实例和urlMapping,并且继承RegistrationBean这个类</p>
+<h3><strong>FilterRegistrationBean</strong></h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> FilterRegistrationBean <span style="color: #0000ff;">extends</span><span style="color: #000000;"><strong> AbstractFilterRegistrationBean</strong> {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">存放目标Filter对象</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Filter filter;
+
+    </span></strong><span style="color: #0000ff;">public</span><span style="color: #000000;"> FilterRegistrationBean() {
+        </span><span style="color: #0000ff;">super</span>(<span style="color: #0000ff;">new</span> ServletRegistrationBean[0<span style="color: #000000;">]);
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> FilterRegistrationBean(Filter filter, ServletRegistrationBean... servletRegistrationBeans) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(servletRegistrationBeans);
+        Assert.notNull(filter, </span>"Filter must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.filter =<span style="color: #000000;"> filter;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Filter getFilter() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.filter;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setFilter(Filter filter) {
+        Assert.notNull(filter, </span>"Filter must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.filter =<span style="color: #000000;"> filter;
+    }
+}
+
+</span><span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractFilterRegistrationBean<strong> <span style="color: #0000ff;">extends</span></strong><span style="color: #000000;"><strong> RegistrationBean</strong> {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> EnumSet&lt;DispatcherType&gt;<span style="color: #000000;"> ASYNC_DISPATCHER_TYPES;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> EnumSet&lt;DispatcherType&gt;<span style="color: #000000;"> NON_ASYNC_DISPATCHER_TYPES;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> String[] DEFAULT_URL_MAPPINGS;
+    </span><span style="color: #0000ff;">private</span> Set&lt;ServletRegistrationBean&gt; servletRegistrationBeans = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedHashSet();
+    </span><span style="color: #0000ff;">private</span> Set&lt;String&gt; servletNames = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedHashSet();
+    </span><span style="color: #0000ff;">private</span> Set&lt;String&gt; urlPatterns = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedHashSet();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">重写onStartup方法</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+        Filter filter </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getFilter();
+        Assert.notNull(filter, </span>"Filter must not be null"<span style="color: #000000;">);
+        String name </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getOrDeduceName(filter);
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.isEnabled()) {
+            </span><span style="color: #0000ff;">this</span>.logger.info("Filter " + name + " was not registered (disabled)"<span style="color: #000000;">);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            Dynamic added </span>=<span style="color: #000000;"> servletContext.addFilter(name, filter);
+            </span><span style="color: #0000ff;">if</span> (added == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">this</span>.logger.info("Filter " + name + " was not registered (possibly already registered?)"<span style="color: #000000;">);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.configure(added);
+            }
+        }
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略...</span>
+}</code></pre>
+
+<p>我们看到FilterRegistrationBean 中也保存了<strong>目标Filter对象，并且继承了</strong><strong>RegistrationBean</strong></p>
+<h3><strong>ServletListenerRegistrationBean</strong></h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ServletListenerRegistrationBean&lt;T <span style="color: #0000ff;">extends</span> EventListener&gt; <span style="color: #0000ff;">extends</span><span style="color: #000000;"> RegistrationBean {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存放了目标listener</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> T listener;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ServletListenerRegistrationBean() {
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ServletListenerRegistrationBean(T listener) {
+        Assert.notNull(listener, </span>"Listener must not be null"<span style="color: #000000;">);
+        Assert.isTrue(isSupportedType(listener), </span>"Listener is not of a supported type"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.listener =<span style="color: #000000;"> listener;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setListener(T listener) {
+        Assert.notNull(listener, </span>"Listener must not be null"<span style="color: #000000;">);
+        Assert.isTrue(isSupportedType(listener), </span>"Listener is not of a supported type"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.listener =<span style="color: #000000;"> listener;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.isEnabled()) {
+            logger.info(</span>"Listener " + <span style="color: #0000ff;">this</span>.listener + " was not registered (disabled)"<span style="color: #000000;">);
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                servletContext.addListener(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.listener);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (RuntimeException var3) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalStateException("Failed to add listener '" + <span style="color: #0000ff;">this</span>.listener + "' to servlet context"<span style="color: #000000;">, var3);
+            }
+        }
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略...</span>
+}</code></pre>
+
+<p>ServletListenerRegistrationBean也是一样，那我们来看看RegistrationBean这个类</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> <strong>RegistrationBean <span style="color: #0000ff;">implements</span></strong><span style="color: #000000;"><strong> ServletContextInitializer</strong>, Ordered {
+    ...
+}
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"><strong> ServletContextInitializer</strong> {
+    </span><strong><span style="color: #0000ff;">void</span> onStartup(ServletContext var1) <span style="color: #0000ff;">throws</span></strong><span style="color: #000000;"><strong> ServletException;</strong>
+}</span></code></pre>
+
+<p>我们发现<strong>RegistrationBean 实现了</strong><strong>ServletContextInitializer这个接口，并且有一个onStartup方法，</strong>ServletRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean都实现了<strong>onStartup方法。</strong></p>
+<p><strong><code>ServletContextInitializer</code>是 Servlet 容器初始化的时候，提供的初始化接口。所以，Servlet 容器初始化会获取并触发所有的<code>FilterRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean<strong>实例中<strong><code><strong>onStartup方法</strong></code></strong></strong></code><br /></strong></p>
+<p>那到底是何时触发这些类的onStartup方法呢？</p>
+<p><strong><img src="./images/SpringBoot 源码解析 （七）----- Spring Boot的核心能力 - SpringBoot如何实现SpringMvc的？0.png" alt="" /></strong></p>
+<p>当Tomcat容器启动时，会执行<code>callInitializers</code>，然后获取所有的<strong><code>ServletContextInitializer，循环执行</code></strong><code>onStartup</code>方法触发回调方法。那<code>FilterRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean实例是何时加入到</code>Initializers集合的呢？这要回顾一下我们上一篇文章Tomcat的启动过程</p>
+<h2>Servlet容器的启动</h2>
+<p>大家可以看看我上一篇文章，我这里简单的复制一下代码</p>
+<p><strong>EmbeddedWebApplicationContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Override
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onRefresh() {
+</span><span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">super</span><span style="color: #000000;">.onRefresh();
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;"> 5</span>         <span style="color: #008000;">//</span><span style="color: #008000;">核心方法：会获取嵌入式的Servlet容器工厂，并通过工厂来获取Servlet容器</span>
+<span style="color: #008080;"> 6</span> <span style="color: #000000;">        createEmbeddedServletContainer();
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable ex) {
+</span><span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ApplicationContextException("Unable to start embedded container"<span style="color: #000000;">, ex);
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">12</span> 
+<span style="color: #008080;">13</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> createEmbeddedServletContainer() {
+</span><span style="color: #008080;">14</span>     EmbeddedServletContainer localContainer = <span style="color: #0000ff;">this</span><span style="color: #000000;">.embeddedServletContainer;
+</span><span style="color: #008080;">15</span>     ServletContext localServletContext =<span style="color: #000000;"> getServletContext();
+</span><span style="color: #008080;">16</span>     <span style="color: #0000ff;">if</span> (localContainer == <span style="color: #0000ff;">null</span> &amp;&amp; localServletContext == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">17</span>         <span style="color: #008000;">//</span><span style="color: #008000;">先获取嵌入式Servlet容器工厂</span>
+<span style="color: #008080;">18</span>         EmbeddedServletContainerFactory containerFactory =<span style="color: #000000;"> getEmbeddedServletContainerFactory();
+</span><span style="color: #008080;">19</span>        <strong> <span style="color: #008000;">//</span><span style="color: #008000;">根据容器工厂来获取对应的嵌入式Servlet容器</span>
+<span style="color: #008080;">20</span>         <span style="color: #0000ff;">this</span>.embeddedServletContainer =<span style="color: #000000;"> containerFactory.getEmbeddedServletContainer(getSelfInitializer());
+</span></strong><span style="color: #008080;">21</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">22</span>     <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (localServletContext != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">23</span>         <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">            getSelfInitializer().onStartup(localServletContext);
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">26</span>         <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ServletException ex) {
+</span><span style="color: #008080;">27</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ApplicationContextException("Cannot initialize servlet context"<span style="color: #000000;">,ex);
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">    initPropertySources();
+</span><span style="color: #008080;">31</span> }</code></pre>
+
+<p>关键代码在第20行，先通过getSelfInitializer()获取到所有的Initializer，传入Servlet容器中，那核心就在getSelfInitializer()方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">private</span><span style="color: #000000;"> ServletContextInitializer getSelfInitializer() {
+</span><span style="color: #008080;">2</span>     <span style="color: #008000;">//</span><span style="color: #008000;">只是创建了一个ServletContextInitializer实例返回
+</span><span style="color: #008080;">3</span>     <span style="color: #008000;">//</span><span style="color: #008000;">所以Servlet容器启动的时候，会调用这个对象的onStartup方法</span>
+<span style="color: #008080;">4</span>     <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> ServletContextInitializer</strong>() {
+</span><span style="color: #008080;">5</span>        <strong> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+</span><span style="color: #008080;">6</span>             EmbeddedWebApplicationContext.<span style="color: #0000ff;">this</span><span style="color: #000000;">.selfInitialize(servletContext);
+</span><span style="color: #008080;">7</span> <span style="color: #000000;">        }
+</span></strong><span style="color: #008080;">8</span> <span style="color: #000000;">    };
+</span><span style="color: #008080;">9</span> }</code></pre>
+
+<p>我们看到只是创建了一个ServletContextInitializer实例返回，所以Servlet容器启动的时候，会调用这个对象的onStartup方法，那我们来分析其onStartup中的逻辑，也就是selfInitialize方法，并将Servlet上下文对象传进去了</p>
+<p><strong>selfInitialize</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> selfInitialize(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">    prepareWebApplicationContext(servletContext);
+</span><span style="color: #008080;"> 3</span>     ConfigurableListableBeanFactory beanFactory =<span style="color: #000000;"> getBeanFactory();
+</span><span style="color: #008080;"> 4</span>     ExistingWebApplicationScopes existingScopes = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ExistingWebApplicationScopes(beanFactory);
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">    WebApplicationContextUtils.registerWebApplicationScopes(beanFactory,getServletContext());
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    existingScopes.restore();
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    WebApplicationContextUtils.registerEnvironmentBeans(beanFactory,getServletContext());
+</span><span style="color: #008080;"> 8</span>    <strong> <span style="color: #008000;">//</span><span style="color: #008000;">这里便是获取所有的 ServletContextInitializer 实现类，会获取所有的注册组件</span>
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">for</span><span style="color: #000000;"> (ServletContextInitializer beans : getServletContextInitializerBeans()) {
+</span><span style="color: #008080;">10</span>         <span style="color: #008000;">//</span><span style="color: #008000;">执行所有ServletContextInitializer的onStartup方法</span>
+<span style="color: #008080;">11</span> <span style="color: #000000;">        beans.onStartup(servletContext);
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">    }
+</span></strong><span style="color: #008080;">13</span> }</code></pre>
+
+<p>关键代码在第9和第11行，先获取所有的ServletContextInitializer&nbsp;实现类，然后遍历执行所有ServletContextInitializer的onStartup方法</p>
+<h3><strong>获取所有的ServletContextInitializer</strong></h3>
+<p>我们来看看getServletContextInitializerBeans方法<strong><br /></strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> Collection&lt;ServletContextInitializer&gt;<span style="color: #000000;"> getServletContextInitializerBeans() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"><strong> ServletContextInitializerBeans(getBeanFactory())</strong>;
+}</span></code></pre>
+
+<p>ServletContextInitializerBeans对象是对<code>ServletContextInitializer</code>的一种包装：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ServletContextInitializerBeans <span style="color: #0000ff;">extends</span> AbstractCollection&lt;ServletContextInitializer&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MultiValueMap&lt;Class&lt;?&gt;, ServletContextInitializer&gt; initializers = <span style="color: #0000ff;">new</span><span style="color: #000000;"> LinkedMultiValueMap();
+</span><strong><span style="color: #008080;"> 3</span>     <span style="color: #008000;">//</span><span style="color: #008000;">存放所有的ServletContextInitializer</span>
+<span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">private</span> List&lt;ServletContextInitializer&gt;<span style="color: #000000;"> sortedList;
+</span></strong><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>    <strong> <span style="color: #0000ff;">public</span><span style="color: #000000;"> ServletContextInitializerBeans(ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;"> 7</span>         <span style="color: #008000;">//</span><span style="color: #008000;">执行addServletContextInitializerBeans</span>
+<span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">this</span><span style="color: #000000;">.addServletContextInitializerBeans(beanFactory);
+</span><span style="color: #008080;"> 9</span>         <span style="color: #008000;">//</span><span style="color: #008000;">执行addAdaptableBeans</span>
+<span style="color: #008080;">10</span>         <span style="color: #0000ff;">this</span><span style="color: #000000;">.addAdaptableBeans(beanFactory);
+</span><span style="color: #008080;">11</span>         List&lt;ServletContextInitializer&gt; sortedInitializers = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayList();
+</span><span style="color: #008080;">12</span>         Iterator var3 = <span style="color: #0000ff;">this</span><span style="color: #000000;">.initializers.entrySet().iterator();
+</span><span style="color: #008080;">13</span> 
+<span style="color: #008080;">14</span>         <span style="color: #0000ff;">while</span><span style="color: #000000;">(var3.hasNext()) {
+</span><span style="color: #008080;">15</span>             Entry&lt;?, List&lt;ServletContextInitializer&gt;&gt; entry =<span style="color: #000000;"> (Entry)var3.next();
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            AnnotationAwareOrderComparator.sort((List)entry.getValue());
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">            sortedInitializers.addAll((Collection)entry.getValue());
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">this</span>.sortedList =<span style="color: #000000;"> Collections.unmodifiableList(sortedInitializers);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">    }
+</span></strong><span style="color: #008080;">21</span> 
+<span style="color: #008080;">22</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addServletContextInitializerBeans(ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;">23</span>         Iterator var2 = <span style="color: #0000ff;">this</span>.getOrderedBeansOfType(beanFactory, ServletContextInitializer.<span style="color: #0000ff;">class</span><span style="color: #000000;">).iterator();
+</span><span style="color: #008080;">24</span> 
+<span style="color: #008080;">25</span>         <span style="color: #0000ff;">while</span><span style="color: #000000;">(var2.hasNext()) {
+</span><span style="color: #008080;">26</span>             Entry&lt;String, ServletContextInitializer&gt; initializerBean =<span style="color: #000000;"> (Entry)var2.next();
+</span><span style="color: #008080;">27</span>             <span style="color: #0000ff;">this</span><span style="color: #000000;">.addServletContextInitializerBean((String)initializerBean.getKey(), (ServletContextInitializer)initializerBean.getValue(), beanFactory);
+</span><span style="color: #008080;">28</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">29</span> 
+<span style="color: #008080;">30</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">31</span> 
+<span style="color: #008080;">32</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addServletContextInitializerBean(String beanName, ServletContextInitializer initializer, ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;">33</span>         <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ServletRegistrationBean) {
+</span><span style="color: #008080;">34</span>             Servlet source =<span style="color: #000000;"> ((ServletRegistrationBean)initializer).getServlet();
+</span><span style="color: #008080;">35</span>             <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Servlet.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">36</span>         } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> FilterRegistrationBean) {
+</span><span style="color: #008080;">37</span>             Filter source =<span style="color: #000000;"> ((FilterRegistrationBean)initializer).getFilter();
+</span><span style="color: #008080;">38</span>             <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Filter.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">39</span>         } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> DelegatingFilterProxyRegistrationBean) {
+</span><span style="color: #008080;">40</span>             String source =<span style="color: #000000;"> ((DelegatingFilterProxyRegistrationBean)initializer).getTargetBeanName();
+</span><span style="color: #008080;">41</span>             <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Filter.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">42</span>         } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ServletListenerRegistrationBean) {
+</span><span style="color: #008080;">43</span>             EventListener source =<span style="color: #000000;"> ((ServletListenerRegistrationBean)initializer).getListener();
+</span><span style="color: #008080;">44</span>             <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(EventListener.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">45</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">46</span>             <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(ServletContextInitializer.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, initializer);
+</span><span style="color: #008080;">47</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">48</span> 
+<span style="color: #008080;">49</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">50</span> 
+<span style="color: #008080;">51</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> addServletContextInitializerBean(Class&lt;?&gt;<span style="color: #000000;"> type, String beanName, ServletContextInitializer initializer, ListableBeanFactory beanFactory, Object source) {
+</span><span style="color: #008080;">52</span>         <span style="color: #0000ff;">this</span><span style="color: #000000;">.initializers.add(type, initializer);
+</span><span style="color: #008080;">53</span>         <span style="color: #0000ff;">if</span> (source != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">54</span>             <span style="color: #0000ff;">this</span><span style="color: #000000;">.seen.add(source);
+</span><span style="color: #008080;">55</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">56</span> 
+<span style="color: #008080;">57</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+</span><span style="color: #008080;">58</span>             String resourceDescription = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getResourceDescription(beanName, beanFactory);
+</span><span style="color: #008080;">59</span>             <span style="color: #0000ff;">int</span> order = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getOrder(initializer);
+</span><span style="color: #008080;">60</span>             logger.debug("Added existing " + type.getSimpleName() + " initializer bean '" + beanName + "'; order=" + order + ", resource=" +<span style="color: #000000;"> resourceDescription);
+</span><span style="color: #008080;">61</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">62</span> 
+<span style="color: #008080;">63</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">64</span> 
+<span style="color: #008080;">65</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addAdaptableBeans(ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;">66</span>         MultipartConfigElement multipartConfig = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getMultipartConfig(beanFactory);
+</span><span style="color: #008080;">67</span>         <span style="color: #0000ff;">this</span>.addAsRegistrationBean(beanFactory, Servlet.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServletContextInitializerBeans.ServletRegistrationBeanAdapter(multipartConfig));
+</span><span style="color: #008080;">68</span>         <span style="color: #0000ff;">this</span>.addAsRegistrationBean(beanFactory, Filter.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">new</span> ServletContextInitializerBeans.FilterRegistrationBeanAdapter(<span style="color: #0000ff;">null</span><span style="color: #000000;">));
+</span><span style="color: #008080;">69</span>         Iterator var3 =<span style="color: #000000;"> ServletListenerRegistrationBean.getSupportedTypes().iterator();
+</span><span style="color: #008080;">70</span> 
+<span style="color: #008080;">71</span>         <span style="color: #0000ff;">while</span><span style="color: #000000;">(var3.hasNext()) {
+</span><span style="color: #008080;">72</span>             Class&lt;?&gt; listenerType =<span style="color: #000000;"> (Class)var3.next();
+</span><span style="color: #008080;">73</span>             <span style="color: #0000ff;">this</span>.addAsRegistrationBean(beanFactory, EventListener.<span style="color: #0000ff;">class</span>, listenerType, <span style="color: #0000ff;">new</span> ServletContextInitializerBeans.ServletListenerRegistrationBeanAdapter(<span style="color: #0000ff;">null</span><span style="color: #000000;">));
+</span><span style="color: #008080;">74</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">75</span> 
+<span style="color: #008080;">76</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">77</span>     
+<span style="color: #008080;">78</span>     <span style="color: #0000ff;">public</span> Iterator&lt;ServletContextInitializer&gt;<span style="color: #000000;"> iterator() {
+</span><span style="color: #008080;">79</span>         <span style="color: #008000;">//</span><span style="color: #008000;">返回所有的ServletContextInitializer</span>
+<span style="color: #008080;">80</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.sortedList.iterator();
+</span><span style="color: #008080;">81</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">82</span> 
+<span style="color: #008080;">83</span>     <span style="color: #008000;">//</span><span style="color: #008000;">略...</span>
+<span style="color: #008080;">84</span> }</code></pre>
+
+<p>我们看到ServletContextInitializerBeans 中有一个存放所有ServletContextInitializer的集合sortedList，就是在其构造方法中获取所有的ServletContextInitializer，并放入sortedList集合中，那我们来看看其构造方法的逻辑，看到第8行先调用</p>
+<p>addServletContextInitializerBeans方法：　　</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addServletContextInitializerBeans(ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;">2</span>     <span style="color: #008000;">//</span><span style="color: #008000;">从Spring容器中获取所有ServletContextInitializer.class 类型的Bean</span>
+<span style="color: #008080;">3</span>     <span style="color: #0000ff;">for</span> (Entry&lt;String, ServletContextInitializer&gt; initializerBean : <strong>getOrderedBeansOfType(beanFactory, ServletContextInitializer.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>)</strong>) {
+</span><span style="color: #008080;">4</span>         <strong><span style="color: #008000;">//</span><span style="color: #008000;">添加到具体的集合中</span>
+<span style="color: #008080;">5</span> <span style="color: #000000;">        addServletContextInitializerBean(initializerBean.getKey(),initializerBean.getValue(), beanFactory);
+</span></strong><span style="color: #008080;">6</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">7</span> }</code></pre>
+
+<p>我们看到先从Spring容器中获取所有<strong>ServletContextInitializer.class</strong> 类型的Bean，这里我们自定义的ServletRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean就被获取到了，然后调用addServletContextInitializerBean方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addServletContextInitializerBean(String beanName, ServletContextInitializer initializer, ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #008000;">//</span><span style="color: #008000;">判断ServletRegistrationBean类型</span>
+<span style="color: #008080;"> 3</span>     <strong><span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ServletRegistrationBean) {
+</span></strong><span style="color: #008080;"> 4</span>         Servlet source =<span style="color: #000000;"> ((ServletRegistrationBean)initializer).getServlet();
+</span><span style="color: #008080;"> 5</span>        <strong> <span style="color: #008000;">//</span><span style="color: #008000;">将ServletRegistrationBean加入到集合中</span>
+<span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Servlet.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span></strong><span style="color: #008080;"> 7</span>     <span style="color: #008000;">//</span><span style="color: #008000;">判断FilterRegistrationBean类型</span>
+<span style="color: #008080;"> 8</span>     <strong>} <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> FilterRegistrationBean) {
+</span></strong><span style="color: #008080;"> 9</span>         Filter source =<span style="color: #000000;"> ((FilterRegistrationBean)initializer).getFilter();
+</span><span style="color: #008080;">10</span>        <strong> <span style="color: #008000;">//</span><span style="color: #008000;">将ServletRegistrationBean加入到集合中</span>
+<span style="color: #008080;">11</span>         <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Filter.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span></strong><span style="color: #008080;">12</span>     } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> DelegatingFilterProxyRegistrationBean) {
+</span><span style="color: #008080;">13</span>         String source =<span style="color: #000000;"> ((DelegatingFilterProxyRegistrationBean)initializer).getTargetBeanName();
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(Filter.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">15</span>     } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (initializer <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ServletListenerRegistrationBean) {
+</span><span style="color: #008080;">16</span>         EventListener source =<span style="color: #000000;"> ((ServletListenerRegistrationBean)initializer).getListener();
+</span><span style="color: #008080;">17</span>         <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(EventListener.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, source);
+</span><span style="color: #008080;">18</span>     } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">this</span>.addServletContextInitializerBean(ServletContextInitializer.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanName, initializer, beanFactory, initializer);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">21</span> 
+<span style="color: #008080;">22</span> <span style="color: #000000;">}
+</span><span style="color: #008080;">23</span> 
+<span style="color: #008080;">24</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> addServletContextInitializerBean(Class&lt;?&gt;<span style="color: #000000;"> type, String beanName, 
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">                            ServletContextInitializer initializer, ListableBeanFactory beanFactory, Object source) {
+</span><span style="color: #008080;">26</span>     <span style="color: #008000;">//</span><span style="color: #008000;">加入到initializers中</span>
+<span style="color: #008080;">27</span>     <span style="color: #0000ff;">this</span><span style="color: #000000;">.initializers.add(type, initializer);
+</span><span style="color: #008080;">28</span> }</code></pre>
+
+<p>很明显，判断从Spring容器中获取的ServletContextInitializer类型，如ServletRegistrationBean、FilterRegistrationBean、ServletListenerRegistrationBean，并加入到initializers集合中去，我们再来看构造器中的另外一个方法<strong>addAdaptableBeans(beanFactory)：</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addAdaptableBeans(ListableBeanFactory beanFactory) {
+</span><span style="color: #008080;"> 2</span>   <strong>  <span style="color: #008000;">//</span><span style="color: #008000;">从beanFactory获取所有Servlet.class和Filter.class类型的Bean，并封装成RegistrationBean对象，加入到集合中</span></strong>
+<span style="color: #008080;"> 3</span>     <span style="color: #0000ff;">this</span>.addAsRegistrationBean(beanFactory,<strong> Servlet.<span style="color: #0000ff;">class</span></strong>, <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServletContextInitializerBeans.<strong>ServletRegistrationBeanAdapter</strong>(multipartConfig));
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">this</span>.addAsRegistrationBean(beanFactory,<strong> Filter.<span style="color: #0000ff;">class</span></strong>, <span style="color: #0000ff;">new</span> ServletContextInitializerBeans.<strong>FilterRegistrationBeanAdapter</strong>(<span style="color: #0000ff;">null</span><span style="color: #000000;">));
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span> <span style="color: #0000ff;">private</span> &lt;T, B <span style="color: #0000ff;">extends</span> T&gt; <span style="color: #0000ff;">void</span> addAsRegistrationBean(ListableBeanFactory beanFactory, Class&lt;T&gt; type, Class&lt;B&gt; beanType, ServletContextInitializerBeans.RegistrationBeanAdapter&lt;T&gt;<span style="color: #000000;"> adapter) {
+</span><span style="color: #008080;"> 8</span><strong>     <span style="color: #008000;">//</span><span style="color: #008000;">从Spring容器中获取所有的Servlet.class和Filter.class类型的Bean</span>
+<span style="color: #008080;"> 9</span>     List&lt;Entry&lt;String, B&gt;&gt; beans = <span style="color: #0000ff;">this</span>.getOrderedBeansOfType(beanFactory, beanType, <span style="color: #0000ff;">this</span><span style="color: #000000;">.seen);
+</span></strong><span style="color: #008080;">10</span>     Iterator var6 =<span style="color: #000000;"> beans.iterator();
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>     <span style="color: #0000ff;">while</span><span style="color: #000000;">(var6.hasNext()) {
+</span><span style="color: #008080;">13</span>         Entry&lt;String, B&gt; bean =<span style="color: #000000;"> (Entry)var6.next();
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.seen.add(bean.getValue())) {
+</span><span style="color: #008080;">15</span>             <span style="color: #0000ff;">int</span> order = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getOrder(bean.getValue());
+</span><span style="color: #008080;">16</span>             String beanName =<span style="color: #000000;"> (String)bean.getKey();
+</span><span style="color: #008080;">17</span>           <strong>  <span style="color: #008000;">//</span><span style="color: #008000;">创建Servlet.class和Filter.class包装成RegistrationBean对象</span>
+<span style="color: #008080;">18</span>             RegistrationBean registration =<span style="color: #000000;"> adapter.createRegistrationBean(beanName, bean.getValue(), beans.size());
+</span></strong><span style="color: #008080;">19</span> <span style="color: #000000;">            registration.setName(beanName);
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">            registration.setOrder(order);
+</span><span style="color: #008080;">21</span>          <strong>   <span style="color: #0000ff;">this</span><span style="color: #000000;">.initializers.add(type, registration);
+</span></strong><span style="color: #008080;">22</span>             <span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+</span><span style="color: #008080;">23</span>                 logger.debug("Created " + type.getSimpleName() + " initializer for bean '" + beanName + "'; order=" + order + ", resource=" + <span style="color: #0000ff;">this</span><span style="color: #000000;">.getResourceDescription(beanName, beanFactory));
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">27</span> 
+<span style="color: #008080;">28</span> }</code></pre>
+
+<p>我们看到先从beanFactory获取所有Servlet.class和Filter.class类型的Bean，然后通过<strong>ServletRegistrationBeanAdapter和</strong><strong>FilterRegistrationBeanAdapter两个适配器将Servlet.class和Filter.class封装成</strong><strong>RegistrationBean</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> ServletRegistrationBeanAdapter <span style="color: #0000ff;">implements</span> ServletContextInitializerBeans.RegistrationBeanAdapter&lt;Servlet&gt;<span style="color: #000000;"> {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> MultipartConfigElement multipartConfig;
+
+    ServletRegistrationBeanAdapter(MultipartConfigElement multipartConfig) {
+        </span><span style="color: #0000ff;">this</span>.multipartConfig =<span style="color: #000000;"> multipartConfig;
+    }
+
+    </span><span style="color: #0000ff;">public</span> RegistrationBean createRegistrationBean(String name, Servlet source, <span style="color: #0000ff;">int</span><span style="color: #000000;"> totalNumberOfSourceBeans) {
+        String url </span>= totalNumberOfSourceBeans == 1 ? "/" : "/" + name + "/"<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (name.equals("dispatcherServlet"<span style="color: #000000;">)) {
+            url </span>= "/"<span style="color: #000000;">;
+        }
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">还是将Servlet.class实例封装成ServletRegistrationBean对象
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">这和我们自己创建ServletRegistrationBean对象是一模一样的</span>
+        ServletRegistrationBean bean = <span style="color: #0000ff;">new</span> ServletRegistrationBean(source, <span style="color: #0000ff;">new</span><span style="color: #000000;"> String[]{url});
+        bean.setMultipartConfig(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.multipartConfig);
+        </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> FilterRegistrationBeanAdapter <span style="color: #0000ff;">implements</span> ServletContextInitializerBeans.RegistrationBeanAdapter&lt;Filter&gt;<span style="color: #000000;"> {
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> FilterRegistrationBeanAdapter() {
+    }
+
+    </span><span style="color: #0000ff;">public</span> RegistrationBean createRegistrationBean(String name, Filter source, <span style="color: #0000ff;">int</span><span style="color: #000000;"> totalNumberOfSourceBeans) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">Filter.class实例封装成FilterRegistrationBean对象</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> FilterRegistrationBean(source, <span style="color: #0000ff;">new</span> ServletRegistrationBean[0</strong><span style="color: #000000;"><strong>]);</strong>
+    }
+}</span></code></pre>
+
+<p>代码中注释很清楚了还是将Servlet.class实例封装成ServletRegistrationBean对象，将Filter.class实例封装成FilterRegistrationBean对象，这和我们自己定义ServletRegistrationBean对象是一模一样的，现在所有的ServletRegistrationBean、FilterRegistrationBean</p>
+<p>Servlet.class、Filter.class都添加到List&lt;ServletContextInitializer&gt; sortedList这个集合中去了，接着就是遍历这个集合，执行其<strong>onStartup</strong>方法了</p>
+<p><img src="./images/SpringBoot 源码解析 （七）----- Spring Boot的核心能力 - SpringBoot如何实现SpringMvc的？1.png" alt="" /></p>
+<h3>ServletContextInitializer的<strong>onStartup</strong>方法</h3>
+<p><strong>ServletRegistrationBean </strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ServletRegistrationBean <span style="color: #0000ff;">extends</span><span style="color: #000000;"> RegistrationBean {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> Log logger = LogFactory.getLog(ServletRegistrationBean.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String[] DEFAULT_MAPPINGS = <span style="color: #0000ff;">new</span> String[]{"/*"<span style="color: #000000;">};
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Servlet servlet;
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+        Assert.notNull(</span><span style="color: #0000ff;">this</span>.servlet, "Servlet must not be null"<span style="color: #000000;">);
+        String name </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getServletName();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">调用ServletContext的addServlet</span>
+        Dynamic added = servletContext.addServlet(name, <span style="color: #0000ff;">this</span><span style="color: #000000;">.servlet);
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">略...</span>
+<span style="color: #000000;">}
+
+</span><span style="color: #0000ff;">private</span> javax.servlet.ServletRegistration.Dynamic addServlet(String servletName, String servletClass, Servlet servlet, Map&lt;String, String&gt; initParams) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IllegalStateException {
+    </span><span style="color: #0000ff;">if</span> (servletName != <span style="color: #0000ff;">null</span> &amp;&amp; !servletName.equals(""<span style="color: #000000;">)) {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.context.getState().equals(LifecycleState.STARTING_PREP)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalStateException(sm.getString("applicationContext.addServlet.ise", <span style="color: #0000ff;">new</span> Object[]{<span style="color: #0000ff;">this</span><span style="color: #000000;">.getContextPath()}));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            Wrapper wrapper </span>= (Wrapper)<span style="color: #0000ff;">this</span><span style="color: #000000;">.context.findChild(servletName);
+            </span><span style="color: #0000ff;">if</span> (wrapper == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                wrapper </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.context.createWrapper();
+                wrapper.setName(servletName);
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.context.addChild(wrapper);
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (wrapper.getName() != <span style="color: #0000ff;">null</span> &amp;&amp; wrapper.getServletClass() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">wrapper.isOverridable()) {
+                    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                }
+
+                wrapper.setOverridable(</span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+            }
+
+            </span><span style="color: #0000ff;">if</span> (servlet == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                wrapper.setServletClass(servletClass);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                wrapper.setServletClass(servlet.getClass().getName());
+                wrapper.setServlet(servlet);
+            }
+
+            </span><span style="color: #0000ff;">if</span> (initParams != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                Iterator i$ </span>=<span style="color: #000000;"> initParams.entrySet().iterator();
+
+                </span><span style="color: #0000ff;">while</span><span style="color: #000000;">(i$.hasNext()) {
+                    Entry</span>&lt;String, String&gt; initParam =<span style="color: #000000;"> (Entry)i$.next();
+                    wrapper.addInitParameter((String)initParam.getKey(), (String)initParam.getValue());
+                }
+            }
+
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.context.dynamicServletAdded(wrapper);
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException(sm.getString("applicationContext.invalidServletName", <span style="color: #0000ff;">new</span><span style="color: #000000;"> Object[]{servletName}));
+    }
+}</span></code></pre>
+
+<p>看到没，ServletRegistrationBean 中的&nbsp;onStartup先获取Servlet的name，然后调用ServletContext的addServlet将Servlet加入到Tomcat中，这样我们就能发请求给这个Servlet了。</p>
+<p><strong>AbstractFilterRegistrationBean</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> onStartup(ServletContext servletContext) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> ServletException {
+    Filter filter </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getFilter();
+    Assert.notNull(filter, </span>"Filter must not be null"<span style="color: #000000;">);
+ <strong>   String name </strong></span><strong>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.getOrDeduceName(filter);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">调用ServletContext的addFilter</span>
+    Dynamic added =</strong><span style="color: #000000;"><strong> servletContext.addFilter(name, filter);</strong>
+}</span></code></pre>
+
+<p>AbstractFilterRegistrationBean也是同样的原理，先获取目标Filter，然后调用ServletContext的<strong>addFilter</strong>将Filter加入到Tomcat中，这样Filter就能拦截我们请求了。</p>
+<h2>DispatcherServletAutoConfiguration</h2>
+<src>
+<src>最熟悉的莫过于，在Spring Boot在自动配置SpringMVC的时候，会自动注册SpringMVC前端控制器：<strong>DispatcherServlet</strong>，该控制器主要在<strong>DispatcherServletAutoConfiguration</strong>自动配置类中进行注册的。DispatcherServlet是SpringMVC中的核心分发器。DispatcherServletAutoConfiguration也在spring.factories中配置了
+<src><img src="./images/SpringBoot 源码解析 （七）----- Spring Boot的核心能力 - SpringBoot如何实现SpringMvc的？2.png" alt="" />
+<p><strong>DispatcherServletConfiguration </strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Configuration
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">@ConditionalOnWebApplication
+</span><span style="color: #008080;"> 3</span><strong> <span style="color: #008000;">//</span><span style="color: #008000;"> 先看下ClassPath下是否有DispatcherServlet.class字节码
+</span><span style="color: #008080;"> 4</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 我们引入了spring-boot-starter-web，同时引入了tomcat和SpringMvc,肯定会存在DispatcherServlet.class字节码</span>
+<span style="color: #008080;"> 5</span> @ConditionalOnClass({DispatcherServlet.<span style="color: #0000ff;">class</span><span style="color: #000000;">})
+</span></strong><span style="color: #008080;"> 6</span> <strong><span style="color: #008000;">//</span><span style="color: #008000;"> 这个配置类的执行要在EmbeddedServletContainerAutoConfiguration配置类生效之后执行
+</span><span style="color: #008080;"> 7</span> <span style="color: #008000;">//</span><span style="color: #008000;"> 毕竟要等Tomcat启动后才能往其中注入DispatcherServlet</span>
+<span style="color: #008080;"> 8</span> @AutoConfigureAfter({EmbeddedServletContainerAutoConfiguration.<span style="color: #0000ff;">class</span><span style="color: #000000;">})
+</span></strong><span style="color: #008080;"> 9</span> <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> DispatcherServletConfiguration {
+</span><span style="color: #008080;">10</span>   <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String <strong>DEFAULT_DISPATCHER_SERVLET_BEAN_NAME</strong> = "<strong>dispatcherServlet</strong>"<span style="color: #000000;">;
+</span><span style="color: #008080;">11</span>   <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String <strong>DEFAULT_DISPATCHER_SERVLET_REGISTRATION_BEAN_NAME = "dispatcherServletRegistration"<span style="color: #000000;">;
+</span></strong><span style="color: #008080;">12</span> <span style="color: #000000;">  @Autowired
+</span><span style="color: #008080;">13</span>   <span style="color: #0000ff;">private</span><span style="color: #000000;"> ServerProperties server;
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span> <span style="color: #000000;">  @Autowired
+</span><span style="color: #008080;">16</span>   <span style="color: #0000ff;">private</span><span style="color: #000000;"> WebMvcProperties webMvcProperties;
+</span><span style="color: #008080;">17</span> 
+<span style="color: #008080;">18</span>   @Autowired(required = <span style="color: #0000ff;">false</span><span style="color: #000000;">)
+</span><span style="color: #008080;">19</span>   <span style="color: #0000ff;">private</span><span style="color: #000000;"> MultipartConfigElement multipartConfig;
+</span><span style="color: #008080;">20</span> 
+<span style="color: #008080;">21</span>  <strong> <span style="color: #008000;">//</span><span style="color: #008000;"> Spring容器注册DispatcherServlet</span>
+<span style="color: #008080;">22</span>   @Bean(name =<span style="color: #000000;"> DEFAULT_DISPATCHER_SERVLET_BEAN_NAME)
+</span></strong><span style="color: #008080;">23</span>   <span style="color: #0000ff;">public</span><span style="color: #000000;"> DispatcherServlet dispatcherServlet() {
+</span><span style="color: #008080;">24</span>   <strong>  <span style="color: #008000;">//</span><span style="color: #008000;"> 直接构造DispatcherServlet，并设置WebMvcProperties中的一些配置</span>
+<span style="color: #008080;">25</span>     DispatcherServlet dispatcherServlet = <span style="color: #0000ff;">new</span><span style="color: #000000;"> DispatcherServlet();
+</span></strong><span style="color: #008080;">26</span>     dispatcherServlet.setDispatchOptionsRequest(<span style="color: #0000ff;">this</span><span style="color: #000000;">.webMvcProperties.isDispatchOptionsRequest());
+</span><span style="color: #008080;">27</span>     dispatcherServlet.setDispatchTraceRequest(<span style="color: #0000ff;">this</span><span style="color: #000000;">.webMvcProperties.isDispatchTraceRequest());
+</span><span style="color: #008080;">28</span>     dispatcherServlet.setThrowExceptionIfNoHandlerFound(<span style="color: #0000ff;">this</span><span style="color: #000000;">.webMvcProperties.isThrowExceptionIfNoHandlerFound());
+</span><span style="color: #008080;">29</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> dispatcherServlet;
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">  }
+</span><span style="color: #008080;">31</span> 
+<span style="color: #008080;">32</span>   @Bean(name =<span style="color: #000000;"><strong> DEFAULT_DISPATCHER_SERVLET_REGISTRATION_BEAN_NAME</strong>)
+</span><span style="color: #008080;">33</span>   <span style="color: #0000ff;">public</span><span style="color: #000000;"><strong> ServletRegistrationBean</strong> dispatcherServletRegistration() {
+</span><span style="color: #008080;">34</span>    <strong> <span style="color: #008000;">//</span><span style="color: #008000;"> 直接使用DispatcherServlet和server配置中的servletPath路径构造ServletRegistrationBean
+</span><span style="color: #008080;">35</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> ServletRegistrationBean实现了ServletContextInitializer接口，在onStartup方法中对应的Servlet注册到Servlet容器中
+</span><span style="color: #008080;">36</span>     <span style="color: #008000;">//</span><span style="color: #008000;"> 所以这里DispatcherServlet会被注册到Servlet容器中，对应的urlMapping为server.servletPath配置</span>
+<span style="color: #008080;">37</span>     ServletRegistrationBean registration = <span style="color: #0000ff;">new</span> ServletRegistrationBean(dispatcherServlet(), <span style="color: #0000ff;">this</span><span style="color: #000000;">.server.getServletMapping());
+</span></strong><span style="color: #008080;">38</span> <span style="color: #000000;">    registration.setName(DEFAULT_DISPATCHER_SERVLET_BEAN_NAME);
+</span><span style="color: #008080;">39</span>     <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.multipartConfig != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">40</span>       registration.setMultipartConfig(<span style="color: #0000ff;">this</span><span style="color: #000000;">.multipartConfig);
+</span><span style="color: #008080;">41</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">42</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> registration;
+</span><span style="color: #008080;">43</span> <span style="color: #000000;">  }
+</span><span style="color: #008080;">44</span> 
+<span style="color: #008080;">45</span>   @Bean <span style="color: #008000;">//</span><span style="color: #008000;"> 构造文件上传相关的bean</span>
+<span style="color: #008080;">46</span>   @ConditionalOnBean(MultipartResolver.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span><span style="color: #008080;">47</span>   @ConditionalOnMissingBean(name =<span style="color: #000000;"> DispatcherServlet.MULTIPART_RESOLVER_BEAN_NAME)
+</span><span style="color: #008080;">48</span>   <span style="color: #0000ff;">public</span><span style="color: #000000;"> MultipartResolver multipartResolver(MultipartResolver resolver) {
+</span><span style="color: #008080;">49</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> resolver;
+</span><span style="color: #008080;">50</span> <span style="color: #000000;">  }
+</span><span style="color: #008080;">51</span> 
+<span style="color: #008080;">52</span> }</code></pre>
+
+
+<src>
+<p>先看下ClassPath下是否有DispatcherServlet.class字节码， 我们引入了spring-boot-starter-web，同时引入了tomcat和SpringMvc,肯定会存在DispatcherServlet.class字节码，如果没有导入spring-boot-starter-web，则这个配置类将不会生效</p>
+<p>然后往Spring容器中注册DispatcherServlet实例，接着又加入ServletRegistrationBean实例，并把DispatcherServlet实例作为参数，上面我们已经学过了ServletRegistrationBean的逻辑，在Tomcat启动的时候，会获取所有的ServletRegistrationBean，并执行其中的onstartup方法，将DispatcherServlet注册到Servlet容器中，这样就类似原来的web.xml中配置的dispatcherServlet。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>dispatcherServlet<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span>org.springframework.web.servlet.DispatcherServlet<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-class</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>1<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">load-on-startup</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>dispatcherServlet<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-name</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>/<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">url-pattern</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">servlet-mapping</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>所以只要导入了spring-boot-starter-web这个starter，SpringBoot就有了Tomcat容器，并且往Tomcat容器中注册了DispatcherServlet对象，这样就能接收到我们的请求了</p>
+
+<src>
+<h2 id="h-24">日常求赞</h2>
+<p>好了各位，以上就是这篇文章的全部内容了，能看到这里的人呀，都是<strong>人才</strong>。</p>
+<p>如果这个文章写得还不错，觉得学到了一点东西的话&nbsp;<strong>求点赞👍</strong>&nbsp;对我来说真的&nbsp;<strong>非常有用</strong>！！！</p>
+<p>创作不易，各位的支持和认可，就是我创作的最大动力，我们下篇文章见！</p>
+
+<src>&nbsp;
+<src>&nbsp;
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

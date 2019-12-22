@@ -1,0 +1,139 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Maven项目配置Logback输出JSON格式日志' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Maven项目配置Logback输出JSON格式日志</center></div><div class='banquan'>原文出处:本文由博客园博主从此寂静无声提供。<br/>
+原文连接:https://www.cnblogs.com/jason1990/p/11469881.html</div><br>
+    <p>最近，项目提出需求，日志需要固定输出为<code>JSON</code>格式，以便后端<code>Flink</code>程序解析.</p>
+<h2 id="项目背景">项目背景</h2>
+<p>项目为简单的<code>Maven</code>项目，日志由<code>Filebeat</code>采集，因此不需要配置输出至<code>Logstash</code>.<br />
+下面为<code>pom.xml</code>文件中配置的依赖，此处使用<code>logstash-logback-encoder</code>完成日志格式转换操作.</p>
+<pre><code><code>       &lt;dependency&gt;
+            &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
+            &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
+            &lt;version&gt;1.7.28&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;net.logstash.logback&lt;/groupId&gt;
+            &lt;artifactId&gt;logstash-logback-encoder&lt;/artifactId&gt;
+            &lt;version&gt;6.1&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;ch.qos.logback&lt;/groupId&gt;
+            &lt;artifactId&gt;logback-classic&lt;/artifactId&gt;
+            &lt;version&gt;1.2.3&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;ch.qos.logback&lt;/groupId&gt;
+            &lt;artifactId&gt;logback-access&lt;/artifactId&gt;
+            &lt;version&gt;1.2.3&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<h2 id="logback配置">Logback配置</h2>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;configuration scan=&quot;true&quot; scanPeriod=&quot;60 seconds&quot; debug=&quot;false&quot;&gt;
+    &lt;contextName&gt;probe&lt;/contextName&gt;
+
+   &lt;!-- 配置文件存储地址  --&gt;
+    &lt;property name=&quot;LOG_PATH&quot; value=&quot;./logs&quot;/&gt;
+
+    &lt;!-- 读取应用程序配置文件中内容，获取下文所需要的region属性 ---&gt;
+    &lt;property resource=&quot;application.properties&quot;/&gt;
+
+    &lt;appender name=&quot;FILE&quot; class=&quot;ch.qos.logback.core.rolling.RollingFileAppender&quot;&gt;
+        &lt;encoder class=&quot;net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder&quot;&gt;
+            &lt;providers class=&quot;net.logstash.logback.composite.loggingevent.LoggingEventJsonProviders&quot;&gt;
+                &lt;pattern&gt;
+                    &lt;pattern&gt;
+                        {
+                        &quot;date&quot;:&quot;%d{yyyy-MM-dd HH:mm:ss.SSS}&quot;,
+                        &quot;level&quot;:&quot;%level&quot;,
+                        &lt;!-- system属性由程序动态确定，通过Slf4j提供的MDC进行具体设置 --&gt;
+                        &quot;system&quot;:&quot;%X{system} &quot;,
+                        &lt;!-- 读取配置文件中的属性，并设置至日志中  --&gt;
+                        &quot;region&quot;:&quot;${application.region}&quot;,
+                        &quot;filepath&quot;:&quot;%class:%line&quot;,
+                        &quot;msg&quot;:&quot;%msg&quot;
+                        }
+                    &lt;/pattern&gt;
+                &lt;/pattern&gt;
+            &lt;/providers&gt;
+            &lt;charset&gt;UTF-8&lt;/charset&gt;
+        &lt;/encoder&gt;
+        &lt;append&gt;true&lt;/append&gt;
+
+        &lt;!--  配置日志文件滚动存储策略 --&gt;
+        &lt;rollingPolicy class=&quot;ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy&quot;&gt;
+            &lt;fileNamePattern&gt;${LOG_PATH}/probe.%d{yyyy-MM-dd}.%i.log&lt;/fileNamePattern&gt;
+            &lt;MaxHistory&gt;10&lt;/MaxHistory&gt;
+            &lt;maxFileSize&gt;10MB&lt;/maxFileSize&gt;
+            &lt;totalSizeCap&gt;300MB&lt;/totalSizeCap&gt;
+        &lt;/rollingPolicy&gt;
+    &lt;/appender&gt;
+
+    &lt;root level=&quot;FILE&quot;&gt;
+        &lt;appender-ref ref=&quot;console&quot;/&gt;
+    &lt;/root&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p>上述即为<code>logback.xml</code>文件中的配置内容，需要注意日志中的<code>region</code>从配置文件<code>application.properties</code>中获取，而<code>system</code>属性则同<code>msg</code>字段一样由程序动态设置.</p>
+<h2 id="mdc设置system属性">MDC设置<code>system</code>属性</h2>
+<pre class="java"><code>    /**
+     * 衡量单次http请求的时延
+     *
+     * @param url 请求地址
+     */
+    private static void measureHttpTimeDelay(String url, Platform platform) {
+        // MDC中设置system属性
+        MDC.put(&quot;system&quot;, platform.toString());
+        OkHttpClient client = new OkHttpClient();
+        client.newBuilder().connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .build();
+        Request request = new Request.Builder().url(url).build();
+        Instant before = Instant.now();
+        try (Response response = client.newCall(request).execute()) {
+            Instant after = Instant.now();
+            if (response.isSuccessful()) {
+                long duration = Duration.between(before, after).toMillis();
+                log.info(&quot;请求成功!&quot; + response.message() + &quot;时延 = &quot; + duration + &quot;ms&quot;);
+            } else {
+                log.info(&quot;请求失败！&quot; + response.message());
+            }
+        } catch (IOException e) {
+            log.error(&quot;get http response failed, url: {}, ex: {}&quot;, url, e.getMessage());
+        }
+        // MDC中清除system属性设置
+        MDC.remove(&quot;system&quot;);
+    }</code></code></pre>
+<p>上述程序，模拟一个简单的<code>http</code>请求，并记录相应日志.<br />
+需要注意，<code>MDC</code>是<code>ThreadLocal</code>实现，因此在多线程环境下使用需要注意.</p>
+<h2 id="最终日志">最终日志</h2>
+<p>最终日志如下图所示：</p>
+<pre><code><code>{&quot;date&quot;:&quot;2019-09-05 21:16:44.643&quot;,&quot;level&quot;:&quot;INFO&quot;,&quot;system&quot;:&quot;ALI_YUN &quot;,&quot;region&quot;:&quot;HUABEI&quot;,&quot;filepath&quot;:&quot;com.test.Application:38&quot;,&quot;msg&quot;:&quot;请求成功!OK时延 = 439ms&quot;}
+{&quot;date&quot;:&quot;2019-09-05 21:16:45.326&quot;,&quot;level&quot;:&quot;INFO&quot;,&quot;system&quot;:&quot;HUAWEI_YUN &quot;,&quot;region&quot;:&quot;HUABEI&quot;,&quot;filepath&quot;:&quot;com.test.Application:38&quot;,&quot;msg&quot;:&quot;请求成功!OK时延 = 165ms&quot;}
+{&quot;date&quot;:&quot;2019-09-05 21:16:46.513&quot;,&quot;level&quot;:&quot;INFO&quot;,&quot;system&quot;:&quot;ALI_YUN &quot;,&quot;region&quot;:&quot;HUABEI&quot;,&quot;filepath&quot;:&quot;com.test.Application:38&quot;,&quot;msg&quot;:&quot;请求成功!OK时延 = 485ms&quot;}
+{&quot;date&quot;:&quot;2019-09-05 21:16:56.130&quot;,&quot;level&quot;:&quot;INFO&quot;,&quot;system&quot;:&quot;HUAWEI_YUN &quot;,&quot;region&quot;:&quot;HUABEI&quot;,&quot;filepath&quot;:&quot;com.test.Application:38&quot;,&quot;msg&quot;:&quot;请求成功!OK时延 = 419ms&quot;}</code></code></pre>
+<blockquote>
+<p>PS:<br />
+如果您觉得我的文章对您有帮助，请关注我的微信公众号，谢谢!<br />
+<img src="./images/Maven项目配置Logback输出JSON格式日志0.png" alt="程序员打怪之路" /></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

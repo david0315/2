@@ -1,0 +1,160 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot Actuator 整合 Prometheus' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot Actuator 整合 Prometheus</center></div><div class='banquan'>原文出处:本文由博客园博主程序员果果提供。<br/>
+原文连接:https://www.cnblogs.com/huanchupkblog/p/11717351.html</div><br>
+    <h2 id="简介">简介</h2>
+<p>Spring Boot 自带监控功能 Actuator，可以帮助实现对程序内部运行情况监控，比如监控状况、Bean加载情况、环境变量、日志信息、线程信息等。这一节结合 Prometheus 、Grafana 来更加直观的展示这些信息。</p>
+<h2 id="实验">实验</h2>
+<h3 id="说明">说明</h3>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: left;">服务名</th>
+<th style="text-align: center;">地址</th>
+<th style="text-align: center;">端口</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Prometheus</td>
+<td style="text-align: center;">172.16.2.101</td>
+<td style="text-align: center;">9090</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Grafana</td>
+<td style="text-align: center;">172.16.2.101</td>
+<td style="text-align: center;">3000</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Spring Boot Demo</td>
+<td style="text-align: center;">172.16.2.204</td>
+<td style="text-align: center;">8080</td>
+</tr>
+</tbody>
+</table>
+<h3 id="创建项目">创建项目</h3>
+<p>创建用于测试的 Spring Boot 项目，主要代码如下。</p>
+<h4 id="pom.xml">pom.xml</h4>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.micrometer&lt;/groupId&gt;
+    &lt;artifactId&gt;micrometer-registry-prometheus&lt;/artifactId&gt;
+&lt;/dependency&gt;
+
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-test&lt;/artifactId&gt;
+    &lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h4 id="application.yml">application.yml</h4>
+<pre class="yml"><code>management:
+  endpoints:
+    web:
+      exposure:
+        include: &#39;*&#39;
+
+  endpoint:
+    health:
+      show-details: always
+
+  metrics:
+    tags:
+      application: actuator-demo</code></code></pre>
+<ul>
+<li>management.endpoints.web.exposure.include：大多数actuator的端口都不会通过http公开，* 代表公开所有这些端点。对于生产环境，应该仔细选择要公开的端点。</li>
+<li>management.metrics.tags.application：为应用设置 tag ，方便区分不同的应用。</li>
+</ul>
+<h4 id="启动类">启动类</h4>
+<pre class="java"><code>@SpringBootApplication
+@RestController
+public class SpringbootActuatorPrometheusDemoApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringbootActuatorPrometheusDemoApplication.class, args);
+    }
+
+    @RequestMapping(value = &quot;/hello&quot;)
+    public String  sayHello() {
+        for (int i = 1 ; i &lt;= 10 ; i++) {
+            Thread t = new Thread(() -&gt; {
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } , &quot;HelloThread - &quot; + i);
+            t.start();
+        }
+        return &quot;ok&quot;;
+    }
+
+    /**
+    @Bean
+    MeterRegistryCustomizer&lt;MeterRegistry&gt; metricsCommonTags() {
+        return registry -&gt; registry.config().commonTags(&quot;application&quot;, &quot;springboot-actuator-prometheus-demo&quot;);
+    }
+    */
+
+}</code></code></pre>
+<h3 id="配置-prometheus-和-grafana">配置 Prometheus 和 Grafana</h3>
+<p>在 prometheus.yml 中添加针对该 Spring Boot 应用 的监控 job</p>
+<pre><code><code>- job_name: &#39;actuator-demo&#39;
+    metrics_path: &#39;/prometheus&#39;
+    static_configs:
+    - targets: [&#39;172.16.2.204:8080&#39;]</code></code></pre>
+<p>运行 Prometheus 和 Grafana：</p>
+<pre class="shell"><code>docker start prometheus grafana</code></code></pre>
+<p>访问 Prometheus UI http://172.16.2.101:9090 ，查看 targets ，可以看到 job 处于 UP 状态，说明配置成功了。</p>
+<p><img src="./images/Spring Boot Actuator 整合 Prometheus0.png" /></p>
+<p>Grafana UI http://172.16.2.101:3000，通过Grafana的 <strong>+</strong> 图标导入(Import) JVM (Micrometer) dashboard：</p>
+<ul>
+<li>grafana id = 4701</li>
+<li>注意选中prometheus数据源</li>
+</ul>
+<p>查看JVM (Micormeter) dashboard：</p>
+<p><img src="./images/Spring Boot Actuator 整合 Prometheus1.png" /></p>
+<p>可以看到应用的 JVM 的 堆栈、 线程、 IO 等等信息。</p>
+<h2 id="源码">源码</h2>
+<p>https://github.com/gf-huanchupk/SpringBootLearning/tree/master/springboot-actuator-prometheus</p>
+<h2 id="参考">参考</h2>
+<p>https://micrometer.io/docs/registry/prometheus<br />
+https://prometheus.io/docs/prometheus</p>
+<h2 id="往期内容">往期内容</h2>
+<ul>
+<li><a href="https://mp.weixin.qq.com/s/BjZyNcWEgflJMnjfceiluw">Prometheus 入门</a></li>
+<li><a href="https://mp.weixin.qq.com/s/GImvM_F2XlMjO0a5xnJuFg">Prometheus 与 Grafana 集成</a></li>
+<li><a href="https://mp.weixin.qq.com/s/wkfIQc3IQD_6y7eCsGd_Rw">Prometheus 整合 AlertManager</a></li>
+<li><a href="https://mp.weixin.qq.com/s/40ULB9UWbXVA21MxqnjBxw">Prometheus 集成 Node Exporter</a></li>
+</ul>
+<p><br/><br/><br />
+欢迎扫码或微信搜索公众号《程序员果果》关注我，关注有惊喜~<br />
+<img src="./images/Spring Boot Actuator 整合 Prometheus2.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

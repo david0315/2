@@ -1,0 +1,275 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修百度地图WEB端判断用户是否在网格范围内' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>百度地图WEB端判断用户是否在网格范围内</center></div><div class='banquan'>原文出处:本文由博客园博主alterem提供。<br/>
+原文连接:https://www.cnblogs.com/alterem/p/11539835.html</div><br>
+    <p>在pc端设置商家的配送范围，用户在下单时，根据用户设置的配送地点判断是否在可配送范围内，并给用户相应的提示。</p>
+<p><strong>下面说下我的实现思路：</strong></p>
+<p>1.用百度地图在PC端设置配送范围，可拖拽选择</p>
+<p>2.根据用户设置的配送地址判断是否在配送范围内</p>
+<p><strong>一、百度地图PC端获取范围</strong></p>
+<p>改动百度地图官网的demo，设置配送范围。</p>
+<p>思路：获取多边形的顶点，以json的形式保存到数据库。</p>
+<p>百度API关于多边形覆盖物：</p>
+<p><strong>构造函数：</strong></p>
+<p>Polygon(points:Array[, opts:PolygonOptions]) 创建多边形覆盖物</p>
+<p><strong>方法：</strong></p>
+<p>setPath(path:Array) none 设置多边型的点数组（自1.2新增）<br />
+getPath() Array 返回多边型的点数组（自1.2新增）</p>
+<p>实现：</p>
+<pre><code><code>//设置配送范围
+function setRange(_point, _ppoints) {
+    var polygon = new BMap.Polygon(_ppoints, {
+        strokeColor: &quot;blue&quot;,
+        strokeWeight: 2,
+        strokeOpacity: 0.5
+    }); //创建多边形
+    map.addOverlay(polygon); //增加多边形
+    polygon.enableEditing(); //允许编辑
+    polygon.addEventListener(&quot;lineupdate&quot;,
+    function(e) {
+        var rangeArr = polygon.getPath();
+        $(&quot;#distributeRange&quot;).val(JSON.stringify(rangeArr));
+    });
+}</code></code></pre>
+<p>以上代码主要是监听 lineupdate 事件，每一次拖拽百度地图回调函数将返回的多边形的顶点，然后通过JSON.stringify方法转为string类型存在一个标签里面，以待后续的表单提交操作。</p>
+<p><strong>二、判断点是否在范围内</strong></p>
+<p>去网上看了一下，判断点是否在配送范围内的方法很多，大概采用的是射线法。<br />
+但是有一些方法没有考虑全面，导致有的情况判断不够准确。<br />
+在百度地图的GeoUtils里面找到了“判断点是否多边形内”这个方法。<br />
+因为我是需要在后端做判断，然后直接把js转化成了java，测试百发百中，欣喜！（后面附上测试方法）</p>
+<pre><code><code>/**
+* 判断点是否在多边形内
+* @param point 检测点
+* @param pts 多边形的顶点
+* @return 点在多边形内返回true,否则返回false
+*/
+public static boolean IsPtInPoly(Point2D.Double point, List &lt; Point2D.Double &gt; pts) {
+   int N = pts.size();
+   boolean boundOrVertex = true; //如果点位于多边形的顶点或边上，也算做点在多边形内，直接返回true
+   int intersectCount = 0; //cross points count of x
+   double precision = 2e-10; //浮点类型计算时候与0比较时候的容差
+   Point2D.Double p1,
+   p2; //neighbour bound vertices
+   Point2D.Double p = point; //当前点
+   p1 = pts.get(0); //left vertex
+   for (int i = 1; i &lt;= N; ++i) { //check all rays
+       if (p.equals(p1)) {
+           return boundOrVertex; //p is an vertex
+       }
+       p2 = pts.get(i % N); //right vertex
+       if (p.x &lt; Math.min(p1.x, p2.x) || p.x &gt; Math.max(p1.x, p2.x)) { //ray is outside of our interests
+           p1 = p2;
+           continue; //next ray left point
+       }
+       if (p.x &gt; Math.min(p1.x, p2.x) &amp;&amp; p.x &lt; Math.max(p1.x, p2.x)) { //ray is crossing over by the algorithm (common part of)
+           if (p.y &lt;= Math.max(p1.y, p2.y)) { //x is before of ray
+               if (p1.x == p2.x &amp;&amp; p.y &gt;= Math.min(p1.y, p2.y)) { //overlies on a horizontal ray
+                   return boundOrVertex;
+               }
+               if (p1.y == p2.y) { //ray is vertical
+                   if (p1.y == p.y) { //overlies on a vertical ray
+                       return boundOrVertex;
+                   } else { //before ray
+                       ++intersectCount;
+                   }
+               } else { //cross point on the left side
+                   double xinters = (p.x - p1.x) * (p2.y - p1.y) / (p2.x - p1.x) + p1.y; //cross point of y
+                   if (Math.abs(p.y - xinters) &lt; precision) { //overlies on a ray
+                       return boundOrVertex;
+                   }
+                   if (p.y &lt; xinters) { //before ray
+                       ++intersectCount;
+                   }
+               }
+           }
+       } else { //special case when ray is crossing through the vertex
+           if (p.x == p2.x &amp;&amp; p.y &lt;= p2.y) { //p crossing over p2
+               Point2D.Double p3 = pts.get((i + 1) % N); //next vertex
+               if (p.x &gt;= Math.min(p1.x, p3.x) &amp;&amp; p.x &lt;= Math.max(p1.x, p3.x)) { //p.x lies between p1.x &amp; p3.x
+                   ++intersectCount;
+               } else {
+                   intersectCount += 2;
+               }
+           }
+       }
+       p1 = p2; //next ray left point
+   }
+   if (intersectCount % 2 == 0) { //偶数在多边形外
+       return false;
+   } else { //奇数在多边形内
+       return true;
+   }
+}</code></code></pre>
+<p>主要是判断和这个方法的可行性。</p>
+<p>为此写了个测试方法。</p>
+<p>思路：获取一个多边形的顶点，然后随机点一个点</p>
+<p>1.调用百度地图的方法，判断该点是否在范围内<br />
+2.根据百度地图获取的那个店的经纬度，自己程序判断是否在范围内</p>
+<p>调用百度地图的方法：</p>
+<pre class="html"><code>&lt;html&gt;
+&lt;head&gt;
+&lt;meta content=&quot;text/html; charset=utf-8&quot; http-equiv=&quot;Content-Type&quot;/&gt;
+&lt;title&gt;GeoUtils示例&lt;/title&gt;
+&lt;script src=&quot;http://api.map.baidu.com/api?v=1.2&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;http://api.map.baidu.com/library/GeoUtils/1.2/src/GeoUtils_min.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+&lt;style type=&quot;text/css&quot;&gt;
+    table {
+      font-size: 14px;
+    }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;container&quot; style=&quot;float:left;width:600px;height:500px;border:1px solid gray&quot;&gt;
+&lt;/div&gt;
+&lt;div id=&quot;control&quot; style=&quot;float:left;width:300px;height:500px;border:1px solid gray&quot;&gt;
+    &lt;table style=&quot;width:100%;&quot;&gt;
+    &lt;tr&gt;
+        &lt;td colspan=&quot;2&quot;&gt;
+            判断点是否在多边形内:
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            &lt;input onclick=&quot;polygon1()&quot; type=&quot;button&quot; value=&quot;多边形1&quot;/&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            &lt;input onclick=&quot;polygon2()&quot; type=&quot;button&quot; value=&quot;多边形2&quot;/&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            经度&lt;input id=&quot;lng&quot; type=&quot;text&quot; value=&quot;&quot;&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            纬度&lt;input id=&quot;lat&quot; type=&quot;text&quot; value=&quot;&quot;&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            结果：
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+        &lt;td&gt;
+            &lt;p id=&quot;result&quot; style=&quot;color:red&quot;&gt;
+            &lt;/p&gt;
+        &lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;table&gt;
+&lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+&lt;script type=&quot;text/javascript&quot;&gt;
+  var map = new BMap.Map(&#39;container&#39;)
+  var pt = new BMap.Point(116.404, 39.915)
+  var mkr = new BMap.Marker(pt)
+  var ply //多边形
+  map.centerAndZoom(pt, 16)
+  map.enableScrollWheelZoom() //开启滚动缩放
+  map.enableContinuousZoom() //开启缩放平滑
+  //初始化为多边形1
+  polygon1()
+  //生成多边形1
+  function polygon1 () {
+    var pts = []
+    var pt1 = new BMap.Point(116.395, 39.910)
+    var pt2 = new BMap.Point(116.394, 39.914)
+    var pt3 = new BMap.Point(116.403, 39.920)
+    var pt4 = new BMap.Point(116.402, 39.914)
+    var pt5 = new BMap.Point(116.410, 39.913)
+    pts.push(pt1)
+    pts.push(pt2)
+    pts.push(pt3)
+    pts.push(pt4)
+    pts.push(pt5)
+    ply = new BMap.Polygon(pts)
+//演示：将面添加到地图上
+    map.clearOverlays()
+    map.addOverlay(ply)
+  }
+  //生成多边形2
+  function polygon2 () {
+    var pts = []
+    var pt1 = new BMap.Point(116.395, 39.910)
+    var pt2 = new BMap.Point(116.394, 39.914)
+    var pt3 = new BMap.Point(116.396, 39.919)
+    var pt4 = new BMap.Point(116.406, 39.920)
+    var pt5 = new BMap.Point(116.410, 39.913)
+    pts.push(pt1)
+    pts.push(pt2)
+    pts.push(pt3)
+    pts.push(pt4)
+    pts.push(pt5)
+    ply = new BMap.Polygon(pts)
+//演示：将多边形添加到地图上
+    map.clearOverlays()
+    map.addOverlay(ply)
+  }
+  map.addEventListener(&#39;click&#39;, function (e) {
+    mkr.setPosition(e.point)
+    map.addOverlay(mkr)
+//将点击的点的坐标显示在页面上
+    document.getElementById(&#39;lng&#39;).value = e.point.lng
+    document.getElementById(&#39;lat&#39;).value = e.point.lat
+    InOrOutPolygon(e.point.lng, e.point.lat)
+  })
+  function InOrOutPolygon (lng, lat) {
+    var pt = new BMap.Point(lng, lat)
+    var result = BMapLib.GeoUtils.isPointInPolygon(pt, ply)
+    if (result == true) {
+      document.getElementById(&#39;result&#39;).innerHTML = &#39;点在多边形内&#39;
+    } else {
+      document.getElementById(&#39;result&#39;).innerHTML = &#39;点在多边形外&#39;
+    }
+  }
+&lt;/script&gt;</code></code></pre>
+<p>界面如下：</p>
+<p><img src="./images/百度地图WEB端判断用户是否在网格范围内0.png" alt="image-20190917234507139" /></p>
+<p>在页面上点击一个点后，获取了该点的坐标（用于自己的方法测试），并调用了 InOrOutPolygon 来判断了该店是否在此范围内。</p>
+<p><img src="./images/百度地图WEB端判断用户是否在网格范围内1.png" alt="image-20190917234838190" /></p>
+<p><img src="./images/百度地图WEB端判断用户是否在网格范围内2.png" alt="image-20190917234855187" /></p>
+<p>后台的测试方法：</p>
+<pre class="java"><code>// 测试一个点是否在多边形内
+public static void main(String[] args) {
+    Point2D.Double point = new Point2D.Double(116.404072, 39.916605);
+    List&lt;Point2D.Double&gt; pts = new ArrayList&lt;Point2D.Double&gt;();
+    pts.add(new Point2D.Double(116.395, 39.910));
+    pts.add(new Point2D.Double(116.394, 39.914));
+    pts.add(new Point2D.Double(116.403, 39.920));
+    pts.add(new Point2D.Double(116.402, 39.914));
+    pts.add(new Point2D.Double(116.410, 39.913));
+    if (IsPtInPoly(point, pts)) {
+        System.out.println(&quot;点在多边形内&quot;);
+    } else {
+        System.out.println(&quot;点在多边形外&quot;);
+    }
+}</code></code></pre>
+<p>经过测试，结果满意。</p>
+<p>总结，实现的过程最重要是保存那些顶点，并根据那些保存的顶点（有一定的顺序），来判断一个点是否在这些顶点围成的多边形内。</p>
+<p>感觉百度地图还是很好用的。API很全，而且都配有demo，非常利于我们开发者。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

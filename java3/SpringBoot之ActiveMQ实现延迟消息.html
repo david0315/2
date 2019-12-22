@@ -1,0 +1,300 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot之ActiveMQ实现延迟消息' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot之ActiveMQ实现延迟消息</center></div><div class='banquan'>原文出处:本文由博客园博主yuriy2提供。<br/>
+原文连接:https://www.cnblogs.com/muyl/p/11845882.html</div><br>
+    <h4 id="一安装activemq">一、安装activeMQ</h4>
+<p>​ 安装步骤参照网上教程，本文不做介绍</p>
+<h4 id="二修改activemq配置文件">二、修改activeMQ配置文件</h4>
+<p>​ broker新增配置信息 <strong>schedulerSupport=&quot;true&quot;</strong></p>
+<pre><code><code>&lt;broker xmlns=&quot;http://activemq.apache.org/schema/core&quot; brokerName=&quot;localhost&quot; dataDirectory=&quot;${activemq.data}&quot; schedulerSupport=&quot;true&quot; &gt;
+
+        &lt;destinationPolicy&gt;
+            &lt;policyMap&gt;
+              &lt;policyEntries&gt;
+                &lt;policyEntry topic=&quot;&gt;&quot; &gt;
+                    &lt;!-- The constantPendingMessageLimitStrategy is used to prevent
+                         slow topic consumers to block producers and affect other consumers
+                         by limiting the number of messages that are retained
+                         For more information, see:
+
+                         http://activemq.apache.org/slow-consumer-handling.html
+
+                    --&gt;
+                  &lt;pendingMessageLimitStrategy&gt;
+                    &lt;constantPendingMessageLimitStrategy limit=&quot;1000&quot;/&gt;
+                  &lt;/pendingMessageLimitStrategy&gt;
+                &lt;/policyEntry&gt;
+              &lt;/policyEntries&gt;
+            &lt;/policyMap&gt;
+        &lt;/destinationPolicy&gt;</code></code></pre>
+<h4 id="三创建springboot工程">三、创建SpringBoot工程</h4>
+<p><img src="" alt="file" /></p>
+<ol>
+<li><h5 id="配置activemq工厂信息信任包必须配置否则会报错">配置ActiveMQ工厂信息，信任包必须配置否则会报错</h5></li>
+</ol>
+<pre class="java"><code>package com.example.demoactivemq.config;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.RedeliveryPolicy;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @author shanks on 2019-11-12
+ */
+@Configuration
+public class ActiveMqConfig {
+
+    @Bean
+    public ActiveMQConnectionFactory factory(@Value(&quot;${spring.activemq.broker-url}&quot;) String url){
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(url);
+        // 设置信任序列化包集合
+        List&lt;String&gt; models = new ArrayList&lt;&gt;();
+        models.add(&quot;com.example.demoactivemq.domain&quot;);
+        factory.setTrustedPackages(models);
+
+        return factory;
+    }
+
+}
+</code></code></pre>
+<ol>
+<li><h5 id="消息实体类">消息实体类</h5></li>
+</ol>
+<pre class="java"><code>package com.example.demoactivemq.domain;
+
+import lombok.Builder;
+import lombok.Data;
+
+import java.io.Serializable;
+
+/**
+ * @author shanks on 2019-11-12
+ */
+
+@Builder
+@Data
+public class MessageModel implements Serializable {
+    private String titile;
+    private String message;
+}
+</code></code></pre>
+<ol>
+<li><h5 id="生产者">生产者</h5></li>
+</ol>
+<pre class="java"><code>package com.example.demoactivemq.producer;
+
+
+import lombok.extern.slf4j.Slf4j;
+import org.apache.activemq.ScheduledMessage;
+import org.apache.activemq.command.ActiveMQQueue;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.jms.JmsProperties;
+import org.springframework.jms.core.JmsMessagingTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.jms.*;
+import java.io.Serializable;
+
+
+/**
+ * 消息生产者
+ *
+ * @author shanks
+ */
+@Service
+@Slf4j
+public class Producer {
+
+    public static final Destination DEFAULT_QUEUE = new ActiveMQQueue(&quot;delay.queue&quot;);
+
+    @Autowired
+    private JmsMessagingTemplate template;
+
+    /**
+     * 发送消息
+     *
+     * @param destination destination是发送到的队列
+     * @param message     message是待发送的消息
+     */
+    public &lt;T extends Serializable&gt; void send(Destination destination, T message) {
+        template.convertAndSend(destination, message);
+    }
+
+    /**
+     * 延时发送
+     *
+     * @param destination 发送的队列
+     * @param data        发送的消息
+     * @param time        延迟时间
+     */
+    public &lt;T extends Serializable&gt; void delaySend(Destination destination, T data, Long time) {
+        Connection connection = null;
+        Session session = null;
+        MessageProducer producer = null;
+        // 获取连接工厂
+        ConnectionFactory connectionFactory = template.getConnectionFactory();
+        try {
+            // 获取连接
+            connection = connectionFactory.createConnection();
+            connection.start();
+            // 获取session，true开启事务，false关闭事务
+            session = connection.createSession(Boolean.TRUE, Session.AUTO_ACKNOWLEDGE);
+            // 创建一个消息队列
+            producer = session.createProducer(destination);
+            producer.setDeliveryMode(JmsProperties.DeliveryMode.PERSISTENT.getValue());
+            ObjectMessage message = session.createObjectMessage(data);
+            //设置延迟时间
+            message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, time);
+            // 发送消息
+            producer.send(message);
+            log.info(&quot;发送消息：{}&quot;, data);
+            session.commit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (producer != null) {
+                    producer.close();
+                }
+                if (session != null) {
+                    session.close();
+                }
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+</code></code></pre>
+<ol>
+<li><h5 id="消费者">消费者</h5></li>
+</ol>
+<pre class="java"><code>package com.example.demoactivemq.producer;
+
+
+import com.example.demoactivemq.domain.MessageModel;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.stereotype.Component;
+
+/**
+ * 消费者
+ */
+@Component
+@Slf4j
+public class Consumer {
+
+
+    @JmsListener(destination = &quot;delay.queue&quot;)
+    public void receiveQueue(MessageModel message) {
+        log.info(&quot;收到消息:{}&quot;, message);
+    }
+}
+</code></code></pre>
+<ol>
+<li>application.yml</li>
+</ol>
+<pre class="yaml"><code>spring:
+  activemq:
+    broker-url: tcp://localhost:61616</code></code></pre>
+<ol>
+<li>测试类</li>
+</ol>
+<pre class="java"><code>package com.example.demoactivemq;
+
+import com.example.demoactivemq.domain.MessageModel;
+import com.example.demoactivemq.producer.Producer;
+import org.junit.jupiter.api.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
+
+@SpringBootTest(classes = DemoActivemqApplication.class)
+@RunWith(SpringRunner.class)
+class DemoActivemqApplicationTests {
+
+    /**
+     * 消息生产者
+     */
+    @Autowired
+    private Producer producer;
+
+    /**
+     * 及时消息队列测试
+     */
+    @Test
+    public void test() {
+        MessageModel messageModel = MessageModel.builder()
+                .message(&quot;测试消息&quot;)
+                .titile(&quot;消息000&quot;)
+                .build();
+        // 发送消息
+        producer.send(Producer.DEFAULT_QUEUE, messageModel);
+    }
+
+    /**
+     * 延时消息队列测试
+     */
+    @Test
+    public void test2() {
+        for (int i = 0; i &lt; 5; i++) {
+            MessageModel messageModel = MessageModel.builder()
+                    .titile(&quot;延迟10秒执行&quot;)
+                    .message(&quot;测试消息&quot; + i)
+                    .build();
+            // 发送延迟消息
+            producer.delaySend(Producer.DEFAULT_QUEUE, messageModel, 10000L);
+        }
+        try {
+            // 休眠100秒，等等消息执行
+            Thread.currentThread().sleep(100000L);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+}
+</code></code></pre>
+<p>执行结果</p>
+<pre class="verilog"><code>2019-11-12 22:18:52.939  INFO 17263 --- [           main] c.e.demoactivemq.producer.Producer       : 发送消息：MessageModel(titile=延迟10秒执行, message=测试消息0)
+2019-11-12 22:18:52.953  INFO 17263 --- [           main] c.e.demoactivemq.producer.Producer       : 发送消息：MessageModel(titile=延迟10秒执行, message=测试消息1)
+2019-11-12 22:18:52.958  INFO 17263 --- [           main] c.e.demoactivemq.producer.Producer       : 发送消息：MessageModel(titile=延迟10秒执行, message=测试消息2)
+2019-11-12 22:18:52.964  INFO 17263 --- [           main] c.e.demoactivemq.producer.Producer       : 发送消息：MessageModel(titile=延迟10秒执行, message=测试消息3)
+2019-11-12 22:18:52.970  INFO 17263 --- [           main] c.e.demoactivemq.producer.Producer       : 发送消息：MessageModel(titile=延迟10秒执行, message=测试消息4)
+2019-11-12 22:19:03.012  INFO 17263 --- [enerContainer-1] c.e.demoactivemq.producer.Consumer       : 收到消息:MessageModel(titile=延迟10秒执行, message=测试消息0)
+2019-11-12 22:19:03.017  INFO 17263 --- [enerContainer-1] c.e.demoactivemq.producer.Consumer       : 收到消息:MessageModel(titile=延迟10秒执行, message=测试消息1)
+2019-11-12 22:19:03.019  INFO 17263 --- [enerContainer-1] c.e.demoactivemq.producer.Consumer       : 收到消息:MessageModel(titile=延迟10秒执行, message=测试消息2)
+2019-11-12 22:19:03.020  INFO 17263 --- [enerContainer-1] c.e.demoactivemq.producer.Consumer       : 收到消息:MessageModel(titile=延迟10秒执行, message=测试消息3)
+2019-11-12 22:19:03.021  INFO 17263 --- [enerContainer-1] c.e.demoactivemq.producer.Consumer       : 收到消息:MessageModel(titile=延迟10秒执行, message=测试消息4)</code></code></pre>
+<p>比你优秀的人比你还努力，你有什么资格不去奋斗!!!</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

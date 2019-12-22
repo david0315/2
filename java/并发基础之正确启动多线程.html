@@ -1,0 +1,97 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修并发基础之正确启动多线程' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>并发基础之正确启动多线程</center></div><div class='banquan'>原文出处:本文由博客园博主Chen博客提供。<br/>
+原文连接:https://www.cnblogs.com/chen88/p/11802279.html</div><br>
+    <h2 id="start方法和run方法比较">start方法和run方法比较</h2>
+<p>很多人包括我自己也以前也认为run和start方法都可以启动一个线程，并且两者的功能都差不多，然后在学习的过程中认识到这是错误的，他们之间是<strong>截然不同</strong>的。先来看一段演示代码：</p>
+<pre><code><code>/**
+ * @author Chen
+ * @Description start()和run()方法比较
+ * @create 2019-11-05 22:01
+ */
+public class StartAndRunMethod {
+    public static void main(String[] args) {
+        //使用run方法
+        Runnable runnable = ()-&gt; System.out.println(Thread.currentThread().getName());
+        runnable.run();
+
+        //使用start方法
+        new Thread(runnable).start();
+    }
+}</code></code></pre>
+<p>输出结果：</p>
+<pre><code><code>main
+Thread-0</code></code></pre>
+<p>可以看到，<strong>执行run方法的线程是主线程，而执行start方法的才是一个新的子线程。</strong></p>
+<h2 id="start方法解读">start方法解读</h2>
+<p>我们都知道start方法就是启动一个新线程，其实真是情况是start方法执行过程中会涉及到两个线程，一个是主线程，另一个是新的子线程<strong>，当调用start方法是，子线程并不会马上启动起来，子线程会获取除了cpu以外的一些资源，进入就状态，等待CPU的调用</strong>。至于什么时候调用，这个就不是我们所能决定的了，而是线程调度器来决定的。所以有一些先运行start方法的线程可能会在比后调用start方法的线程启动的慢。</p>
+<blockquote>
+<p>当我们重复调用两次start方法会发生什么？</p>
+<p>会抛出一个异常IllegalThreadStateException（非法的线程状态），其实线程一旦执行，就会进入runnable状态，一旦执行完毕，就会进入结束状态，不会在返回回去。</p>
+</blockquote>
+<p>接下来我们在来仔细看看<code>start()</code>，了解一下它执行的过程中到底干了什么。</p>
+<pre><code><code>  public synchronized void start() {
+        /**
+         * This method is not invoked for the main method thread or &quot;system&quot;
+         * group threads created/set up by the VM. Any new functionality added
+         * to this method in the future may have to also be added to the VM.
+         *
+         * A zero status value corresponds to state &quot;NEW&quot;.
+         */
+        if (threadStatus != 0)
+            throw new IllegalThreadStateException();
+
+        /* Notify the group that this thread is about to be started
+         * so that it can be added to the group&#39;s list of threads
+         * and the group&#39;s unstarted count can be decremented. */
+        group.add(this);
+
+        boolean started = false;
+        try {
+            start0();
+            started = true;
+        } finally {
+            try {
+                if (!started) {
+                    group.threadStartFailed(this);
+                }
+            } catch (Throwable ignore) {
+                /* do nothing. If start0 threw a Throwable then
+                  it will be passed up the call stack */
+            }
+        }
+    }</code></code></pre>
+<p>在<code>start()</code>中，首先会检查线程的状态，判断<code>threadStatus</code>是不是等于0，也就是判断是不是一个新启动的线程，这是执行两次<code>start()</code>抛出异常的原因。（在线程刚刚被初始化的时候默认的状态为0）</p>
+<p>然后又做了一个加入线程组这个行为，然后又执行了个start0的native方法。</p>
+<h2 id="run方法解读">run方法解读</h2>
+<p>其实run方法比较简单，只有三行代码：如果target也就是传入的接口不为空，就执行重写的run方法的内容，否则就执行传入的run方法的内容。</p>
+<pre><code><code>    @Override
+    public void run() {
+        if (target != null) {
+            target.run();
+        }
+    }</code></code></pre>
+<p>所以当我们执行run方法的时候，它就会作为一个普通的方法，和我们自己写的一样，所以控制台打印出来的是一个主线程。</p>
+<p>所以我们<strong>想启动一个新线程不能直接调用run方法，而是应该调用start方法来间接调用run方法。</strong></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,254 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修如何优雅实现属性的动态注入' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>如何优雅实现属性的动态注入</center></div><div class='banquan'>原文出处:本文由博客园博主quellanan提供。<br/>
+原文连接:https://www.cnblogs.com/quellanan/p/11608777.html</div><br>
+    <h1 id="前言">前言</h1>
+<p>这是在实际开发项目中遇到的一个问题。从数据库查询返回的 List&lt; Map&lt; String, Object&gt;&gt; 的集合。并且返回的列名是中文的，项目也没有使用mybatis 直接使用的jdbcTemplate. 并且字段还超级多，这样将数据转换的时候如果一个一个的注入就会让代码臭长臭长的，所以才有了动态注入。<br />
+我这里我整个思路都贴出来。</p>
+<h1 id="实例类entry">实例类Entry</h1>
+<p>我们先建一个entry类。用于对象存储。<br />
+我这里 创建一个BaseDateBean 的类</p>
+<pre><code><code>@Setter
+@Getter
+public class BaseDateBean {
+
+    private String  startTime;
+    private String  operator;
+    private String  code;
+    private String  testNumber;
+    private String  iphoneCardCode;
+    private String  sampleNumber;
+    private String  sampleTime;
+    private String  callNumber;
+    private String  callStatus;
+    private String  downInstantaneousSpeedCard;
+    private String  upInstantaneousSpeedCard;
+    private String  ssid;
+    private String  bssid;
+    private String  encryptType;
+    private String  intranetIp;
+    private String  externalIp;
+    private String  rssi;
+    private String  WIFIFrequency;
+    private String  WIFIChannel;
+    private String  baiduLongitude;
+    private String  baiduLatitude;
+    private String  originalLongitude;
+    private String  originalLatitude;
+    private String  positioningPrecision;
+    private String  positioningType;
+    private String  businessType;
+    private String  networkType;
+    private String  speedType;
+    private String  tac;
+    private String  eci;
+    private String  mnc;
+    private String  mcc;
+    private String  rsrq;
+    private String  earfcnDl;
+    private String  earfcnUl;
+    private String  frequencyDl;
+    private String  band;
+    private String  sinr;
+    private String  cdmaRxlev;
+    private String  evdoRxlev;
+    private String  earfcn;
+    private String  psc;
+    private String  uarfcn;
+    private String  rscp;
+    private String  rsrp;
+    private String  imsi;
+    private String  imei;
+    private String  lac;
+    private String  ci;
+    private String  signalStrength;
+    private String  snr;
+    private String  pci;
+    private String  nid;
+    private String  bid;
+    private String  sid;
+    private String  cdmaDbm;
+    private String  cdmaEcio;
+    private String  evdoDbm;
+    private String  evdoEcio;
+    private String  evdoSnr;
+    private String  arfcn;
+    private String  frequencyUl;
+    private String  bsic;
+    private String  rxlev;
+    private String  averageSpeed;
+    private String  updatedLongitude;
+    private String  updatedLatitude;
+    private String  averageUpstreamRate;
+    private String  averageDownstreamRate;
+}</code></code></pre>
+<p>可以看到在实际项目中属性还是很多的，我这个还只是初版的，所以如果一个一个的set注入就很low了。</p>
+<h1 id="创建map映射">创建map映射</h1>
+<p>在创建好实体类后，还得创建一个静态的map 集合，将数据库的列名和我们实体类的属性名做一个一一对应。这里创建的这个map 集合是我个人愚见。没有想到更好的办法就先这样处理的。<br />
+我们创建一个BaseDataMap类</p>
+<pre><code><code>public  class BaseDataMap{
+    private BaseDataMap(){}
+    public static final Map&lt;String,String&gt; cnEnMap=new HashMap&lt;&gt;();
+    static{
+        cnEnMap.put(&quot;测试开始时间&quot;,&quot;startTime&quot;);
+        cnEnMap.put(&quot;运营商&quot;,&quot;operator&quot;);
+        cnEnMap.put(&quot;编号&quot;,&quot;code&quot;);
+        cnEnMap.put(&quot;测试编号&quot;,&quot;testNumber&quot;);
+        cnEnMap.put(&quot;手机卡编号&quot;,&quot;iphoneCardCode&quot;);
+        cnEnMap.put(&quot;采样编号&quot;,&quot;sampleNumber&quot;);
+        cnEnMap.put(&quot;采样时间&quot;,&quot;sampleTime&quot;);
+        cnEnMap.put(&quot;呼叫编号&quot;,&quot;callNumber&quot;);
+        cnEnMap.put(&quot;呼叫状态&quot;,&quot;callStatus&quot;);
+        cnEnMap.put(&quot;下行瞬时速度&quot;,&quot;downInstantaneousSpeedCard&quot;);
+        cnEnMap.put(&quot;上行瞬时速度&quot;,&quot;upInstantaneousSpeedCard&quot;);
+        cnEnMap.put(&quot;SSID&quot;,&quot;ssid&quot;);
+        cnEnMap.put(&quot;BSSID&quot;,&quot;bssid&quot;);
+        cnEnMap.put(&quot;加密类型&quot;,&quot;encryptType&quot;);
+        cnEnMap.put(&quot;内网IP&quot;,&quot;intranetIp&quot;);
+        cnEnMap.put(&quot;外网IP&quot;,&quot;externalIp&quot;);
+        cnEnMap.put(&quot;RSSI&quot;,&quot;rssi&quot;);
+        cnEnMap.put(&quot;WIFI频率&quot;,&quot;WIFIFrequency&quot;);
+        cnEnMap.put(&quot;WIFI信道&quot;,&quot;WIFIChannel&quot;);
+        cnEnMap.put(&quot;百度经度&quot;,&quot;baiduLongitude&quot;);
+        cnEnMap.put(&quot;百度纬度&quot;,&quot;baiduLatitude&quot;);
+        cnEnMap.put(&quot;原始经度&quot;,&quot;originalLongitude&quot;);
+        cnEnMap.put(&quot;原始纬度&quot;,&quot;originalLatitude&quot;);
+        cnEnMap.put(&quot;定位精度&quot;,&quot;positioningPrecision&quot;);
+        cnEnMap.put(&quot;定位类型&quot;,&quot;positioningType&quot;);
+        cnEnMap.put(&quot;数据业务类型&quot;,&quot;businessType&quot;);
+        cnEnMap.put(&quot;网络类型&quot;,&quot;networkType&quot;);
+        cnEnMap.put(&quot;速度类型&quot;,&quot;speedType&quot;);
+        cnEnMap.put(&quot;TAC&quot;,&quot;tac&quot;);
+        cnEnMap.put(&quot;ECI&quot;,&quot;eci&quot;);
+        cnEnMap.put(&quot;MNC&quot;,&quot;mnc&quot;);
+        cnEnMap.put(&quot;MCC&quot;,&quot;mcc&quot;);
+        cnEnMap.put(&quot;RSRQ&quot;,&quot;rsrq&quot;);
+        cnEnMap.put(&quot;EARFCN DL&quot;,&quot;earfcnDl&quot;);
+        cnEnMap.put(&quot;EARFCN UL&quot;,&quot;earfcnUl&quot;);
+        cnEnMap.put(&quot;FREQUENCY DL&quot;,&quot;frequencyDl&quot;);
+        cnEnMap.put(&quot;BAND&quot;,&quot;band&quot;);
+        cnEnMap.put(&quot;SINR&quot;,&quot;sinr&quot;);
+        cnEnMap.put(&quot;CDMA RXLEV&quot;,&quot;cdmaRxlev&quot;);
+        cnEnMap.put(&quot;EVDO RXLEV&quot;,&quot;evdoRxlev&quot;);
+        cnEnMap.put(&quot;EARFCN&quot;,&quot;earfcn&quot;);
+        cnEnMap.put(&quot;PSC&quot;,&quot;psc&quot;);
+        cnEnMap.put(&quot;UARFCN&quot;,&quot;uarfcn&quot;);
+        cnEnMap.put(&quot;RSCP&quot;,&quot;rscp&quot;);
+        cnEnMap.put(&quot;RSRP&quot;,&quot;rsrp&quot;);
+        cnEnMap.put(&quot;IMSI&quot;,&quot;imsi&quot;);
+        cnEnMap.put(&quot;IMEI&quot;,&quot;imei&quot;);
+        cnEnMap.put(&quot;LAC&quot;,&quot;lac&quot;);
+        cnEnMap.put(&quot;CI&quot;,&quot;ci&quot;);
+        cnEnMap.put(&quot;信号强度&quot;,&quot;signalStrength&quot;);
+        cnEnMap.put(&quot;SNR&quot;,&quot;snr&quot;);
+        cnEnMap.put(&quot;PCI&quot;,&quot;pci&quot;);
+        cnEnMap.put(&quot;NID&quot;,&quot;nid&quot;);
+        cnEnMap.put(&quot;BID&quot;,&quot;bid&quot;);
+        cnEnMap.put(&quot;SID&quot;,&quot;sid&quot;);
+        cnEnMap.put(&quot;CDMA DBM&quot;,&quot;cdmaDbm&quot;);
+        cnEnMap.put(&quot;CDMA ECIO&quot;,&quot;cdmaEcio&quot;);
+        cnEnMap.put(&quot;EVDO DBM&quot;,&quot;evdoDbm&quot;);
+        cnEnMap.put(&quot;EVDO ECIO&quot;,&quot;evdoEcio&quot;);
+        cnEnMap.put(&quot;EVDO SNR&quot;,&quot;evdoSnr&quot;);
+        cnEnMap.put(&quot;ARFCN&quot;,&quot;arfcn&quot;);
+        cnEnMap.put(&quot;FREQUENCY UL&quot;,&quot;frequencyUl&quot;);
+        cnEnMap.put(&quot;BSIC&quot;,&quot;bsic&quot;);
+        cnEnMap.put(&quot;RXLEV&quot;,&quot;rxlev&quot;);
+        cnEnMap.put(&quot;速率&quot;,&quot;averageSpeed&quot;);
+        cnEnMap.put(&quot;更正后经度&quot;,&quot;updatedLongitude&quot;);
+        cnEnMap.put(&quot;更正后纬度&quot;,&quot;updatedLatitude&quot;);
+        cnEnMap.put(&quot;上行平均速率&quot;,&quot;averageUpstreamRate&quot;);
+        cnEnMap.put(&quot;下行平均速率&quot;,&quot;averageDownstreamRate&quot;);
+    }
+}</code></code></pre>
+<p>可以看到就是一个动态的map。</p>
+<h1 id="映射类">映射类</h1>
+<p>接下来就是核心代码啦。我们创建一个ReflectHelper类</p>
+<pre><code><code>@Slf4j
+public class ReflectHelper {
+
+    private Class cls;
+    /**
+     * 传过来的对象
+     */
+    private Object obj;
+    private Hashtable&lt;String, Method&gt; getMethods = null;
+    private Hashtable&lt;String, Method&gt; setMethods = null;
+    public ReflectHelper(Object o) {
+        obj = o;
+        initMethods();
+    }
+    public void initMethods() {
+        getMethods = new Hashtable&lt;&gt;();
+        setMethods = new Hashtable&lt;&gt;();
+        cls = obj.getClass();
+        Method[] methods = cls.getMethods();
+        // 定义正则表达式，从方法中过滤出getter / setter 函数.
+        String gs = &quot;get(\\w+)&quot;;
+        Pattern getM = Pattern.compile(gs);
+        String ss = &quot;set(\\w+)&quot;;
+        Pattern setM = Pattern.compile(ss);
+        // 把方法中的&quot;set&quot; 或者 &quot;get&quot; 去掉,$1匹配第一个
+        String rapl = &quot;$1&quot;;
+        String param;
+        for (int i = 0; i &lt; methods.length; ++i) {
+            Method m = methods[i];
+            String methodName = m.getName();
+            if (Pattern.matches(gs, methodName)) {
+                param = getM.matcher(methodName).replaceAll(rapl).toLowerCase();
+                getMethods.put(param, m);
+            } else if (Pattern.matches(ss, methodName)) {
+                param = setM.matcher(methodName).replaceAll(rapl).toLowerCase();
+                setMethods.put(param, m);
+            }
+        }
+    }
+    public boolean setMethodValue(String property,Object object) {
+        Method m = setMethods.get(property.toLowerCase());
+        if (m != null) {
+            try {
+                // 调用目标类的setter函数
+                m.invoke(obj, object);
+                return true;
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                return false;
+            }
+        }
+        return false;
+    }
+}</code></code></pre>
+<p>上面代码可以看到其实也就两个方法setMethodValue 和initMethods 。<br />
+initMethods 方法是在实例化 ReflectHelper 这个类的时候执行的，主要的工作就是找到我们需要动态注入实例类的get 和set 方法。而setMethodValue 方法就是给这个属性赋值的。<br />
+# 实现方法<br />
+现在准备工作做好了，怎么使用呢?<br />
+<code>private List&lt;BaseDateBean&gt; getBaseDateBean(List&lt;Map&lt;String, Object&gt;&gt; mapList){         List&lt;BaseDateBean&gt; list=new ArrayList&lt;&gt;();         if(mapList==null||mapList.isEmpty()){             return list;         }         BaseDateBean baseDateBean;         for(Map&lt;String, Object&gt; map:mapList){             baseDateBean=new BaseDateBean();             for(Map.Entry&lt;String, Object&gt; entry : map.entrySet()){                 String mapKey = entry.getKey();                 log.info(mapKey);                 ReflectHelper reflectHelper = new ReflectHelper(baseDateBean);                 log.info(BaseDataMap.cnEnMap.get(mapKey));                 String value=entry.getValue()==null?ConstantPool.SEPARATORNULL:entry.getValue().toString();                 log.info(value);                 if(entry.getValue()!=null){                     reflectHelper.setMethodValue(BaseDataMap.cnEnMap.get(mapKey),String.valueOf(entry.getValue()));                 }             }             list.add(baseDateBean);         }         return list;     }</code><br />
+遍历list 集合中的map，动态的将属性值注入到实体类中。</p>
+<p># 番外<br />
+我这里是适合我业务开发设计的思路，给大家借鉴参考。</p>
+<p>欢迎大家关注个人公众号 &quot;程序员爱酸奶&quot;</p>
+<p>分享各种学习资料，包含java，linux，大数据等。资料包含视频文档以及源码，同时分享本人及投递的优质技术博文。</p>
+<p>如果大家喜欢记得关注和分享哟❤<br />
+<img src="./images/如何优雅实现属性的动态注入0.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

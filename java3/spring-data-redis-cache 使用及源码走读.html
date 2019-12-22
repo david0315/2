@@ -1,0 +1,300 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring-data-redis-cache 使用及源码走读' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring-data-redis-cache 使用及源码走读</center></div><div class='banquan'>原文出处:本文由博客园博主sanri1993提供。<br/>
+原文连接:https://www.cnblogs.com/sanri1993/p/11667128.html</div><br>
+    <h2 id="预期读者">预期读者</h2>
+<ul>
+<li>准备使用 spring 的 data-redis-cache 的同学</li>
+<li>了解 <code>@CacheConfig</code>，<code>@Cacheable</code>，<code>@CachePut</code>，<code>@CacheEvict</code>，<code>@Caching</code> 的使用</li>
+<li>深入理解 data-redis-cache 的实现原理</li>
+</ul>
+<h2 id="文章内容说明">文章内容说明</h2>
+<ul>
+<li>如何使用 redis-cache</li>
+<li>自定义 keyGenerator 和过期时间</li>
+<li>源码解读</li>
+<li>自带缓存机制的不足</li>
+</ul>
+<h2 id="快速入门">快速入门</h2>
+<ol>
+<li><p>maven 加入 jar 包</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-data-redis&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre></li>
+<li><p>配置 redis</p>
+<pre class="properties"><code>spring.redis.host=127.0.0.1</code></code></pre></li>
+<li><p>开启 redis-cache</p>
+<pre class="java"><code>@EnableCaching</code></code></pre></li>
+<li><p><code>@CacheConfig</code>，<code>@Cacheable</code>，<code>@CachePut</code>，<code>@CacheEvict</code>，<code>@Caching</code> 的功能</p>
+<ul>
+<li><code>@Cacheable</code> 会查询缓存中是否有数据，如果有数据则返回，否则执行方法</li>
+<li><code>@CachePut</code> 每次都执行方法，并把结果进行缓存</li>
+<li><code>@CacheEvict</code> 会删除缓存中的内容</li>
+<li><code>@Caching</code> 相当于上面三者的综合，用于配置三者的行为</li>
+<li><code>@CacheConfig</code> 配置在类上，用于配置当前类的全局缓存配置</li>
+</ul></li>
+</ol>
+<h2 id="详细配置">详细配置</h2>
+<p>经过上面的配置，就已经可以使用 redis-cache 了，但是还是有些问题需要问自己一下，比如</p>
+<ul>
+<li>存储在 redis 的 key 是什么样子的，我可以自定义 key 吗</li>
+<li>存储到 redis 的 value 是怎么序列化的</li>
+<li>存储的缓存是多久过期</li>
+<li>并发访问时，会不会直接穿透从而不断的修改缓存内容</li>
+</ul>
+<p>过期时间，序列化方式由此类决定 <code>RedisCacheConfiguration</code>，可以覆盖此类达到自定义配置。默认配置为<code>RedisCacheConfiguration.defaultCacheConfig()</code> ，它配置为永不过期，key 为 String 序列化，并加上了一个前缀做为命名空间，value 为 Jdk 序列化，所以你要存储的类必须要实现 <code>java.io.Serializable</code> 。</p>
+<p>存储的 key 值的生成由 <code>KeyGenerator</code> 决定，可以在各缓存注解上进行配置，默认使用的是 <code>SimpleKeyGenerator</code> 其存储的 key 方式为 SimpleKey [参数名1，参数名2]，如果在同一个命名空间下，有两个同参数名的方法就公出现冲突导致反序列化失败。</p>
+<p>并发访问时，确实存在多次访问数据库而没有使用缓存的情况 <a href="https://blog.csdn.net/clementad/article/details/52452119" class="uri">https://blog.csdn.net/clementad/article/details/52452119</a></p>
+<blockquote>
+<p>Srping 4.3提供了一个sync参数。是当缓存失效后，为了避免多个请求打到数据库,系统做了一个并发控制优化，同时只有一个线程会去数据库取数据其它线程会被阻塞。</p>
+</blockquote>
+<h3 id="自定义存储-key">自定义存储 key</h3>
+<p>根据上面的说明 ，很有可能会存在存储的 key 一致而导致反序列化失败，所以需要自定义存储 key ，有两种实现办法 ，一种是使用元数据配置 key（简单但难维护），一种是全局设置 keyGenerator</p>
+<h4 id="使用元数据配置-key">使用元数据配置 key</h4>
+<pre class="java"><code>    @Cacheable(key = &quot;#vin+#name&quot;)
+    public List&lt;Vehicle&gt; testMetaKey(String vin,String name){
+        List&lt;Vehicle&gt; vehicles = dataProvide.selectAll();
+        return vehicles.stream().filter(vehicle -&gt; vehicle.getVin().equals(vin) &amp;&amp; vehicle.getName().contains(name)).collect(Collectors.toList());
+    }</code></code></pre>
+<p>这是一个 spel 表达式，可以使用 + 号来拼接参数，常量使用 &quot;&quot; 来包含，更多例子</p>
+<pre class="java"><code>@Cacheable(value = &quot;user&quot;,key = &quot;targetClass.name + &#39;.&#39;+ methodName&quot;)
+@Cacheable(value = &quot;user&quot;,key = &quot;&#39;list&#39;+ targetClass.name + &#39;.&#39;+ methodName + #name &quot;)</code></code></pre>
+<p><strong>注意：</strong> 生成的 key 不能为空值，不然会报错误 Null key returned for cache operation</p>
+<p>常用的元数据信息</p>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: left;">名称</th>
+<th style="text-align: left;">位置</th>
+<th style="text-align: left;">描述</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">methodName</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">当前被调用的方法名</td>
+<td style="text-align: left;">#root.methodName</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">method</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">被调用的方法对象</td>
+<td style="text-align: left;">#root.method.name</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">target</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">当前实例</td>
+<td style="text-align: left;">#root.target</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">targetClass</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">当前被调用方法参数列表</td>
+<td style="text-align: left;">#root.targetClass</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">args</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">当前被调用的方法名</td>
+<td style="text-align: left;">#root.args[0]</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">caches</td>
+<td style="text-align: left;">root</td>
+<td style="text-align: left;">使用的缓存列表</td>
+<td style="text-align: left;">#root.caches[0].name</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Argument Name</td>
+<td style="text-align: left;">执行上下文</td>
+<td style="text-align: left;">方法参数数据</td>
+<td style="text-align: left;">#user.id</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">result</td>
+<td style="text-align: left;">执行上下文</td>
+<td style="text-align: left;">方法返回值数据</td>
+<td style="text-align: left;">#result.id</td>
+</tr>
+</tbody>
+</table>
+<h4 id="使用全局-keygenerator">使用全局 keyGenerator</h4>
+<p>使用元数据的特点是简单，但是难维护，如果需要配置的缓存接口较多的话，这时可以配置一个 keyGenerator ，这个配置配置多个，引用其名称即可。</p>
+<pre class="java"><code>@Bean
+public KeyGenerator cacheKeyGenerator() {
+    return (target, method, params) -&gt; {
+        return target + method + params;
+    }
+}</code></code></pre>
+<h3 id="自定义序列化和配置过期时间">自定义序列化和配置过期时间</h3>
+<p>因为默认使用值序列化为 Jdk 序列化，存在体积大，增减字段会造成序列化异常等问题，可以考虑其它序列化来覆写默认序列化。</p>
+<pre class="java"><code>@Bean
+public RedisCacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory){
+    RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig();
+    // 设置过期时间为 30 天
+    redisCacheConfiguration.entryTtl(Duration.ofDays(30));
+    redisCacheConfiguration.serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new KryoRedisSerializer()));
+    RedisCacheManager redisCacheManager = RedisCacheManager.builder(redisConnectionFactory)
+                .cacheDefaults(redisCacheConfiguration)
+                .withInitialCacheConfigurations(customConfigs)
+                .build();
+}</code></code></pre>
+<h4 id="个性化配置过期时间和序列化">个性化配置过期时间和序列化</h4>
+<p>上面的是全局配置过期时间和序列化，可以针对每一个 cacheNames 进行单独设置，它是一个 Map 配置</p>
+<pre class="java"><code>Map&lt;String, RedisCacheConfiguration&gt; customConfigs = new HashMap&lt;&gt;();
+customConfigs.put(&quot;cacheName1&quot;,RedisCacheConfiguration.defaultCacheConfig());
+
+RedisCacheManager redisCacheManager = RedisCacheManager.builder(redisConnectionFactory)
+                .cacheDefaults(redisCacheConfiguration)
+                .withInitialCacheConfigurations(customConfigs)
+                .build();</code></code></pre>
+<h2 id="源码走读">源码走读</h2>
+<p><strong>本源码走读只带你入门，具体的细节需要具体分析</strong></p>
+<p>首先不用看源码也知道这肯定是动态代理来实现的，代理目标方法，获取配置，然后增强方法功能；</p>
+<p>aop 就是干这件事的，我们自己也经常加一些注解来实现日志信息采集，其实和这个原理一致，spring-data-cache-redis 也是使用 aop 实现的。</p>
+<p>从 <code>@EnableCaching</code> 开始，可以看到导入了一个选择导入配置的配置类（有点绕，就是可以自己控制导入哪些配置类），默认使用 <code>PROXY</code> 模式</p>
+<pre class="java"><code>public class CachingConfigurationSelector extends AdviceModeImportSelector&lt;EnableCaching&gt; </code></code></pre>
+<p><code>PROXY</code> 导入了如下配置类</p>
+<pre class="java"><code>private String[] getProxyImports() {
+    List&lt;String&gt; result = new ArrayList&lt;&gt;(3);
+    result.add(AutoProxyRegistrar.class.getName());
+    result.add(ProxyCachingConfiguration.class.getName());
+    if (jsr107Present &amp;&amp; jcacheImplPresent) {
+        result.add(PROXY_JCACHE_CONFIGURATION_CLASS);
+    }
+    return StringUtils.toStringArray(result);
+}</code></code></pre>
+<p><code>ProxyCachingConfiguration</code> 重点的配置类是在这个配置类中，它配置了三个 Bean</p>
+<p><code>BeanFactoryCacheOperationSourceAdvisor</code> 是 <code>CacheOperationSource</code> 的一个增强器</p>
+<p><code>CacheOperationSource</code> 主要提供查找方法上缓存注解的方法 <code>findCacheOperations</code></p>
+<p><code>CacheInterceptor</code> 它是一个 <code>MethodInterceptor</code> 在调用缓存方法时，会执行它的 <code>invoke</code> 方法</p>
+<p>下面来看一下 <code>CacheInterceptor</code> 的 <code>invoke</code> 方法</p>
+<pre class="java"><code>// 关键代码就一句话，aopAllianceInvoker 是一个函数式接口，它会执行你的真实方法
+execute(aopAllianceInvoker, invocation.getThis(), method, invocation.getArguments());</code></code></pre>
+<p>进入 <code>execute</code> 方法，可以看到这一层只是获取到所有的缓存操作集合，<code>@CacheConfig</code>，<code>@Cacheable</code>，<code>@CachePut</code>，<code>@CacheEvict</code>，<code>@Caching</code> 然后把其配置和当前执行上下文进行绑定成了 <code>CacheOperationContexts</code></p>
+<pre class="java"><code>Class&lt;?&gt; targetClass = getTargetClass(target);
+CacheOperationSource cacheOperationSource = getCacheOperationSource();
+if (cacheOperationSource != null) {
+    Collection&lt;CacheOperation&gt; operations = cacheOperationSource.getCacheOperations(method, targetClass);
+    if (!CollectionUtils.isEmpty(operations)) {
+        return execute(invoker, method,
+                       new CacheOperationContexts(operations, method, args, target, targetClass));
+    }
+}</code></code></pre>
+<p>再进入 <code>execute</code> 方法，可以看到前面专门是对 <code>sync</code> 做了处理，后面才是对各个注解的处理</p>
+<pre class="java"><code>if (contexts.isSynchronized()) {
+    // 这里是专门于 sync 做的处理，可以先不去管它，后面再来看是如何处理的，先看后面的内容 
+}
+
+// Process any early evictions 先做缓存清理工作
+processCacheEvicts(contexts.get(CacheEvictOperation.class), true,
+                   CacheOperationExpressionEvaluator.NO_RESULT);
+
+// Check if we have a cached item matching the conditions 查询缓存中内容 
+Cache.ValueWrapper cacheHit = findCachedItem(contexts.get(CacheableOperation.class));
+
+// Collect puts from any @Cacheable miss, if no cached item is found 如果缓存没有命中,收集 put 请求，后面会统一把需要放入缓存中的统一应用
+List&lt;CachePutRequest&gt; cachePutRequests = new LinkedList&lt;&gt;();
+if (cacheHit == null) {
+    collectPutRequests(contexts.get(CacheableOperation.class),
+                       CacheOperationExpressionEvaluator.NO_RESULT, cachePutRequests);
+}
+
+Object cacheValue;
+Object returnValue;
+
+// 缓存有命中并且不是 @CachePut 的处理
+if (cacheHit != null &amp;&amp; !hasCachePut(contexts)) {
+    // If there are no put requests, just use the cache hit
+    cacheValue = cacheHit.get();
+    returnValue = wrapCacheValue(method, cacheValue);
+}
+else {
+    // Invoke the method if we don&#39;t have a cache hit 缓存没有命中,执行真实方法
+    returnValue = invokeOperation(invoker);
+    cacheValue = unwrapReturnValue(returnValue);
+}
+
+// Collect any explicit @CachePuts
+collectPutRequests(contexts.get(CachePutOperation.class), cacheValue, cachePutRequests);
+
+// Process any collected put requests, either from @CachePut or a @Cacheable miss 把前面收集到的所有 putRequest 数据放入缓存
+for (CachePutRequest cachePutRequest : cachePutRequests) {
+    cachePutRequest.apply(cacheValue);
+}
+
+// Process any late evictions
+processCacheEvicts(contexts.get(CacheEvictOperation.class), false, cacheValue);
+
+return returnValue;</code></code></pre>
+<p>看完了执行流程，现在看一下<code>CacheInterceptor</code> 的超类 <code>CacheAspectSupport</code> ，因为我可以不设置 <code>cacheManager</code> 就可以使用，查看默认的 <code>cacheManager</code>是在哪设置的</p>
+<pre class="java"><code>public abstract class CacheAspectSupport extends AbstractCacheInvoker
+        implements BeanFactoryAware, InitializingBean, SmartInitializingSingleton {
+    // .... 
+}</code></code></pre>
+<p>BeanFactoryAware 用来获取 BeanFactory</p>
+<p>InitializingBean 用来管理 Bean 的生命周期，可以在 <code>afterPropertiesSet</code>后添加逻辑</p>
+<p>SmartInitializingSingleton 实现该接口后，当所有单例 bean 都初始化完成以后， 容器会回调该接口的方法 <code>afterSingletonsInstantiated</code></p>
+<p>在 <code>afterSingletonsInstantiated</code> 中，果然进行了 <code>cacheManager</code> 的设置，从 IOC 容器中拿了一个 cacheManger</p>
+<pre class="java"><code>setCacheManager(this.beanFactory.getBean(CacheManager.class));</code></code></pre>
+<p>那这个 <code>CacheManager</code> 是谁呢 ，可以从RedisCacheConfiguration类知道答案 ，在这里面配置了一个 <code>RedisCacheManager</code></p>
+<pre class="java"><code>@Configuration
+@ConditionalOnClass(RedisConnectionFactory.class)
+@AutoConfigureAfter(RedisAutoConfiguration.class)
+@ConditionalOnBean(RedisConnectionFactory.class)
+@ConditionalOnMissingBean(CacheManager.class)
+@Conditional(CacheCondition.class)
+class RedisCacheConfiguration {} </code></code></pre>
+<pre class="java"><code>@Bean
+public RedisCacheManager cacheManager(RedisConnectionFactory redisConnectionFactory,
+                                      ResourceLoader resourceLoader) {
+    RedisCacheManagerBuilder builder = RedisCacheManager
+        .builder(redisConnectionFactory)
+        .cacheDefaults(determineConfiguration(resourceLoader.getClassLoader()));
+    List&lt;String&gt; cacheNames = this.cacheProperties.getCacheNames();
+    if (!cacheNames.isEmpty()) {
+        builder.initialCacheNames(new LinkedHashSet&lt;&gt;(cacheNames));
+    }
+    return this.customizerInvoker.customize(builder.build());
+}</code></code></pre>
+<p>从 <code>determineConfiguration()</code> 方法中可以知道 cacheManager 的默认配置</p>
+<p>最后看一下，它的切点是如何定义的，即何时会调用 <code>CacheInterceptor</code> 的 <code>invoke</code> 方法</p>
+<p>切点的配置是在 <code>BeanFactoryCacheOperationSourceAdvisor</code> 类中，返回一个这样的切点 <code>CacheOperationSourcePointcut</code> ，覆写 <code>MethodMatcher</code> 中的 <code>matchs</code> ，如果方法上存在注解 ，则认为可以切入。</p>
+<h2 id="spring-data-redis-cache-的不足">spring-data-redis-cache 的不足</h2>
+<p>尽管功能已经非常强大，但它没有解决缓存刷新的问题，如果缓存在某一时间过期 ，将会有大量的请求打进数据库，会造成数据库很大的压力。</p>
+<p>4.3 版本在这方面做了下并发控制，但感觉比较敷衍，简单的锁住其它请求，先把数据 load 到缓存，然后再让其它请求走缓存。</p>
+<p>后面我将自定义缓存刷新，并做一个 cache 加强控件，尽量不对原系统有太多的侵入，敬请关注</p>
+<h2 id="一点小推广">一点小推广</h2>
+<p>创作不易，希望可以支持下我的开源软件，及我的小工具，欢迎来 gitee 点星，fork ，提 bug 。</p>
+<p>Excel 通用导入导出，支持 Excel 公式<br />
+博客地址：<a href="https://blog.csdn.net/sanri1993/article/details/100601578" class="uri">https://blog.csdn.net/sanri1993/article/details/100601578</a><br />
+gitee：<a href="https://gitee.com/sanri/sanri-excel-poi" class="uri">https://gitee.com/sanri/sanri-excel-poi</a></p>
+<p>使用模板代码 ，从数据库生成代码 ，及一些项目中经常可以用到的小工具<br />
+博客地址：<a href="https://blog.csdn.net/sanri1993/article/details/98664034" class="uri">https://blog.csdn.net/sanri1993/article/details/98664034</a><br />
+gitee：<a href="https://gitee.com/sanri/sanri-tools-maven" class="uri">https://gitee.com/sanri/sanri-tools-maven</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

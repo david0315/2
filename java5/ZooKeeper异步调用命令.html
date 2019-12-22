@@ -1,0 +1,326 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修ZooKeeper异步调用命令' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>ZooKeeper异步调用命令</center></div><div class='banquan'>原文出处:本文由博客园博主程序猿讲故事提供。<br/>
+原文连接:https://www.cnblogs.com/codestory/p/11434221.html</div><br>
+    <p>在ZooKeeper中，所有的同步调用命令，都会有一个相应的异步调用方法。异步调用能在一个单独线程中同时提交更多的命令，也能在一定程度上简化代码实现。</p>
+<h3>1 异步create方法</h3>
+<p>如创建zNode的命令create，同步方法的定义是</p>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> path 创建节点的路径
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> data 创建节点的初始值
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> acl 创建节点的ACL
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> createMode 创建节点使用永久还是临时模式
+ * </span><span style="color: #808080;">@return</span><span style="color: #008000;"> 创建节点的真实路径
+ * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> KeeperException 服务器返回了非0的错误代码
+ * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> KeeperException.InvalidACLException ACL非法或者为空
+ * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> InterruptedException 事务被中断
+ * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> IllegalArgumentException 路径非法
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> String create(<span style="color: #0000ff;">final</span><span style="color: #000000;"> String path,
+    </span><span style="color: #0000ff;">byte</span><span style="color: #000000;"> data[],
+    List</span>&lt;ACL&gt;<span style="color: #000000;"> acl,
+    CreateMode createMode);</span></code></pre>
+
+<p>对应的异步调用方法</p>
+
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * create方法的异步调用方法
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> path 创建节点的路径
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> data 创建节点的初始值
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> acl 创建节点的ACL
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> createMode 创建节点使用永久还是临时模式
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> cb 包括回调函数的对象
+ * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> ctx 上下文对象(异步回调时会传递给callback，方便出错时重新调用)
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> create(<span style="color: #0000ff;">final</span><span style="color: #000000;"> String path,
+    </span><span style="color: #0000ff;">byte</span><span style="color: #000000;"> data[],
+    List</span>&lt;ACL&gt;<span style="color: #000000;"> acl,
+    CreateMode createMode,
+    StringCallback cb,
+    Object ctx);</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p>StringCallback的定义</p>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">interface</span> StringCallback <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AsyncCallback {
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 处理异步调用的结果
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> rc   调用的返回码
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> path 异步调用时的路径参数
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> ctx  异步调用时的上下文对象
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> name 实际创建的节点名
+     *             成功时通常同path相同，除非创建的是sequential节点
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> processResult(<span style="color: #0000ff;">int</span><span style="color: #000000;"> rc,
+        String path,
+        Object ctx,
+        String name);
+}</span></code></pre>
+
+<p>异步调用与同步调用的两个主要区别：</p>
+
+<ol>
+<li>异步调用没有返回值（void）</li>
+<li>异步调用不抛出异常，异常情况都通过rc参数传递</li>
+</ol>
+<h3>2 部分rc代码定义</h3>
+<p>回调函数的第一个参数 rc ，是调用的返回值。ZooKeeper在枚举org.apache.zookeeper.KeeperException.Code中做了定义。从源码中摘出一些我们可能会经常使用的Code</p>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;"> 一切安好 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+OK (Ok),
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 服务器连接丢失 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+CONNECTIONLOSS (ConnectionLoss),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 操作超时 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+OPERATIONTIMEOUT (OperationTimeout),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 参数错误 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+BADARGUMENTS (BadArguments),
+ 
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 节点不存在 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+NONODE (NoNode),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 临时节点没有子节点 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+NOCHILDRENFOREPHEMERALS (NoChildrenForEphemerals),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 节点已经存在 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+NODEEXISTS (NodeExists),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 节点有子节点 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+NOTEMPTY (NotEmpty),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 会话超时 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+SESSIONEXPIRED (SessionExpired),
+</span><span style="color: #008000;">/**</span><span style="color: #008000;"> 请求超时</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+REQUESTTIMEOUT (</span>-122),</code></pre>
+
+<p><strong><span style="font-size: 1.17em;">3 回调函数的一般用法</span></strong></p>
+
+<p>下面是一个创建节点的简单例子。注意，ctx参数传递的是data，这个参数会直接传递到callback函数中，这样就可以直接重新调用create命令。</p>
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">void</span> createNode(String path, <span style="color: #0000ff;">byte</span><span style="color: #000000;">[] data) {
+  zooKeeper.create(nodePath, data,
+    ZooDefs.Ids.OPEN_ACL_UNSAFE,
+    CreateMode.EPHEMERAL,
+    nodeCreateCallback,
+    data);
+}
+ 
+AsyncCallback.StringCallback nodeCreateCallback </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AsyncCallback.StringCallback() {
+  </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> processResult(<span style="color: #0000ff;">int</span><span style="color: #000000;"> rc, String path, Object ctx, String name) {
+    </span><span style="color: #0000ff;">switch</span><span style="color: #000000;"> (KeeperException.Code.get(rc)) {
+      </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> OK:
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建节点成功</span>
+        <span style="color: #0000ff;">break</span><span style="color: #000000;">;
+      </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> CONNECTIONLOSS:
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 连接丢失，重新发布命令</span>
+<span style="color: #000000;">        createNode(path, ctx);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+      </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 其他异常，抛出或记录异常</span>
+<span style="color: #000000;">        KeeperException e </span>=<span style="color: #000000;"> KeeperException.create(KeeperException.Code.get(rc), path);
+        log.error(</span>"create node error"<span style="color: #000000;">, e);
+    }
+  }
+};</span></code></pre>
+
+<p><strong><span style="font-size: 1.17em;">4 异步回调接口定义</span></strong></p>
+
+<p>ZooKeeper在org.apache.zookeeper.AsyncCallback中定义了几个回调接口</p>
+<table border="1" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td valign="top" width="94">
+<p>回调接口</p>
+</td>
+<td valign="top" width="274">
+<p>说明</p>
+</td>
+<td valign="top" width="184">
+<p>适用的异步命令</p>
+</td>
+</tr>
+<tr>
+<td width="94">
+<p>StatCallback</p>
+</td>
+<td width="274">
+<p>用于获取节点的状态</p>
+</td>
+<td valign="top" width="184">
+<p>void exists()</p>
+<p>void setData()</p>
+</td>
+</tr>
+<tr>
+<td width="94">
+<p>DataCallback</p>
+</td>
+<td width="274">
+<p>用于获取节点的值和状态</p>
+</td>
+<td valign="top" width="184">
+<p>void getData()</p>
+<p>void getConfig()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p>ACLCallback</p>
+</td>
+<td valign="top" width="274">
+<p>用于获取节点的ACL信息和状态</p>
+</td>
+<td valign="top" width="184">
+<p>void getACL()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p style="text-align: left;">ChildrenCallback</p>
+</td>
+<td valign="top" width="274">
+<p>用于获取节点的子节点列表</p>
+</td>
+<td valign="top" width="184">
+<p>void getChildren()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p>Children2Callback</p>
+</td>
+<td valign="top" width="274">
+<p>用于获取节点的子节点列表和状态</p>
+</td>
+<td valign="top" width="184">
+<p>void getChildren()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p>Create2Callback</p>
+</td>
+<td valign="top" width="274">
+<p>用于获取节点的名称和状态</p>
+</td>
+<td valign="top" width="184">
+<p>void create()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p>StringCallback</p>
+</td>
+<td valign="top" width="274">
+<p>用于获取节点的名称</p>
+</td>
+<td valign="top" width="184">
+<p>void create()</p>
+</td>
+</tr>
+<tr>
+<td width="94">
+<p>VoidCallback</p>
+</td>
+<td width="274">
+<p>不返回任何信息</p>
+</td>
+<td valign="top" width="184">
+<p>void delete()</p>
+<p>void sync()</p>
+<p>void removeWatches()</p>
+<p>void removeAllWatches()</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="94">
+<p>MultiCallback</p>
+</td>
+<td valign="top" width="274">
+<p>用于多命令请求的返回值</p>
+</td>
+<td valign="top" width="184">
+<p>void multi()</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>可以看到，有些异步命令，可以选择使用多个不同的Callback，见下表</p>
+<table border="1" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td valign="top" width="113">
+<p>异步命令</p>
+</td>
+<td valign="top" width="132">
+<p>可选的回调接口</p>
+</td>
+<td valign="top" width="308">
+<p>接口说明</p>
+</td>
+</tr>
+<tr>
+<td rowspan="2" width="113">
+<p>void create()</p>
+</td>
+<td valign="top" width="132">
+<p>Create2Callback</p>
+</td>
+<td valign="top" width="308">
+<p>用于获取节点的名称和状态</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="132">
+<p>StringCallback</p>
+</td>
+<td valign="top" width="308">
+<p>用于获取节点的名称</p>
+</td>
+</tr>
+<tr>
+<td rowspan="2" width="113">
+<p>void getChildren()</p>
+</td>
+<td valign="top" width="132">
+<p>ChildrenCallback</p>
+</td>
+<td valign="top" width="308">
+<p>用于获取节点的子节点列表</p>
+</td>
+</tr>
+<tr>
+<td valign="top" width="132">
+<p>Children2Callback</p>
+</td>
+<td valign="top" width="308">
+<p>用于获取节点的子节点列表和状态</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,78 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修基于Influxdb对InfluxDBResultMapper的一点扩展' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>基于Influxdb对InfluxDBResultMapper的一点扩展</center></div><div class='banquan'>原文出处:本文由博客园博主彪悍大蓝猫提供。<br/>
+原文连接:https://www.cnblogs.com/skywp/p/11671947.html</div><br>
+    <p>理想很饱满，现实很骨感。</p>
+<p>由于业务需要“灵活可配置”的功能需求，在使用java开发Influxdb查询功能的时候，遇到了一个问题，Measurement注解的名称有可能需要动态变化。</p>
+<p>我们先看下 @Measurement 注解的代码：</p>
+<pre><code><code>package org.influxdb.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @author fmachado
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Measurement {
+
+  String name();
+
+  String database() default &quot;[unassigned]&quot;;
+
+  String retentionPolicy() default &quot;autogen&quot;;
+
+  TimeUnit timeUnit() default TimeUnit.MILLISECONDS;</code></code></pre>
+<p>问题可以转换为：<br />
+-&gt; 在@Measurement 注解生效之前，将变动的name值写入。</p>
+<p>经过大概两天时间的资料查找，发现了可以通过：java反射去解决<br />
+主要需要操作以下两个类的api</p>
+<pre><code><code>java.lang.reflect.InvocationHandler;
+java.lang.reflect.Proxy;</code></code></pre>
+<p>最终解决方案，通过继承 InfluxDBResultMapper 的 toPOJO 方法得以解决。<br />
+以下贴出代码：</p>
+<pre><code><code>public class InfluxDBResultMapperHelper extends InfluxDBResultMapper {
+
+    public &lt;T&gt; List&lt;T&gt; toPOJO(final QueryResult queryResult, final Class&lt;T&gt; clazz,String name)
+            throws InfluxDBMapperException {
+        InvocationHandler handler = Proxy.getInvocationHandler(clazz.getAnnotation(Measurement.class));
+        Field hField = null;
+        try {
+            hField = handler.getClass().getDeclaredField(ME_VALUE);
+            hField.setAccessible(true);
+            Map memberValues = (Map) hField.get(handler);
+            memberValues.put(ME_NAME, name);
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+        return toPOJO(queryResult, clazz, TimeUnit.MILLISECONDS);
+    }
+}</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

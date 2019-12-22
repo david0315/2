@@ -1,0 +1,111 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修5. 彤哥说netty系列之Java NIO核心组件之Channel' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>5. 彤哥说netty系列之Java NIO核心组件之Channel</center></div><div class='banquan'>原文出处:本文由博客园博主彤哥读源码提供。<br/>
+原文连接:https://www.cnblogs.com/tong-yuan/p/11968419.html</div><br>
+    <p><img src="./images/5. 彤哥说netty系列之Java NIO核心组件之Channel0.png" alt="nio" /></p>
+<p>你好，我是彤哥，本篇是netty系列的第五篇。</p>
+<h1 id="简介">简介</h1>
+<p>上一章我们一起学习了如何使用Java原生NIO实现群聊系统，这章我们一起来看看Java NIO的核心组件之一——Channel。</p>
+<h1 id="思维转变">思维转变</h1>
+<p>首先，我想说的最重要的一个点是，学习NIO思维一定要从BIO那种一个连接一个线程的模式转变成多个连接（Channel）共用一个线程来处理的这种思维。</p>
+<p><img src="./images/5. 彤哥说netty系列之Java NIO核心组件之Channel1.png" alt="nio" /></p>
+<p><img src="./images/5. 彤哥说netty系列之Java NIO核心组件之Channel2.png" alt="nio" /></p>
+<blockquote>
+<p>1个Connection = 1个Socket = 1个Channel，这几个概念可以看作是等价的，都表示一个连接，只不过是用在不同的场景中。</p>
+</blockquote>
+<p>如果单从阻塞/非阻塞的角度来看的话，IO可以分成两大类，一类是Blocking IO，一类是Non-blocking IO，像IO五种模型中的后四种其实都可以看作是非阻塞型IO，只是各自使用的手段不相同罢了。</p>
+<p>在Java中，我们说的非阻塞IO或者说NIO（New IO）主要是指多路复用IO，底层可以使用select/poll/epoll等技术实现。</p>
+<p>另外，在Java1.7的时候引入了NIO2，这个主要是指异步IO模型，也就是我们常说的AIO，底层完全使用异步回调的方式来实现。</p>
+<p>但是，由于AIO这项技术在linux操作系统上还不太成熟，所以我们通常也不会说太多关于这方面的内容。</p>
+<p>在后面我们学习Netty的时候会再次讲到这三种IO模型，可以看到Netty是完全支持三种IO的，但是它把OIO（BIO）和AIO都给deprecated了，也进一步说明了AIO的不成熟性。</p>
+<p>好了，扯了一下思维转变的问题，下面正式进入今天的内容——<strong>Java NIO核心组件之Channel</strong>。</p>
+<h1 id="channel">Channel</h1>
+<h2 id="概念">概念</h2>
+<p>我们先来看看Java中对于Channel的定义，位于java.nio.channels.Channel类的注释上：</p>
+<blockquote>
+<p>A nexus for I/O operations.<br />
+本文来源工从号彤哥读源码<br />
+A channel represents an open connection to an entity such as a hardware device, a file, a network socket, or a program component that is capable of performing one or more distinct I/O operations, for example reading or writing.</p>
+</blockquote>
+<p>第一句，它是IO操作的一种连接。</p>
+<blockquote>
+<p>nexus, the means of connection between things linked in series.</p>
+</blockquote>
+<p>第二句，Channel代表到实体的开放连接，这个实体可以是硬件，文件，网络套接字，或者程序组件，并且可以执行一个或多个不同的IO操作，例如，读或写。</p>
+<p>简单点讲，Channel就是实体与实体之间的连接，比如，操作文件可以使用FileChannel，操作网络可以使用SocketChannel等。</p>
+<h2 id="与流的区别">与流的区别</h2>
+<p>BIO是面向流（Stream）编程的，流又分成InputStream和OutputStream，那么Channel和Stream有什么区别呢？</p>
+<ul>
+<li><p>Channel可以同时支持读和写，而Stream只能支持单向的读或写（所以分成InputStream和OutputStream）</p></li>
+<li>Channel支持异步读写，Stream通常只支持同步</li>
+<li><p>Channel总是读向（read into）Buffer，或者写自（write from）Buffer（有点绕，以Channel为中心，从Channel中读出数据到Buffer，从Buffer中往Channel写入数据）</p></li>
+</ul>
+<p><img src="./images/5. 彤哥说netty系列之Java NIO核心组件之Channel3.png" alt="nio" /></p>
+<h2 id="实现方式">实现方式</h2>
+<p>下面列举了JDK中比较重要的实现方式：</p>
+<ul>
+<li>FileChannel：操作文件</li>
+<li>DatagramChannel：UDP协议支持</li>
+<li>SocketChannel：TCP协议支持</li>
+<li>ServerSocketChannel：监听TCP协议Accept事件，之后创建SocketChannel</li>
+</ul>
+<h2 id="例子">例子</h2>
+<pre><code><code>public class FileChannelTest {
+    public static void main(String[] args) throws IOException {
+        // 从文件获取一个FileChannel
+        FileChannel fileChannel = new RandomAccessFile(&quot;D:\\object.txt&quot;, &quot;rw&quot;).getChannel();
+        // 声明一个Byte类型的Buffer
+        ByteBuffer buffer = ByteBuffer.allocate(10);
+        // 将FileChannel中的数据读出到buffer中，-1表示读取完毕
+        // buffer默认为写模式，本文来源工从号彤哥读源码
+        // read()方法是相对channel而言的，相对buffer就是写
+        while ((fileChannel.read(buffer)) != -1) {
+            // buffer切换为读模式
+            buffer.flip();
+            // buffer中是否有未读数据
+            while (buffer.hasRemaining()) {
+                // 未读数据的长度
+                int remain = buffer.remaining();
+                // 声明一个字节数组
+                byte[] bytes = new byte[remain];
+                // 将buffer中数据读出到字节数组中
+                buffer.get(bytes);
+                // 打印出来
+                System.out.println(new String(bytes, StandardCharsets.UTF_8));
+            }
+            // 清空buffer，为下一次写入数据做准备
+            // clear()会将buffer再次切换为写模式
+            buffer.clear();
+        }
+    }
+}</code></code></pre>
+<p>可以看到，Channel与Buffer是息息相关的。注意这里的读写方法，调用者是谁就以谁为核心，channel.read()就表示从channel读出数据，buffer.get()就表示从buffer读出数据，这跟传统编程的角度不太一样的地方。</p>
+<h1 id="总结">总结</h1>
+<p>今天我们学习了Java NIO核心组件之Channel，它与传统BIO中的流很类似但又有所区别，且经常与Buffer联合起来使用，Buffer又是什么呢？请听下回分解。</p>
+<h1 id="参考">参考</h1>
+<p>挺不错的一个网站：</p>
+<p><a href="http://tutorials.jenkov.com/java-nio/channels.html" class="uri">http://tutorials.jenkov.com/java-nio/channels.html</a></p>
+<p>最后，也欢迎来我的工从号<strong>彤哥读源码</strong>系统地学习<strong>源码&amp;架构</strong>的知识。</p>
+<p><img src="./images/5. 彤哥说netty系列之Java NIO核心组件之Channel4.png" alt="nio" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

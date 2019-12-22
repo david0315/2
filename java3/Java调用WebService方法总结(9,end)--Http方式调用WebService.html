@@ -1,0 +1,469 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java调用WebService方法总结(9,end)--Http方式调用WebService' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java调用WebService方法总结(9,end)--Http方式调用WebService</center></div><div class='banquan'>原文出处:本文由博客园博主咏吟提供。<br/>
+原文连接:https://www.cnblogs.com/wuyongyin/p/11899184.html</div><br>
+    <p>Http方式调用WebService，直接发送soap消息到服务端，然后自己解析服务端返回的结果，这种方式比较简单粗暴，也很好用；soap消息可以通过SoapUI来生成，也很方便。文中所使用到的软件版本：Java 1.8.0_191、Commons-HttpClient 3.1、HttpClient 4.5.10、HttpAsyncClient 4.1.4、Spring 5.1.9、dom4j 2.1.1、jackson 2.9.9、netty-all 4.1.33。</p>
+<h2>1、准备</h2>
+<p>参考<a class="entry" href="https://www.cnblogs.com/wuyongyin/p/11850585.html" target="_blank">Java调用WebService方法总结(1)--准备工作</a></p>
+<h2>2、调用</h2>
+<h3>2.1、HttpURLConnection方式</h3>
+<p>该方式利用JDK自身提供的API来调用，不需要额外的JAR包。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpURLConnection(String soap) {
+    HttpURLConnection connection </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        URL url </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> URL(urlWsdl);
+        connection </span>=<span style="color: #000000;"> (HttpURLConnection)url.openConnection();
+        connection.setDoOutput(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        connection.setDoInput(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        connection.setRequestProperty(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+        connection.setRequestProperty(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+        connection.connect();
+        
+        setBytesToOutputStream(connection.getOutputStream(), soap.getBytes());
+        </span><span style="color: #0000ff;">if</span> (connection.getResponseCode() ==<span style="color: #000000;"> HttpURLConnection.HTTP_OK) {
+            </span><span style="color: #0000ff;">byte</span>[] b =<span style="color: #000000;"> getBytesFromInputStream(connection.getInputStream());
+            String back </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> String(b);
+            System.out.println(</span>"httpURLConnection返回soap：" +<span style="color: #000000;"> back);
+            System.out.println(</span>"httpURLConnection结果：" +<span style="color: #000000;"> parseResult(back));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            System.out.println(</span>"httpURLConnection返回状态码：" +<span style="color: #000000;"> connection.getResponseCode());
+        }
+        
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        e.printStackTrace();
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        connection.disconnect();
+    }
+}</span></code></pre>
+
+<h3>2.2、Commons-HttpClient方式</h3>
+<p>利用Apache Commons项目下的Commons-HttpClient组件调用，目前该组件已被HttpComponents项目所取代。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commonsHttpClient(String soap) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        org.apache.commons.httpclient.HttpClient httpclient </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> org.apache.commons.httpclient.HttpClient();
+        org.apache.commons.httpclient.methods.PostMethod post </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> org.apache.commons.httpclient.methods.PostMethod(urlWsdl);
+        post.addRequestHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+        post.addRequestHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+        org.apache.commons.httpclient.methods.RequestEntity entity </span>= <span style="color: #0000ff;">new</span> org.apache.commons.httpclient.methods.InputStreamRequestEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+        post.setRequestEntity(entity);
+        </span><span style="color: #0000ff;">int</span> status =<span style="color: #000000;"> httpclient.executeMethod(post);
+        </span><span style="color: #0000ff;">if</span> (status ==<span style="color: #000000;"> org.apache.commons.httpclient.HttpStatus.SC_OK) {
+            String back </span>=<span style="color: #000000;"> post.getResponseBodyAsString();
+            System.out.println(</span>"Commons-HttpClinet返回soap：" +<span style="color: #000000;"> back);
+            System.out.println(</span>"commons-HttpClinet返回结果：" +<span style="color: #000000;"> parseResult(back));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            System.out.println(</span>"commons-HttpClinet返回状态码：" +<span style="color: #000000;"> status);
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        e.printStackTrace();
+    }
+}</span></code></pre>
+
+<h3>2.3、HttpClient方式</h3>
+<p>利用Apache HttpComponents项目下HttpClient组件调用，是Commons-HttpClient组件的升级版。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpClient(String soap) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        CloseableHttpClient httpClient </span>=<span style="color: #000000;"> HttpClients.createDefault();
+        HttpPost httpPost </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpPost(urlWsdl);
+        httpPost.setHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+        httpPost.setHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+        InputStreamEntity entity </span>= <span style="color: #0000ff;">new</span> InputStreamEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+        httpPost.setEntity(entity);
+        CloseableHttpResponse response </span>=<span style="color: #000000;"> httpClient.execute(httpPost);
+        </span><span style="color: #0000ff;">if</span> (response.getStatusLine().getStatusCode() ==<span style="color: #000000;"> org.apache.http.HttpStatus.SC_OK) {
+            HttpEntity responseEntity </span>=<span style="color: #000000;"> response.getEntity();
+            String back </span>=<span style="color: #000000;"> EntityUtils.toString(responseEntity);
+            System.out.println(</span>"httpClient返回soap：" +<span style="color: #000000;"> back);
+            System.out.println(</span>"httpClient返回结果：" +<span style="color: #000000;"> parseResult(back));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            System.out.println(</span>"HttpClinet返回状态码：" +<span style="color: #000000;"> response.getStatusLine().getStatusCode());
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        e.printStackTrace();
+    }
+}</span></code></pre>
+
+<h3>2.4、HttpAsyncClient方式</h3>
+<p>HttpAsyncClient是HttpClient的异步版本，其用法跟HttpClient类似。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpAsyncClient(String soap) {
+    CloseableHttpAsyncClient httpClient </span>=<span style="color: #000000;"> HttpAsyncClients.createDefault();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        httpClient.start();
+        HttpPost httpPost </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpPost(urlWsdl);
+        httpPost.setHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+        httpPost.setHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+        InputStreamEntity entity </span>= <span style="color: #0000ff;">new</span> InputStreamEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+        httpPost.setEntity(entity);
+        Future</span>&lt;HttpResponse&gt; future = httpClient.execute(httpPost, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        HttpResponse response </span>=<span style="color: #000000;"> future.get();
+        </span><span style="color: #0000ff;">if</span> (response.getStatusLine().getStatusCode() ==<span style="color: #000000;"> org.apache.http.HttpStatus.SC_OK) {
+            HttpEntity responseEntity </span>=<span style="color: #000000;"> response.getEntity();
+            String back </span>=<span style="color: #000000;"> EntityUtils.toString(responseEntity);
+            System.out.println(</span>"HttpAsyncClient返回soap：" +<span style="color: #000000;"> back);
+            System.out.println(</span>"HttpAsyncClient返回结果：" +<span style="color: #000000;"> parseResult(back));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            System.out.println(</span>"HttpAsyncClient返回状态码：" +<span style="color: #000000;"> response.getStatusLine().getStatusCode());
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+        e.printStackTrace();
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">try</span> {httpClient.close();} <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {e.printStackTrace();}
+    }
+}</span></code></pre>
+
+<h3>2.5、RestTemplate方式</h3>
+<p>利用Srping的RestTemplate工具调用。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> restTemplate(String soap) {
+    RestTemplate template </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+    HttpHeaders headers </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpHeaders();
+    headers.add(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+    headers.add(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+    org.springframework.http.HttpEntity</span>&lt;String&gt; entity = <span style="color: #0000ff;">new</span> org.springframework.http.HttpEntity&lt;String&gt;<span style="color: #000000;">(soap, headers);
+    ResponseEntity</span>&lt;String&gt; response = template.postForEntity(urlWsdl, entity, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> (response.getStatusCode() ==<span style="color: #000000;"> org.springframework.http.HttpStatus.OK) {
+        String back </span>= template.postForEntity(urlWsdl, entity, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getBody();
+        System.out.println(</span>"restTemplate返回soap：" +<span style="color: #000000;"> back);
+        System.out.println(</span>"restTemplate返回结果：" +<span style="color: #000000;"> parseResult(back));
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        System.out.println(</span>"restTemplate返回状态码：" +<span style="color: #000000;"> response.getStatusCode());
+    }
+}</span></code></pre>
+
+<h3>2.6、WebClient方式</h3>
+<p>利用Srping的WebClient工具调用，它是RestTemplate的异步版本。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> webClient(String soap) {
+    WebClient webClient </span>=<span style="color: #000000;"> WebClient.create();
+    ResponseSpec response </span>=<span style="color: #000000;"> webClient.post().uri(urlWsdl)
+            .header(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">)
+            .header(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">)
+            .syncBody(soap).retrieve();
+    Mono</span>&lt;String&gt; mono = response.bodyToMono(String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    System.out.println(</span>"webClient返回soap：" +<span style="color: #000000;"> mono.block());
+    System.out.println(</span>"webClient结果：" +<span style="color: #000000;"> parseResult(mono.block()));
+}</span></code></pre>
+
+<p>这种方式会用到reactor及nettty相关包:</p>
+<p>reactor-core-3.3.0.RELEASE.jar(https://search.maven.org/artifact/io.projectreactor/reactor-core/3.3.0.RELEASE/jar)</p>
+<p>reactive-streams-1.0.3.jar(https://search.maven.org/artifact/org.reactivestreams/reactive-streams/1.0.3/jar)</p>
+<p>reactor-netty-0.9.1.RELEASE.jar(https://search.maven.org/artifact/io.projectreactor.netty/reactor-netty/0.9.1.RELEASE/jar)</p>
+<p>netty-all-4.1.33.Final.jar(https://search.maven.org/artifact/io.netty/netty-all/4.1.33.Final/jar)</p>
+<h3>2.7、小结</h3>
+<p>几种方式其实差不多，主体思想是一样的就是发送soap报文，就是写法不一样而已。完整例子：</p>
+<src class="cnblogs_code" onclick="cnblogs_code_show('ad53a0d0-9fa6-404f-ae7f-c0fc98e9d98b')"><img id="code_img_closed_ad53a0d0-9fa6-404f-ae7f-c0fc98e9d98b" class="code_img_closed" src="./images/Java调用WebService方法总结(9,end)--Http方式调用WebService0.png" alt="" /><img id="code_img_opened_ad53a0d0-9fa6-404f-ae7f-c0fc98e9d98b" class="code_img_opened" style="display: none;" onclick="cnblogs_code_hide('ad53a0d0-9fa6-404f-ae7f-c0fc98e9d98b',event)" src="./images/Java调用WebService方法总结(9,end)--Http方式调用WebService1.png" alt="" />
+<src id="cnblogs_code_open_ad53a0d0-9fa6-404f-ae7f-c0fc98e9d98b" class="cnblogs_code_hide">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.inspur.ws;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.ByteArrayInputStream;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.ByteArrayOutputStream;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.IOException;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.InputStream;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.OutputStream;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.Reader;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.io.StringReader;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.net.HttpURLConnection;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.net.URL;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.concurrent.Future;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.HttpEntity;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.HttpResponse;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.client.methods.CloseableHttpResponse;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.client.methods.HttpPost;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.entity.InputStreamEntity;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.impl.client.CloseableHttpClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.impl.client.HttpClients;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.impl.nio.client.HttpAsyncClients;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.http.util.EntityUtils;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.dom4j.Document;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.dom4j.io.SAXReader;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.http.HttpHeaders;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.http.ResponseEntity;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.client.RestTemplate;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.reactive.function.client.WebClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.reactive.function.client.WebClient.ResponseSpec;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> reactor.core.publisher.Mono;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Http方式调用WebService
+ *
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Http {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String urlWsdl = "http://www.webxml.com.cn/WebServices/TraditionalSimplifiedWebService.asmx?wsdl"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String targetNamespace = "http://webxml.com.cn/"<span style="color: #000000;">;
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * HttpURLConnection方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpURLConnection(String soap) {
+        HttpURLConnection connection </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            URL url </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> URL(urlWsdl);
+            connection </span>=<span style="color: #000000;"> (HttpURLConnection)url.openConnection();
+            connection.setDoOutput(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            connection.setDoInput(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            connection.setRequestProperty(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+            connection.setRequestProperty(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+            connection.connect();
+            
+            setBytesToOutputStream(connection.getOutputStream(), soap.getBytes());
+            </span><span style="color: #0000ff;">if</span> (connection.getResponseCode() ==<span style="color: #000000;"> HttpURLConnection.HTTP_OK) {
+                </span><span style="color: #0000ff;">byte</span>[] b =<span style="color: #000000;"> getBytesFromInputStream(connection.getInputStream());
+                String back </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> String(b);
+                System.out.println(</span>"httpURLConnection返回soap：" +<span style="color: #000000;"> back);
+                System.out.println(</span>"httpURLConnection结果：" +<span style="color: #000000;"> parseResult(back));
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                System.out.println(</span>"httpURLConnection返回状态码：" +<span style="color: #000000;"> connection.getResponseCode());
+            }
+            
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            connection.disconnect();
+        }
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * Commons-HttpClinet方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> commonsHttpClient(String soap) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            org.apache.commons.httpclient.HttpClient httpclient </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> org.apache.commons.httpclient.HttpClient();
+            org.apache.commons.httpclient.methods.PostMethod post </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> org.apache.commons.httpclient.methods.PostMethod(urlWsdl);
+            post.addRequestHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+            post.addRequestHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+            org.apache.commons.httpclient.methods.RequestEntity entity </span>= <span style="color: #0000ff;">new</span> org.apache.commons.httpclient.methods.InputStreamRequestEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+            post.setRequestEntity(entity);
+            </span><span style="color: #0000ff;">int</span> status =<span style="color: #000000;"> httpclient.executeMethod(post);
+            </span><span style="color: #0000ff;">if</span> (status ==<span style="color: #000000;"> org.apache.commons.httpclient.HttpStatus.SC_OK) {
+                String back </span>=<span style="color: #000000;"> post.getResponseBodyAsString();
+                System.out.println(</span>"Commons-HttpClinet返回soap：" +<span style="color: #000000;"> back);
+                System.out.println(</span>"commons-HttpClinet返回结果：" +<span style="color: #000000;"> parseResult(back));
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                System.out.println(</span>"commons-HttpClinet返回状态码：" +<span style="color: #000000;"> status);
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * HttpClient方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpClient(String soap) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            CloseableHttpClient httpClient </span>=<span style="color: #000000;"> HttpClients.createDefault();
+            HttpPost httpPost </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpPost(urlWsdl);
+            httpPost.setHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+            httpPost.setHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+            InputStreamEntity entity </span>= <span style="color: #0000ff;">new</span> InputStreamEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+            httpPost.setEntity(entity);
+            CloseableHttpResponse response </span>=<span style="color: #000000;"> httpClient.execute(httpPost);
+            </span><span style="color: #0000ff;">if</span> (response.getStatusLine().getStatusCode() ==<span style="color: #000000;"> org.apache.http.HttpStatus.SC_OK) {
+                HttpEntity responseEntity </span>=<span style="color: #000000;"> response.getEntity();
+                String back </span>=<span style="color: #000000;"> EntityUtils.toString(responseEntity);
+                System.out.println(</span>"httpClient返回soap：" +<span style="color: #000000;"> back);
+                System.out.println(</span>"httpClient返回结果：" +<span style="color: #000000;"> parseResult(back));
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                System.out.println(</span>"HttpClinet返回状态码：" +<span style="color: #000000;"> response.getStatusLine().getStatusCode());
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * HttpAsyncClient方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> httpAsyncClient(String soap) {
+        CloseableHttpAsyncClient httpClient </span>=<span style="color: #000000;"> HttpAsyncClients.createDefault();
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            httpClient.start();
+            HttpPost httpPost </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpPost(urlWsdl);
+            httpPost.setHeader(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+            httpPost.setHeader(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+            InputStreamEntity entity </span>= <span style="color: #0000ff;">new</span> InputStreamEntity(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(soap.getBytes()));
+            httpPost.setEntity(entity);
+            Future</span>&lt;HttpResponse&gt; future = httpClient.execute(httpPost, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+            HttpResponse response </span>=<span style="color: #000000;"> future.get();
+            </span><span style="color: #0000ff;">if</span> (response.getStatusLine().getStatusCode() ==<span style="color: #000000;"> org.apache.http.HttpStatus.SC_OK) {
+                HttpEntity responseEntity </span>=<span style="color: #000000;"> response.getEntity();
+                String back </span>=<span style="color: #000000;"> EntityUtils.toString(responseEntity);
+                System.out.println(</span>"HttpAsyncClient返回soap：" +<span style="color: #000000;"> back);
+                System.out.println(</span>"HttpAsyncClient返回结果：" +<span style="color: #000000;"> parseResult(back));
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                System.out.println(</span>"HttpAsyncClient返回状态码：" +<span style="color: #000000;"> response.getStatusLine().getStatusCode());
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span> {httpClient.close();} <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {e.printStackTrace();}
+        }
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * RestTemplate方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> restTemplate(String soap) {
+        RestTemplate template </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+        HttpHeaders headers </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpHeaders();
+        headers.add(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">);
+        headers.add(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">);
+        org.springframework.http.HttpEntity</span>&lt;String&gt; entity = <span style="color: #0000ff;">new</span> org.springframework.http.HttpEntity&lt;String&gt;<span style="color: #000000;">(soap, headers);
+        ResponseEntity</span>&lt;String&gt; response = template.postForEntity(urlWsdl, entity, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span> (response.getStatusCode() ==<span style="color: #000000;"> org.springframework.http.HttpStatus.OK) {
+            String back </span>= template.postForEntity(urlWsdl, entity, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getBody();
+            System.out.println(</span>"restTemplate返回soap：" +<span style="color: #000000;"> back);
+            System.out.println(</span>"restTemplate返回结果：" +<span style="color: #000000;"> parseResult(back));
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            System.out.println(</span>"restTemplate返回状态码：" +<span style="color: #000000;"> response.getStatusCode());
+        }
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * WebClient方式
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> soap
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> webClient(String soap) {
+        WebClient webClient </span>=<span style="color: #000000;"> WebClient.create();
+        ResponseSpec response </span>=<span style="color: #000000;"> webClient.post().uri(urlWsdl)
+                .header(</span>"SOAPAction", targetNamespace + "toTraditionalChinese"<span style="color: #000000;">)
+                .header(</span>"Content-Type", "text/xml;charset=UTF-8"<span style="color: #000000;">)
+                .syncBody(soap).retrieve();
+        Mono</span>&lt;String&gt; mono = response.bodyToMono(String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        System.out.println(</span>"webClient返回soap：" +<span style="color: #000000;"> mono.block());
+        System.out.println(</span>"webClient结果：" +<span style="color: #000000;"> parseResult(mono.block()));
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 从输入流获取数据
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> in
+     * </span><span style="color: #808080;">@return</span><span style="color: #008000;">
+     * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> IOException
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">byte</span>[] getBytesFromInputStream(InputStream in) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+        ByteArrayOutputStream baos </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayOutputStream();
+        </span><span style="color: #0000ff;">byte</span>[] b = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span>[1024<span style="color: #000000;">];
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> len;
+        </span><span style="color: #0000ff;">while</span> ((len = in.read(b)) != -1<span style="color: #000000;">) {
+            baos.write(b, </span>0<span style="color: #000000;">, len);
+        }
+        </span><span style="color: #0000ff;">byte</span>[] bytes =<span style="color: #000000;"> baos.toByteArray();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bytes;
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 向输入流发送数据
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> out
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> bytes
+     * </span><span style="color: #808080;">@throws</span><span style="color: #008000;"> IOException
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> setBytesToOutputStream(OutputStream out, <span style="color: #0000ff;">byte</span>[] bytes) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+        ByteArrayInputStream bais </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ByteArrayInputStream(bytes);
+        </span><span style="color: #0000ff;">byte</span>[] b = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span>[1024<span style="color: #000000;">];
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> len;
+        </span><span style="color: #0000ff;">while</span> ((len = bais.read(b)) != -1<span style="color: #000000;">) {
+            out.write(b, </span>0<span style="color: #000000;">, len);
+        }
+        out.flush();
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 解析结果
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> s
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> String parseResult(String s) {
+        String result </span>= ""<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            Reader file </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> StringReader(s);
+            SAXReader reader </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> SAXReader();
+            
+            Map</span>&lt;String, String&gt; map = <span style="color: #0000ff;">new</span> HashMap&lt;String, String&gt;<span style="color: #000000;">();
+            map.put(</span>"ns", "http://webxml.com.cn/"<span style="color: #000000;">);
+            reader.getDocumentFactory().setXPathNamespaceURIs(map);
+            Document dc </span>=<span style="color: #000000;"> reader.read(file);
+            result </span>= dc.selectSingleNode("//ns:toTraditionalChineseResult"<span style="color: #000000;">).getText().trim();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        String soap11 </span>= "&lt;soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:web=\"http://webxml.com.cn/\"&gt;"
+                       + "&lt;soapenv:Header/&gt;"
+                       + "&lt;soapenv:Body&gt;"
+                       +    "&lt;web:toTraditionalChinese&gt;"
+                       +      "&lt;web:sText&gt;小学&lt;/web:sText&gt;"
+                       +    "&lt;/web:toTraditionalChinese&gt;"
+                       + "&lt;/soapenv:Body&gt;"
+                       + "&lt;/soapenv:Envelope&gt;"<span style="color: #000000;">;
+        String soap12 </span>= "&lt;soapenv:Envelope xmlns:soapenv=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:web=\"http://webxml.com.cn/\"&gt;"
+                   + "&lt;soapenv:Header/&gt;"
+                   + "&lt;soapenv:Body&gt;"
+                   +    "&lt;web:toTraditionalChinese&gt;"
+                   +      "&lt;web:sText&gt;大学&lt;/web:sText&gt;"
+                   +    "&lt;/web:toTraditionalChinese&gt;"
+                   + "&lt;/soapenv:Body&gt;"
+                   + "&lt;/soapenv:Envelope&gt;"<span style="color: #000000;">;
+        httpURLConnection(soap11);
+        httpURLConnection(soap12);
+        
+        commonsHttpClient(soap11);
+        commonsHttpClient(soap12);
+        
+        httpClient(soap11);
+        httpClient(soap12);
+        
+        httpAsyncClient(soap11);
+        httpAsyncClient(soap12);
+        
+        restTemplate(soap11);
+        restTemplate(soap12);
+        
+        webClient(soap11);
+        webClient(soap12);
+    }
+}</span></code></pre>
+
+<span class="cnblogs_code_collapse">View Code</span>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

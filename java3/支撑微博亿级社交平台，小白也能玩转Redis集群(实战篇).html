@@ -1,0 +1,170 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)</center></div><div class='banquan'>原文出处:本文由博客园博主分布式系统架构提供。<br/>
+原文连接:https://www.cnblogs.com/caison/p/11717636.html</div><br>
+    <p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)0.png" /></p>
+<p>上篇文章《支撑微博亿级社交平台，小白也能玩转Redis集群(原理篇)》介绍了Redis集群相关原理，这篇文章将介绍Redis Cluster集群的搭建、配置，运维、扩容等具体操作</p>
+<h1 id="集群搭建">集群搭建</h1>
+<p>2018年10月 Redis 发布了稳定版本的 5.0 版本，推出了各种新特性，其中一点是集群管理工具从基于Ruby的redis-trib.rb移植到基于C语言redis-cli中，方便集群的构建和管理</p>
+<p>Redis Cluster集群运行至少需要包含3个主节点，实现高可用最少需要3主3从6个节点</p>
+<p>以下步骤基于Redis 5.0.5版本，介绍如何在一台 Linux 服务器上搭建有3主3从的6节点的 Redis集群</p>
+<ul>
+<li><strong>步骤1 创建安装目录</strong></li>
+</ul>
+<pre><code><code>mkdir -p /data/project/redis-cluster</code></code></pre>
+<ul>
+<li><strong>步骤2 下载源码并解压编译</strong></li>
+</ul>
+<pre><code><code>cd /data/project/redis-cluster
+wget http://download.redis.io/releases/redis-5.0.5.tar.gz
+tar xzf redis-5.0.5.tar.gz
+cd redis-5.0.5
+make</code></code></pre>
+<p>执行make后，如果报错“jemalloc/jemalloc.h：没有那个文件或目录”，可以改为用以下命令：</p>
+<pre><code><code>make MALLOC=libc</code></code></pre>
+<ul>
+<li><strong>步骤3 创建6个Redis配置文件</strong><br />
+6个配置文件不能在同一个目录，下面Redis 6个节点分别安装在7000~7005端口<br />
+首先创建配置文件目录及文件，定义如下：</li>
+</ul>
+<pre><code><code>mkdir -p /data/project/redis-cluster/nodes/7000
+mkdir -p /data/project/redis-cluster/nodes/7001
+mkdir -p /data/project/redis-cluster/nodes/7002
+mkdir -p /data/project/redis-cluster/nodes/7003
+mkdir -p /data/project/redis-cluster/nodes/7004
+mkdir -p /data/project/redis-cluster/nodes/7005
+
+touch /data/project/redis-cluster/nodes/7000/redis.conf
+touch /data/project/redis-cluster/nodes/7001/redis.conf
+touch /data/project/redis-cluster/nodes/7002/redis.conf
+touch /data/project/redis-cluster/nodes/7003/redis.conf
+touch /data/project/redis-cluster/nodes/7004/redis.conf
+touch /data/project/redis-cluster/nodes/7005/redis.conf</code></code></pre>
+<p>redis.conf配置文件的内容为：</p>
+<pre><code><code>############################## 网络 ##############################
+# 端口
+port 7000
+# 非保护模式，如果值为yes，则必须是 bind配置指定的ip的机器连接或者使用密码连接
+protected-mode no 
+
+############################## 通用 ##############################
+# 后台运行
+daemonize yes 
+# 记录redis进程pid
+pidfile  /var/run/redis_7000.pid
+
+############################## 集群 ##############################
+# 启用集群模式
+cluster-enabled yes 
+cluster-config-file nodes_7000.conf
+# 集群节点如果在该超时时间(毫秒)内不可达，则认为节点处于故障状态
+cluster-node-timeout 15000
+
+############################## 持久化 ##############################
+# AOF, RDB持久化文件目录
+dir /data/project/redis-cluster/nodes
+# 开启AOF持久化
+appendonly yes
+# AOF文件名
+appendfilename &quot;appendonly_7000.aof&quot;
+# 当目前aof文件大小超过上一次重写的aof文件大小的百分之多少进行重写
+auto-aof-rewrite-percentage 100
+# 设置允许重写的最小aof文件大小，避免了达到约定百分比但尺寸仍然很小的情况还要重写
+auto-aof-rewrite-min-size 64mb
+# RDB文件名
+dbfilename dump_7000.rdb</code></code></pre>
+<p>其中 port 、 pidfile、cluster-config-file、appendfilename、 dbfilename配置需要随着节点的不同而调整</p>
+<p>配置项说明可以参考redis-5.0.5/redis.conf，每一项都介绍得很详细，推荐阅读</p>
+<ul>
+<li><strong>步骤4 启动节点</strong></li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7000/redis.conf
+/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7001/redis.conf
+/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7002/redis.conf
+/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7003/redis.conf
+/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7004/redis.conf
+/data/project/redis-cluster/redis-5.0.5/src/redis-server /data/project/redis-cluster/nodes/7005/redis.conf</code></code></pre>
+<p>ps -ef|grep redis，可以看到6个redis进程已启动：</p>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)1.png" /></p>
+<ul>
+<li><strong>步骤5 启动集群</strong><br />
+使用如下命令启动集群，IP地址自行替换：</li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster create 192.168.56.102:7000 192.168.56.102:7001 192.168.56.102:7002 192.168.56.102:7003 192.168.56.102:7004 192.168.56.102:7005 --cluster-replicas 1</code></code></pre>
+<p>启动成功信息如下：</p>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)2.png" /></p>
+<p>到此，Redis Cluster 集群搭建完成</p>
+<h1 id="集群信息查看">集群信息查看</h1>
+<p>Redis5的redis-cli新增系列集群运维功能，查看命令详情：</p>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster help</code></code></pre>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)3.png" /></p>
+<p>命令参数具体作用可以参考官方文档，下面会基于其中一些常用命令对集群进行管理</p>
+<ul>
+<li><strong>检查节点状态</strong></li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster check 192.168.56.102:7000</code></code></pre>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)4.png" /></p>
+<ul>
+<li><strong>查看集群信息</strong></li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster info 192.168.56.102:7000</code></code></pre>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)5.png" /></p>
+<h1 id="集群扩容">集群扩容</h1>
+<p>集群现在有3主3从，下面新增4个节点扩容变成5主5从</p>
+<ul>
+<li><strong>步骤1 启动新节点</strong><br />
+创建4个Redis配置文件，端口号为7006~7009，然后启动节点(参考“集群搭建”的步骤3和步骤4)</li>
+<li><strong>步骤2 新节点加入集群</strong><br />
+设置4个节点分别加入已有redis集群，2个为主节点，2个为从节点</li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster add-node 192.168.56.102:7006 192.168.56.102:7005 
+/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster add-node 192.168.56.102:7007 192.168.56.102:7005 
+
+# 24e2c是节点7006的id，代表该节点加入集群并为7006的从节点
+/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster add-node 192.168.56.102:7008 192.168.56.102:7005 --cluster-slave --cluster-master-id 24e2c369678952b07d95c0a4b49c2d7a7b2e2bf7 
+# 24e2c是节点7007的id，代表该节点加入集群并为7007的从节点
+/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster add-node 192.168.56.102:7009  192.168.56.102:7005 --cluster-slave --cluster-master-id ab0f74a19819a74238df7a510494e9418678cbe1</code></code></pre>
+<p>此时集群状态如下，其中主节点7006和主节点7007还没分配任何slot，在下面的步骤会进行分配：</p>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)6.png" /></p>
+<ul>
+<li><strong>步骤3 模拟slot重新平衡分配</strong><br />
+基于rebalance命令，增加--cluster-simulat参数，查看会迁移哪些slots，而不会真正执行迁移操作</li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster rebalance 192.168.56.102:7000 --cluster-threshold 1 --cluster-use-empty-masters  --cluster-simulat</code></code></pre>
+<p>返回以下迁移信息：<br />
+<img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)7.png" /></p>
+<ul>
+<li><strong>步骤4 执行slot重新平衡分配</strong><br />
+执行rebalance命令，平衡集群节点slot数量，重新分配slot( 去掉--cluster-simulat)</li>
+</ul>
+<pre><code><code>/data/project/redis-cluster/redis-5.0.5/src/redis-cli --cluster rebalance 192.168.56.102:7000 --cluster-threshold 1 --cluster-use-empty-masters</code></code></pre>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)8.png" /></p>
+<p>至此，集群扩容完成，集群缩容的话，需要基于reshard将需被下线的结点中的slot移到其他结点，然后基于del-node命令删除结点</p>
+<h1 id="总结">总结</h1>
+<p>这篇文章介绍Redis Cluster集群一些基本实现，篇幅所限，后面有机会再展开介绍Redis一些线上问题踩坑经验、监控运维平台建设，欢迎继续关注</p>
+<h1 id="参考">参考</h1>
+<p>redis cluster管理工具redis-trib-rb详解<br />
+<a href="http://weizijun.cn/2016/01/08/redis%20cluster管理工具redis-trib-rb详解/">http://weizijun.cn/2016/01/08/redis%20cluster管理工具redis-trib-rb详解/</a></p>
+<p><img src="./images/支撑微博亿级社交平台，小白也能玩转Redis集群(实战篇)9.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

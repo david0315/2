@@ -1,0 +1,181 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修相同类中方法间调用时日志Aop失效处理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>相同类中方法间调用时日志Aop失效处理</center></div><div class='banquan'>原文出处:本文由博客园博主神牛003提供。<br/>
+原文连接:https://www.cnblogs.com/wangrudong003/p/11508107.html</div><br>
+    <p>本篇分享的内容是在相同类中方法间调用时Aop失效处理方案，该问题我看有很多文章描述了，不过大多是从事务角度分享的，本篇打算从日志aop方面分享(当然都是aop，失效和处理方案都是一样)，以下都是基于springboot演示；</p>
+<ul>
+<li>快速定义个日志Appender</li>
+<li>快速定义个拦截器和日志注解(aop)</li>
+<li>模拟相同类中方法间调用时aop失效</li>
+<li data-spm-anchor-id="a2c4e.11153940.0.i2.6f6467e1Zkzl4L">Aop失效处理方案(就两种足够了)</li>
+</ul>
+<h1 id="1" data-spm-anchor-id="a2c4e.11153940.0.i4.6f6467e1Zkzl4L">快速定义个日志Appender</h1>
+<p>日志我还是喜欢log4j，大部分朋友也同样吧，这里lombok与log4j结合来完成我们的日志，如下maven包(最新mvn还是建议去官网找)：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>         &lt;dependency&gt;
+<span style="color: #008080;"> 2</span>             &lt;groupId&gt;org.projectlombok&lt;/groupId&gt;
+<span style="color: #008080;"> 3</span>             &lt;artifactId&gt;lombok&lt;/artifactId&gt;
+<span style="color: #008080;"> 4</span>         &lt;/dependency&gt;
+<span style="color: #008080;"> 6</span>         &lt;dependency&gt;
+<span style="color: #008080;"> 7</span>             &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
+<span style="color: #008080;"> 8</span>             &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
+<span style="color: #008080;"> 9</span>             &lt;version&gt;<span style="color: #800080;">2.0</span>.<span style="color: #800080;">0</span>-alpha0&lt;/version&gt;
+<span style="color: #008080;">10</span>         &lt;/dependency&gt;
+<span style="color: #008080;">11</span>         &lt;dependency&gt;
+<span style="color: #008080;">12</span>             &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
+<span style="color: #008080;">13</span>             &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
+<span style="color: #008080;">14</span>             &lt;version&gt;<span style="color: #800080;">2.0</span>.<span style="color: #800080;">0</span>-alpha0&lt;/version&gt;
+<span style="color: #008080;">15</span>         &lt;/dependency&gt;</code></pre>
+
+<p>先继承log4j的AppenderSkeleton重写下append方法，简单记录下就行，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MyLogAppend extends AppenderSkeleton {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> String author;
+</span><span style="color: #008080;"> 3</span> 
+<span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setAuthor(String author) {
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">this</span>.author =<span style="color: #000000;"> author;
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> append(LoggingEvent loggingEvent) {
+</span><span style="color: #008080;">10</span>         System.<span style="color: #0000ff;">out</span><span style="color: #000000;">.println(
+</span><span style="color: #008080;">11</span>                 JsonUtil.formatMsg(<span style="color: #800000;">"</span><span style="color: #800000;">date -- {}，level -- {}，message -- {}</span><span style="color: #800000;">"</span><span style="color: #000000;">,
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">                        LocalDate.now(),
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">                        loggingEvent.getLevel(),
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">                        loggingEvent.getMessage()));
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">18</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> activateOptions() {
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">        super.activateOptions();
+</span><span style="color: #008080;">20</span>         System.<span style="color: #0000ff;">out</span>.println(<span style="color: #800000;">"</span><span style="color: #800000;">author：</span><span style="color: #800000;">"</span> + <span style="color: #0000ff;">this</span><span style="color: #000000;">.author);
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">22</span> 
+<span style="color: #008080;">23</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">24</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> close() {
+</span><span style="color: #008080;">25</span>         <span style="color: #0000ff;">this</span>.closed = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">27</span> 
+<span style="color: #008080;">28</span> <span style="color: #000000;">    @Override
+</span><span style="color: #008080;">29</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> boolean requiresLayout() {
+</span><span style="color: #008080;">30</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;">31</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">32</span> }</code></pre>
+
+<p>然后项目根目录增加log4j.properties配置文件，配置内容定义info级别，就此完成了log4j自定义记录日志了：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> log4j.rootLogger=<span style="color: #000000;">info,MyLogAppend
+</span><span style="color: #008080;">2</span> log4j.appender.MyLogAppend=<span style="color: #000000;">com.sm.component.log.MyLogAppend
+</span><span style="color: #008080;">3</span> log4j.appender.MyLogAppend.author=shenniu003</code></pre>
+
+<h1 id="2" data-spm-anchor-id="a2c4e.11153940.0.i10.6f6467e1Zkzl4L">快速定义个拦截器和日志注解(aop)</h1>
+<p>通常同类中不同方法调用是常事，可以直接用this.xx()；有时有这样需求，需要各个调用方法时候的参数记录下来，因此我们需要个拦截器，再增加个自定义注解方便使用：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Aspect
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">@Component
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">@Slf4j
+</span><span style="color: #008080;"> 4</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MyLogInterceptor {
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">private</span> final String pointcut = <span style="color: #800000;">"</span><span style="color: #800000;">@annotation(com.sm.component.ServiceLog)</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span> <span style="color: #000000;">    @Pointcut(pointcut)
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> log() {
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>     @Before(value = <span style="color: #800000;">"</span><span style="color: #800000;">log()</span><span style="color: #800000;">"</span><span style="color: #000000;">)
+</span><span style="color: #008080;">13</span>     <span style="color: #0000ff;">void</span><span style="color: #000000;"> before(JoinPoint joinPoint) {
+</span><span style="color: #008080;">14</span>         Signature signature =<span style="color: #000000;"> joinPoint.getSignature();
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        log.info(
+</span><span style="color: #008080;">16</span>                 JsonUtil.formatMsg(<span style="color: #800000;">"</span><span style="color: #800000;">method：{}，params：{}</span><span style="color: #800000;">"</span><span style="color: #000000;">,
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                        signature.toLongString(),
+</span><span style="color: #008080;">18</span> <span style="color: #000000;">                        joinPoint.getArgs()));
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">20</span> }</code></pre>
+
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #000000;">@Documented
+</span><span style="color: #008080;">2</span> <span style="color: #000000;">@Target({ElementType.METHOD})
+</span><span style="color: #008080;">3</span> <span style="color: #000000;">@Retention(RetentionPolicy.RUNTIME)
+</span><span style="color: #008080;">4</span> <span style="color: #0000ff;">public</span><span style="color: #000000;"> @interface ServiceLog {
+</span><span style="color: #008080;">5</span> }</code></pre>
+
+<p>拦截器拦截带有@ServiceLog注解的方法，然后记录请求参数和方法名；</p>
+<h1 id="3" data-spm-anchor-id="a2c4e.11153940.0.i16.6f6467e1Zkzl4L">模拟相同类中方法间调用时aop失效</h1>
+<p>利用上面完成的日志注解，这里在OrderService类中用getOrderDetail方法去调用getOrderLog方法，他两都标记日志注解便于记录参数日志；同时getOrderDetail方法也调用另外一个UserService类中的getNickName方法，便于比较：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Service
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> OrderService {
+</span><span style="color: #008080;"> 3</span> 
+<span style="color: #008080;"> 4</span> <span style="color: #000000;">    @Autowired
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">    UserService userService;
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span> <span style="color: #000000;">    @ServiceLog
+</span><span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String getOrderDetail(String orderNum) {
+</span><span style="color: #008080;"> 9</span>         String des = <span style="color: #800000;">"</span><span style="color: #800000;">订单号【</span><span style="color: #800000;">"</span> + orderNum + <span style="color: #800000;">"</span><span style="color: #800000;">】月饼一盒</span><span style="color: #800000;">"</span><span style="color: #000000;">;</span>
+<span style="color: #008080;">11</span> <span style="color: #000000;">        userService.getNickName(orderNum);</span>
+<span style="color: #008080;">13</span>         <span style="color: #0000ff;">this</span>.getOrderLog(orderNum + <span style="color: #800000;">"</span><span style="color: #800000;">11111</span><span style="color: #800000;">"</span><span style="color: #000000;">);</span>
+<span style="color: #008080;">15</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> des;
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">17</span> 
+<span style="color: #008080;">18</span> <span style="color: #000000;">    @ServiceLog
+</span><span style="color: #008080;">19</span>     <span style="color: #0000ff;">public</span> List&lt;String&gt;<span style="color: #000000;"> getOrderLog(String orderNum) {
+</span><span style="color: #008080;">20</span>         List&lt;String&gt; logs = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+</span><span style="color: #008080;">21</span>         IntStream.range(<span style="color: #800080;">0</span>, <span style="color: #800080;">5</span>).forEach(b -&gt;<span style="color: #000000;"> {
+</span><span style="color: #008080;">22</span>             logs.add(<span style="color: #800000;">"</span><span style="color: #800000;">用户</span><span style="color: #800000;">"</span> + b + <span style="color: #800000;">"</span><span style="color: #800000;">购买成功</span><span style="color: #800000;">"</span><span style="color: #000000;">);
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">        });
+</span><span style="color: #008080;">24</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> logs;
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">26</span> }</code></pre>
+
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> <span style="color: #000000;">@Service
+</span><span style="color: #008080;">2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> UserService {
+</span><span style="color: #008080;">3</span> <span style="color: #000000;">    @ServiceLog
+</span><span style="color: #008080;">4</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String getNickName(String userId) {
+</span><span style="color: #008080;">5</span>         <span style="color: #0000ff;">return</span> <span style="color: #800000;">"</span><span style="color: #800000;">神牛</span><span style="color: #800000;">"</span> +<span style="color: #000000;"> userId;
+</span><span style="color: #008080;">6</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">7</span> }</code></pre>
+
+<p>方法调用重点截图：</p>
+<p><img src="./images/相同类中方法间调用时日志Aop失效处理0.png" alt="" /></p>
+<p>&nbsp;然后运行程序，接口触发调用getOrderDetail方法，以下拦截器中记录的日志信息：</p>
+<p><img src="./images/相同类中方法间调用时日志Aop失效处理1.png" alt="" /></p>
+<p>能够看出拦截器只记录到了getOrderDetail和getNickName方法的日志，因此可以肯定getOrderLog根本没有走拦截器，尽管在方法上加了日志@ServiceLog注解也没用。</p>
+<h1 id="4" data-spm-anchor-id="a2c4e.11153940.0.i25.6f6467e1Zkzl4L">Aop失效处理方案(就两种足够了)</h1>
+<p>就上面相同类中方法间调用拦截器(aop)没起作用，我们有如下常用两种方式处理方案；</p>
+<ol>
+<li>用@Autowired或Resource引入自身依赖</li>
+<li data-spm-anchor-id="a2c4e.11153940.0.i27.6f6467e1Zkzl4L">开启暴露代理类，AopContext.currentProxy()方式获取代理类</li>
+</ol>
+<p>第一种：主要使用注解方法引入自身代理依赖，不要使用构造的方式会有循环依赖问题，以下使用方式：</p>
+<p><img src="./images/相同类中方法间调用时日志Aop失效处理2.png" alt="" /></p>
+<p>第二种：通过暴露代理类方式，实际原理是把代理类添加到当前请求的ThreadLocal里面，然后在使用时从ThreadLocal中获取代理类，再调用对应的方法，开启方式需要：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span> @EnableAspectJAutoProxy(exposeProxy = <span style="color: #0000ff;">true</span>)</code></pre>
+
+<p>然后方法中如下使用即可：</p>
+<p><img src="./images/相同类中方法间调用时日志Aop失效处理3.png" alt="" /></p>
+<p>最后来看下使用这两种方式正常走拦截器效果：</p>
+<p><img src="./images/相同类中方法间调用时日志Aop失效处理4.png" alt="" /></p>
+<p>不管是日志拦截器或事务，他们都是aop的方式，底层原理走的代理方式，只有使用代理类才会正常执行拦截器，而this.xxx()使用的是自身实例对象，因此会出现上面失效的情况。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

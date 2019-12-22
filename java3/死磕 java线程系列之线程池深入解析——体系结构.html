@@ -1,0 +1,206 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修死磕 java线程系列之线程池深入解析——体系结构' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>死磕 java线程系列之线程池深入解析——体系结构</center></div><div class='banquan'>原文出处:本文由博客园博主彤哥读源码提供。<br/>
+原文连接:https://www.cnblogs.com/tong-yuan/p/11674974.html</div><br>
+    <p><img src="./images/死磕 java线程系列之线程池深入解析——体系结构0.png" alt="ThreadPoolExecutor" /></p>
+<p>（手机横屏看源码更方便）</p>
+<hr />
+<p>注：java源码分析部分如无特殊说明均基于 java8 版本。</p>
+<h2 id="简介">简介</h2>
+<p>Java的线程池是块硬骨头，对线程池的源码做深入研究不仅能提高对Java整个并发编程的理解，也能提高自己在面试中的表现，增加被录取的可能性。</p>
+<p>本系列将分成很多个章节，本章作为线程池的第一章将对整个线程池体系做一个总览。</p>
+<h2 id="体系结构">体系结构</h2>
+<p><img src="./images/死磕 java线程系列之线程池深入解析——体系结构1.png" alt="ThreadPoolExecutor" /></p>
+<p>上图列举了线程池中非常重要的接口和类：</p>
+<p>（1）Executor，线程池顶级接口；</p>
+<p>（2）ExecutorService，线程池次级接口，对Executor做了一些扩展，增加一些功能；</p>
+<p>（3）ScheduledExecutorService，对ExecutorService做了一些扩展，增加一些定时任务相关的功能；</p>
+<p>（4）AbstractExecutorService，抽象类，运用模板方法设计模式实现了一部分方法；</p>
+<p>（5）ThreadPoolExecutor，普通线程池类，这也是我们通常所说的线程池，包含最基本的一些线程池操作相关的方法实现；</p>
+<p>（6）ScheduledThreadPoolExecutor，定时任务线程池类，用于实现定时任务相关功能；</p>
+<p>（7）ForkJoinPool，新型线程池类，java7中新增的线程池类，基于工作窃取理论实现，运用于大任务拆小任务、任务无限多的场景；</p>
+<p>（8）Executors，线程池工具类，定义了一些快速实现线程池的方法（谨慎使用）；</p>
+<h2 id="executor">Executor</h2>
+<p>线程池顶级接口，只定义了一个执行无返回值任务的方法。</p>
+<pre><code><code>public interface Executor {
+    // 执行无返回值任务【本篇文章由公众号“彤哥读源码”原创】
+    void execute(Runnable command);
+}</code></code></pre>
+<h2 id="executorservice">ExecutorService</h2>
+<p>线程池次级接口，对Executor做了一些扩展，主要增加了关闭线程池、执行有返回值任务、批量执行任务的方法。</p>
+<pre><code><code>public interface ExecutorService extends Executor {
+    // 关闭线程池，不再接受新任务，但已经提交的任务会执行完成
+    void shutdown();
+
+    // 立即关闭线程池，尝试停止正在运行的任务，未执行的任务将不再执行
+    // 被迫停止及未执行的任务将以列表的形式返回
+    List&lt;Runnable&gt; shutdownNow();
+
+    // 检查线程池是否已关闭
+    boolean isShutdown();
+
+    // 检查线程池是否已终止，只有在shutdown()或shutdownNow()之后调用才有可能为true
+    boolean isTerminated();
+    
+    // 在指定时间内线程池达到终止状态了才会返回true
+    boolean awaitTermination(long timeout, TimeUnit unit)
+        throws InterruptedException;
+    
+    // 执行有返回值的任务，任务的返回值为task.call()的结果
+    &lt;T&gt; Future&lt;T&gt; submit(Callable&lt;T&gt; task);
+
+    // 执行有返回值的任务，任务的返回值为这里传入的result
+    // 当然只有当任务执行完成了调用get()时才会返回
+    &lt;T&gt; Future&lt;T&gt; submit(Runnable task, T result);
+    
+    // 执行有返回值的任务，任务的返回值为null
+    // 当然只有当任务执行完成了调用get()时才会返回
+    Future&lt;?&gt; submit(Runnable task);
+
+    // 批量执行任务，只有当这些任务都完成了这个方法才会返回
+    &lt;T&gt; List&lt;Future&lt;T&gt;&gt; invokeAll(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks)
+        throws InterruptedException;
+
+    // 在指定时间内批量执行任务，未执行完成的任务将被取消
+    // 这里的timeout是所有任务的总时间，不是单个任务的时间
+    &lt;T&gt; List&lt;Future&lt;T&gt;&gt; invokeAll(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks,
+                                  long timeout, TimeUnit unit)
+        throws InterruptedException;
+    
+    // 返回任意一个已完成任务的执行结果，未执行完成的任务将被取消
+    &lt;T&gt; T invokeAny(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks)
+        throws InterruptedException, ExecutionException;
+
+    // 在指定时间内如果有任务已完成，则返回任意一个已完成任务的执行结果，未执行完成的任务将被取消
+    &lt;T&gt; T invokeAny(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks,
+                    long timeout, TimeUnit unit)
+        throws InterruptedException, ExecutionException, TimeoutException;
+}</code></code></pre>
+<h2 id="scheduledexecutorservice">ScheduledExecutorService</h2>
+<p>对ExecutorService做了一些扩展，增加一些定时任务相关的功能，主要包含两大类：执行一次，重复多次执行。</p>
+<pre><code><code>public interface ScheduledExecutorService extends ExecutorService {
+
+    // 在指定延时后执行一次
+    public ScheduledFuture&lt;?&gt; schedule(Runnable command,
+                                       long delay, TimeUnit unit);
+    // 在指定延时后执行一次
+    public &lt;V&gt; ScheduledFuture&lt;V&gt; schedule(Callable&lt;V&gt; callable,
+                                           long delay, TimeUnit unit);
+                                           
+    // 在指定延时后开始执行，并在之后以指定时间间隔重复执行（间隔不包含任务执行的时间）
+    // 相当于之后的延时以任务开始计算【本篇文章由公众号“彤哥读源码”原创】
+    public ScheduledFuture&lt;?&gt; scheduleAtFixedRate(Runnable command,
+                                                  long initialDelay,
+                                                  long period,
+                                                  TimeUnit unit);
+
+    // 在指定延时后开始执行，并在之后以指定延时重复执行（间隔包含任务执行的时间）
+    // 相当于之后的延时以任务结束计算
+    public ScheduledFuture&lt;?&gt; scheduleWithFixedDelay(Runnable command,
+                                                     long initialDelay,
+                                                     long delay,
+                                                     TimeUnit unit);
+
+}</code></code></pre>
+<h2 id="abstractexecutorservice">AbstractExecutorService</h2>
+<p>抽象类，运用模板方法设计模式实现了一部分方法，主要为执行有返回值任务、批量执行任务的方法。</p>
+<pre><code><code>public abstract class AbstractExecutorService implements ExecutorService {
+
+    protected &lt;T&gt; RunnableFuture&lt;T&gt; newTaskFor(Runnable runnable, T value) {
+        return new FutureTask&lt;T&gt;(runnable, value);
+    }
+
+    protected &lt;T&gt; RunnableFuture&lt;T&gt; newTaskFor(Callable&lt;T&gt; callable) {
+        return new FutureTask&lt;T&gt;(callable);
+    }
+
+    public Future&lt;?&gt; submit(Runnable task) {
+        if (task == null) throw new NullPointerException();
+        RunnableFuture&lt;Void&gt; ftask = newTaskFor(task, null);
+        execute(ftask);
+        return ftask;
+    }
+
+    public &lt;T&gt; Future&lt;T&gt; submit(Runnable task, T result) {
+        if (task == null) throw new NullPointerException();
+        RunnableFuture&lt;T&gt; ftask = newTaskFor(task, result);
+        execute(ftask);
+        return ftask;
+    }
+
+    public &lt;T&gt; Future&lt;T&gt; submit(Callable&lt;T&gt; task) {
+        if (task == null) throw new NullPointerException();
+        RunnableFuture&lt;T&gt; ftask = newTaskFor(task);
+        execute(ftask);
+        return ftask;
+    }
+
+    public &lt;T&gt; T invokeAny(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks)
+        throws InterruptedException, ExecutionException {
+        // 略...
+    }
+
+    public &lt;T&gt; T invokeAny(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks,
+                           long timeout, TimeUnit unit)
+        throws InterruptedException, ExecutionException, TimeoutException {
+        // 略...
+    }
+
+    public &lt;T&gt; List&lt;Future&lt;T&gt;&gt; invokeAll(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks)
+        throws InterruptedException {
+        // 略...
+    }
+
+    public &lt;T&gt; List&lt;Future&lt;T&gt;&gt; invokeAll(Collection&lt;? extends Callable&lt;T&gt;&gt; tasks,
+                                         long timeout, TimeUnit unit)
+        throws InterruptedException {
+        // 略...
+    }
+
+}</code></code></pre>
+<p>可以看到，这里的submit()方法对传入的任务都包装成了FutureTask来进行处理，这是什么东西呢？欢迎关注后面的章节。</p>
+<h2 id="threadpoolexecutor">ThreadPoolExecutor</h2>
+<p>普通线程池类，这也是我们通常所说的线程池，包含最基本的一些线程池操作相关的方法实现。</p>
+<p>线程池的主要实现逻辑都在这里面，比如线程的创建、任务的处理、拒绝策略等，我们后面单独分析这个类。</p>
+<h2 id="scheduledthreadpoolexecutor">ScheduledThreadPoolExecutor</h2>
+<p>定时任务线程池类，用于实现定时任务相关功能，将任务包装成定时任务，并按照定时策略来执行，我们后面单独分析这个类。</p>
+<p><em>问题：你知道定时任务线程池类使用的是什么队列吗？</em></p>
+<h2 id="forkjoinpool">ForkJoinPool</h2>
+<p>新型线程池类，java7中新增的线程池类，这个线程池与Go中的线程模型特别类似，都是基于工作窃取理论，特别适合于处理归并排序这种先分后合的场景。</p>
+<p><img src="./images/死磕 java线程系列之线程池深入解析——体系结构2.png" alt="ThreadPoolExecutor" /></p>
+<h2 id="executors">Executors</h2>
+<p>线程池工具类，定义了一系列快速实现线程池的方法——newXXX()，不过阿里手册是不建议使用这个类来新建线程池的，彤哥我并不这么认为，只要能掌握其源码，知道其利敝偶尔还是可以用的，后面我们再来说这个事。</p>
+<h2 id="彩蛋">彩蛋</h2>
+<p>无彩蛋不欢，今天的问题是<strong>定时任务线程池用的是哪种队列来实现的？</strong></p>
+<p>答：延时队列。定时任务线程池中并没有直接使用并发集合中的DelayQueue，而是自己又实现了一个DelayedWorkQueue，不过跟DelayQueue的实现原理是一样的。</p>
+<p><strong>延时队列使用什么数据结构来实现的呢？</strong></p>
+<p>答：堆（DelayQueue中使用的是优先级队列，而优先级队列使用的堆；DelayedWorkQueue直接使用的堆）。</p>
+<p>关于延时队列、优先级队列和堆的相关内容点击下面的链接直达：</p>
+<p><a href="https://mp.weixin.qq.com/s/IOTwwgaOdMpZl-6QM0HlVQ">死磕 java集合之DelayQueue源码分析</a></p>
+<p><a href="https://mp.weixin.qq.com/s/kGKS7WXWbf-ME1_Hr3Fpgw">死磕 java集合之PriorityQueue源码分析</a></p>
+<p><a href="https://mp.weixin.qq.com/s/AF2tMHfofG8b51yIyaIReg">拜托，面试别再问我堆（排序）了！</a></p>
+<hr />
+<p>欢迎关注我的公众号“彤哥读源码”，查看更多源码系列文章, 与彤哥一起畅游源码的海洋。</p>
+<p><img src="./images/死磕 java线程系列之线程池深入解析——体系结构3.png" alt="qrcode" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

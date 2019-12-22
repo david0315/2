@@ -1,0 +1,221 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Springboot源码分析之TargetSource' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Springboot源码分析之TargetSource</center></div><div class='banquan'>原文出处:本文由博客园博主TheGir1提供。<br/>
+原文连接:https://www.cnblogs.com/qinzj/p/11415057.html</div><br>
+    <h4 id="摘要">摘要：</h4>
+<p>其实我第一次看见这个东西的时候也是不解，代理目标源不就是一个class嘛还需要封装干嘛。。。</p>
+<p>其实<code>proxy</code>代理的不是<code>target</code>,而是<code>TargetSource</code>,这点非常重要，一定要分清楚！！！</p>
+<p>通常情况下,一个代理对象只能代理一个target,每次方法调用的目标也是唯一固定的target。但是,如果让proxy代理TargetSource,可以使得每次方法调用的target实例都不同(当然也可以相同,这取决于TargetSource实现)。这种机制使得方法调用变得灵活,可以扩展出很多高级功能,如:单利，原型，本地线程，目标对象池、运行时目标对象热替换目标源等等。</p>
+<p><img src="./images/Springboot源码分析之TargetSource0.png" alt="file" /></p>
+<h4 id="spring内置的targetsource">Spring内置的TargetSource</h4>
+<h5 id="singletontargetsource">SingletonTargetSource</h5>
+<pre><code><code>    public class SingletonTargetSource implements TargetSource, Serializable {
+    
+        /** Target cached and invoked using reflection. */
+        private final Object target;
+        //省略无关代码......
+        @Override
+        public Object getTarget() {
+            return this.target;
+        }
+        //省略无关代码......
+    }</code></code></pre>
+<p>从这个目标源取得的目标对象是单例的，成员变量target缓存了目标对象，每次<code>getTarget()</code>都是返回这个对象。</p>
+<h5 id="prototypetargetsource">PrototypeTargetSource</h5>
+<pre><code><code>    public class PrototypeTargetSource extends AbstractPrototypeBasedTargetSource {
+    
+       /**
+        * Obtain a new prototype instance for every call.
+        * @see #newPrototypeInstance()
+        */
+       @Override
+       public Object getTarget() throws BeansException {
+          return newPrototypeInstance();
+       }
+    
+       /**
+        * Destroy the given independent instance.
+        * @see #destroyPrototypeInstance
+        */
+       @Override
+       public void releaseTarget(Object target) {
+          destroyPrototypeInstance(target);
+       }
+      //省略无关代码......
+    }</code></code></pre>
+<p>每次<code>getTarget()</code>将生成<code>prototype</code>类型的bean，即其生成的bean并不是单例的，因而使用这个类型的<code>TargetSource</code>时需要注意，封装的目标bean必须是prototype类型的。<code>PrototypeTargetSource</code>继承了<code>AbstractBeanFactoryBasedTargetSource</code>拥有了创建bean的能力。</p>
+<pre><code><code>    public abstract class AbstractPrototypeBasedTargetSource extends AbstractBeanFactoryBasedTargetSource {
+    
+       //省略无关代码......
+       /**
+        * Subclasses should call this method to create a new prototype instance.
+        * @throws BeansException if bean creation failed
+        */
+       protected Object newPrototypeInstance() throws BeansException {
+          if (logger.isDebugEnabled()) {
+             logger.debug(&quot;Creating new instance of bean &#39;&quot; + getTargetBeanName() + &quot;&#39;&quot;);
+          }
+          return getBeanFactory().getBean(getTargetBeanName());
+       }
+    
+       /**
+        * Subclasses should call this method to destroy an obsolete prototype instance.
+        * @param target the bean instance to destroy
+        */
+       protected void destroyPrototypeInstance(Object target) {
+          if (logger.isDebugEnabled()) {
+             logger.debug(&quot;Destroying instance of bean &#39;&quot; + getTargetBeanName() + &quot;&#39;&quot;);
+          }
+          if (getBeanFactory() instanceof ConfigurableBeanFactory) {
+             ((ConfigurableBeanFactory) getBeanFactory()).destroyBean(getTargetBeanName(), target);
+          }
+          else if (target instanceof DisposableBean) {
+             try {
+                ((DisposableBean) target).destroy();
+             }
+             catch (Throwable ex) {
+                logger.warn(&quot;Destroy method on bean with name &#39;&quot; + getTargetBeanName() + &quot;&#39; threw an exception&quot;, ex);
+             }
+          }
+       }
+    
+      //省略无关代码......
+    
+    }</code></code></pre>
+<p>可以看到，<code>PrototypeTargetSource</code>的生成prototype类型bean的方式主要是委托给<code>BeanFactory</code>进行的，因为BeanFactory自有一套生成prototype类型的bean的逻辑，因而<code>PrototypeTargetSource</code>也就具有生成prototype类型bean的能力，这也就是我们要生成的目标bean必须声明为prototype类型的原因。</p>
+<h5 id="threadlocaltargetsource">ThreadLocalTargetSource</h5>
+<pre><code><code>    public class ThreadLocalTargetSource extends AbstractPrototypeBasedTargetSource
+          implements ThreadLocalTargetSourceStats, DisposableBean {
+    
+       /**
+        * ThreadLocal holding the target associated with the current
+        * thread. Unlike most ThreadLocals, which are static, this variable
+        * is meant to be per thread per instance of the ThreadLocalTargetSource class.
+        */
+       private final ThreadLocal&lt;Object&gt; targetInThread =
+             new NamedThreadLocal&lt;&gt;(&quot;Thread-local instance of bean &#39;&quot; + getTargetBeanName() + &quot;&#39;&quot;);
+    
+       /**
+        * Set of managed targets, enabling us to keep track of the targets we&#39;ve created.
+        */
+       private final Set&lt;Object&gt; targetSet = new HashSet&lt;&gt;();
+    
+     //省略无关代码......
+       /**
+        * Implementation of abstract getTarget() method.
+        * We look for a target held in a ThreadLocal. If we don&#39;t find one,
+        * we create one and bind it to the thread. No synchronization is required.
+        */
+       @Override
+       public Object getTarget() throws BeansException {
+          ++this.invocationCount;
+          Object target = this.targetInThread.get();
+          if (target == null) {
+             if (logger.isDebugEnabled()) {
+                logger.debug(&quot;No target for prototype &#39;&quot; + getTargetBeanName() + &quot;&#39; bound to thread: &quot; +
+                      &quot;creating one and binding it to thread &#39;&quot; + Thread.currentThread().getName() + &quot;&#39;&quot;);
+             }
+             // Associate target with ThreadLocal.
+             target = newPrototypeInstance();
+             this.targetInThread.set(target);
+             synchronized (this.targetSet) {
+                this.targetSet.add(target);
+             }
+          }
+          else {
+             ++this.hitCount;
+          }
+          return target;
+       }
+    
+       /**
+        * Dispose of targets if necessary; clear ThreadLocal.
+        * @see #destroyPrototypeInstance
+        */
+       @Override
+       public void destroy() {
+          logger.debug(&quot;Destroying ThreadLocalTargetSource bindings&quot;);
+          synchronized (this.targetSet) {
+             for (Object target : this.targetSet) {
+                destroyPrototypeInstance(target);
+             }
+             this.targetSet.clear();
+          }
+          // Clear ThreadLocal, just in case.
+          this.targetInThread.remove();
+       }
+    //省略无关代码......
+    }</code></code></pre>
+<p><code>ThreadLocalTargetSource</code>也就是和线程绑定的<code>TargetSource</code>，可以理解，其底层实现必然使用的是ThreadLocal。既然使用了<code>ThreadLocal</code>，也就是说我们需要注意两个问题：</p>
+<ul>
+<li>目标对象必须声明为prototype类型，因为每个线程都会持有一个不一样的对象；</li>
+<li>目标对象必须是无状态的，因为目标对象是和当前线程绑定的，而Spring是使用的线程池处理的请求，因而每个线程可能处理不同的请求，因而为了避免造成问题，目标对象必须是无状态的。</li>
+</ul>
+<h5 id="实现自定义的targetsource">实现自定义的TargetSource</h5>
+<pre><code><code>    package com.github.dqqzj.springboot.target;
+    
+    import org.springframework.aop.TargetSource;
+    import org.springframework.util.Assert;
+    
+    import java.lang.reflect.Array;
+    import java.util.concurrent.ThreadLocalRandom;
+    import java.util.concurrent.atomic.AtomicInteger;
+    
+    /**
+     * @author qinzhongjian
+     * @date created in 2019-08-25 12:43
+     * @description: TODO
+     * @since JDK 1.8.0_212-b10z
+     */
+    public class DqqzjTargetSource implements TargetSource {
+        private final AtomicInteger idx = new AtomicInteger();
+        private final Object[] target;;
+        public DqqzjTargetSource(Object[]  target) {
+            Assert.notNull(target, &quot;Target object must not be null&quot;);
+            this.target = target;
+        }
+        @Override
+        public Class&lt;?&gt; getTargetClass() {
+            return target.getClass();
+        }
+    
+        @Override
+        public boolean isStatic() {
+            return false;
+        }
+    
+        @Override
+        public Object getTarget() throws Exception {
+            return this.target[this.idx.getAndIncrement() &amp; this.target.length - 1];
+        }
+    
+        @Override
+        public void releaseTarget(Object target) throws Exception {
+    
+        }
+    }</code></code></pre>
+<p>实现自定义TargetSource主要有两个点要注意，一个是<code>getTarget()</code>方法，该方法中需要实现获取目标对象的逻辑，另一个是<code>isStatic()</code>方法，这个方法告知Spring是否需要缓存目标对象，在非单例的情况下一般是返回<code>false</code>。</p>
+<h5 id="小结">小结</h5>
+<pre><code><code>   本文主要首先讲解了Spring是如果在源码层面支持TargetSource的，然后讲解了TargetSource的使用原理，接着对Spring提供的常见`TargetSource`进行了讲解，最后使用一个自定义的TargetSource讲解了其使用方式。</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

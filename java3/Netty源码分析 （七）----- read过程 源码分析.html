@@ -1,0 +1,665 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty源码分析 （七）----- read过程 源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty源码分析 （七）----- read过程 源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11477384.html</div><br>
+    <p>在上一篇文章中，我们分析了processSelectedKey这个方法中的accept过程，本文将分析一下work线程中的read过程。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+    final NioUnsafe </span><span style="color: #0000ff;">unsafe</span> = ch.<span style="color: #0000ff;">unsafe</span><span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">检查该SelectionKey是否有效，如果无效，则关闭channel</span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">k.isValid()) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> close the channel if the key is not valid anymore</span>
+        <span style="color: #0000ff;">unsafe</span>.close(<span style="color: #0000ff;">unsafe</span><span style="color: #000000;">.voidPromise());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">int</span> readyOps =<span style="color: #000000;"> k.readyOps();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> to a spin loop
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果准备好READ或ACCEPT则触发unsafe.read() ,检查是否为0，如上面的源码英文注释所说：解决JDK可能会产生死循环的一个bug。</span>
+        <span style="color: #0000ff;">if</span> ((readyOps &amp; (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != <span style="color: #800080;">0</span> || readyOps == <span style="color: #800080;">0</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">unsafe</span><span style="color: #000000;">.read();
+            </span><span style="color: #0000ff;">if</span> (!ch.isOpen()) {<span style="color: #008000;">//</span><span style="color: #008000;">如果已经关闭，则直接返回即可，不需要再处理该channel的其他事件
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Connection already closed - no need to handle write.</span>
+                <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果准备好了WRITE则将缓冲区中的数据发送出去，如果缓冲区中数据都发送完成，则清除之前关注的OP_WRITE标记</span>
+        <span style="color: #0000ff;">if</span> ((readyOps &amp; SelectionKey.OP_WRITE) != <span style="color: #800080;">0</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write</span>
+            ch.<span style="color: #0000ff;">unsafe</span><span style="color: #000000;">().forceFlush();
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果是OP_CONNECT，则需要移除OP_CONNECT否则Selector.select(timeout)将立即返回不会有任何阻塞，这样可能会出现cpu 100%</span>
+        <span style="color: #0000ff;">if</span> ((readyOps &amp; SelectionKey.OP_CONNECT) != <span style="color: #800080;">0</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> See </span><span style="color: #008000; text-decoration: underline;">https://github.com/netty/netty/issues/924</span>
+            <span style="color: #0000ff;">int</span> ops =<span style="color: #000000;"> k.interestOps();
+            ops </span>&amp;= ~<span style="color: #000000;">SelectionKey.OP_CONNECT;
+            k.interestOps(ops);
+
+            </span><span style="color: #0000ff;">unsafe</span><span style="color: #000000;">.finishConnect();
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (CancelledKeyException ignored) {
+        </span><span style="color: #0000ff;">unsafe</span>.close(<span style="color: #0000ff;">unsafe</span><span style="color: #000000;">.voidPromise());
+    }
+}</span></code></pre>
+
+<p>该方法主要是对SelectionKey k进行了检查，有如下几种不同的情况</p>
+<p>1）OP_ACCEPT，接受客户端连接</p>
+<p>2）OP_READ, 可读事件, 即 Channel 中收到了新数据可供上层读取。</p>
+<p>3）OP_WRITE, 可写事件, 即上层可以向 Channel 写入数据。</p>
+<p>4）OP_CONNECT, 连接建立事件, 即 TCP 连接已经建立, Channel 处于 active 状态。</p>
+<p>本篇博文主要来看下当work 线程 selector检测到OP_READ事件时，内部干了些什么。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> ((readyOps &amp; (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != <span style="color: #800080;">0</span> || readyOps == <span style="color: #800080;">0</span><span style="color: #000000;">) {
+    </span><span style="color: #0000ff;">unsafe</span><span style="color: #000000;">.read();
+    </span><span style="color: #0000ff;">if</span> (!ch.isOpen()) {<span style="color: #008000;">//</span><span style="color: #008000;">如果已经关闭，则直接返回即可，不需要再处理该channel的其他事件
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Connection already closed - no need to handle write.</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+} </span></code></pre>
+
+<p>从代码中可以看到，当selectionKey发生的事件是SelectionKey.OP_READ，执行unsafe的read方法。注意这里的unsafe是NioByteUnsafe的实例</p>
+<p>为什么说这里的unsafe是NioByteUnsafe的实例呢？在上篇博文Netty源码分析：accept中我们知道Boss NioEventLoopGroup中的NioEventLoop只负责accpt客户端连接，然后将该客户端注册到Work NioEventLoopGroup中的NioEventLoop中，即最终是由work线程对应的selector来进行read等时间的监听，即work线程中的channel为SocketChannel，SocketChannel的unsafe就是NioByteUnsafe的实例</p>
+<p>下面来看下NioByteUnsafe中的read方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> read() {
+        final ChannelConfig config </span>=<span style="color: #000000;"> config();
+        </span><span style="color: #0000ff;">if</span> (!config.isAutoRead() &amp;&amp; !<span style="color: #000000;">isReadPending()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> ChannelConfig.setAutoRead(false) was called in the meantime</span>
+<span style="color: #000000;">            removeReadOp();
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        }
+
+        final ChannelPipeline pipeline </span>=<span style="color: #000000;"> pipeline();
+        final ByteBufAllocator allocator </span>=<span style="color: #000000;"> config.getAllocator();
+        final </span><span style="color: #0000ff;">int</span> maxMessagesPerRead =<span style="color: #000000;"> config.getMaxMessagesPerRead();
+        RecvByteBufAllocator.Handle allocHandle </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.allocHandle;
+        </span><span style="color: #0000ff;">if</span> (allocHandle == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span>.allocHandle = allocHandle =<span style="color: #000000;"> config.getRecvByteBufAllocator().newHandle();
+        }
+
+        ByteBuf byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> messages = <span style="color: #800080;">0</span><span style="color: #000000;">;
+        boolean close </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> totalReadAmount = <span style="color: #800080;">0</span><span style="color: #000000;">;
+            boolean readPendingReset </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">1、分配缓存</span>
+               <strong> byteBuf =<span style="color: #000000;"> allocHandle.allocate(allocator);
+                </span></strong><span style="color: #0000ff;">int</span> writable = byteBuf.writableBytes();<span style="color: #008000;">//</span><span style="color: #008000;">可写的字节容量
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">2、将socketChannel数据写入缓存</span>
+              <strong>  <span style="color: #0000ff;">int</span> localReadAmount =<span style="color: #000000;"> doReadBytes(byteBuf);
+                </span></strong><span style="color: #0000ff;">if</span> (localReadAmount &lt;= <span style="color: #800080;">0</span><span style="color: #000000;">) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> not was read release the buffer</span>
+<span style="color: #000000;">                    byteBuf.release();
+                    close </span>= localReadAmount &lt; <span style="color: #800080;">0</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">readPendingReset) {
+                    readPendingReset </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    setReadPending(</span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+                }
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">3、触发pipeline的ChannelRead事件来对byteBuf进行后续处理</span>
+<span style="color: #000000;"><strong>                pipeline.fireChannelRead(byteBuf);</strong>
+                byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+                </span><span style="color: #0000ff;">if</span> (totalReadAmount &gt;= Integer.MAX_VALUE -<span style="color: #000000;"> localReadAmount) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Avoid overflow.</span>
+                    totalReadAmount =<span style="color: #000000;"> Integer.MAX_VALUE;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+
+                totalReadAmount </span>+=<span style="color: #000000;"> localReadAmount;
+
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> stop reading</span>
+                <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">config.isAutoRead()) {
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+
+                </span><span style="color: #0000ff;">if</span> (localReadAmount &lt;<span style="color: #000000;"> writable) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Read less than what the buffer can hold,
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> which might mean we drained the recv buffer completely.</span>
+                    <span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+            } </span><span style="color: #0000ff;">while</span> (++ messages &lt;<span style="color: #000000;"> maxMessagesPerRead);
+
+       <strong>     pipeline.fireChannelReadComplete();</strong>
+            allocHandle.record(totalReadAmount);
+
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (close) {
+                closeOnRead(pipeline);
+                close </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            handleReadException(pipeline, byteBuf, t, close);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!config.isAutoRead() &amp;&amp; !<span style="color: #000000;">isReadPending()) {
+                removeReadOp();
+            }
+        }
+    }
+} </span></code></pre>
+
+<p>下面一一介绍比较重要的代码</p>
+<h2 id="2allochandler的实例化过程">allocHandler的实例化过程</h2>
+<p>allocHandle负责自适应调整当前缓存分配的大小，以防止缓存分配过多或过少，先看allocHandler的实例化过程</p>
+<src class="cnblogs_code">
+<pre><code>RecvByteBufAllocator.Handle allocHandle = <span style="color: #0000ff;">this</span><span style="color: #000000;">.allocHandle;
+</span><span style="color: #0000ff;">if</span> (allocHandle == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+    </span><span style="color: #0000ff;">this</span>.allocHandle = allocHandle =<span style="color: #000000;"> config.getRecvByteBufAllocator().newHandle();
+}</span></code></pre>
+
+<p>其中，&nbsp;<code>config.getRecvByteBufAllocator()</code>得到的是一个 AdaptiveRecvByteBufAllocator实例DEFAULT。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> AdaptiveRecvByteBufAllocator DEFAULT = <span style="color: #0000ff;">new</span> AdaptiveRecvByteBufAllocator();</code></pre>
+
+<p>而AdaptiveRecvByteBufAllocator中的newHandler()方法的代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Handle newHandle() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> HandleImpl(minIndex, maxIndex, initial);
+}
+
+HandleImpl(</span><span style="color: #0000ff;">int</span> minIndex, <span style="color: #0000ff;">int</span> maxIndex, <span style="color: #0000ff;">int</span><span style="color: #000000;"> initial) {
+    </span><span style="color: #0000ff;">this</span>.minIndex =<span style="color: #000000;"> minIndex;
+    </span><span style="color: #0000ff;">this</span>.maxIndex =<span style="color: #000000;"> maxIndex;
+
+    index </span>=<span style="color: #000000;"> getSizeTableIndex(initial);
+    nextReceiveBufferSize </span>=<span style="color: #000000;"> SIZE_TABLE[index];
+}</span></code></pre>
+
+<p>其中，上面方法中所用到参数：minIndex maxIndex initial是什么意思呢？含义如下：minIndex是最小缓存在<code>SIZE_TABLE</code>中对应的下标。maxIndex是最大缓存在<code>SIZE_TABLE</code>中对应的下标，initial为初始化缓存大小。</p>
+<p>AdaptiveRecvByteBufAllocator的相关常量字段</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AdaptiveRecvByteBufAllocator <span style="color: #0000ff;">implements</span><span style="color: #000000;"> RecvByteBufAllocator {
+
+        </span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DEFAULT_MINIMUM = 64<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DEFAULT_INITIAL = 1024<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> DEFAULT_MAXIMUM = 65536<span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> INDEX_INCREMENT = 4<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> INDEX_DECREMENT = 1<span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span>[] SIZE_TABLE; </code></pre>
+
+<p>上面这些字段的具体含义说明如下：</p>
+<p>1）、<code>SIZE_TABLE</code>：按照从小到大的顺序预先存储可以分配的缓存大小。&nbsp;<br />从16开始，每次累加16，直到496，接着从512开始，每次增大一倍，直到溢出。SIZE_TABLE初始化过程如下。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+    List</span>&lt;Integer&gt; sizeTable = <span style="color: #0000ff;">new</span> ArrayList&lt;Integer&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 16; i &lt; 512; i += 16<span style="color: #000000;">) {
+        sizeTable.add(i);
+    }
+
+    </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 512; i &gt; 0; i &lt;&lt;= 1<span style="color: #000000;">) {
+        sizeTable.add(i);
+    }
+
+    SIZE_TABLE </span>= <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">int</span><span style="color: #000000;">[sizeTable.size()];
+    </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; SIZE_TABLE.length; i ++<span style="color: #000000;">) {
+        SIZE_TABLE[i] </span>=<span style="color: #000000;"> sizeTable.get(i);
+    }
+}</span></code></pre>
+
+<p>2）、DEFAULT_MINIMUM：最小缓存（64），在SIZE_TABLE中对应的下标为3。</p>
+<p>3）、DEFAULT_MAXIMUM ：最大缓存（65536），在SIZE_TABLE中对应的下标为38。</p>
+<p>4）、DEFAULT_INITIAL ：初始化缓存大小，第一次分配缓存时，由于没有上一次实际收到的字节数做参考，需要给一个默认初始值。</p>
+<p>5）、INDEX_INCREMENT：上次预估缓存偏小，下次index的递增值。</p>
+<p>6）、INDEX_DECREMENT ：上次预估缓存偏大，下次index的递减值。</p>
+<p>构造函数：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AdaptiveRecvByteBufAllocator() {
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">(DEFAULT_MINIMUM, DEFAULT_INITIAL, DEFAULT_MAXIMUM);
+}
+
+</span><span style="color: #0000ff;">public</span> AdaptiveRecvByteBufAllocator(<span style="color: #0000ff;">int</span> minimum, <span style="color: #0000ff;">int</span> initial, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maximum) {
+    </span><span style="color: #0000ff;">if</span> (minimum &lt;= 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("minimum: " +<span style="color: #000000;"> minimum);
+    }
+    </span><span style="color: #0000ff;">if</span> (initial &lt;<span style="color: #000000;"> minimum) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("initial: " +<span style="color: #000000;"> initial);
+    }
+    </span><span style="color: #0000ff;">if</span> (maximum &lt;<span style="color: #000000;"> initial) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("maximum: " +<span style="color: #000000;"> maximum);
+    }
+
+    </span><span style="color: #0000ff;">int</span> minIndex =<span style="color: #000000;"> getSizeTableIndex(minimum);
+    </span><span style="color: #0000ff;">if</span> (SIZE_TABLE[minIndex] &lt;<span style="color: #000000;"> minimum) {
+        </span><span style="color: #0000ff;">this</span>.minIndex = minIndex + 1<span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.minIndex =<span style="color: #000000;"> minIndex;
+    }
+
+    </span><span style="color: #0000ff;">int</span> maxIndex =<span style="color: #000000;"> getSizeTableIndex(maximum);
+    </span><span style="color: #0000ff;">if</span> (SIZE_TABLE[maxIndex] &gt;<span style="color: #000000;"> maximum) {
+        </span><span style="color: #0000ff;">this</span>.maxIndex = maxIndex - 1<span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.maxIndex =<span style="color: #000000;"> maxIndex;
+    }
+
+    </span><span style="color: #0000ff;">this</span>.initial =<span style="color: #000000;"> initial;
+}</span></code></pre>
+
+<p>该构造函数对参数进行了有效性检查，然后初始化了如下3个字段，这3个字段就是上面用于产生allocHandle对象所要用到的参数。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> minIndex;
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxIndex;
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> initial;</code></pre>
+
+<p>其中，getSizeTableIndex函数的代码如下，该函数的功能为：找到SIZE_TABLE中的元素刚好大于或等于size的位置。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> getSizeTableIndex(<span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> size) {
+    </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> low = 0, high = SIZE_TABLE.length - 1<span style="color: #000000;">;;) {
+        </span><span style="color: #0000ff;">if</span> (high &lt;<span style="color: #000000;"> low) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> low;
+        }
+        </span><span style="color: #0000ff;">if</span> (high ==<span style="color: #000000;"> low) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> high;
+        }
+
+        </span><span style="color: #0000ff;">int</span> mid = low + high &gt;&gt;&gt; 1<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> a =<span style="color: #000000;"> SIZE_TABLE[mid];
+        </span><span style="color: #0000ff;">int</span> b = SIZE_TABLE[mid + 1<span style="color: #000000;">];
+        </span><span style="color: #0000ff;">if</span> (size &gt;<span style="color: #000000;"> b) {
+            low </span>= mid + 1<span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (size &lt;<span style="color: #000000;"> a) {
+            high </span>= mid - 1<span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (size ==<span style="color: #000000;"> a) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> mid;
+        } </span><span style="color: #0000ff;">else</span> { <span style="color: #008000;">//</span><span style="color: #008000;">这里的情况就是 a &lt; size &lt;= b 的情况</span>
+            <span style="color: #0000ff;">return</span> mid + 1<span style="color: #000000;">;
+        }
+    }
+}</span></code></pre>
+
+<h2 id="3bytebuf-allochandleallocateallocator">byteBuf = allocHandle.allocate(allocator);</h2>
+<p>申请一块指定大小的内存</p>
+<p><strong>AdaptiveRecvByteBufAllocator#HandlerImpl</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ByteBuf allocate(ByteBufAllocator alloc) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> alloc.ioBuffer(nextReceiveBufferSize);
+}</span></code></pre>
+
+<p>直接调用了ioBuffer方法，继续看</p>
+<p><strong>AbstractByteBufAllocator.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> ByteBuf ioBuffer(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (PlatformDependent.hasUnsafe()) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> directBuffer(initialCapacity);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> heapBuffer(initialCapacity);
+}</span></code></pre>
+
+<p>ioBuffer函数中主要逻辑为：看平台是否支持unsafe，选择使用直接物理内存还是堆上内存。先看 heapBuffer</p>
+<p><strong>AbstractByteBufAllocator.java&nbsp;</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> ByteBuf heapBuffer(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> heapBuffer(initialCapacity, Integer.MAX_VALUE);
+}
+
+@Override
+</span><span style="color: #0000ff;">public</span> ByteBuf heapBuffer(<span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    </span><span style="color: #0000ff;">if</span> (initialCapacity == 0 &amp;&amp; maxCapacity == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> emptyBuf;
+    }
+    validate(initialCapacity, maxCapacity);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> newHeapBuffer(initialCapacity, maxCapacity);
+} </span></code></pre>
+
+<p>这里的newHeapBuffer有两种实现：至于具体用哪一种，取决于我们对系统属性io.netty.allocator.type的设置，如果设置为： &ldquo;pooled&rdquo;，则缓存分配器就为：PooledByteBufAllocator，进而利用对象池技术进行内存分配。如果不设置或者设置为其他，则缓存分配器为：UnPooledByteBufAllocator，则直接返回一个UnpooledHeapByteBuf对象。</p>
+<p><strong>UnpooledByteBufAllocator.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> ByteBuf newHeapBuffer(<span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> UnpooledHeapByteBuf(<span style="color: #0000ff;">this</span><span style="color: #000000;">, initialCapacity, maxCapacity);
+}</span></code></pre>
+
+<p><strong>PooledByteBufAllocator.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> ByteBuf newHeapBuffer(<span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    PoolThreadCache cache </span>=<span style="color: #000000;"> threadCache.get();
+    PoolArena</span>&lt;<span style="color: #0000ff;">byte</span>[]&gt; heapArena =<span style="color: #000000;"> cache.heapArena;
+
+    ByteBuf buf;
+    </span><span style="color: #0000ff;">if</span> (heapArena != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        buf </span>=<span style="color: #000000;"> heapArena.allocate(cache, initialCapacity, maxCapacity);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        buf </span>= <span style="color: #0000ff;">new</span> UnpooledHeapByteBuf(<span style="color: #0000ff;">this</span><span style="color: #000000;">, initialCapacity, maxCapacity);
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> toLeakAwareBuffer(buf);
+}</span></code></pre>
+
+<p>再看directBuffer</p>
+<p><strong>AbstractByteBufAllocator.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> ByteBuf directBuffer(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> directBuffer(initialCapacity, Integer.MAX_VALUE);
+}  
+
+@Override
+</span><span style="color: #0000ff;">public</span> ByteBuf directBuffer(<span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    </span><span style="color: #0000ff;">if</span> (initialCapacity == 0 &amp;&amp; maxCapacity == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> emptyBuf;
+    }
+    validate(initialCapacity, maxCapacity);</span><span style="color: #008000;">//</span><span style="color: #008000;">参数的有效性检查</span>
+    <span style="color: #0000ff;">return</span><span style="color: #000000;"> newDirectBuffer(initialCapacity, maxCapacity);
+}</span></code></pre>
+
+<p>与newHeapBuffer一样，这里的newDirectBuffer方法也有两种实现：至于具体用哪一种，取决于我们对系统属性io.netty.allocator.type的设置，如果设置为： &ldquo;pooled&rdquo;，则缓存分配器就为：PooledByteBufAllocator，进而利用对象池技术进行内存分配。如果不设置或者设置为其他，则缓存分配器为：UnPooledByteBufAllocator。这里主要看下UnpooledByteBufAllocator. newDirectBuffer的内部实现</p>
+<p><strong>UnpooledByteBufAllocator.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> ByteBuf newDirectBuffer(<span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    ByteBuf buf;
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (PlatformDependent.hasUnsafe()) {
+        buf </span>= <span style="color: #0000ff;">new</span> UnpooledUnsafeDirectByteBuf(<span style="color: #0000ff;">this</span><span style="color: #000000;">, initialCapacity, maxCapacity);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        buf </span>= <span style="color: #0000ff;">new</span> UnpooledDirectByteBuf(<span style="color: #0000ff;">this</span><span style="color: #000000;">, initialCapacity, maxCapacity);
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> toLeakAwareBuffer(buf);
+}</span></code></pre>
+
+<p>UnpooledUnsafeDirectByteBuf是如何实现缓存管理的？对Nio的ByteBuffer进行了封装，通过ByteBuffer的allocateDirect方法实现缓存的申请。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> UnpooledUnsafeDirectByteBuf(ByteBufAllocator alloc, <span style="color: #0000ff;">int</span> initialCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxCapacity) {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(maxCapacity);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">省略了部分参数检查的代码</span>
+    <span style="color: #0000ff;">this</span>.alloc =<span style="color: #000000;"> alloc;
+    <strong>setByteBuffer(allocateDirect(initialCapacity));</strong>
+}</span></code></pre>
+
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> ByteBuffer allocateDirect(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"><strong> ByteBuffer.allocateDirect(initialCapacity);</strong>
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setByteBuffer(ByteBuffer buffer) {
+    ByteBuffer oldBuffer </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.buffer;
+    </span><span style="color: #0000ff;">if</span> (oldBuffer != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (doNotFree) {
+            doNotFree </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            freeDirect(oldBuffer);
+        }
+    }
+
+    </span><strong><span style="color: #0000ff;">this</span>.buffer =</strong><span style="color: #000000;"><strong> buffer;</strong>
+    <strong>memoryAddress </strong></span><strong>=</strong><span style="color: #000000;"><strong> PlatformDependent.directBufferAddress(buffer);</strong>
+   <strong> tmpNioBuf </strong></span><strong>= <span style="color: #0000ff;">null</span></strong><span style="color: #000000;"><strong>;</strong>
+    capacity </span>=<span style="color: #000000;"> buffer.remaining();
+}</span></code></pre>
+
+<p>上面代码的主要逻辑为：</p>
+<p>1、先利用ByteBuffer的allocateDirect方法分配了大小为initialCapacity的缓存</p>
+<p>2、然后判断将旧缓存给free掉</p>
+<p>3、最后将新缓存赋给字段buffer上</p>
+<p>其中：memoryAddress = PlatformDependent.directBufferAddress(buffer) 获取buffer的address字段值，指向缓存地址。 <br />capacity = buffer.remaining() 获取缓存容量。</p>
+<p>接下来看toLeakAwareBuffer(buf)方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> ByteBuf toLeakAwareBuffer(ByteBuf buf) {
+    ResourceLeak leak;
+    </span><span style="color: #0000ff;">switch</span><span style="color: #000000;"> (ResourceLeakDetector.getLevel()) {
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> SIMPLE:
+            leak </span>=<span style="color: #000000;"> AbstractByteBuf.leakDetector.open(buf);
+            </span><span style="color: #0000ff;">if</span> (leak != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+               <strong> buf </strong></span><strong>= <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> SimpleLeakAwareByteBuf(buf, leak);</strong>
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> ADVANCED:
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> PARANOID:
+            leak </span>=<span style="color: #000000;"> AbstractByteBuf.leakDetector.open(buf);
+            </span><span style="color: #0000ff;">if</span> (leak != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+               <strong> buf </strong></span><strong>= <span style="color: #0000ff;">new</span></strong><span style="color: #000000;"><strong> AdvancedLeakAwareByteBuf(buf, leak);</strong>
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> buf;
+}</span></code></pre>
+
+<p>方法toLeakAwareBuffer(buf)对申请的buf又进行了一次包装。</p>
+<p>上面一长串的分析，得到了缓存后，回到AbstractNioByteChannel.read方法，继续看。</p>
+<h2 id="4doreadbytes方法">doReadBytes方法</h2>
+<p>下面看下doReadBytes方法：将socketChannel数据写入缓存。</p>
+<p><strong>NioSocketChannel.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">int</span> doReadBytes(ByteBuf byteBuf) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> byteBuf.writeBytes(javaChannel(), byteBuf.writableBytes());
+}</span></code></pre>
+
+<p>将Channel中的数据读入缓存byteBuf中。继续看</p>
+<p><strong>WrappedByteBuf.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> writeBytes(ScatteringByteChannel in, <span style="color: #0000ff;">int</span> length) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> buf.writeBytes(in, length);
+} </span></code></pre>
+
+<p><strong>AbstractByteBuf.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> writeBytes(ScatteringByteChannel in, <span style="color: #0000ff;">int</span> length) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+    ensureAccessible();
+    ensureWritable(length);
+    </span><strong><span style="color: #0000ff;">int</span> writtenBytes =<span style="color: #000000;"> setBytes(writerIndex, in, length);
+    </span></strong><span style="color: #0000ff;">if</span> (writtenBytes &gt; 0<span style="color: #000000;">) {
+        writerIndex </span>+=<span style="color: #000000;"> writtenBytes;
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> writtenBytes;
+}</span></code></pre>
+
+<p>这里的setBytes方法有不同的实现，这里看下UnpooledUnsafeDirectByteBuf的setBytes的实现。</p>
+<p><strong>UnpooledUnsafeDirectByteBuf.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> setBytes(<span style="color: #0000ff;">int</span> index, ScatteringByteChannel in, <span style="color: #0000ff;">int</span> length) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+    ensureAccessible();
+   <strong> ByteBuffer tmpBuf </strong></span><strong>=</strong><span style="color: #000000;"><strong> internalNioBuffer();</strong>
+    tmpBuf.clear().position(index).limit(index </span>+<span style="color: #000000;"> length);
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><strong><span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> in.read(tmpBuf);</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClosedChannelException ignored) {
+        </span><span style="color: #0000ff;">return</span> -1;<span style="color: #008000;">//</span><span style="color: #008000;">当Channel 已经关闭，则返回-1.    </span>
+<span style="color: #000000;">    }
+} 
+
+</span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ByteBuffer internalNioBuffer() {
+    ByteBuffer tmpNioBuf </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.tmpNioBuf;
+    </span><span style="color: #0000ff;">if</span> (tmpNioBuf == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><strong><span style="color: #0000ff;">this</span>.tmpNioBuf = tmpNioBuf =</strong><span style="color: #000000;"><strong> buffer.duplicate();</strong>
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tmpNioBuf;
+}</span></code></pre>
+
+<p>最终底层采用ByteBuffer实现read操作，无论是PooledByteBuf、还是UnpooledXXXBuf，里面都将底层数据结构BufBuffer/array转换为ByteBuffer 来实现read操作。即无论是UnPooledXXXBuf还是PooledXXXBuf里面都有一个ByteBuffer tmpNioBuf，这个tmpNioBuf才是真正用来存储从管道Channel中读取出的内容的。<strong>到这里就完成了将channel的数据读入到了缓存Buf中。</strong></p>
+<p>我们具体来看看&nbsp;in.read(tmpBuf);&nbsp;FileChannel和SocketChannel的read最后都是依赖的IOUtil来实现，代码如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> read(<strong>ByteBuffer dst</strong>) throws IOException {
+    ensureOpen();
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">readable)
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NonReadableChannelException();
+    synchronized (positionLock) {
+        </span><span style="color: #0000ff;">int</span> n = <span style="color: #800080;">0</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> ti = -<span style="color: #800080;">1</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            begin();
+            ti </span>=<span style="color: #000000;"> threads.add();
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isOpen())
+                </span><span style="color: #0000ff;">return</span> <span style="color: #800080;">0</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+            <strong>    n </strong></span><strong>= IOUtil.read(fd, dst, -<span style="color: #800080;">1</span></strong><span style="color: #000000;"><strong>, nd);</strong>
+            } </span><span style="color: #0000ff;">while</span> ((n == IOStatus.INTERRUPTED) &amp;&amp;<span style="color: #000000;"> isOpen());
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> IOStatus.normalize(n);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            threads.remove(ti);
+            end(n </span>&gt; <span style="color: #800080;">0</span><span style="color: #000000;">);
+            assert IOStatus.check(n);
+        }
+    }
+}</span></code></pre>
+
+<p>最后目的就是将SocketChannel中的数据读出存放到<strong>ByteBuffer dst</strong>中<strong>，</strong>我们看看&nbsp;IOUtil.read(fd, dst, -1, nd)</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> read(FileDescriptor var0, ByteBuffer var1, <span style="color: #0000ff;">long</span><span style="color: #000000;"> var2, NativeDispatcher var4) throws IOException {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (var1.isReadOnly()) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException(<span style="color: #800000;">"</span><span style="color: #800000;">Read-only buffer</span><span style="color: #800000;">"</span><span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果最终承载数据的buffer是DirectBuffer，则直接将数据读入到堆外内存中</span>
+    } <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (var1 instanceof DirectBuffer) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> readIntoNativeBuffer(var0, var1, var2, var4);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 分配临时的堆外内存</span>
+        ByteBuffer var5 =<span style="color: #000000;"> Util.getTemporaryDirectBuffer(var1.remaining());
+
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> var7;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Socket I/O 操作会将数据读入到堆外内存中</span>
+            <span style="color: #0000ff;">int</span> var6 =<span style="color: #000000;"> readIntoNativeBuffer(var0, var5, var2, var4);
+            var5.flip();
+            </span><span style="color: #0000ff;">if</span> (var6 &gt; <span style="color: #800080;">0</span><span style="color: #000000;">) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 将堆外内存的数据拷贝到堆内存中（用户定义的缓存，在jvm中分配内存）</span>
+<span style="color: #000000;">                var1.put(var5);
+            }
+
+            var7 </span>=<span style="color: #000000;"> var6;
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 里面会调用DirectBuffer.cleaner().clean()来释放临时的堆外内存</span>
+<span style="color: #000000;">            Util.offerFirstTemporaryDirectBuffer(var5);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> var7;
+    }
+}</span></code></pre>
+
+<src>
+<src>通过上述实现可以看出，基于channel的数据读取步骤如下：
+<src>1、如果缓存内存是DirectBuffer，就直接将Channel中的数据读取到堆外内存<br />2、如果缓存内存是堆内存，则先申请一块和缓存同大小的临时 DirectByteBuffer var5。<br data-filtered="filtered" />
+3、将内核缓存中的数据读到堆外缓存var5，底层由NativeDispatcher的read实现。<br data-filtered="filtered" />
+4、把堆外缓存var5的数据拷贝到堆内存var1（用户定义的缓存，在jvm中分配内存）。
+<src>5、会调用DirectBuffer.cleaner().clean()来释放创建的临时的堆外内存
+<src>如果AbstractNioByteChannel.read中第一步创建的是堆外内存，则会直接将数据读入到堆外内存，并不会先创建临时堆外内存，再将数据读入到堆外内存，最后将堆外内存拷贝到堆内存
+<src>简单的说，如果使用堆外内存，则只会复制一次数据，如果使用堆内存，则会复制两次数据
+<src>我们来看看readIntoNativeBuffer
+<src>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">int</span> readIntoNativeBuffer(FileDescriptor filedescriptor, ByteBuffer bytebuffer, <span style="color: #0000ff;">long</span><span style="color: #000000;"> l, NativeDispatcher nativedispatcher, Object obj)  throws IOException  {  
+    </span><span style="color: #0000ff;">int</span> i =<span style="color: #000000;"> bytebuffer.position();  
+    </span><span style="color: #0000ff;">int</span> j =<span style="color: #000000;"> bytebuffer.limit();  
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果断言开启，buffer的position大于limit，则抛出断言错误  </span>
+    <span style="color: #0000ff;">if</span>(!$assertionsDisabled &amp;&amp; i &gt;<span style="color: #000000;"> j)  
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> AssertionError();  
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获取需要读的字节数  </span>
+    <span style="color: #0000ff;">int</span> k = i &gt; j ? <span style="color: #800080;">0</span> : j -<span style="color: #000000;"> i;  
+    </span><span style="color: #0000ff;">if</span>(k == <span style="color: #800080;">0</span><span style="color: #000000;">)  
+        </span><span style="color: #0000ff;">return</span> <span style="color: #800080;">0</span><span style="color: #000000;">;  
+    </span><span style="color: #0000ff;">int</span> i1 = <span style="color: #800080;">0</span><span style="color: #000000;">;  
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">从输入流读取k个字节到buffer  </span>
+    <span style="color: #0000ff;">if</span>(l != -<span style="color: #800080;">1L</span><span style="color: #000000;">)  
+        i1 </span>= nativedispatcher.pread(filedescriptor, ((DirectBuffer)bytebuffer).address() + (<span style="color: #0000ff;">long</span><span style="color: #000000;">)i, k, l, obj);  
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;">  
+        i1 </span>= nativedispatcher.read(filedescriptor, ((DirectBuffer)bytebuffer).address() + (<span style="color: #0000ff;">long</span><span style="color: #000000;">)i, k);  
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">重新定位buffer的position  </span>
+    <span style="color: #0000ff;">if</span>(i1 &gt; <span style="color: #800080;">0</span><span style="color: #000000;">)  
+        bytebuffer.position(i </span>+<span style="color: #000000;"> i1);  
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> i1;  
+}  </span></code></pre>
+
+
+<src>这个函数就是将内核缓冲区中的数据读取到堆外缓存DirectBuffer
+
+<p>回到AbstractNioByteChannel.read方法，继续看。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> read() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+        <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">int</span> totalReadAmount = 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">boolean</span> readPendingReset = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+                byteBuf </span>=<span style="color: #000000;"> allocHandle.allocate(allocator);
+                </span><span style="color: #0000ff;">int</span> writable =<span style="color: #000000;"> byteBuf.writableBytes();
+                </span><span style="color: #0000ff;">int</span> localReadAmount =<span style="color: #000000;"> doReadBytes(byteBuf);
+                </span><span style="color: #0000ff;">if</span> (localReadAmount &lt;= 0<span style="color: #000000;">) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> not was read release the buffer</span>
+<span style="color: #000000;">                    byteBuf.release();
+                    close </span>= localReadAmount &lt; 0<span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">readPendingReset) {
+                    readPendingReset </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    setReadPending(</span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+                }
+                pipeline.fireChannelRead(byteBuf);
+                byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+                </span><span style="color: #0000ff;">if</span> (totalReadAmount &gt;= Integer.MAX_VALUE -<span style="color: #000000;"> localReadAmount) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Avoid overflow.</span>
+                    totalReadAmount =<span style="color: #000000;"> Integer.MAX_VALUE;
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+
+                totalReadAmount </span>+=<span style="color: #000000;"> localReadAmount;
+
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> stop reading</span>
+                <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">config.isAutoRead()) {
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+
+                </span><span style="color: #0000ff;">if</span> (localReadAmount &lt;<span style="color: #000000;"> writable) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Read less than what the buffer can hold,
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> which might mean we drained the recv buffer completely.</span>
+                    <span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                }
+            } </span><span style="color: #0000ff;">while</span> (++ messages &lt;<span style="color: #000000;"> maxMessagesPerRead);
+
+            pipeline.fireChannelReadComplete();
+            allocHandle.record(totalReadAmount);
+
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (close) {
+                closeOnRead(pipeline);
+                close </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            handleReadException(pipeline, byteBuf, t, close);
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!config.isAutoRead() &amp;&amp; !<span style="color: #000000;">isReadPending()) {
+                removeReadOp();
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>int localReadAmount = doReadBytes(byteBuf);<br />1、如果返回0，则表示没有读取到数据，则退出循环。<br />2、如果返回-1，表示对端已经关闭连接，则退出循环。<br />3、否则，表示读取到了数据，数据读入缓存后，触发pipeline的ChannelRead事件，byteBuf作为参数进行后续处理，这时自定义Inbound类型的handler就可以进行业务处理了。Pipeline的事件处理在我之前的博文中有详细的介绍。处理完成之后，再一次从Channel读取数据，直至退出循环。</p>
+<p>4、循环次数超过maxMessagesPerRead时，即只能在管道中读取maxMessagesPerRead次数据，既是还没有读完也要退出。在上篇博文中，Boss线程接受客户端连接也用到了此变量，即当boss线程 selector检测到OP_ACCEPT事件后一次只能接受maxMessagesPerRead个客户端连接</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

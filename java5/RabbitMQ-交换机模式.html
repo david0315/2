@@ -1,0 +1,143 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修RabbitMQ-交换机模式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>RabbitMQ-交换机模式</center></div><div class='banquan'>原文出处:本文由博客园博主_怀恩提供。<br/>
+原文连接:https://www.cnblogs.com/0000cjw/p/11831898.html</div><br>
+    <p>&nbsp; &nbsp; &nbsp; 在说正题之前先解释一下交换机模式是个笼统的称呼，它不是一个单独的模式（包括了订阅模式，路由模式和主题模式），交换机模式是一个比较常用的模式，主要是为了实现数据的同步。</p>
+<p>&nbsp; &nbsp; &nbsp; 首先，说一下订阅模式，就和字面上的意思差不多主要就是一个生产者，多个消费者，同一个消息被多个消费者获取，先看一下官网的图示</p>
+<p>&nbsp;</p>
+<p><img src="./images/RabbitMQ-交换机模式0.png" alt="" /></p>
+<p>&nbsp; &nbsp; &nbsp; &nbsp;整体执行过程就和图里一样，生产者把消息发送到交换机，然后队列绑定到交换机，消息由交换机发送到队列，每一个队列都有一个各自的消费者。这样</p>
+<p>就实现了一个消息被多个消费者所获取，而且如果有新的消费者加入直接绑定队列到交换机就可以了，大大的降低了系统间的耦合度。还有一点要注意的就是</p>
+<p>当我们把消息发送到一个没有队列绑定的交换机时，消息就会丢失，因为消息只能存储在队列，而交换机只做交换，不做存储！</p>
+<p>&nbsp;生产者代码：&nbsp;&nbsp;</p>
+<src class="cnblogs_Highlighter">
+<pre><code>public class Send {
+
+    private final static String EXCHANGE_NAME = "exchange_name"; //交换机名称
+
+    public static void main(String[] argv) throws Exception {
+        // 获取MQ连接和通道
+        Connection connection = ConnectionUtil.getConnection();
+        Channel channel = connection.createChannel();
+
+        // 声明交换机
+        channel.exchangeDeclare(EXCHANGE_NAME, "fanout");
+
+        // 消息内容
+        String message = "生产者消息";
+        channel.basicPublish(EXCHANGE_NAME, "", null, message.getBytes());
+        System.out.println(" 发送 '" + message + "'");
+
+        channel.close();
+        connection.close();
+    }
+}</code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;消费者一号代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Recv {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> String QUEUE_NAME = "test_queue_ex"<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> String EXCHANGE_NAME = "exchange_name"<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] argv) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        Connection connection </span>=<span style="color: #000000;"> ConnectionUtil.getConnection();
+        Channel channel </span>=<span style="color: #000000;"> connection.createChannel();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 声明队列</span>
+        channel.queueDeclare(QUEUE_NAME, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 绑定队列到交换机</span>
+        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ""<span style="color: #000000;">);
+        channel.basicQos(</span>1<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义队列的消费者</span>
+        QueueingConsumer consumer = <span style="color: #0000ff;">new</span><span style="color: #000000;"> QueueingConsumer(channel);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 监听队列，手动返回完成</span>
+        channel.basicConsume(QUEUE_NAME, <span style="color: #0000ff;">false</span><span style="color: #000000;">, consumer);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取消息</span>
+        <span style="color: #0000ff;">while</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+            QueueingConsumer.Delivery delivery </span>=<span style="color: #000000;"> consumer.nextDelivery();
+            String message </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> String(delivery.getBody());
+            System.out.println(</span>" 消费者一号 '" + message + "'"<span style="color: #000000;">);
+            Thread.sleep(</span>10<span style="color: #000000;">);
+
+            channel.basicAck(delivery.getEnvelope().getDeliveryTag(), </span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        }
+    }
+}</span></code></pre>
+
+<p>消费者二号代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Recv2 {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> String QUEUE_NAME = "test_queue_ex2"<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">static</span> String EXCHANGE_NAME = "exchange_name"<span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] argv) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        Connection connection </span>=<span style="color: #000000;"> ConnectionUtil.getConnection();
+        Channel channel </span>=<span style="color: #000000;"> connection.createChannel();
+        channel.queueDeclare(QUEUE_NAME, </span><span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, </span>""<span style="color: #000000;">);
+        channel.basicQos(</span>1<span style="color: #000000;">);
+        QueueingConsumer consumer </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> QueueingConsumer(channel);
+        channel.basicConsume(QUEUE_NAME, </span><span style="color: #0000ff;">false</span><span style="color: #000000;">, consumer);
+        </span><span style="color: #0000ff;">while</span> (<span style="color: #0000ff;">true</span><span style="color: #000000;">) {
+            QueueingConsumer.Delivery delivery </span>=<span style="color: #000000;"> consumer.nextDelivery();
+            String message </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> String(delivery.getBody());
+            System.out.println(</span>"消费者二号 '" + message + "'"<span style="color: #000000;">);
+            Thread.sleep(</span>10<span style="color: #000000;">);
+            channel.basicAck(delivery.getEnvelope().getDeliveryTag(), </span><span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        }
+    }
+}</span></code></pre>
+
+<p>运行代码之后可以看到</p>
+<p><img src="./images/RabbitMQ-交换机模式1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;生产者发送的消息已经存储在了交换机之中。查看绑定关系如下图所示：</p>
+<p><img src="./images/RabbitMQ-交换机模式2.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;所以，可以得出结论一个消息被多个消费者所消费。订阅模式也存在着缺陷有时并不是所有数据都需要同步，所以用订阅模式来做数据同步并不合理。于是就用到了路由模式。</p>
+<p>&nbsp;</p>
+<h2>&nbsp;路由模式</h2>
+<p>&nbsp;官网图示如下：</p>
+<p><img src="./images/RabbitMQ-交换机模式3.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;和订阅模式比较类似，只是type变成了direct类型，路由模式也是先由生产者发送消息到交换机，然后在根据绑定键来判断消息发送到哪一个交换机。如下图：</p>
+<p><img src="./images/RabbitMQ-交换机模式4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;和订阅模式的区别就是生产者发送消息时要先声明消息的类型，也就是说消息会被哪类消费者所获取</p>
+<p><img src="./images/RabbitMQ-交换机模式5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp; &nbsp; 消费者和生产者保持一个类型的时候，就可以接收到对应生产者所发送的消息了。从而可以过滤掉不需要的消息类型。</p>
+<h2>主题模式</h2>
+<p>&nbsp; &nbsp;主题模式个人感觉就和sql语句里的like关键字一样，不用保证消息类型一样，只要保证其相似就可以接收消息了，相比于路由模式，</p>
+<p>主题模式匹配率比较低，但是功能确提高了很多，减少了路由key的创建，如图所示：</p>
+<p><img src="./images/RabbitMQ-交换机模式6.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;type变成了topic类型，至于其他方面和路由模式一样就不多说了。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

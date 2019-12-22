@@ -1,0 +1,347 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring MVC内置支持的4种内容协商方式【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring MVC内置支持的4种内容协商方式【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11420796.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>十个光头九个富，最后一个会砍树</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p>不知你在使用<code>Spring Boot</code>时是否对这样一个现象&quot;诧异&quot;过：<code>同一个</code>接口（同一个URL）在接口报错情况下，若你用rest访问，它返回给你的是一个<code>json</code>串；但若你用浏览器访问，它返回给你的是一段<code>html</code>。恰如下面例子（<code>Spring Boot</code>环境~）：</p>
+<pre><code><code>@RestController
+@RequestMapping
+public class HelloController {
+    @GetMapping(&quot;/test/error&quot;)
+    public Object testError() {
+        System.out.println(1 / 0); // 强制抛出异常
+        return &quot;hello world&quot;;
+    }
+}</code></code></pre>
+<p>使用浏览器访问：<code>http://localhost:8080/test/error</code><br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+使用Postman访问：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】1.png" alt="在这里插入图片描述" /><br />
+同根不同命有木有。<code>RESTful</code>服务中很重要的一个特性是：<strong>同一资源可以有多种表述，这就是我们今天文章的主题：内容协商(<code>ContentNegotiation</code>)。</strong></p>
+<h2 id="http内容协商">HTTP内容协商</h2>
+<p>虽然本文主要是想说<code>Spring MVC</code>中的内容协商机制，但是在此之前是很有必要先了解<code>HTTP</code>的内容协商是怎么回事（<code>Spring MVC</code>实现了它并且扩展了它更为强大~）。</p>
+<h5 id="定义">定义</h5>
+<p>一个<code>URL资源</code>服务端可以以多种形式进行响应：即MIME（<code>MediaType</code>）媒体类型。但对于<strong>某一个</strong>客户端（浏览器、APP、Excel导出...）来说它只需要一种。so这样客户端和服务端就得有<strong>一种机制</strong>来保证这个事情，这种机制就是内容协商机制。</p>
+<h5 id="方式">方式</h5>
+<p><code>http</code>的内容协商方式大致有两种：</p>
+<ol>
+<li>服务端将可用列表（自己能提供的MIME类型们）发给客户端，客户端选择后再告诉服务端。这样服务端再按照客户端告诉的MIME返给它。（缺点：多一次网络交互，而且使用对使用者要求高，所以<strong>此方式一般不用</strong>）</li>
+<li><p>（<strong>常用</strong>）客户端发请求时就指明需要的<code>MIME</code>们（比如<code>Http</code>头部的：<code>Accept</code>），服务端根据客户端指定的要求返回合适的形式，并且在响应头中做出说明（如：<code>Content-Type</code>）<br />
+1. 若客户端要求的MIME类型服务端提供不了，那就406错误吧~</p>
+<h5 id="常用请求头响应头">常用请求头、响应头</h5>
+<p>==请求头==<br />
+<code>Accept</code>：告诉服务端需要的MIME（一般是多个，比如<code>text/plain</code>，<code>application/json</code>等。<em>/</em>表示可以是任何MIME资源）<br />
+<code>Accept-Language</code>：告诉服务端需要的语言（在中国默认是中文嘛，但浏览器一般都可以选择N多种语言，但是是否支持要看服务器是否可以协商）<br />
+<code>Accept-Charset</code>：告诉服务端需要的字符集<br />
+<code>Accept-Encoding</code>：告诉服务端需要的压缩方式（gzip,deflate,br）<br />
+==响应头==<br />
+<code>Content-Type</code>：告诉客户端响应的媒体类型（如<code>application/json</code>、<code>text/html</code>等）<br />
+<code>Content-Language</code>：告诉客户端响应的语言<br />
+<code>Content-Charset</code>：告诉客户端响应的字符集<br />
+<code>Content-Encoding</code>：告诉客户端响应的压缩方式（gzip）</p>
+<h6 id="报头accept与content-type的区别">报头<code>Accept</code>与<code>Content-Type</code>的区别</h6>
+<p>有很多文章粗暴的解释：<code>Accept</code>属于请求头，<code>Content-Type</code>属于响应头，其实这是不准确的。<br />
+在前后端分离开发成为主流的今天，你应该不乏见到前端的request请求上大都有<code>Content-Type：application/json;charset=utf-8</code>这个请求头，因此可见<code>Content-Type</code>并不仅仅是响应头。</p></li>
+</ol>
+<p>HTTP协议规范的格式如下<strong>四部分</strong>：</p>
+<ol>
+<li>＜request-line＞(请求消息行)</li>
+<li>＜headers＞(请求消息头)</li>
+<li>＜blank line＞(请求空白行)</li>
+<li>＜request-body＞(请求消息体)</li>
+</ol>
+<p><code>Content-Type</code>指<strong>请求消息体</strong>的数据格式，因为<strong>请求和响应中都可以有消息体</strong>，所以它即可用在请求头，亦可用在响应头。<br />
+关于更多Http中的<code>Content-Type</code>的内容，我推荐参见此文章：<a href="https://segmentfault.com/a/1190000013056786">Http请求中的Content-Type</a></p>
+<hr />
+<h2 id="spring-mvc内容协商">Spring MVC内容协商</h2>
+<p><code>Spring MVC</code>实现了<code>HTTP</code>内容协商的同时，又进行了扩展。它支持4种协商方式：</p>
+<ol>
+<li><code>HTTP</code>头<code>Accept</code></li>
+<li>扩展名</li>
+<li>请求参数</li>
+<li>固定类型（producers）</li>
+</ol>
+<blockquote>
+<p>说明：以下示例基于Spring进行演示，而非<code>Spring Boot</code></p>
+</blockquote>
+<h4 id="方式一http头accept">方式一：HTTP头<code>Accept</code></h4>
+<pre><code><code>@RestController
+@RequestMapping
+public class HelloController {
+    @ResponseBody
+    @GetMapping(&quot;/test/{id}&quot;)
+    public Person test(@PathVariable(required = false) String id) {
+        System.out.println(&quot;id的值为：&quot; + id);
+        Person person = new Person();
+        person.setName(&quot;fsx&quot;);
+        person.setAge(18);
+        return person;
+    }
+}</code></code></pre>
+<p>如果默认就这样，不管浏览器访问还是Postman访问，得到的<strong>都是json串</strong>。</p>
+<p>但若你仅仅只需在<code>pom</code>加入如下两个包：</p>
+<pre class="xml"><code>&lt;!-- 此处需要导入databind包即可， jackson-annotations、jackson-core都不需要显示自己的导入了--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.fasterxml.jackson.core&lt;/groupId&gt;
+    &lt;artifactId&gt;jackson-databind&lt;/artifactId&gt;
+    &lt;version&gt;2.9.8&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- jackson默认只会支持的json。若要xml的支持，需要额外导入如下包 --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.fasterxml.jackson.dataformat&lt;/groupId&gt;
+    &lt;artifactId&gt;jackson-dataformat-xml&lt;/artifactId&gt;
+    &lt;version&gt;2.9.8&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>再用<strong>浏览器/Postman</strong>访问，得到结果就是xml了，形如这样：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】2.png" alt="在这里插入图片描述" /></p>
+<blockquote>
+<p>有的文章说：浏览器是xml，postman是json。本人亲试：都是xml。</p>
+</blockquote>
+<p>但若我们<code>postman</code>手动指定这个头：<code>Accept：application/json</code>，返回就和浏览器有差异了（若不手动指定，<code>Accept</code>默认值是<code>*/*</code>）：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】3.png" alt="在这里插入图片描述" /><br />
+并且我们可以看到<code>response</code>的头信息对比如下：<br />
+手动指定了<code>Accept：application/json</code>：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】4.png" alt="在这里插入图片描述" /><br />
+木有指定Accept（默认<code>*/*</code>）：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】5.png" alt="在这里插入图片描述" /></p>
+<h6 id="原因简析">原因简析</h6>
+<p><code>Chrome</code>浏览器请求默认发出的<code>Accept</code>是：<code>Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3</code>。<br />
+由于我例子使用的是<code>@ResponseBody</code>，因此它不会返回一个view：交给消息转换器处理，因此这就和<code>MediaType</code>以及权重有关了。</p>
+<p>消息最终都会交给<code>AbstractMessageConverterMethodProcessor.writeWithMessageConverters()</code>方法：</p>
+<pre><code><code>// @since 3.1
+AbstractMessageConverterMethodProcessor：
+    protected &lt;T&gt; void writeWithMessageConverters( ... ) {
+        Object body;
+        Class&lt;?&gt; valueType;
+        Type targetType;
+        ...
+        HttpServletRequest request = inputMessage.getServletRequest();
+        // 这里交给contentNegotiationManager.resolveMediaTypes()  找出客户端可以接受的MediaType们~~~
+        // 此处是已经排序好的（根据Q值等等）
+        List&lt;MediaType&gt; acceptableTypes = getAcceptableMediaTypes(request);
+        // 这是服务端它所能提供出的MediaType们
+        List&lt;MediaType&gt; producibleTypes = getProducibleMediaTypes(request, valueType, targetType);
+    
+        // 协商。 经过一定的排序、匹配  最终匹配出一个合适的MediaType
+        ...
+        // 把待使用的们再次排序，
+        MediaType.sortBySpecificityAndQuality(mediaTypesToUse);
+
+        // 最终找出一个最合适的、最终使用的：selectedMediaType 
+            for (MediaType mediaType : mediaTypesToUse) {
+                if (mediaType.isConcrete()) {
+                    selectedMediaType = mediaType;
+                    break;
+                } else if (mediaType.isPresentIn(ALL_APPLICATION_MEDIA_TYPES)) {
+                    selectedMediaType = MediaType.APPLICATION_OCTET_STREAM;
+                    break;
+                }
+            }
+    }</code></code></pre>
+<p><code>acceptableTypes</code>是客户端通过<code>Accept</code>告知的。<br />
+<code>producibleTypes</code>代表着服务端所能提供的类型们。参考这个<code>getProducibleMediaTypes()</code>方法：</p>
+<pre><code><code>AbstractMessageConverterMethodProcessor：
+
+    protected List&lt;MediaType&gt; getProducibleMediaTypes( ... ) {
+        // 它设值的地方唯一在于：@RequestMapping.producers属性
+        // 大多数情况下：我们一般都不会给此属性赋值吧~~~
+        Set&lt;MediaType&gt; mediaTypes = (Set&lt;MediaType&gt;) request.getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+        if (!CollectionUtils.isEmpty(mediaTypes)) {
+            return new ArrayList&lt;&gt;(mediaTypes);
+        }
+        // 大多数情况下：都会走进这个逻辑 --&gt; 从消息转换器中匹配一个合适的出来
+        else if (!this.allSupportedMediaTypes.isEmpty()) {
+            List&lt;MediaType&gt; result = new ArrayList&lt;&gt;();
+            // 从所有的消息转换器中  匹配出一个/多个List&lt;MediaType&gt; result出来
+            // 这就代表着：我服务端所能支持的所有的List&lt;MediaType&gt;们了
+            for (HttpMessageConverter&lt;?&gt; converter : this.messageConverters) {
+                if (converter instanceof GenericHttpMessageConverter &amp;&amp; targetType != null) {
+                    if (((GenericHttpMessageConverter&lt;?&gt;) converter).canWrite(targetType, valueClass, null)) {
+                        result.addAll(converter.getSupportedMediaTypes());
+                    }
+                }
+                else if (converter.canWrite(valueClass, null)) {
+                    result.addAll(converter.getSupportedMediaTypes());
+                }
+            }
+            return result;
+        } else { 
+            return Collections.singletonList(MediaType.ALL);
+        }
+    }</code></code></pre>
+<p>可以看到服务端最终能够提供哪些<code>MediaType</code>，来源于消息转换器<code>HttpMessageConverter</code>对类型的支持。<br />
+本例的现象：起初返回的是json串，仅仅只需要导入<code>jackson-dataformat-xml</code>后就返回<code>xml</code>了。原因是因为加入<code>MappingJackson2XmlHttpMessageConverter</code>都有这个判断：</p>
+<pre><code><code>    private static final boolean jackson2XmlPresent = ClassUtils.isPresent(&quot;com.fasterxml.jackson.dataformat.xml.XmlMapper&quot;, classLoader);
+    
+        if (jackson2XmlPresent) {
+            addPartConverter(new MappingJackson2XmlHttpMessageConverter());
+        }</code></code></pre>
+<p>所以默认情况下<code>Spring MVC</code>并不支持<code>application/xml</code>这种媒体格式，所以若不导包协商出来的结果是：<code>application/json</code>。</p>
+<blockquote>
+<p>默认情况下优先级是xml高于json。当然一般都木有xml包，所以才轮到json的。</p>
+</blockquote>
+<p>另外还需要注意一点：有的小伙伴说通过在请求头里指定<code>Content-Type：application/json</code>来达到效果。现在你应该知道，这样做显然是没用的（至于为何没用，希望读者做到了心知肚明），只能使用<code>Accept</code>这个头来指定~~~</p>
+<p>第一种协商方式是<code>Spring MVC</code>完全基于<code>HTTP Accept</code>首部的方式了。该种方式<code>Spring MVC</code>默认支持且默认已开启。<br />
+<strong>优缺点：</strong></p>
+<ul>
+<li>优点：理想的标准方式</li>
+<li><p>缺点：由于浏览器的差异，导致发送的Accept Header头可能会不一样，从而得到的结果不具备浏览器兼容性</p>
+<h4 id="方式二变量扩展名">方式二：（变量）扩展名</h4>
+<p>基于上面例子：若我访问<code>/test/1.xml</code>返回的是xml，若访问<code>/test/1.json</code>返回的是json；完美~</p></li>
+</ul>
+<p><strong>这种方式使用起来非常的便捷，并且还不依赖于浏览器</strong>。但我总结了如下几点使时的注意事项：</p>
+<ol>
+<li>扩展名必须是<strong>变量</strong>的扩展名。比如上例若访问<code>test.json / test.xml</code>就404~</li>
+<li><code>@PathVariable</code>的参数类型只能使用通用类型（<code>String/Object</code>），因为接收过来的value值就是<code>1.json/1.xml</code>，所以若用<code>Integer</code>接收将报错类型转换错误~<br />
+1. 小技巧：我个人建议是这部分不接收（这部分不使用<code>@PathVariable</code>接收），拿出来<strong>只为内容协商使用</strong></li>
+<li><strong>扩展名优先级比Accept要高</strong>（并且和使用神马浏览器无关）</li>
+</ol>
+<p><strong>优缺点：</strong></p>
+<ul>
+<li>优点：灵活，不受浏览器约束</li>
+<li><p>缺点：丧失了同一URL的多种展现方式。在实际环境中使用还是较多的，因为这种方式更符合程序员的习惯</p>
+<h4 id="方式三请求参数">方式三：请求参数</h4>
+这种协商方式<code>Spring MVC</code>支持，但默认是关闭的，需要显示的打开：</li>
+</ul>
+<pre><code><code>@Configuration
+@EnableWebMvc
+public class WebMvcConfig extends WebMvcConfigurerAdapter {
+    @Override
+    public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
+        // 支持请求参数协商
+        configurer.favorParameter(true);
+    }
+}</code></code></pre>
+<p>请求URL：<code>/test/1?format=xml</code>返回xml；<code>/test/1?format=json</code>返回json。同样的我总结如下几点注意事项：</p>
+<ol>
+<li>前两种方式默认是开启的，但此种方式需要<strong>手动显示开启</strong></li>
+<li>此方式优先级<code>低于</code>扩展名（因此你测试时若想它生效，请去掉url的后缀）</li>
+</ol>
+<p><strong>优缺点：</strong></p>
+<ul>
+<li>优点：不受浏览器约束</li>
+<li><p>缺点：需要额外的传递format参数，URL变得冗余繁琐，缺少了REST的简洁风范。还有个缺点便是：还需手动显示开启。</p>
+<h5 id="方式四固定类型produces">方式四：固定类型（produces）</h5>
+它就是利用<code>@RequestMapping</code>注解属性<code>produces</code>（可能你平时也在用，但并不知道原因）：</li>
+</ul>
+<pre><code><code>@ResponseBody
+@GetMapping(value = {&quot;/test/{id}&quot;, &quot;/test&quot;}, produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
+public Person test() { ... }</code></code></pre>
+<p>访问：<code>/test/1</code>返回的就是json；即使你已经导入了jackson的xml包，返回的依旧还是json。</p>
+<p>它也有它很很很重要的一个注意事项：<strong><code>produces</code>指定的<code>MediaType</code>类型不能和后缀、请求参数、Accept冲突</strong>。例如本利这里指定了<code>json</code>格式，如果你这么访问<code>/test/1.xml</code>，或者<code>format=xml</code>，或者<code>Accept</code>不是<code>application/json或者*/*</code> 将无法完成内容协商：http状态码为406，报错如下：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】6.png" alt="在这里插入图片描述" /><br />
+<code>produces</code>使用固然也比较简单，针对上面报错406的原因，我简单解释如下。</p>
+<h6 id="原因">原因：</h6>
+<p>1、先解析请求的媒体类型：<code>1.xml</code>解析出来的<code>MediaType</code>是<code>application/xml</code><br />
+2、拿着这个<code>MediaType</code>（当然还有URL、请求Method等所有）去匹配<code>HandlerMethod</code>的时候会发现<code>producers</code>匹配不上<br />
+3、匹配不上就交给<code>RequestMappingInfoHandlerMapping.handleNoMatch()</code>处理：</p>
+<pre><code><code>RequestMappingInfoHandlerMapping：
+
+    @Override
+    protected HandlerMethod handleNoMatch(...) {
+        if (helper.hasConsumesMismatch()) {
+            ...
+            throw new HttpMediaTypeNotSupportedException(contentType, new ArrayList&lt;&gt;(mediaTypes));
+        }
+        // 抛出异常：HttpMediaTypeNotAcceptableException
+        if (helper.hasProducesMismatch()) {
+            Set&lt;MediaType&gt; mediaTypes = helper.getProducibleMediaTypes();
+            throw new HttpMediaTypeNotAcceptableException(new ArrayList&lt;&gt;(mediaTypes));
+        }
+    }   </code></code></pre>
+<p>4、抛出异常后最终交给<code>DispatcherServlet.processHandlerException()</code>去处理这个异常，转换到<code>Http</code>状态码</p>
+<blockquote>
+<p>会调用所有的<code>handlerExceptionResolvers</code>来处理这个异常，本处会被<code>DefaultHandlerExceptionResolver</code>最终处理。最终处理代码如下（406状态码）：</p>
+</blockquote>
+<pre><code><code>    protected ModelAndView handleHttpMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException ex,
+            HttpServletRequest request, HttpServletResponse response, @Nullable Object handler) throws IOException {
+
+        response.sendError(HttpServletResponse.SC_NOT_ACCEPTABLE);
+        return new ModelAndView();
+    }</code></code></pre>
+<blockquote>
+<p><code>Spring MVC</code>默认注册的异常处理器是如下3个：<br />
+<img src="./images/Spring MVC内置支持的4种内容协商方式【享学Spring MVC】7.png" alt="在这里插入图片描述" /></p>
+</blockquote>
+<h6 id="原理">原理</h6>
+<p>有了关于<code>Accept</code>的原理描述，理解它就非常简单了。因为指定了<code>produces</code>属性，所以<code>getProducibleMediaTypes()</code>方法在拿服务端支持的媒体类型时：</p>
+<pre><code><code>protected List&lt;MediaType&gt; getProducibleMediaTypes( ... ){
+    Set&lt;MediaType&gt; mediaTypes = (Set&lt;MediaType&gt;) request.getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+    if (!CollectionUtils.isEmpty(mediaTypes)) {
+        return new ArrayList&lt;&gt;(mediaTypes);
+    }
+    ...
+}</code></code></pre>
+<p>因为设置了<code>producers</code>，所以代码第一句就能拿到值了（后面的协商机制完全同上）。</p>
+<blockquote>
+<p>备注：若produces属性你要指定的非常多，建议可以使用<code>!xxx</code>语法，它是支持这种语法（排除语法）的~</p>
+</blockquote>
+<p><strong>优缺点：</strong></p>
+<ul>
+<li>优点：使用简单，天然支持</li>
+<li><p>缺点：让<code>HandlerMethod</code>处理器缺失灵活性</p>
+<h5 id="spring-boot默认异常消息处理">Spring Boot默认异常消息处理</h5>
+<p>再回到开头的<code>Spring Boot</code>为何对异常消息，浏览器和postman的展示不一样。这就是<code>Spring Boot</code>默认的对异常处理方式：它使用的就是基于 固定类型(produces)实现的内容协商。</p></li>
+</ul>
+<p><code>Spirng Boot</code>出现异常信息时候，会<strong>默认</strong>访问<code>/error</code>,它的处理类是：<code>BasicErrorController</code></p>
+<pre><code><code>@Controller
+@RequestMapping(&quot;${server.error.path:${error.path:/error}}&quot;)
+public class BasicErrorController extends AbstractErrorController {
+    ...
+    // 处理类浏览器
+    @RequestMapping(produces = &quot;text/html&quot;)
+    public ModelAndView errorHtml(HttpServletRequest request, HttpServletResponse response) {
+        ... 
+        return (modelAndView != null ? modelAndView : new ModelAndView(&quot;error&quot;, model));
+    }
+
+    // 处理restful/json方式
+    @RequestMapping
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; error(HttpServletRequest request) {
+        Map&lt;String, Object&gt; body = getErrorAttributes(request, isIncludeStackTrace(request, MediaType.ALL));
+        HttpStatus status = getStatus(request);
+        return new ResponseEntity&lt;Map&lt;String, Object&gt;&gt;(body, status);
+    }
+    ...
+}</code></code></pre>
+<p>有了上面的解释，对这块代码的理解应该就没有盲点了~</p>
+<h4 id="总结">总结</h4>
+<p>内容协商在<code>RESTful</code>流行的今天还是非常重要的一块内容，它对于提升用户体验，提升效率和降低维护成本都有不可忽视的作用，注意它三的优先级为：<strong>后缀 &gt; 请求参数 &gt; HTTP首部Accept</strong></p>
+<p>一般情况下，我们为了通用都会使用基于Http的内容协商（Accept），但在实际应用中其实很少用它，因为不同的浏览器可能导致不同的行为（比如<code>Chrome</code>和<code>Firefox</code>就很不一样），<strong>所以为了保证“稳定性”一般都选择使用方案二或方案三（比如Spring的官方doc）</strong>。</p>
+<h4 id="相关阅读">相关阅读</h4>
+<p><a href="https://blog.csdn.net/f641385712/article/details/89810020">【小家Spring】Spring MVC容器的web九大组件之---HandlerMapping源码详解(二)---RequestMappingHandlerMapping系列</a></p>
+<p><a href="https://blog.csdn.net/f641385712/article/details/100020664">ContentNegotiation内容协商机制(一)---Spring MVC内置支持的4种内容协商方式【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100060445">ContentNegotiation内容协商机制(二)---Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100079806">ContentNegotiation内容协商机制(三)---在视图View上的应用：ContentNegotiatingViewResolver深度解析【享学Spring MVC】</a></p>
+<h4 id="知识交流">知识交流</h4>
+<p>==The last：如果觉得本文对你有帮助，不妨点个赞呗。当然分享到你的朋友圈让更多小伙伴看到也是被<code>作者本人许可的~</code>==</p>
+<p><strong>若对技术内容感兴趣可以加入wx群交流：<code>Java高工、架构师3群</code>。<br />
+若群二维码失效，请加wx号：<code>fsx641385712</code>（或者扫描下方wx二维码）。并且备注：<code>&quot;java入群&quot;</code> 字样，会手动邀请入群</strong><br />
+==若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞==</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

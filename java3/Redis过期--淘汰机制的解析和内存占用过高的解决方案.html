@@ -1,0 +1,132 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Redis过期--淘汰机制的解析和内存占用过高的解决方案' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Redis过期--淘汰机制的解析和内存占用过高的解决方案</center></div><div class='banquan'>原文出处:本文由博客园博主xlecho提供。<br/>
+原文连接:https://www.cnblogs.com/xlecho/p/11832128.html</div><br>
+    <p>echo编辑整理，欢迎转载，转载请声明文章来源。欢迎添加echo微信(微信号：t2421499075)交流学习。 百战不败，依不自称常胜，百败不颓，依能奋力前行。——这才是真正的堪称强大！！！</p>
+<hr />
+<blockquote>
+<p>Redis在我们平时的开发或者练习的时候，往往很容易忽略一个问题，那就是我们的Redis内存占满的问题。但是在真是的商业开发中，Redis的实际占满是真正会存在这样的问题的。那么如果Redis在某一刻占满内存，我们又没有对它进行相应的设置它会出现什么情况呢？会不会导致我们整个因为使用Redis而整个业务垮掉？这就是我们本篇文章所要讲述的问题。</p>
+</blockquote>
+<h3 id="什么是redis淘汰机制">什么是Redis淘汰机制</h3>
+<p>Redis内存淘汰机制其实简单讲就是将过期的数据或者很久没有访问，或者在一段时间内很少有访问的数据进行删除。它分为很多中，有主动的数据淘汰，如：用户设定过期时间。有被动的淘汰，比如：Redis数据占满了内存，这个时候就会将过期的数据或者很久没有访问的数据删除掉。</p>
+<h3 id="redis的淘汰有哪些类型">Redis的淘汰有哪些类型</h3>
+<ul>
+<li>定时过期：每个设置过期时间的key都需要创建一个定时器，到过期时间就会立即清除。该策略可以立即清除过期的数据，对内存很友好；但是会占用大量的CPU资源去处理过期的数据，从而影响缓存的响应时间和吞吐量。</li>
+<li>惰性过期：只有当访问一个key时，才会判断该key是否已过期，过期则清除。该策略可以最大化地节省CPU资源，却对内存非常不友好。极端情况可能出现大量的过期key没有再次被访问，从而不会被清除，占用大量内存。</li>
+<li>定期过期：每隔一定的时间，会扫描一定数量的数据库的expires字典中一定数量的key，并清除其中已过期的key。该策略是前两者的一个折中方案。通过调整定时扫描的时间间隔和每次扫描的限定耗时，可以在不同情况下使得CPU和内存资源达到最优的平衡效果。<br />
+(expires字典会保存所有设置了过期时间的key的过期时间数据，其中，key是指向键空间中的某个键的指针，value是该键的毫秒精度的UNIX时间戳表示的过期时间。键空间是指该Redis集群中保存的所有键。)</li>
+</ul>
+<h3 id="定时过期的问题缓存雪崩">定时过期的问题：缓存雪崩</h3>
+<p>很多人可能对这个词很熟悉，因为有很多的商业案例展示了血淋淋的教训，但是也有一部分人估计没有接触过。缓存雪崩其实也不是什么新词，它主要的引起原因就是指缓存中数据大批量的到过期时间。定时过期它本身就有一个缺点，那就是会占用大量的CPU资源，如果我们主动设置过期时间的键过多，在同一时间过期，很有可能就会造就我们Redis挂掉。但是这并不是最可怕的，雪崩不仅仅影响自己，还在我们的业务中影响数据库。因为我们很多业务设计都是在我们Redis的数据过期之后，从新查询数据库，但我们Redis主动批量过期的时候，会有大量的请求发送到我们的数据库，很有可能导致我们的数据库也挂掉。这才是最大的问题所在。</p>
+<h3 id="解决方案">解决方案：</h3>
+<ul>
+<li>缓存数据的过期时间设置随机，防止同一时间大量数据过期现象发生。</li>
+<li>如果缓存数据库是分布式部署，将热点数据均匀分布在不同搞得缓存数据库中。</li>
+<li>设置热点数据永远不过期。</li>
+</ul>
+<blockquote>
+<p>从几种淘汰策略中其实我们可以看到基本的一些问题所在，所以我们在使用缓存的时候最好有一个全面的了解和全面的考虑应对。在实际开发中，我们更应该多去关注的和了解的是定期过期，因为它涉及真实开发中的一些问题。所以我们应该提前设置好。</p>
+</blockquote>
+<h3 id="怎么设置定期过期最大使用内存">怎么设置定期过期最大使用内存</h3>
+<p>定期过期的最大内存设置在我们的redis.conf文件中，我们可以在该文件中看到这个配置：<code>maxmemory &lt;bytes&gt;</code>，但是这个配置一般都是注释掉的，也就是说安装之后如果我们没有主动对他进行配置，那么他就不会有默认大小值。对应的它不设置的情况下，那么它可以使用多少的内存空间呢？这个跟系统有关。如果说我们将Redis安装在32位的系统上，它的最大使用内存空间应该是在3G左右，如果是64位的系统，那么可以将我们的内存占满。当然如果真正占满内存，这是一件比较恶劣的事情，不仅仅访问Redis的时候，我们不能在进行写的操作，而且我们系统本身的其他操作也会受到限制。所以我们可以采用命令来对它进行一个初始化的设置</p>
+<pre><code><code>config set maxmemory 268435456</code></code></pre>
+<p>使用命令进行设置之后我们需要重启Redis才能生效。当然我们也可以直接找到Redis的安装目录，然后使用vi命令，直接更改配置文件中的对应的该内容，更改完之后，重启即可。</p>
+<h3 id="定期过期的淘汰策略">定期过期的淘汰策略</h3>
+<ul>
+<li>volatile-lru:根据LRU算法生成的过期时间来删除。</li>
+<li>allkeys-lru:根据LRU算法删除任何key。</li>
+<li>volatile-lfu:从所有配置了过期时间的键中驱逐使用频率最少的键</li>
+<li>allkeys-lfu:从所有键中驱逐使用频率最少的键</li>
+<li>volatile-random:根据过期设置来随机删除key。</li>
+<li>allkeys-random:无差别随机删。</li>
+<li>volatile-ttl:根据最近过期时间来删除（辅以TTL）</li>
+<li>noeviction:谁也不删，直接在写操作时返回错误。</li>
+</ul>
+<h3 id="随机淘汰策略">随机淘汰策略</h3>
+<p>随机找hash桶再次hash指定位置的dictEntry即可。就是在场景REDIS_MAXMEMORY_VOLATILE_RANDOM和REDIS_MAXMEMORY_ALLKEYS_LRU情况下的待淘汰的key。我们可以一观它的源码：</p>
+<pre><code><code>dictEntry *dictGetRandomKey(dict *d)
+{
+    dictEntry *he, *orighe;
+    unsigned int h;
+    int listlen, listele;
+ 
+    if (dictSize(d) == 0) return NULL;
+ 
+    if (dictIsRehashing(d)) _dictRehashStep(d);
+ 
+    if (dictIsRehashing(d)) {
+        // T = O(N)
+        do {
+            h = random() % (d-&gt;ht[0].size+d-&gt;ht[1].size);
+            he = (h &gt;= d-&gt;ht[0].size) ? d-&gt;ht[1].table[h - d-&gt;ht[0].size] :
+                                      d-&gt;ht[0].table[h];
+        } while(he == NULL);
+    } else {
+        // T = O(N)
+        do {
+            h = random() &amp; d-&gt;ht[0].sizemask;
+            he = d-&gt;ht[0].table[h];
+        } while(he == NULL);
+    }
+ 
+    /* Now we found a non empty bucket, but it is a linked
+     * list and we need to get a random element from the list.
+     * The only sane way to do so is counting the elements and
+     * select a random index. */
+    listlen = 0;
+    orighe = he;
+    while(he) {
+        he = he-&gt;next;
+        listlen++;
+    }
+    listele = random() % listlen;
+    he = orighe;
+    // T = O(1)
+    while(listele--) he = he-&gt;next;
+ 
+    return he;
+}</code></code></pre>
+<h3 id="ttl时间淘汰">TTL时间淘汰</h3>
+<pre><code><code>for (k = 0; k &lt; server.maxmemory_samples; k++) {
+    sds thiskey;
+    long thisval;
+
+    de = dictGetRandomKey(dict);
+    thiskey = dictGetKey(de);
+    thisval = (long) dictGetVal(de);
+
+    /* Expire sooner (minor expire unix timestamp) is better
+     * candidate for deletion */
+    if (bestkey == NULL || thisval &lt; bestval) {
+        bestkey = thiskey;
+        bestval = thisval;
+    }
+}</code></code></pre>
+<blockquote>
+<p>更多源码，请参考redis官网。这里只是简单的展示两种。我们可以根据这样的代码来对我们的redis的定期过期做一个合理的配置</p>
+</blockquote>
+<h3 id="思考">思考：</h3>
+<h2 id="基于一个数据结构做缓存怎么实现一个lru算法">基于一个数据结构做缓存，怎么实现一个LRU算法？</h2>
+<p>做一个有底线的博客主</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

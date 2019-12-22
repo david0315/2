@@ -1,0 +1,185 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot起飞系列-自定义starter（十）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot起飞系列-自定义starter（十）</center></div><div class='banquan'>原文出处:本文由博客园博主Lookings提供。<br/>
+原文连接:https://www.cnblogs.com/lookings/p/11770293.html</div><br>
+    <h1>一、前言</h1>
+<p>到现在，我们可以看出来，如果我们想用一些功能，基本上都是通过添加spring-boot-starter的方式来使用的，因为各种各样的功能都被封装成了starter，然后把相关服务注入到容器中去，那么如果我们想用一下自己的某些功能呢，那就也要编写一个自定义的starter，所以今天我们就来看看，怎么编写自己的starter，来实现在springboot中实现自己想要的一些功能。</p>
+<h1>二、原理</h1>
+<p>回想一下， 当我们使用一个官方的starter的时候，只需要将相应的starter依赖包添加到pom.xml中去就可以了，然后maven自动下载依赖包，并且springboot在启动后会自动配置相关的服务，然后注入的到容器中去。那么springboot是如何知道要去调用哪些方法，加载哪些配置，并注入哪些bean呢？</p>
+<p>基本步骤如下：</p>
+<p>1.首先，springboot在启动的时候会去找starter包下resources/META-INF/spring.factories文件，然后根据文件中配置的自动配置类运行，加载autoconfigure类。</p>
+<p>2.根据@Conditional注解的条件，决定Bean是否要注入的容器中去。</p>
+<p>3.然后我们一般用的就是这个Bean，来使用其中的一些功能。</p>
+<h1>三、编写自己的Starter</h1>
+<h2>3.1 创建maven项目</h2>
+<p>首先我们创建一个maven项目，按照如下名字起名，其实starter说白了也只是一个jar：</p>
+<p><img style="border: 1px solid black;" src="./images/SpringBoot起飞系列-自定义starter（十）0.png" alt="" /></p>
+<p><strong>一般的，官方的starter命名方式是spring-boot-start-xxx的形式，为了区分，我们自定义的starter用xxx-spring-boot-starter的命名方式。</strong></p>
+<p>1.添加springboot的依赖，因为要成为一个spring-boot-starter是需要依赖springboot的这套流程的，所以我们引入以下依赖：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">project </span><span style="color: #ff0000;">xmlns</span><span style="color: #0000ff;">="http://maven.apache.org/POM/4.0.0"</span>
+<span style="color: #008080;"> 2</span> <span style="color: #ff0000;">         xmlns:xsi</span><span style="color: #0000ff;">="http://www.w3.org/2001/XMLSchema-instance"</span>
+<span style="color: #008080;"> 3</span> <span style="color: #ff0000;">         xsi:schemaLocation</span><span style="color: #0000ff;">="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">modelVersion</span><span style="color: #0000ff;">&gt;</span>4.0.0<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">modelVersion</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>com.example.demo<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>person-spring-boot-starter<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.0-SNAPSHOT<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">packaging</span><span style="color: #0000ff;">&gt;</span>jar<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">packaging</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">10</span> 
+<span style="color: #008080;">11</span>     <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">12</span>         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">13</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">14</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-autoconfigure<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">15</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>2.0.0.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">16</span>         <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">17</span>         <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">18</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">19</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-configuration-processor<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">20</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>2.0.0.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">21</span>             <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">optional</span><span style="color: #0000ff;">&gt;</span>true<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">optional</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">22</span>         <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">23</span>     <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">24</span> 
+<span style="color: #008080;">25</span> <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">project</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>2.添加配置类PersonProperties，主要来从配置文件中读取配置绑定到这个类上：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">package</span><span style="color: #000000;"> com.example.demo;
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span> <span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.context.properties.ConfigurationProperties;
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span> @ConfigurationProperties(prefix = "spring.person"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 6</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> PersonProperties {
+</span><span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;">  String name;
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;">  Integer age;
+</span><span style="color: #008080;">10</span> 
+<span style="color: #008080;">11</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String getName() {
+</span><span style="color: #008080;">12</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> name;
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setName(String name) {
+</span><span style="color: #008080;">16</span>         <span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">18</span> 
+<span style="color: #008080;">19</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> Integer getAge() {
+</span><span style="color: #008080;">20</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> age;
+</span><span style="color: #008080;">21</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">22</span> 
+<span style="color: #008080;">23</span>     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setAge(Integer age) {
+</span><span style="color: #008080;">24</span>         <span style="color: #0000ff;">this</span>.age =<span style="color: #000000;"> age;
+</span><span style="color: #008080;">25</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">26</span> }</code></pre>
+
+<p>3.添加我们的核心服务类，这里边是我们主要提供的功能，假设我们提供了一个sayHello方法，返回一段话：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">package</span><span style="color: #000000;"> com.example.demo;
+</span><span style="color: #008080;"> 2</span> 
+<span style="color: #008080;"> 3</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> PersonService {
+</span><span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;"> PersonProperties personProperties;
+</span><span style="color: #008080;"> 5</span> 
+<span style="color: #008080;"> 6</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> PersonService(PersonProperties personProperties) {
+</span><span style="color: #008080;"> 7</span>         <span style="color: #0000ff;">this</span>.personProperties =<span style="color: #000000;"> personProperties;
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String sayHello() {
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">return</span> "大家好，我叫: " + personProperties.getName() + ", 今年" + personProperties.getAge() + "岁"<span style="color: #000000;">;
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">12</span> }</code></pre>
+
+<p>4.添加自动配置类，这个类主要是给springboot来用的，springboot会用这个类来启动，激活我们的服务，注册都容器中去：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@Configuration
+</span><span style="color: #008080;"> 2</span> @EnableConfigurationProperties(PersonProperties.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span><span style="color: #008080;"> 3</span> @ConditionalOnClass(PersonService.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span><span style="color: #008080;"> 4</span> @ConditionalOnProperty(prefix = "spring.person", value = "enabled", matchIfMissing = <span style="color: #0000ff;">true</span><span style="color: #000000;">)
+</span><span style="color: #008080;"> 5</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> PersonServiceAutoConfiguration {
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    @Autowired
+</span><span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">private</span><span style="color: #000000;">  PersonProperties personProperties;
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span> <span style="color: #000000;">    @Bean
+</span><span style="color: #008080;">10</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;">  PersonService personService(){
+</span><span style="color: #008080;">11</span>         <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> PersonService(personProperties);
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">13</span> }</code></pre>
+
+<p>解释一下代码中用到的几个注解：</p>
+<ul>
+<li>@ConditionalOnClass，当classpath下发现该类的情况下进行自动配置。</li>
+<li>@ConditionalOnMissingBean，当Spring Context中不存在该Bean时。</li>
+<li>@ConditionalOnProperty(prefix = "srping.person",value = "enabled",havingValue = "true")，当配置文件中spring.perons.enabled=true时。如果没有，使用matchIfMissing的值，也为true。</li>
+<li>@Bean，把返回的PersonService对象添加的spring容器中去，这样我们再使用的使用就可以直接装配了。</li>
+</ul>
+<p>其他注解：</p>
+<ul>
+<li>@ConditionalOnBean:当容器中有指定的Bean的条件下</li>
+<li>@ConditionalOnClass：当类路径下有指定的类的条件下</li>
+<li>@ConditionalOnExpression:基于SpEL表达式作为判断条件</li>
+<li>@ConditionalOnJava:基于JVM版本作为判断条件</li>
+<li>@ConditionalOnJndi:在JNDI存在的条件下查找指定的位置</li>
+<li>@ConditionalOnMissingBean:当容器中没有指定Bean的情况下</li>
+<li>@ConditionalOnMissingClass:当类路径下没有指定的类的条件下</li>
+<li>@ConditionalOnNotWebApplication:当前项目不是Web项目的条件下</li>
+<li>@ConditionalOnProperty:指定的属性是否有指定的值</li>
+<li>@ConditionalOnResource:类路径下是否有指定的资源</li>
+<li>@ConditionalOnSingleCandidate:当指定的Bean在容器中只有一个，或者在有多个Bean的情况下，用来指定首选的Bean</li>
+<li>@ConditionalOnWebApplication:当前项目是Web项目的条件下</li>
+</ul>
+<p>&nbsp;5. 在resources下添加spring.factories文件，目录结构如下/resources/META-INF/spring.factories，springboot会自动识别这个文件，加载运行我们的PersonServiceAutoConfiguration类。</p>
+<p><img style="border: 1px solid black;" src="./images/SpringBoot起飞系列-自定义starter（十）1.png" alt="" /></p>
+<p>6.编译运行，用maven install安装jar，默认会安装的maven的仓库里边，用于后来我们使用。</p>
+<p><img style="border: 1px solid black;" src="./images/SpringBoot起飞系列-自定义starter（十）2.png" alt="" /></p>
+<h2>3.2 创建springboot项目测试</h2>
+<p>这一步简单就不说了，直接按模板创建一个springboot的web项目就行了，然后我们在pom.xml中添加我们刚才写好的person-spring-boot-starter：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>  <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">2</span>      <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>com.example.demo<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">3</span>      <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>person-spring-boot-starter<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">4</span>      <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.0-SNAPSHOT<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008080;">5</span>  <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>配置文件中添加starter的配置项：</p>
+<src class="cnblogs_code">
+<pre><code>spring.person.age=12<span style="color: #000000;">
+spring.person.name</span>=songlin</code></pre>
+
+<p>添加一个控制器测试：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #000000;">@RestController
+</span><span style="color: #008080;"> 2</span> <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> HelloController {
+</span><span style="color: #008080;"> 3</span> 
+<span style="color: #008080;"> 4</span> <span style="color: #000000;">    @Autowired
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">    PersonService personService;
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>     @GetMapping("/hello"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 8</span>     <span style="color: #0000ff;">public</span><span style="color: #000000;"> String hello(){
+</span><span style="color: #008080;"> 9</span>         String s =<span style="color: #000000;"> personService.sayHello();
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> s;
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">12</span> }</code></pre>
+
+<p>访问<a href="http://localhost:8080/hello">http://localhost:8080/hello</a>，显示如下：</p>
+<p><img style="border: 1px solid black;" src="./images/SpringBoot起飞系列-自定义starter（十）3.png" alt="" /></p>
+<h1>四、总结</h1>
+<p>当我们想往springboot集成一个功能的时候，就可以用这种方式了，关于starter的写法，大家还可以参看源码，理解了源码我们就能写出更好用的starter了。springboot的基本入门系列就先到这了，往后我们就开始学习springboot集成高级功能了。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

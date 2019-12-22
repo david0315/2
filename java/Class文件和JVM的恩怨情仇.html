@@ -1,0 +1,122 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Class文件和JVM的恩怨情仇' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Class文件和JVM的恩怨情仇</center></div><div class='banquan'>原文出处:本文由博客园博主Java架构Monster提供。<br/>
+原文连接:https://www.cnblogs.com/sevencutekk/p/11527937.html</div><br>
+    <h1>类的加载时机</h1>
+<p>现在我们例子中生成的两个.class文件都会直接被加载到JVM中吗？？</p>
+<p>虚拟机规范则是严格规定了有且只有5种情况必须立即对类进行&ldquo;初始化&rdquo;(class文件加载到JVM中)：</p>
+<ul>
+<li>创建类的实例(new 的方式)。访问某个类或接口的静态变量，或者对该静态变量赋值，调用类的静态方法</li>
+<li>反射的方式</li>
+<li>初始化某个类的子类，则其父类也会被初始化</li>
+<li>Java虚拟机启动时被标明为启动类的类，直接使用java.exe命令来运行某个主类（包含main方法的那个类）</li>
+<li>当使用JDK1.7的动态语言支持时(....)</li>
+</ul>
+<p>所以说：</p>
+<ul>
+<li>Java类的加载是动态的，它并不会一次性将所有类全部加载后再运行，而是保证程序运行的基础类(像是基类)完全加载到jvm中，至于其他类，则在需要的时候才加载。这当然就是为了节省内存开销。</li>
+</ul>
+<p>如何将类加载到jvm</p>
+<p>class文件是通过类的加载器装载到jvm中的！</p>
+<p>Java默认有三种类加载器：</p>
+<src class="pgc-img"><img src="./images/Class文件和JVM的恩怨情仇0.png" alt="Class文件和JVM的恩怨情仇" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<p>各个加载器的工作责任：</p>
+<ul>
+<li>1）Bootstrap ClassLoader：负责加载$JAVA_HOME中jre/lib/rt.jar里所有的class，由C++实现，不是ClassLoader子类</li>
+<li>2）Extension ClassLoader：负责加载java平台中扩展功能的一些jar包，包括$JAVA_HOME中jre/lib/*.jar或-Djava.ext.dirs指定目录下的jar包</li>
+<li>3）App ClassLoader：负责记载classpath中指定的jar包及目录中class</li>
+</ul>
+<p>工作过程：</p>
+<ul>
+<li>1、当AppClassLoader加载一个class时，它首先不会自己去尝试加载这个类，而是把类加载请求委派给父类加载器ExtClassLoader去完成。</li>
+<li>2、当ExtClassLoader加载一个class时，它首先也不会自己去尝试加载这个类，而是把类加载请求委派给BootStrapClassLoader去完成。</li>
+<li>3、如果BootStrapClassLoader加载失败（例如在$JAVA_HOME/jre/lib里未查找到该class），会使用ExtClassLoader来尝试加载；</li>
+<li>4、若ExtClassLoader也加载失败，则会使用AppClassLoader来加载</li>
+<li>5、如果AppClassLoader也加载失败，则会报出异常ClassNotFoundException</li>
+</ul>
+<p>其实这就是所谓的双亲委派模型。简单来说：如果一个类加载器收到了类加载的请求，它首先不会自己去尝试加载这个类，而是把请求委托给父加载器去完成，依次向上。</p>
+<p>好处：</p>
+<ul>
+<li>防止内存中出现多份同样的字节码(安全性角度)</li>
+</ul>
+<p>特别说明：</p>
+<ul>
+<li>类加载器在成功加载某个类之后，会把得到的 java.lang.Class类的实例缓存起来。下次再请求加载该类的时候，类加载器会直接使用缓存的类的实例，而不会尝试再次加载。</li>
+</ul>
+<p>类加载详细过程</p>
+<p>加载器加载到jvm中，接下来其实又分了好几个步骤：</p>
+<ul>
+<li>加载，查找并加载类的二进制数据，在Java堆中也创建一个java.lang.Class类的对象。</li>
+<li>连接，连接又包含三块内容：验证、准备、初始化。</li>
+<li>1）验证，文件格式、元数据、字节码、符号引用验证；</li>
+<li>2）准备，为类的静态变量分配内存，并将其初始化为默认值；</li>
+<li>3）解析，把类中的符号引用转换为直接引用</li>
+<li>初始化，为类的静态变量赋予正确的初始值。</li>
+</ul>
+<src class="pgc-img"><img src="./images/Class文件和JVM的恩怨情仇1.png" alt="Class文件和JVM的恩怨情仇" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<p>JIT即时编辑器</p>
+<p>一般我们可能会想：JVM在加载了这些class文件以后，针对这些字节码，逐条取出，逐条执行--&gt;解析器解析。</p>
+<p>但如果是这样的话，那就太慢了！</p>
+<p>我们的JVM是这样实现的：</p>
+<ul>
+<li>就是把这些Java字节码重新编译优化，生成机器码，让CPU直接执行。这样编出来的代码效率会更高。</li>
+<li>编译也是要花费时间的，我们一般对热点代码做编译，非热点代码直接解析就好了。</li>
+</ul>
+<blockquote>
+<p>热点代码解释：一、多次调用的方法。二、多次执行的循环体</p>
+</blockquote>
+<p>使用热点探测来检测是否为热点代码，热点探测有两种方式：</p>
+<ul>
+<li>采样</li>
+<li>计数器</li>
+</ul>
+<p>目前HotSpot使用的是计数器的方式，它为每个方法准备了两类计数器：</p>
+<ul>
+<li>方法调用计数器（Invocation Counter）</li>
+<li>回边计数器（Back EdgeCounter）。</li>
+<li>在确定虚拟机运行参数的前提下，这两个计数器都有一个确定的阈值，<strong>当计数器超过阈值溢出了，就会触发JIT编译。</strong></li>
+</ul>
+<src class="pgc-img"><img src="./images/Class文件和JVM的恩怨情仇2.png" alt="Class文件和JVM的恩怨情仇" />
+<p class="pgc-img-caption">&nbsp;</p>
+
+<p>回到例子中</p>
+<p>按我们程序来走，我们的Java3yTest.class文件会被AppClassLoader加载器(因为ExtClassLoader和BootStrap加载器都不会加载它[双亲委派模型])加载到JVM中。</p>
+<p>随后发现了要使用Java3y这个类，我们的Java3y.class文件会被AppClassLoader加载器(因为ExtClassLoader和BootStrap加载器都不会加载它[双亲委派模型])加载到JVM中</p>
+<p>&nbsp;<img src="./images/Class文件和JVM的恩怨情仇3.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h1>最后</h1>
+<p>如果对java微服务、分布式、高并发、高可用、大型互联网架构技术、面试经验交流。感兴趣的话可以关注我哦！</p>
+<p>小编也有一些资料分享给大家，对学习提升很有作用的，有关于分布式，微服务，性能优化，Spring，MyBatis的等源码知识点的录像视频还有spring, jvm等等的面试题，希望能够帮助到大家！</p>
+<p><img src="./images/Class文件和JVM的恩怨情仇4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;<img src="./images/Class文件和JVM的恩怨情仇5.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;需要的可以加我的JAVA交流群领取哦！</p>
+<p>772300343 &nbsp;群主会主动给你的哒！</p>
+<p>我是小架，我们下篇文章见！</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

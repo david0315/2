@@ -1,0 +1,210 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修beanFactory 设计模式 Bean 生命周期的胡言乱语，哈哈' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>beanFactory 设计模式 Bean 生命周期的胡言乱语，哈哈</center></div><div class='banquan'>原文出处:本文由博客园博主sanri1993提供。<br/>
+原文连接:https://www.cnblogs.com/sanri1993/p/11816411.html</div><br>
+    <h2 id="写在前面的话">写在前面的话</h2>
+<p>适用读者：有一定经验的，本文不适合初学者，因为可能不能理解我在说什么</p>
+<p>文章思路：不会一开始就像别的博客文章那样，Bean 的生命周期，源码解读（给你贴一大堆的源码）。个人觉得应该由问题驱动，为什么为出现 BeanFactory ，为什么会有生命周期。</p>
+<h2 id="正文">正文</h2>
+<p>一开始我们使用 bean 都是简单bean，如 vo ，po，entity，dto，我们是这么玩的</p>
+<pre><code><code>XXEntity xxEntity = new XXEntity();
+xxEntity.setPropA(&quot;字符串&quot;);</code></code></pre>
+<p>后面可能出现了某个比较复杂的 bean ，它有一个对象做为属性，需要在构造时或构造后设置值(示例而已，不要较真)，如</p>
+<pre><code><code>// 构建序列化实例，这里 Serializable 是接口，使用接口的好处是在使用别的序列化时，不需要修改 jedis 类
+Serializable fastJsonSerizlizable = new FastJsonSerizlizable();
+
+// 构建目标 jedis 实例 ，需要先构建序列化对象 
+Jedis jedis = new Jedis();
+jedis.setSerializable(fastJsonSerizlizable);</code></code></pre>
+<p>这时来了 serviceA 类和 serviceB 类，它们都需要使用 redis，我不可能在每个类里面都去把 jedis 实例化的过程写一遍，这时有经验的同学会写一个工具类来创建 jedis ，像这样</p>
+<pre><code><code>public BeanUtil {
+    // 可以把创建序列化单拿出来，因为除了 redis 需要序列化之外，kafka 也需要序列化
+    public static Serializable createSerializable(){
+        return new FastJsonSerizlizable();
+    }
+    
+    public static Jedis createJedis(){
+        Jedis jedis = new Jedis();
+        jedis.setSerializable(createSerializable());
+        return jedis;
+    }
+}
+
+// 这里我 serviceA，serviceB 都可以使用 createJedis 来直接获取 jedis 实例 ，而不需要关心创建细节，使用哪个序列化等问题</code></code></pre>
+<p>上面代码有几个问题</p>
+<ul>
+<li>每次使用时都会创建 jedis 对象 ，而每一个 jedis 对象又会单独对一个 Serializable 对象 ，但是 fastJson 的序列化和 jedis 都只是工具类型的东西，一个实例足已。</li>
+<li>无法对 Jedis 进行配置</li>
+<li>不能让使用者去创建 BeanUtil 实例 ，改进的代码 如下</li>
+</ul>
+<pre><code><code>public BeanUtil {
+    // 禁用 BeanUtil 构建 
+    private BeanUtil(){}
+    
+    // 这里我们可以使用 bean 的全路径 =&gt; bean 实例来缓存 bean 
+    static Map&lt;String,Object&gt; beansCache = new ConcurrentHashMap&lt;String,Object&gt;();
+    
+    static{
+        // 初始化时，在内容缓存这些 bean 的实例，因为 jedis 依赖于 serializable ，需要需要先创建 serializable
+        Serializable serializable = createSerializable();
+        beansCache.put(Serializable.class.getSimpleName(),serializable);
+        Jedis jedis = createJedis();
+        beansCache.put(jedis.class.getSimpleName(),jedis);
+    }
+    
+    static Serializable createSerializable(String type){
+        Serializable serializable =  beansCache.get(&quot;serializable&quot;);
+        if(serializable != null)return serializable;
+        
+        switch(type){
+            case &quot;kryo&quot;:    // kryo 不能用单例，请忽略本问题，示例而已
+                return new KryoSerializable();
+            case &quot;protostuff&quot;:
+                return new protostuffSerializable();
+            default:
+                return new FastJsonSerizlizable();
+        }
+    }
+    
+    static Jedis createJedis(String serializableType){
+        Jedis jedis = new Jedis();
+        Serializable serializable = beansCache.get(&quot;serializable&quot;);
+        jedis.setSerializable(serializable);
+        return jedis;
+    }
+
+    //然后对外提供获取 Bean 的方法 
+    public static Object getBean(String beanName){
+        return beansCache.get(beanName);
+    }
+    
+    public static T getBean(Class&lt;T&gt; type){
+        return beansCache.get(type.getSimpleName());
+    }
+
+}</code></code></pre>
+<p>但如果写这个类的是小明，经过一段时间后这个类里会出现大量的 createXx 和 XX 的初始化操作，而且依赖程度也非常复杂，这时小明想，是时候优化一波了，于是小明想了一种解决方案，定义了一种 xml 语法</p>
+<p>使用 bean 标签来定义一个 bean，每个 bean 都有唯一的一个 id 信息 ,使用 property 来定义它的属性 ，如果是复杂属性使用 ref ，解析这个xml 得到一个完整的 bean 依赖图</p>
+<pre class="xml"><code>&lt;beans&gt;
+    &lt;bean id=&quot;serializable&quot; class=&quot;com.xx.FastJsonSerizlizable&quot; /&gt;
+    
+    &lt;bean id=&quot;jedis&quot; class=&quot;com.xx.Jedis&quot;&gt;
+        &lt;property name=&quot;host&quot; value=&quot;localhost&quot; /&gt;
+        &lt;property name=&quot;serializable&quot; ref=&quot;serializable&quot;/&gt;
+    &lt;/bean&gt;
+&lt;/beans&gt;</code></code></pre>
+<p>这时会有一个依赖问题，我创建 jedis 要先创建 serializable ，但是 serializable 的 xml bean 定义是写在文件前面 的，小明想了一个办法，先把 ref 使用字符串先存着，全部放到一个 bean 定义中，像这样</p>
+<pre><code><code>Map&lt;String,BeanDefinition&gt; beanDefinitions = new HashMap();</code></code></pre>
+<p>然后把其解析成一颗依赖树，这样就可以先构造树叶，然后逐层构造对象 ，但也有一种棘手的情况 ，那就是循环依赖</p>
+<pre><code><code>root
+
+  |-jedis
+
+    |- serializable</code></code></pre>
+<p>什么是循环依赖呢，最简单的 A 依赖于 B，B 依赖于 A ，或者中间有更多的依赖最后形成了一个圈，A-B-C-A</p>
+<p>最原始的解决方式是这样的，我们可以先使用构造函数把它们都创建出来，不能是有带它们依赖对象的构造函数，然后通过 set 把对象通过属性设置值。</p>
+<p>spring 其实也是这么干的，所以对于循环依赖，spring 是不支持构造注入，支持 set 注入</p>
+<p>这时我们的 BeanUtil 变成了这样，想想不能叫工具类了，改为实体类 Factory</p>
+<pre><code><code>public BeanFactory {
+    
+    Map&lt;String,BeanDefinition&gt; beanDefinitions = new HashMap();
+    
+    // 这里我们可以使用 bean 的全路径 =&gt; bean 实例来缓存 bean 
+    Map&lt;String,Object&gt; beansCache = new ConcurrentHashMap&lt;String,Object&gt;();
+ 
+    {
+        // 加载 xml bean 配置文件
+        beanDefinitions = loadXml(contextConfigurations:String []);
+        
+        //实例化所有 bean 
+        beansCache = instanceBeans(beanDefinitions);
+    }
+    
+    //然后对外提供获取 Bean 的方法 
+    public  Object getBean(String beanName){
+        return beansCache.get(beanName);
+    }
+    
+    public  T getBean(Class&lt;T&gt; type){
+        return beansCache.get(type.getSimpleName());
+    }
+}</code></code></pre>
+<p>这看起来已经足够完美了，但这时程序员A提问了，我需要对我的某个类的初始化时，我要获取一些比如连接资源，文件资源，然后在类销毁时想要回收资源，但根据上面没任何办法可以做到。</p>
+<p>小明说，这好办，我提供几个接口给你，你实现一下，我会在实例化 Bean 的时候 ，如果发现你有实现接口，在相应的过程里我就帮你调用一下，于是小明就添加了两个接口</p>
+<pre><code><code>public interface InitializingBean{
+    void afterPropertiesSet() throws Exception;
+}
+
+public  interface DisposableBean{
+    void destroy() throws Exception;
+}</code></code></pre>
+<p>程序员A 的问题解决了，这时程序员B说，有没有一种办法，可以对所有 Bean 的初始化过程进行拦截，而不是我当前这个类，我想把每一个 service 改成代理类，我想要给 service 中的方法添加事务。</p>
+<p>小明说，那好吧，我把 bean 的属性都注入完了，然后给这个 bean 交给你，你装饰一下这个 bean 然后再还给我，于是小明提供出了这样一个接口 ，在 bean 初始化前和初始化后，你都可以来修改 bean ，不要要注意，这个是针对全局的，不是你个人的 bean ，要做好过滤操作</p>
+<pre><code><code>public interface BeanPostProcessor {
+    Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException ;
+    
+    Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException
+}</code></code></pre>
+<p>刚开始一两个 postProcessor 还没啥问题，后面这种处理类多了，顺序问题就开始显露出来了，比如程序员A 写了个 postProcessor ，然后打包给了程序员B用，可能在 BeanFactory 先加载的程序A 的，但这时候程序员 B 不乐意了，我要先加载我的，我的要在 A 之前执行</p>
+<p>小明说，你们所有的 Process 实现个接口，返回一个数字用来表示顺序，数字越小越先执行，优先级越高，我会在取到所有的 postProcess 后做一个排序</p>
+<pre><code><code>public interface Order{
+    int order();
+}</code></code></pre>
+<p>程序员C 这时又发问了，我创建了一个 BeanA 但我怎么样可以拿到 BeanC 啊，我想看看 c 的一些属性。</p>
+<p>小说说，真烦，我干脆把 map 都给你好，不，我把 BeanFactory 都给你好了，于是有了这个接口</p>
+<pre><code><code>public interface BeanFactoryAware{
+    void setBeanFactory(BeanFactory beanUtil);
+}</code></code></pre>
+<p>这时程序D 又问了，我在 setBeanFactory 的时候 ，我创建的全局 processor 执行了吗，还是在之后执行，头大。</p>
+<p>小明说，我整理下执行顺序，取个名吧，叫 bean 的生命周期，顺便再提供几个实用的接口，bean 的名字我还没告诉你呢，于是整理的生命周期如下</p>
+<pre><code><code>反射创建 Bean 
+填充对象属性
+BeanNameAware.setBeanName();
+BeanFactoryAware.setBeanFactory ();
+BeanPostProcessor.postProcessBeforeInitialization(); 多个
+InitializingBean.afterPropertiesSet()
+BeanPostProcessor.postProcessAfterInitialization(); 多个
+DisposableBean.destory()</code></code></pre>
+<p>程序员E 又说了，xml 配置太麻烦了，jdk1.5 不是有注解吗，我在类上加个标识，你扫描我的类，帮我创建实例呗</p>
+<p>然后我需要用的时候，我在属性上加个标识，你同样可以根据类型找到依赖的类，然后把对应的实例创建好，帮我把值放进去就好了，如果这个类的创建过程比较复杂，我自己来创建，然后我把它返回给你，我定义一个方法，加个 Bean 的标识，你来读进容器。</p>
+<p>于是小明又加了 <code>@Component</code> 来表示组件，<code>@Bean</code> 来表示自定义实例创建，<code>@Autowired</code> 来注入对象 <code>@PostConstruct</code> 来执行类的初始化工作 <code>@PreDestroy</code> 来做类的销毁工作，类的生命周期变成这样</p>
+<pre><code><code>反射创建 Bean 
+填充对象属性
+BeanNameAware.setBeanName();
+BeanFactoryAware.setBeanFactory ();
+BeanPostProcessor.postProcessBeforeInitialization(); 多个
+PostConstruct
+InitializingBean.afterPropertiesSet()
+BeanPostProcessor.postProcessAfterInitialization(); 多个
+PreDestroy
+DisposableBean.destory()</code></code></pre>
+<p>但是为了兼容以前的 xml 形式，小明这时把 BeanFactory 抽象成接口，提供 getBean 方法，根据职责单一原则，BeanFactory 不应该再做解析 Bean 的工作；</p>
+<p>再创建一个接口用于加载 Bean 定义，有两个实现 XmlBeanRegistry ，AnnotationBeanRegistry ，加载 Bean 定义后再合并，考虑到以后还有可能添加别的注册 bean 的方式 ，一次性提供一个对外的接口</p>
+<pre><code><code>public interface BeanFactoryPostProcessor{
+    void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException;
+}</code></code></pre>
+<p>你可以把你规则写成的 bean 定义，实例化为我要求的 BeanDefinition 然后发给我就可以自定义实现把你自定义的 bean 添加到容器中了。</p>
+<p>到此，这个 BeanFactory 已经相当完善了，它定义了一整套 bean 的生命周期，并且可以让使用者介入 bean 的创建过程，但 spring 有一套更加完善的 bean 生命周期，下篇将写 spring 的 beanFactory</p>
+<p>虽然不主张重复造轮子，但前提是你得了解轮子的内部构造。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,105 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修前后端分离部署时如何保护前端代码不被匿名访问' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>前后端分离部署时如何保护前端代码不被匿名访问</center></div><div class='banquan'>原文出处:本文由博客园博主明年我18提供。<br/>
+原文连接:https://www.cnblogs.com/default/p/11581250.html</div><br>
+    <h2 id="背景">背景</h2>
+<p>现在很多项目早就采用前后端分离的方式开发和部署了。前端代码部署在nginx服务器上，由nginx直接对外提供静态文件的服务，后端接口则由nginx做反向代理。</p>
+<p>这本来是极为合理的部署方式，但对于一些需要登录才能进行访问的系统，负责安全的同事就会提出如下的疑虑：</p>
+<blockquote>
+<p>index.html允许匿名访问，别有用心之人岂不是可以根据index里的&lt;script&gt;标签，拿到你所有的前端代码了？</p>
+</blockquote>
+<p>看来要解决这个问题。</p>
+<h2 id="思路">思路</h2>
+<p>为了保护前端首页代码，一次请求的流程应该是下面这样：</p>
+<p>用户发起首页的请求，服务端发现用户没有登录，跳转到登录页;<br />
+用户发起首页的请求，服务端发现用户已经登录了，正常输出首页的内容。</p>
+<p>注意，这里是服务端判断，而不是客户端判断。</p>
+<p>判断有没有登录，毫无疑问是是我们的java后端才能做到的事情，但是首页是html文件，在nginx下面，用户请求它的时候还没到后端这里呢，怎么判断？</p>
+<p>当然，你可以把前端文件移到后端tomcat下，由tomcat提供服务，但这样又走回老路了，这不是一个好方法，不推荐。</p>
+<p>其实，在不改变部署架构的前提下，我们简单的通过nginx的配置和后端接口的配合，就可以达到目的。</p>
+<p>简单来说，利用nginx的rewrite + error_page指令来实现。</p>
+<ol>
+<li>首先，利用nginx的rewrite指令，把对index的请求，rewrite到后端某个接口上</li>
+<li>后端这个接口里判断当前用户是否已经登录，如果没有登录，返回302跳转，跳转到授权页去登录</li>
+<li>如果后端接口判断当前用户已经登录，则返回一个错误码给nginx（例如404），nginx利用error_page，指定404时，输出index.html的文件内容。</li>
+</ol>
+<p>nginx示例配置如下：</p>
+<pre><code><code>server {
+       listen       80;
+       server_name www.abc.com;
+        recursive_error_pages on; #这个选项要开启
+        location / {   
+            root /path/to/front-end;
+        }
+        location /api #交由tomcat处理
+        {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header REMOTE-HOST $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto  $scheme;
+            proxy_set_header   Cookie $http_cookie;
+            proxy_pass http://localhost:9000;
+        }
+
+        location ~* ^(/|(/index\.html))$ {
+            #未登录的情况下，不允许访问首页，注意这里rewrite到一个location，而不是直接proxy_pass到后端接口。因为我要在@fallback里利用queryString
+            rewrite ^/(.*) /abcdefg?res=$request_uri; 
+        }
+        
+        #
+        location /abcdefg {
+            proxy_pass http://localhost:9000/api/home/check-user?res=$request_uri;
+            proxy_redirect off;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_intercept_errors on;
+            error_page  404  = @fallback;
+        }
+        
+        
+        location @fallback {
+            if ($query_string ~* ^res=([^&amp;]*)) {
+                    set $path $1;
+                    rewrite ^ /local/scripts$path;
+            }
+        }
+        location /local/scripts/ {
+            internal; #nginx内部才有效的location，外部无法通过/local/scripts/这个路径访问
+            alias /path/to/front-end/; #注意，最后有个/符号
+            error_page  404  =200 /local/scripts/index.html;
+        }
+}
+</code></code></pre>
+<p>后端check-user接口示例如下：</p>
+<pre><code><code>@GetMapping(&quot;check-user&quot;)
+public void checkUser(String res, HttpSession session, HttpServletRequest request, HttpServletResponse response) throws IOException {
+    if(session.getAttribute(&quot;User&quot;) == null){
+        response.sendRedirect(&quot;login?returnUrl=&quot; + URLEncoder.encode(res, &quot;UTF-8&quot;));
+        return;
+    }
+    response.setStatus(HttpStatus.SC_NOT_FOUND);
+}</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

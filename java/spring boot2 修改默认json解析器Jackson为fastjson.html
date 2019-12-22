@@ -1,0 +1,126 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring boot2 修改默认json解析器Jackson为fastjson' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring boot2 修改默认json解析器Jackson为fastjson</center></div><div class='banquan'>原文出处:本文由博客园博主烧麦提供。<br/>
+原文连接:https://www.cnblogs.com/yanghj/p/12005130.html</div><br>
+    <h2>0、前言</h2>
+<p>　　fastjson是阿里出的，尽管近年fasjson爆出过几次严重漏洞，但是平心而论，fastjson的性能的确很有优势，尤其是大数据量时的性能优势，所以fastjson依然是我们的首选；spring boot默认的json解析器是Jackson，替换为fastjson很有必要；</p>
+<h2>1、替换方法</h2>
+<h3>1.1、引入依赖，【<strong>注意，1.2.61以下有严重高危漏洞，1.2.61修复，必须升级到1.2.61，目前最新版本为1.2.62</strong>】</h3>
+<src class="cnblogs_code">
+<pre><code>        &lt;!-- fastjson --&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+            &lt;artifactId&gt;fastjson&lt;/artifactId&gt;
+            &lt;version&gt;1.2.62&lt;/version&gt;
+        &lt;/dependency&gt;</code></pre>
+
+<p>&nbsp;</p>
+<p><img src="./images/spring boot2 修改默认json解析器Jackson为fastjson0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h3>&nbsp;1.2、配置</h3>
+<p>&nbsp; &nbsp; &nbsp;<strong>注意</strong>：Springboot2.0以后，WebMvcConfigurerAdapter 过时了， 以前1版本继承WebMvcConfigurerAdapter 来实现的方法不推荐了。下面介绍两种配置方式，还有一种实现WebMvcConfigurationSupport的方式就不介绍了，道路千万条，选一条就足够了：<br /><br /></p>
+<h3><strong>方式一（推荐）：用bean替代默认解析器</strong></h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> com.anson.config;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.fastjson.serializer.SerializerFeature;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.fastjson.support.config.FastJsonConfig;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.fastjson.support.spring.FastJsonHttpMessageConverter;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.http.HttpMessageConverters;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Bean;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Configuration;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.http.MediaType;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.http.converter.HttpMessageConverter;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.nio.charset.Charset;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+@Configuration
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> WebConfig {
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * @Author anson
+     * @Description 配置消息转换器
+     * @Date: 2019-12-8 11:23:33
+     * </span><span style="color: #808080;">@version</span><span style="color: #008000;">: 1.0
+     * new HttpMessageConverters(true, converters);
+     * 一定要设为true才能替换否则不会替换
+     * </span><span style="color: #808080;">@return</span><span style="color: #008000;"> 返回一个消息转换的bean
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Bean
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> HttpMessageConverters fastJsonMessageConverters() {
+        List</span>&lt;HttpMessageConverter&lt;?&gt;&gt; converters = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">需要定义一个convert转换消息的对象;</span>
+        FastJsonHttpMessageConverter fastConverter = <span style="color: #0000ff;">new</span><span style="color: #000000;"> FastJsonHttpMessageConverter();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">添加fastJson的配置信息;</span>
+        FastJsonConfig fastJsonConfig = <span style="color: #0000ff;">new</span><span style="color: #000000;"> FastJsonConfig();
+        fastJsonConfig.setSerializerFeatures(SerializerFeature.PrettyFormat);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">全局时间配置</span>
+        fastJsonConfig.setDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+        fastJsonConfig.setCharset(Charset.forName(</span>"UTF-8"<span style="color: #000000;">));
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">处理中文乱码问题</span>
+        List&lt;MediaType&gt; fastMediaTypes = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+        fastMediaTypes.add(MediaType.APPLICATION_JSON_UTF8);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">在convert中添加配置信息.</span>
+<span style="color: #000000;">        fastConverter.setSupportedMediaTypes(fastMediaTypes);
+        fastConverter.setFastJsonConfig(fastJsonConfig);
+
+        converters.add(</span>0<span style="color: #000000;">, fastConverter);
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> HttpMessageConverters(converters);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>方式二、<strong>实现WebMvcConfigurer</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Configuration
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> WebConfigure <span style="color: #0000ff;">implements</span><span style="color: #000000;"> WebMvcConfigurer<br /><br />{
+ 
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 配置消息转换器
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> converters
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> configureMessageConverters(List&lt;HttpMessageConverter&lt;?&gt;&gt;<span style="color: #000000;"> converters) {
+       </span><span style="color: #008000;">//</span><span style="color: #008000;">需要定义一个convert转换消息的对象;</span>
+        FastJsonHttpMessageConverter fastConverter = <span style="color: #0000ff;">new</span><span style="color: #000000;"> FastJsonHttpMessageConverter();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">添加fastJson的配置信息;</span>
+        FastJsonConfig fastJsonConfig = <span style="color: #0000ff;">new</span><span style="color: #000000;"> FastJsonConfig();
+        fastJsonConfig.setSerializerFeatures(SerializerFeature.PrettyFormat);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">全局时间配置</span>
+        fastJsonConfig.setDateFormat("yyyy-MM-dd HH:mm:ss"<span style="color: #000000;">);
+        fastJsonConfig.setCharset(Charset.forName(</span>"UTF-8"<span style="color: #000000;">));
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">处理中文乱码问题</span>
+        List&lt;MediaType&gt; fastMediaTypes = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+        fastMediaTypes.add(MediaType.APPLICATION_JSON_UTF8);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">在convert中添加配置信息.</span>
+<span style="color: #000000;">        fastConverter.setSupportedMediaTypes(fastMediaTypes);
+        fastConverter.setFastJsonConfig(fastJsonConfig);
+        converters.add(</span>0<span style="color: #000000;">,fastConverter);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,589 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty源码分析 （五）----- 数据如何在 pipeline 中流动' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty源码分析 （五）----- 数据如何在 pipeline 中流动</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11469098.html</div><br>
+    <p>在上一篇文章中，我们已经了解了pipeline在netty中所处的角色，像是一条流水线，控制着字节流的读写，本文，我们在这个基础上继续深挖pipeline在事件传播</p>
+<h2>Unsafe</h2>
+<p>顾名思义，unsafe是不安全的意思，就是告诉你不要在应用程序里面直接使用Unsafe以及他的衍生类对象。</p>
+<p>netty官方的解释如下</p>
+<blockquote>
+<p>Unsafe operations that should never be called from user-code. These methods are only provided to implement the actual transport, and must be invoked from an I/O thread</p>
+</blockquote>
+<p>Unsafe 在Channel定义，属于Channel的内部类，表明Unsafe和Channel密切相关</p>
+<p>下面是unsafe接口的所有方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">interface</span><span style="color: #000000;"> Unsafe {
+   RecvByteBufAllocator.Handle recvBufAllocHandle();
+   
+   SocketAddress localAddress();
+   SocketAddress remoteAddress();
+
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> register(EventLoop eventLoop, ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> bind(SocketAddress localAddress, ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> disconnect(ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> close(ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> closeForcibly();
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> beginRead();
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> write(Object msg, ChannelPromise promise);
+   </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> flush();
+   
+   ChannelPromise voidPromise();
+   ChannelOutboundBuffer outboundBuffer();
+}</span></code></pre>
+
+<p>按功能可以分为分配内存，Socket四元组信息，注册事件循环，绑定网卡端口，Socket的连接和关闭，Socket的读写，看的出来，这些操作都是和jdk底层相关</p>
+<h3>Unsafe 继承结构</h3>
+<p><img src="./images/Netty源码分析 （五）----- 数据如何在 pipeline 中流动0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><code>NioUnsafe</code>&nbsp;在&nbsp;<code>Unsafe</code>基础上增加了以下几个接口</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span> NioUnsafe <span style="color: #0000ff;">extends</span><span style="color: #000000;"> Unsafe {
+    SelectableChannel ch();
+    </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> finishConnect();
+    </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> read();
+    </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> forceFlush();
+}</span></code></pre>
+
+<p>从增加的接口以及类名上来看，<code>NioUnsafe</code>&nbsp;增加了可以访问底层jdk的<code>SelectableChannel</code>的功能，定义了从<code>SelectableChannel</code>读取数据的<code>read</code>方法</p>
+<h3>Unsafe的分类</h3>
+<p>从以上继承结构来看，我们可以总结出两种类型的Unsafe分类，一个是与连接的字节数据读写相关的<code>NioByteUnsafe</code>，一个是与新连接建立操作相关的<code>NioMessageUnsafe</code></p>
+<p><strong><code>NioByteUnsafe</code>中的读：委托到外部类NioSocketChannel</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">int</span> doReadBytes(ByteBuf byteBuf) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">final</span> RecvByteBufAllocator.Handle allocHandle =<span style="color: #000000;"> unsafe().recvBufAllocHandle();
+    allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
+}</span></code></pre>
+
+<p>最后一行已经与jdk底层以及netty中的ByteBuf相关，将jdk的&nbsp;<code>SelectableChannel</code>的字节数据读取到netty的<code>ByteBuf</code>中</p>
+<p><strong><code>NioMessageUnsafe</code>中的读：委托到外部类NioSocketChannel</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">int</span> doReadMessages(List&lt;Object&gt; buf) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    SocketChannel ch </span>=<span style="color: #000000;"> javaChannel().accept();
+
+    </span><span style="color: #0000ff;">if</span> (ch != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        buf.add(</span><span style="color: #0000ff;">new</span> NioSocketChannel(<span style="color: #0000ff;">this</span><span style="color: #000000;">, ch));
+        </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+}</span></code></pre>
+
+<p><code>NioMessageUnsafe</code>&nbsp;的读操作很简单，就是调用jdk的<code>accept()</code>方法，新建立一条连接</p>
+<p><strong><code>NioByteUnsafe</code>中的写：委托到外部类NioSocketChannel</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">int</span> doWriteBytes(ByteBuf buf) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> expectedWrittenBytes =<span style="color: #000000;"> buf.readableBytes();
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> buf.readBytes(javaChannel(), expectedWrittenBytes);
+}</span></code></pre>
+
+<p>最后一行已经与jdk底层以及netty中的ByteBuf相关，将netty的<code>ByteBuf</code>中的字节数据写到jdk的&nbsp;<code>SelectableChannel</code>中</p>
+<h2>pipeline中的head</h2>
+<p><strong>NioEventLoop</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+     </span><span style="color: #0000ff;">final</span> AbstractNioChannel.NioUnsafe unsafe =<span style="color: #000000;"> ch.unsafe();
+     </span><span style="color: #008000;">//</span><span style="color: #008000;">新连接的已准备接入或者已存在的连接有数据可读</span>
+     <span style="color: #0000ff;">if</span> ((readyOps &amp; (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0<span style="color: #000000;">) {
+         unsafe.read();
+     }
+}</span></code></pre>
+
+<p><strong>NioByteUnsafe</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> read() {
+    </span><span style="color: #0000ff;">final</span> ChannelConfig config =<span style="color: #000000;"> config();
+    </span><span style="color: #0000ff;">final</span> ChannelPipeline pipeline =<span style="color: #000000;"> pipeline();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建ByteBuf分配器</span>
+    <span style="color: #0000ff;">final</span> ByteBufAllocator allocator =<span style="color: #000000;"> config.getAllocator();
+    </span><span style="color: #0000ff;">final</span> RecvByteBufAllocator.Handle allocHandle =<span style="color: #000000;"> recvBufAllocHandle();
+    allocHandle.reset(config);
+
+    ByteBuf byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 分配一个ByteBuf</span>
+     <strong>   byteBuf =<span style="color: #000000;"> allocHandle.allocate(allocator);
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;"> 将数据读取到分配的ByteBuf中去</span>
+<span style="color: #000000;">        allocHandle.lastBytesRead(doReadBytes(byteBuf));
+        </span><span style="color: #0000ff;">if</span> (allocHandle.lastBytesRead() &lt;= 0<span style="color: #000000;">) {
+            byteBuf.release();
+            byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            close </span>= allocHandle.lastBytesRead() &lt; 0<span style="color: #000000;">;
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 触发事件，将会引发pipeline的读事件传播</span>
+<span style="color: #000000;"><strong>        pipeline.fireChannelRead(byteBuf);</strong>
+        byteBuf </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (allocHandle.continueReading());
+    pipeline.fireChannelReadComplete();
+}</span></code></pre>
+
+<p>同样，我抽出了核心代码，细枝末节先剪去，<code>NioByteUnsafe</code>&nbsp;要做的事情可以简单地分为以下几个步骤</p>
+<ol>
+<li>拿到Channel的config之后拿到ByteBuf分配器，用分配器来分配一个ByteBuf，ByteBuf是netty里面的字节数据载体，后面读取的数据都读到这个对象里面</li>
+<li>将Channel中的数据读取到ByteBuf</li>
+<li>数据读完之后，调用&nbsp;<code>pipeline.fireChannelRead(byteBuf);</code>&nbsp;从head节点开始传播至整个pipeline</li>
+<li>最后调用fireChannelReadComplete();</li>
+</ol>
+<p>这里，我们的重点其实就是&nbsp;<code>pipeline.fireChannelRead(byteBuf);</code></p>
+<p><strong>DefaultChannelPipeline</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span><span style="color: #000000;"> AbstractChannelHandlerContext head;
+</span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+head = <span style="color: #0000ff;">new</span> HeadContext(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPipeline fireChannelRead(Object msg) {
+    AbstractChannelHandlerContext.<strong>invokeChannelRead(head, msg);
+    </strong></span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>结合这幅图</p>
+<p><img src="./images/Netty源码分析 （五）----- 数据如何在 pipeline 中流动1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>可以看到，数据从head节点开始流入，在进行下一步之前，我们先把head节点的功能过一遍</p>
+<p><strong>HeadContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> HeadContext <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractChannelHandlerContext
+        </span><strong><span style="color: #0000ff;">implements</span></strong><span style="color: #000000;"><strong> ChannelOutboundHandler, ChannelInboundHandler</strong> {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Unsafe unsafe;
+
+    HeadContext(DefaultChannelPipeline pipeline) {
+        </span><span style="color: #0000ff;">super</span>(pipeline, <span style="color: #0000ff;">null</span>, HEAD_NAME, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        unsafe </span>=<span style="color: #000000;"> pipeline.channel().unsafe();
+        setAddComplete();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> handlerAdded(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> NOOP</span>
+<span style="color: #000000;">    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> handlerRemoved(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> NOOP</span>
+<span style="color: #000000;">    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> bind(
+            ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise)
+            </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.bind(localAddress, promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> connect(
+            ChannelHandlerContext ctx,
+            SocketAddress remoteAddress, SocketAddress localAddress,
+            ChannelPromise promise) </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.connect(remoteAddress, localAddress, promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> disconnect(ChannelHandlerContext ctx, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.disconnect(promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> close(ChannelHandlerContext ctx, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.close(promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> deregister(ChannelHandlerContext ctx, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.deregister(promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> read(ChannelHandlerContext ctx) {
+        unsafe.beginRead();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.write(msg, promise);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> flush(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        unsafe.flush();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> exceptionCaught(ChannelHandlerContext ctx, Throwable cause) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireExceptionCaught(cause);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRegistered(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        invokeHandlerAddedIfNeeded();
+        ctx.fireChannelRegistered();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelUnregistered(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelUnregistered();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Remove all handlers sequentially if channel is closed and unregistered.</span>
+        <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">channel.isOpen()) {
+            destroy();
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelActive(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelActive();
+
+        readIfIsAutoRead();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelInactive(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelInactive();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRead(ChannelHandlerContext ctx, Object msg) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelRead(msg);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelReadComplete(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelReadComplete();
+
+        readIfIsAutoRead();
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> readIfIsAutoRead() {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (channel.config().isAutoRead()) {
+            channel.read();
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> userEventTriggered(ChannelHandlerContext ctx, Object evt) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireUserEventTriggered(evt);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelWritabilityChanged(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        ctx.fireChannelWritabilityChanged();
+    }
+}</span></code></pre>
+
+<p>从head节点继承的两个接口看，TA既是一个ChannelHandlerContext，同时又属于inBound和outBound Handler</p>
+<p>在传播读写事件的时候，head的功能只是简单地将事件传播下去，如<code>ctx.fireChannelRead(msg);</code></p>
+<p>在真正执行读写操作的时候，例如在调用<code>writeAndFlush()</code>等方法的时候，最终都会委托到unsafe执行，而当一次数据读完，<code>channelReadComplete</code>方法会被调用</p>
+<h2>pipeline中的inBound事件传播</h2>
+<p>我们接着上面的&nbsp;AbstractChannelHandlerContext.<strong>invokeChannelRead(head, msg); </strong>这个静态方法看，参数传入了 head，我们知道入站数据都是从 head 开始的，以保证后面所有的 handler 都由机会处理数据流。</p>
+<p>我们看看这个静态方法内部是怎么样的：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> invokeChannelRead(<span style="color: #0000ff;">final</span><span style="color: #000000;"> AbstractChannelHandlerContext next, Object msg) {
+    </span><span style="color: #0000ff;">final</span> Object m = next.pipeline.touch(ObjectUtil.checkNotNull(msg, "msg"<span style="color: #000000;">), next);
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+        next.invokeChannelRead(m);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeChannelRead(m);
+            }
+        });
+    }
+}</span></code></pre>
+
+<p>调用这个 Context （也就是 head） 的 invokeChannelRead 方法，并传入数据。我们再看看head中 invokeChannelRead 方法的实现，实际上是在headContext的父类AbstractChannelHandlerContext中：</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeChannelRead(Object msg) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (invokeHandler()) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+          <strong>  ((ChannelInboundHandler) handler()).channelRead(</strong></span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>, msg);</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            notifyHandlerException(t);
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        fireChannelRead(msg);
+    }
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>上面<strong>&nbsp;<code class="java  language-java"><span class="token function">handler<span class="token punctuation">(<span class="token punctuation">)</span></span></span></code></strong><code class="java  language-java"><span class="token function"><span class="token punctuation"><span class="token punctuation">就是</span></span></span></code><code class="java  language-java"><span class="token function"><span class="token punctuation"><span class="token punctuation">headContext中的handler,也就是headContext自身，也就是调用 head 的 channelRead 方法。那么这个方法是怎么实现的呢？</span></span></span></code></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRead(ChannelHandlerContext ctx, Object msg) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+  <strong>  ctx.fireChannelRead(msg);</strong>
+}</span></code></pre>
+
+<p>什么都没做，调用 Context 的 fire 系列方法，将请求转发给下一个节点。我们这里是 fireChannelRead 方法，注意，这里方法名字都挺像的。需要细心区分。下面我们看看 Context 的成员方法 fireChannelRead：</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> ChannelHandlerContext fireChannelRead(<span style="color: #0000ff;">final</span><span style="color: #000000;"> Object msg) {
+   <strong> invokeChannelRead(findContextInbound(), msg);
+    </strong></span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>这个是 head 的抽象父类 AbstractChannelHandlerContext 的实现，该方法再次调用了静态 fire 系列方法，但和上次不同的是，不再放入 head 参数了，而是使用 findContextInbound 方法的返回值。从这个方法的名字可以看出，是找到入站类型的 handler。我们看看方法实现：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AbstractChannelHandlerContext findContextInbound() {
+    AbstractChannelHandlerContext ctx </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        ctx </span>=<span style="color: #000000;"> ctx.next;
+    } </span><span style="color: #0000ff;">while</span> (!<span style="color: #000000;">ctx.inbound);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ctx;
+}</span></code></pre>
+
+<p>该方法很简单，找到当前 Context 的 next 节点（inbound 类型的）并返回。这样就能将请求传递给后面的 inbound handler 了。我们来看看&nbsp;<strong>invokeChannelRead(findContextInbound(), msg);</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> invokeChannelRead(<span style="color: #0000ff;">final</span><span style="color: #000000;"> AbstractChannelHandlerContext next, Object msg) {
+    </span><span style="color: #0000ff;">final</span> Object m = next.pipeline.touch(ObjectUtil.checkNotNull(msg, "msg"<span style="color: #000000;">), next);
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+       <strong> next.invokeChannelRead(m);</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeChannelRead(m);
+            }
+        });
+    }
+
+}</span></code></pre>
+
+<p>上面我们找到了next节点（inbound类型的），然后直接调用&nbsp;<strong>next.invokeChannelRead(m);</strong>如果这个next是我们自定义的handler,此时我们自定义的handler的父类是AbstractChannelHandlerContext，则又回到了<strong>AbstractChannelHandlerContext中实现的</strong>invokeChannelRead，代码如下：</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeChannelRead(Object msg) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (invokeHandler()) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            <strong>((ChannelInboundHandler) handler()).channelRead(</strong></span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>, msg);</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            notifyHandlerException(t);
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        fireChannelRead(msg);
+    }
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>此时的handler()就是我们自定义的handler了，然后调用我们自定义handler中的&nbsp;<strong>channelRead</strong><strong>(</strong><strong>this</strong><strong>, msg);</strong></p>
+<p><span class="token function"><span class="token punctuation"><span class="token punctuation">请求进来时，pipeline 会从 head 节点开始输送，通过配合 invoker 接口的 fire 系列方法，实现 Context 链在 pipeline 中的完美传递。最终到达我们自定义的 handler。</span></span></span></p>
+<p><span style="color: #0000ff;"><strong><span class="token function"><span class="token punctuation"><span class="token punctuation">注意：此时如果我们想继续向后传递该怎么办呢？我们前面说过，可以调用 Context 的 fire 系列方法，就像 head 的 channelRead 方法一样，调用 fire 系列方法，直接向后传递就 ok 了。</span></span></span></strong></span></p>
+<p><span style="color: #000000;"><strong><span class="token function"><span class="token punctuation"><span class="token punctuation">如果所有的handler都调用了fire系列方法，则会传递到最后一个inbound类型的handler，也就是&mdash;&mdash;tail节点，那我们就来看看tail节点</span></span></span></strong></span></p>
+<h2>pipeline中的tail</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> TailContext <span style="color: #0000ff;">extends</span> AbstractChannelHandlerContext <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ChannelInboundHandler {
+
+    TailContext(DefaultChannelPipeline pipeline) {
+        </span><span style="color: #0000ff;">super</span>(pipeline, <span style="color: #0000ff;">null</span>, TAIL_NAME, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        setAddComplete();
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRegistered(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelUnregistered(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelActive(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelInactive(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelWritabilityChanged(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> handlerAdded(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> handlerRemoved(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> userEventTriggered(ChannelHandlerContext ctx, Object evt) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> This may not be a configuration error and so don't log anything.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> The event may be superfluous for the current pipeline configuration.</span>
+<span style="color: #000000;">        ReferenceCountUtil.release(evt);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> exceptionCaught(ChannelHandlerContext ctx, Throwable cause) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        onUnhandledInboundException(cause);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRead(ChannelHandlerContext ctx, Object msg) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        onUnhandledInboundMessage(msg);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelReadComplete(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception { }
+}</span></code></pre>
+
+<p>正如我们前面所提到的，tail节点的大部分作用即终止事件的传播(方法体为空)</p>
+<p><span style="color: #000000;"><strong><span class="token function"><span class="token punctuation"><span class="token punctuation">channelRead</span></span></span></strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onUnhandledInboundMessage(Object msg) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        logger.debug(
+                </span>"Discarded inbound message {} that reached at the tail of the pipeline. " +
+                        "Please check your pipeline configuration."<span style="color: #000000;">, msg);
+    } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+        ReferenceCountUtil.release(msg);
+    }
+}</span></code></pre>
+
+<p>tail节点在发现字节数据(ByteBuf)或者decoder之后的业务对象在pipeline流转过程中没有被消费，落到tail节点，tail节点就会给你发出一个警告，告诉你，我已经将你未处理的数据给丢掉了</p>
+<p>总结一下，tail节点的作用就是结束事件传播，并且对一些重要的事件做一些善意提醒</p>
+<h2>pipeline中的outBound事件传播</h2>
+<p>上一节中，我们在阐述tail节点的功能时，忽略了其父类<code>AbstractChannelHandlerContext</code>所具有的功能，这一节中，我们以最常见的writeAndFlush操作来看下pipeline中的outBound事件是如何向外传播的</p>
+<p>典型的消息推送系统中，会有类似下面的一段代码</p>
+<src class="cnblogs_code">
+<pre><code>Channel channel =<span style="color: #000000;"> getChannel(userInfo);
+channel.writeAndFlush(pushInfo);</span></code></pre>
+
+<p>这段代码的含义就是根据用户信息拿到对应的Channel，然后给用户推送消息，跟进&nbsp;<code>channel.writeAndFlush</code></p>
+<p><strong>NioSocketChannel</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> pipeline.writeAndFlush(msg);
+}</span></code></pre>
+
+<p>从pipeline开始往外传播</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tail.writeAndFlush(msg);
+}</span></code></pre>
+
+<p>Channel 中大部分outBound事件都是从tail开始往外传播,&nbsp;<code>writeAndFlush()</code>方法是tail继承而来的方法，我们跟进去</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> writeAndFlush(msg, newPromise());
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
+    write(msg, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">, promise);
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+}</span></code></pre>
+
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> write(Object msg, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> flush, ChannelPromise promise) {
+   <strong> AbstractChannelHandlerContext next </strong></span><strong>=<span style="color: #000000;"> findContextOutbound();
+    </span></strong><span style="color: #0000ff;">final</span> Object m =<span style="color: #000000;"> pipeline.touch(msg, next);
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flush) {
+          <strong>  next.invokeWriteAndFlush(m, promise);</strong>
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+           <strong> next.invokeWrite(m, promise);</strong>
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        AbstractWriteTask task;
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flush) {
+            task </span>=<span style="color: #000000;"> WriteAndFlushTask.newInstance(next, m, promise);
+        }  </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            task </span>=<span style="color: #000000;"> WriteTask.newInstance(next, m, promise);
+        }
+        safeExecute(executor, task, promise, m);
+    }
+}</span></code></pre>
+
+<p>先调用<code>findContextOutbound()</code>方法找到下一个<code>outBound()</code>节点</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AbstractChannelHandlerContext findContextOutbound() {
+    AbstractChannelHandlerContext ctx </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        ctx </span>=<span style="color: #000000;"> ctx.prev;
+    } </span><span style="color: #0000ff;">while</span> (!<span style="color: #000000;">ctx.outbound);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ctx;
+}</span></code></pre>
+
+<p>找outBound节点的过程和找inBound节点类似，反方向遍历pipeline中的双向链表，直到第一个outBound节点<code>next</code>，然后调用<code>next.invokeWriteAndFlush(m, promise)</code></p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWriteAndFlush(Object msg, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (invokeHandler()) {
+        <strong>invokeWrite0(msg, promise);
+        invokeFlush0();</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        writeAndFlush(msg, promise);
+    }
+}</span></code></pre>
+
+<p>调用该节点的ChannelHandler的write方法，flush方法我们暂且忽略，后面会专门讲writeAndFlush的完整流程</p>
+<p><strong>AbstractChannelHandlerContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeWrite0(Object msg, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        <strong>((ChannelOutboundHandler) handler()).write(</strong></span><strong><span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>, msg, promise);</strong>
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        notifyOutboundHandlerException(t, promise);
+    }
+}</span></code></pre>
+
+<p>可以看到，数据开始出站，从后向前开始流动，和入站的方向是反的。那么最后会走到哪里呢，当然是走到 head 节点，因为 head 节点就是 outbound 类型的 handler。</p>
+<p><strong>HeadContext</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    unsafe.write(msg, promise);
+}</span></code></pre>
+
+<p>调用了 底层的 unsafe 操作数据，这里，加深了我们对head节点的理解，即所有的数据写出都会经过head节点</p>
+<p><strong>当执行完这个 write 方法后，方法开始退栈。逐步退到 unsafe 的 read 方法，回到最初开始的地方，然后继续调用 pipeline.fireChannelReadComplete() 方法</strong></p>
+<p><strong><img src="./images/Netty源码分析 （五）----- 数据如何在 pipeline 中流动2.png" alt="" /></strong></p>
+<h2>总结</h2>
+<p>总结一下一个请求在 pipeline 中的流转过程：</p>
+<ol>
+<li>调用 pipeline 的 fire 系列方法，这些方法是接口 invoker 设计的，pipeline 实现了 invoker 的所有方法，inbound 事件从 head 开始流入，outbound 事件从 tail 开始流出。</li>
+<li>pipeline 会将请求交给 Context，然后 Context 通过抽象父类 AbstractChannelHandlerContext 的 invoke 系列方法（静态和非静态的）配合 AbstractChannelHandlerContext 的 fire 系列方法再配合 findContextInbound 和 findContextOutbound 方法完成各个 Context 的数据流转。</li>
+<li>当入站过程中，调用 了出站的方法，那么请求就不会向后走了。后面的处理器将不会有任何作用。想继续相会传递就调用 Context 的 fire 系列方法，让 Netty 在内部帮你传递数据到下一个节点。如果你想在整个通道传递，就在 handler 中调用 channel 或者 pipeline 的对应方法，这两个方法会将数据从头到尾或者从尾到头的流转一遍。</li>
+</ol>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

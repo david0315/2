@@ -1,0 +1,120 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Redis性能解析--Redis为什么那么快？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Redis性能解析--Redis为什么那么快？</center></div><div class='banquan'>原文出处:本文由博客园博主xlecho提供。<br/>
+原文连接:https://www.cnblogs.com/xlecho/p/11832118.html</div><br>
+    <p>echo编辑整理，欢迎转载，转载请声明文章来源。欢迎添加echo微信(微信号：t2421499075)交流学习。 百战不败，依不自称常胜，百败不颓，依能奋力前行。——这才是真正的堪称强大！！！</p>
+<hr />
+<blockquote>
+<p>Redis的实际被应用都是因为它的性能，在众多缓存中Redis也是一个比较快的中间件，而且它是单线程操作，没有过的内存开销，给程序带来了更多的扩展空间。</p>
+</blockquote>
+<h3 id="redis的性能展示">Redis的性能展示</h3>
+<p>在保证网络通畅的情况下，相同的CPU和相同的Redis版本，处理不同大小的数据，Redis的吞吐量如下图所示，该图来自Redis的官方网站。我们可以在网站中看到。Redis在处理1000字节的数据的时候，都是稳定位置吞吐量在10w，当处理的数据不断增大的时候，吞吐量才慢慢开始下降。<br />
+<img src="./images/Redis性能解析--Redis为什么那么快？0.png" alt="在这里插入图片描述" /><br />
+图片来自redis官网</p>
+<p>下图是提供的QPS测试图，官方提供的数据是可以达到100000+的QPS（每秒内查询次数）。<br />
+<img src="./images/Redis性能解析--Redis为什么那么快？1.png" alt="在这里插入图片描述" /><br />
+图片来自redis官网</p>
+<h3 id="redis为什么那么快">Redis为什么那么快？</h3>
+<ul>
+<li>纯内存KV操作</li>
+<li>内部是单程实现的（不需要创建/销毁线程，避免上下文切换，无并发资源竞争的问题）</li>
+<li>异步非阻塞的I/O（多路复用）</li>
+</ul>
+<h3 id="存内存kv操作快在哪里">存内存KV操作快在哪里？</h3>
+<p>我们从上面的介绍里面我们看到了Redis是一个纯kv的操作。并且Redis绝大部分请求是纯粹的内存操作，所以速度非常快。数据存在内存中，类型与存在hashMap中，那么为什么那么快呢？我们可以一起来看一下几种常用数据结构的对比，和他们的优势。</p>
+<table>
+<thead>
+<tr class="header">
+<th>数据结构</th>
+<th>操作</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>List</td>
+<td>insert</td>
+<td>O(N)</td>
+</tr>
+<tr class="even">
+<td>List</td>
+<td>select</td>
+<td>O(1)</td>
+</tr>
+<tr class="odd">
+<td>Set</td>
+<td>insert</td>
+<td>O(1)</td>
+</tr>
+<tr class="even">
+<td>Set</td>
+<td>select</td>
+<td>O(1)</td>
+</tr>
+<tr class="odd">
+<td>HashMap</td>
+<td>insert</td>
+<td>O(1)</td>
+</tr>
+<tr class="even">
+<td>HashMap</td>
+<td>select</td>
+<td>O(1)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>从上图我们可以看出，HashMap的优势就是查找和操作的时间复杂度都是O（1）,所以Redis内部采用这种结构能够从根本上获得足够的优势，当让，Redis的快速不仅仅是数据结构成就的，还有单程成和异步I/O</p>
+</blockquote>
+<h3 id="redis为什么使用单线程">Redis为什么使用单线程？</h3>
+<p>Redis使用单线程就够了！我们可以看到下图中官网的描述，Redis的使用瓶颈并不是CPU，它主要受到内存和网络的限制。例如，使用在一般Linux系统上运行的流水线Redis每秒可以发送一百万个请求，因此，如果您的应用程序主要使用O（N）或O（log（N））命令，则几乎不会使用过多的CPU 。<br />
+<img src="./images/Redis性能解析--Redis为什么那么快？2.png" alt="在这里插入图片描述" /></p>
+<blockquote>
+<p>从描述中我们可以看到，Redis在使用的时候，使用单线程就已经能够获取Redis足够使用的CPU资源，主要的瓶颈在于内存。但是单线程为什么能够做到这么快的速度的呢？</p>
+</blockquote>
+<h3 id="redis使用单线程相比于多线程快在哪里">Redis使用单线程，相比于多线程快在哪里？</h3>
+<p>从上面官网的介绍我们看到了，Redis的瓶颈不在线程，不在获取CPU的资源，所以如果使用多线程就会带来多余的资源占用。比如上下文切换、资源竞争、锁的操作。</p>
+<ul>
+<li>上下文的切换</li>
+<li><ul>
+<li>上下文其实不难理解，它就是CPU寄存器和程序计数器。主要的作用就是存放没有被分配到资源的线程，多线程操作的时候，不是每一个线程都能够直接获取到CPU资源的，我们之所以能够看到我们电脑上能够运行很多的程序，是应为多线程的执行和CPU不断对多线程的切换。但是总有线程获取到资源，也总有线程需要等待获取资源，这个时候，等待获取资源的线程就需要被挂起，也就是我们的寄存。这个时候我们的上下文就产生了，当我们的上下文再次被唤起，得到资源的时候，就是我们上下文的切换。</li>
+</ul></li>
+<li>竞争资源</li>
+<li><ul>
+<li>竞争资源相对来说比较好理解，CPU对上下文的切换其实就是一种资源分批，但是在切换之前，到底切换到哪一个上下文，就是资源竞争的开始。在我redis中由于是单线程的，所以所有的操作都不会涉及到资源的竞争。</li>
+</ul></li>
+<li>锁的消耗</li>
+<li><ul>
+<li>对于多线程的情况来讲，不能回避的就是锁的问题。如果说多线程操作出现并发，有可能导致数据不一致，或者操作达不到预期的效果。这个时候我们就需要锁来解决这些问题。当我们的线程很多的时候，就需要不断的加锁，释放锁，该操作就会消耗掉我们很多的时间</li>
+</ul></li>
+</ul>
+<h3 id="io复用非阻塞模型">I/O复用，非阻塞模型</h3>
+<p>对于I/O阻塞可能有很多人不知道，I/O操作的阻塞到底是怎么引起的，Redis又是怎么解决的呢？</p>
+<ul>
+<li>I/O操作的阻塞：当用户线程发出IO请求之后，内核会去查看数据是否就绪，如果没有就绪就会等待数据就绪，而用户线程就会处于阻塞状态，用户线程交出CPU。当数据就绪之后，内核会将数据拷贝到用户线程，并返回结果给用户线程，用户线程才解除block状态。</li>
+<li>Redis采用多路复用：I/O 多路复用其实是在单个线程中通过记录跟踪每一个sock（I/O流） 的状态来管理多个I/O流。select, poll, epoll 都是I/O多路复用的具体的实现。epoll性能比其他几者要好。redis中的I/O多路复用的所有功能通过包装常见的select、epoll、evport和kqueue这些I/O多路复用函数库来实现的。</li>
+</ul>
+<hr />
+<p>做一个有底线的博客主</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

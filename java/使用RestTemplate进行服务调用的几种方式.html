@@ -1,0 +1,80 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修使用RestTemplate进行服务调用的几种方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>使用RestTemplate进行服务调用的几种方式</center></div><div class='banquan'>原文出处:本文由博客园博主skychmz提供。<br/>
+原文连接:https://www.cnblogs.com/skychmz/p/11503201.html</div><br>
+    <p>首先我们在名为MSG的服务中定义一个简单的方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@RestController
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ServerController {
+
+    @GetMapping(</span>"/msg"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String msg() {
+        </span><span style="color: #0000ff;">return</span> "this is a msg"<span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>我们需要在另一个服务中调用这个服务的方法，除了使用httpclient之外，我们还能用RestTemplate（RestTemplate是Spring提供的用于访问Rest服务的客户端）</p>
+<p>第一种方式，这种方式只要指定url和返回类型即可调用，但是url是写死的，非常不方便。</p>
+<src class="cnblogs_code">
+<pre><code>@GetMapping("/getMsg"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getMsg(){
+        RestTemplate restTemplate</span>=<span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+        String response</span>=restTemplate.getForObject("http://localhost:8080/msg",String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> response;
+    }</span></code></pre>
+
+<p>当我们的服务有多个URL的时候，第一种方式肯定是不行的，所以第二种方式是使用Spring Cloud提供的LoadBalancerClient</p>
+<src class="cnblogs_code">
+<pre><code>@GetMapping("/getMsg"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getMsg(){
+        RestTemplate restTemplate</span>=<span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+        ServiceInstance serviceInstance</span>=loadBalancerClient.choose("MSG"<span style="color: #000000;">);
+        String url</span>=String.format("http://%s:%s"<span style="color: #000000;">,serviceInstance.getHost(),serviceInstance.getPort());
+        String response</span>=restTemplate.getForObject(url,String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> response;
+    }</span></code></pre>
+
+<p>第三种方法我们可以使用注解的方式，先把RestTemplate配置成bean，@LoadBalanced是开启负载均衡的注解</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Component
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> RestTemplateConfig {
+    @Bean
+    @LoadBalanced
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> RestTemplate restTemplate(){
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+    }
+}</span></code></pre>
+
+<p>然后把这个RestTemplate注入进来调用</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> RestTemplate restTemplate;
+
+    @GetMapping(</span>"/getMsg"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getMsg(){
+        String response</span>=restTemplate.getForObject("http://MSG/msg",String.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> response;
+    }</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

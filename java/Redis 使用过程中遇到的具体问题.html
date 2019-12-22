@@ -1,0 +1,80 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Redis 使用过程中遇到的具体问题' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Redis 使用过程中遇到的具体问题</center></div><div class='banquan'>原文出处:本文由博客园博主crazy戴夫提供。<br/>
+原文连接:https://www.cnblogs.com/crazy-lc/p/11802530.html</div><br>
+    <p>1.缓存雪崩和缓存穿透问题</p>
+<p><span style="font-family: 'Microsoft YaHei'; font-size: 18px;"><strong>　　1.1缓存雪崩</strong></span></p>
+<p>　　　　简介：缓存同一时间大面积的失效，所以，后面的请求都会落到数据库上，造成数据库短时间内承受大量请求而崩掉。</p>
+<p>　　解决办法：</p>
+<src>　　　　 事前：尽量保证整个 redis 集群的高可用性，发现机器宕机尽快补上。选择合适的内存淘汰策略。
+<src>　　　　 事中：<span style="font-size: 15px;"><strong>本地 ehcache 缓存 + hystrix 限流&amp;降级</strong></span>，避免 MySQL 崩掉
+<src>　　　　 事后：利用 redis 持久化机制保存的数据尽快恢复缓存
+<src><hr />
+<src>encache：
+<src>　　Ehcache是纯java的开源缓存框架，具有快速、精干等特点，是Hibernate中默认的CacheProvider。它主要面向通用缓存、Java EE和轻量级容器，具有内存和磁盘存储、缓存加载器、缓存扩展、缓存异常处理程序。
+<src>　　
+<src>应用场景：
+<p>　　使用纯java的ehcache作为本地缓存<br />　　Reids 作为远程分布式缓存<br />　　解决redis缓存压力过大，提高缓存速度，以及缓存性能。</p>
+<p>redis和Ehcache缓存的区别<br />　　如果是单个应用或者对缓存访问要求很高的应用，用ehcache。<br />　　如果是大型系统，存在缓存共享、分布式部署、缓存内容很大的，建议用redis。</p>
+<p>实际工作中使用Ehcache<br />　　<strong>我们在项目中使用集中式缓存(Redis或者式Memcached等)，通常都是检查缓存中是否存在</strong><br /><strong>期望值的数据，如果存在直接返回，如果不存在就查询数据库然后在将数据库缓存，这个时候如果缓存系统因为某些原因宕机，造成服务无法访问，那么大的量请求直接穿透到数据库，最数据库压力非常大。</strong></p>
+<p><strong>这时候我们让ehcache作为二级缓存，当redis服务器宕机后，可以查询ehcache缓存。</strong><br /><strong>这样能够有效的扛住服务器请求压力。</strong><br /><strong>因此, 一般 Redis作为一级缓存, ehcache作为二级缓存。</strong></p>
+<hr />
+<src>
+<src>
+<h3>hystrix :</h3>
+<p>　　<span style="font-family: 'Microsoft YaHei';">简介：在分布式系统中，单个应用通常会有多个不同类型的外部依赖服务，内部通常依赖于各种RPC服务，外部则依赖于各种HTTP服务。这些依赖服务不可避免的会出现调用失败，比如超时、异常等情况，如何在外部依赖出问题的情况，仍然保证自身应用的稳定。<em id="__mceDel">Hystrix的目标就是能够在1个或多个依赖出现问题时，系统依然可以稳定的运行，其手段包括隔离、限流和降级等。</em></span></p>
+<h3>服务限流:</h3>
+<p>　　通过线程池+队列的方式，通过信号量的方式。比如商品评论比较慢，最大能同时处理10个线程，队列待处理5个，那么如果同时20个线程到达的话，其中就有5个线程被限流了，其中10个先被执行，另外5个在队列中</p>
+
+<src>
+<src>
+<h3>服务熔断:</h3>
+<p>
+　　当依赖的服务有大量超时时，在让新的请求去访问根本没有意义，只会无畏的消耗现有资源，比如我们设置了超时时间为1s，如果短时间内有大量请求在1s内都得不到响应，就意味着这个服务出现了异常，此时就没有必要再让其他的请求去访问这个服务了，这个时候就应该使用熔断器避免资源浪费</p>
+
+
+<src>
+<src>
+<h3>服务降级:</h3>
+<p>
+　　所谓降级，就是当某个服务熔断之后，服务将不再被调用，此时客户端可以自己准备一个本地的fallback（回退）回调，返回一个缺省值。 例如：(备用接口/缓存/mock数据)，这样做，虽然服务水平下降，但好歹可用，比直接挂掉要强，当然这也要看适合的业务场景</p>
+
+
+
+<p>&nbsp;</p>
+<hr />
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p><strong>　<span style="font-family: 'Microsoft YaHei'; font-size: 18px;">　1.2缓存穿透</span></strong></p>
+<src>　　　　&nbsp;简介：一般是黑客故意去请求缓存中不存在的数据，导致所有的请求都落到数据库上，造成数据库短时间内承受大量请求而崩掉。
+<src>　　&nbsp;解决办法： 有很多种方法可以有效地解决缓存穿透问题，最常见的则是采用布隆过滤器，将所有可能存在的数据哈希到一个足够大的 bitmap 中，一个一定不存在的数据被 这个 bitmap 拦截掉，从而避免了对底层存储系统的查询压力。另外也有一个更为简单粗暴的方法（我们采用的就是这种），如果一个查询返回的数据为空（不管是数 据不存在，还是系统故障），我们仍然把这个空结果进行缓存，但它的过期时间会很短，最长不超过五分钟。
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

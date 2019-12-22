@@ -1,0 +1,102 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修使用guava cache在本地缓存热点数据' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>使用guava cache在本地缓存热点数据</center></div><div class='banquan'>原文出处:本文由博客园博主skychmz提供。<br/>
+原文连接:https://www.cnblogs.com/skychmz/p/11493465.html</div><br>
+    <p>某些热点数据在短时间内可能会被成千上万次访问，所以除了放在redis之外，还可以放在本地内存，也就是JVM的内存中。</p>
+<p>我们可以使用google的guava cache组件实现本地缓存，之所以选择guava是因为它可以控制key和value的大小和超时时间，可以配置LRU策略且guava是线程安全的。</p>
+<p>首先引入guava cache</p>
+<src class="cnblogs_code">
+<pre><code>&lt;dependency&gt;
+      &lt;groupId&gt;com.google.guava&lt;/groupId&gt;
+      &lt;artifactId&gt;guava&lt;/artifactId&gt;
+      &lt;version&gt;18.0&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+
+<p>编写CacheService接口</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> CacheService {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存方法</span>
+    <span style="color: #0000ff;">void</span><span style="color: #000000;"> setCommonCache(String key,Object value);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">取方法</span>
+<span style="color: #000000;">    Object getFromCommonCache(String key);
+}</span></code></pre>
+
+<p>实现CacheService（@PostConstruct注解的方法将会在依赖注入完成后被自动调用。）</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Service
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> CacheServiceImpl <span style="color: #0000ff;">implements</span><span style="color: #000000;"> CacheService {
+
+    </span><span style="color: #0000ff;">private</span> Cache&lt;String,Object&gt; commonCache=<span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+
+    @PostConstruct
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> init(){
+        commonCache</span>=<span style="color: #000000;"> CacheBuilder.newBuilder()
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">缓存初始容量10</span>
+                .initialCapacity(10<span style="color: #000000;">)
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">最多100个key，超过按LRU策略移除</span>
+                .maximumSize(100<span style="color: #000000;">)
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">写入后多少秒过期</span>
+                .expireAfterWrite(60<span style="color: #000000;">, TimeUnit.SECONDS).build();
+    }
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setCommonCache(String key, Object value) {
+        commonCache.put(key,value);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getFromCommonCache(String key) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> commonCache.getIfPresent(key);
+    }
+}</span></code></pre>
+
+<p>使用CacheService</p>
+<src class="cnblogs_code">
+<pre><code>@RequestMapping(value = "/get",method =<span style="color: #000000;"> {RequestMethod.GET})
+    @ResponseBody
+    </span><span style="color: #0000ff;">public</span> CommonReturnType getItem(@RequestParam(name = "id"<span style="color: #000000;">)Integer id){
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">在本地缓存中查找</span>
+        ItemModel itemModel= (ItemModel) cacheService.getFromCommonCache("item_"+<span style="color: #000000;">id);
+
+        </span><span style="color: #0000ff;">if</span>(itemModel==<span style="color: #0000ff;">null</span><span style="color: #000000;">){
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">本地缓存没有则到redis缓存中查找</span>
+            itemModel= (ItemModel) redisTemplate.opsForValue().get("item_"+<span style="color: #000000;">id);
+            </span><span style="color: #0000ff;">if</span>(itemModel==<span style="color: #0000ff;">null</span><span style="color: #000000;">){
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">都没有则到数据库查找，找到后放入redis中</span>
+                itemModel =<span style="color: #000000;"> itemService.getItemById(id);
+                redisTemplate.opsForValue().set(</span>"item_"+<span style="color: #000000;">id,itemModel);
+                redisTemplate.expire(</span>"item_"+id,10<span style="color: #000000;">, TimeUnit.MINUTES);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">本地缓存没有时，在redis或数据库找到后再放入本地缓存</span>
+            cacheService.setCommonCache("item_"+<span style="color: #000000;">id,itemModel);
+        }
+
+
+        ItemVO itemVO </span>=<span style="color: #000000;"> convertVOFromModel(itemModel);
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> CommonReturnType.create(itemVO);
+
+    }</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

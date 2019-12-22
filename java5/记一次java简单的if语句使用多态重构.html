@@ -1,0 +1,260 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修记一次java简单的if语句使用多态重构' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>记一次java简单的if语句使用多态重构</center></div><div class='banquan'>原文出处:本文由博客园博主YzdFly提供。<br/>
+原文连接:https://www.cnblogs.com/yzdtofly/p/11776797.html</div><br>
+    <p>场景描述：<br />    　　一个controller中，部门领导有布置任务，查看任务整体情况，查看部门成员，查看部门成员完成情况，导出任务详情，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">　　 @RestController
+    @RequestMapping(value </span>= "/task"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TaskController{
+            
+        @PostMapping(value </span>= "/saveTask"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JSONObject saveTask(Task task){
+            ...
+        }
+        
+        @PostMapping(value </span>= "/taskDetail"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JSONObject taskDetail(Task task){
+            ...
+        }
+        
+        @PostMapping(value </span>= "/memberList"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JSONObject memberList(Task task){
+            ...
+        }
+        
+        @PostMapping(value </span>= "/memberDetail"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JSONObject memberDetail(Task task){
+            ...
+        }
+        
+        @PostMapping(value </span>= "/exportTask"<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JSONObject exportTask(Task task){
+            ...
+        }
+    }</span></code></pre>
+
+<p>过了一段时间后，新需求来了，之前任务是需求任务，现在任务种类多了一个测试任务，但是接口要公用一套。所以Task加了一个type的字段用来区分不同的任务，1：原来类型的任务，2：测试任务，controller变成如下（Task的类型type应该写在常量里面）:</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">@RestController
+	@RequestMapping(value = "/task")
+	public class TaskController{
+			
+		@PostMapping(value = "/saveTask")
+		public JSONObject saveTask(Task task){
+			if( Constants.COMMON_TASK == task.type){
+				...
+			}else if( Constants.TEST_TASK == task.type){
+				...
+			}
+		}
+		
+		@PostMapping(value = "/taskDetail")
+		public JSONObject taskDetail(Task task){
+			if( Constants.COMMON_TASK == task.type){
+				...
+			}else if( Constants.TEST_TASK == task.type){
+				...
+			}
+		}
+		
+		@PostMapping(value = "/memberList")
+		public JSONObject memberList(Task task){
+			if( Constants.COMMON_TASK == task.type){
+				...
+			}else if( Constants.TEST_TASK == task.type){
+				...
+			}
+		}
+		
+		@PostMapping(value = "/memberDetail")
+		public JSONObject memberDetail(Task task){
+			if( Constants.COMMON_TASK == task.type){
+				...
+			}else if( Constants.TEST_TASK == task.type){
+				...
+			}
+		}
+		
+		@PostMapping(value = "/exportTask")
+		public JSONObject exportTask(Task task){
+			if( Constants.COMMON_TASK == task.type){
+				...
+			}else if( Constants.TEST_TASK == task.type){
+				...
+			}
+		}
+	}
+</code></pre>
+
+<p>　　再之后又有新任务类型加进来，继续往这个controller的几个方法中增加if-else。目前的开发流程是controller--&gt;service--&gt;dao，判断那种任务，然后走到service调用这个任务的业务方法，现在使用多态的方法把if-else语句重构掉</p>
+<p>　　首先创建一个抽象类,把共同的方法抽离出来</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">        @Service
+	public abstract class BaseTaskService{
+		
+		public abstract JSONObject saveTask(Task task);
+		
+		public abstract JSONObject taskDetail(Task task);
+		
+		public abstract JSONObject memberList(Task task);
+		
+		public abstract JSONObject memberDetail(Task task);
+		
+		public abstract JSONObject exportTask(Task task);
+		
+	}    
+</code></pre>
+
+<p>　　然后不同的任务继承这个抽象类，具体的业务逻辑在自己的类上处理，需求任务：</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">        @Service
+	public class CommonTask extends BaseTaskService{
+		
+		@Ovreride
+		public JSONObject saveTask(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject taskDetail(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject memberList(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject memberDetail(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject exportTask(Task task){
+			...
+		}
+	}    
+</code></pre>
+
+<p>　　测试任务：</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">        @Service
+	public class TestTask extends BaseTaskService{
+		
+		@Ovreride
+		public JSONObject saveTask(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject taskDetail(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject memberList(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject memberDetail(Task task){
+			...
+		}
+		
+		@Ovreride
+		public JSONObject exportTask(Task task){
+			...
+		}
+	}    
+</code></pre>
+
+<p>　　再之后创建工厂类返回任务类</p>
+<p>　　</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">@Service
+	public class TaskFactory{
+		
+		@Autowired
+		private CommonTask commonTask;
+		@Autowired
+		private TestTask testTask;
+		...
+		
+		public BaseTaskService getTask(Integer type){
+			if(Constants.COMMON_TASK.equals(type){
+				return commonTask;
+			}else if(Constants.TestTask.equals(type){
+				return testTask;
+			}else if(...){
+				...
+			}
+			...
+		}
+	}
+</code></pre>
+
+<p>　　最后修改controller就大功告成</p>
+<src class="cnblogs_Highlighter">
+<pre class="brush:java;gutter:true;">        @RestController
+	@RequestMapping(value = "/task")
+	public class TaskController{
+	
+		@Autowired
+		private TaskFactory taskFactory;
+			
+		@PostMapping(value = "/saveTask")
+		public JSONObject saveTask(Task task){
+			BaseTaskService currentTask = taskFactory.getTask(task);
+			return currentTask.saveTask(task);
+		}
+		
+		@PostMapping(value = "/taskDetail")
+		public JSONObject taskDetail(Task task){
+			BaseTaskService currentTask = taskFactory.getTask(task);
+			return currentTask.taskDetail(task);
+		}
+		
+		@PostMapping(value = "/memberList")
+		public JSONObject memberList(Task task){
+			BaseTaskService currentTask = taskFactory.getTask(task);
+			return currentTask.memberList(task);
+		}
+		
+		@PostMapping(value = "/memberDetail")
+		public JSONObject memberDetail(Task task){
+			BaseTaskService currentTask = taskFactory.getTask(task);
+			return currentTask.memberDetail(task);
+		}
+		
+		@PostMapping(value = "/exportTask")
+		public JSONObject exportTask(Task task){
+			BaseTaskService currentTask = taskFactory.getTask(task);
+			return exportTask(task);
+		}
+	}    
+</code></pre>
+
+<p>　　</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

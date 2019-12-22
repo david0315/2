@@ -1,0 +1,60 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Flink使用SideOutPut替换Split实现分流' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Flink使用SideOutPut替换Split实现分流</center></div><div class='banquan'>原文出处:本文由博客园博主从此寂静无声提供。<br/>
+原文连接:https://www.cnblogs.com/jason1990/p/11610130.html</div><br>
+    <p>以前的数据分析项目(版本1.4.2)，对从<code>Kafka</code>读取的原始数据流，调用<code>split</code>接口实现分流.<br />
+新项目决定使用<code>Flink 1.7.2</code>，使用<code>split</code>接口进行分流的时候，发现接口被标记为<code>depracted</code>(后续可能会被移除).<br />
+搜索相关文档，发现新版本<code>Flink</code>中推荐使用带外数据进行分流.</p>
+<p>预先建立<code>OutputTag</code>实例(<code>LogEntity</code>是从<code>kafka</code>读取的日志实例类).</p>
+<pre><code><code>private static final OutputTag&lt;LogEntity&gt; APP_LOG_TAG = new OutputTag&lt;&gt;(&quot;appLog&quot;, TypeInformation.of(LogEntity.class));
+private static final OutputTag&lt;LogEntity&gt; ANALYZE_METRIC_TAG = new OutputTag&lt;&gt;(&quot;analyzeMetricLog&quot;, TypeInformation.of(LogEntity.class));</code></code></pre>
+<p>对<code>kafka</code>读取的原始数据，通过<code>process</code>接口，打上相应标记.</p>
+<pre><code><code>    private static SingleOutputStreamOperator&lt;LogEntity&gt; sideOutStream(DataStream&lt;LogEntity&gt; rawLogStream) {
+        return rawLogStream
+                .process(new ProcessFunction&lt;LogEntity, LogEntity&gt;() {
+                    @Override
+                    public void processElement(LogEntity entity, Context ctx, Collector&lt;LogEntity&gt; out) throws Exception {
+                        // 根据日志等级，给对象打上不同的标记
+                        if (entity.getLevel().equals(ANALYZE_LOG_LEVEL)) {
+                            ctx.output(ANALYZE_METRIC_TAG, entity);
+                        } else {
+                            ctx.output(APP_LOG_TAG, entity);
+                        }
+                    }
+                })
+                .name(&quot;RawLogEntitySplitStream&quot;);
+    }
+
+    // 调用函数，对原始数据流中的对象进行标记
+    SingleOutputStreamOperator&lt;LogEntity&gt; sideOutLogStream = sideOutStream(rawLogStream);
+    // 根据标记，获取不同的数据流，以便后续进行进一步分析
+    DataStream&lt;LogEntity&gt; appLogStream = sideOutLogStream.getSideOutput(APP_LOG_TAG);
+    DataStream&lt;LogEntity&gt; rawAnalyzeMetricLogStream = sideOutLogStream.getSideOutput(ANALYZE_METRIC_TAG);</code></code></pre>
+<p>通过以上步骤，就实现了数据流的切分.</p>
+<blockquote>
+<p>PS:<br />
+如果您觉得我的文章对您有帮助，请关注我的微信公众号，谢谢!<br />
+<img src="./images/Flink使用SideOutPut替换Split实现分流0.png" alt="程序员打怪之路" /></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

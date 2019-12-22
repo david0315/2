@@ -1,0 +1,182 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud同步场景分布式事务怎样做？试试Seata' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud同步场景分布式事务怎样做？试试Seata</center></div><div class='banquan'>原文出处:本文由博客园博主zlt2000提供。<br/>
+原文连接:https://www.cnblogs.com/zlt2000/p/11525417.html</div><br>
+    <p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata0.png" alt="file" /></p>
+<h2 id="一概述">一、概述</h2>
+<p>在微服务架构下，虽然我们会尽量避免分布式事务，但是只要业务复杂的情况下这是一个绕不开的问题，如何保证业务数据一致性呢？本文主要介绍同步场景下使用<code>Seata</code>的<code>AT模式</code>来解决一致性问题。</p>
+<blockquote>
+<p><code>Seata</code>是 <strong>阿里巴巴</strong> 开源的 <strong>一站式分布式事务解决方案</strong> 中间件，以 <strong>高效</strong> 并且对业务 <strong>0 侵入</strong> 的方式，解决 <strong>微服务</strong> 场景下面临的分布式事务问题</p>
+</blockquote>
+<p> </p>
+<h2 id="二seata介绍">二、Seata介绍</h2>
+<p>整体事务逻辑是基于 <strong>两阶段提交</strong> 的模型，核心概念包括以下3个角色：</p>
+<ul>
+<li><strong>TM</strong>：事务的发起者。用来告诉 TC，全局事务的开始，提交，回滚。</li>
+<li><strong>RM</strong>：具体的事务资源，每一个 RM 都会作为一个分支事务注册在 TC。</li>
+<li><strong>TC</strong>：事务的协调者seata-server，用于接收我们的事务的注册，提交和回滚。</li>
+</ul>
+<p>目前的<code>Seata</code>有两种模式可使用分别对应不同业务场景</p>
+<h3 id="at模式">2.1. AT模式</h3>
+<p><strong>该模式适合的场景：</strong></p>
+<ul>
+<li>基于支持本地 <code>ACID</code> 事务的关系型数据库。</li>
+<li>Java 应用，通过 <code>JDBC</code> 访问数据库。</li>
+</ul>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata1.png" alt="file" /></p>
+<p> <br />
+<strong>一个典型的分布式事务过程：</strong></p>
+<ol>
+<li><code>TM</code> 向 <code>TC</code> 申请开启一个全局事务，全局事务创建成功并生成一个全局唯一的 <code>XID</code>。</li>
+<li><code>XID</code> 在微服务调用链路的上下文中传播。</li>
+<li><code>RM</code> 向 <code>TC</code> 注册分支事务，将其纳入 XID 对应全局事务的管辖。</li>
+<li><code>TM</code> 向 <code>TC</code> 发起针对 <code>XID</code> 的全局提交或回滚决议。</li>
+<li><code>TC</code> 调度 <code>XID</code> 下管辖的全部分支事务完成提交或回滚请求。</li>
+</ol>
+<p> </p>
+<h3 id="mt模式">2.2. MT模式</h3>
+<p>该模式逻辑类似<code>TCC</code>，需要 <strong>自定义实现</strong> <code>prepare</code>、<code>commit</code>和<code>rollback</code>的逻辑，适合 <strong>非关系型数据库</strong> 的场景</p>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata2.png" alt="file" /></p>
+<p> </p>
+<h2 id="三seata场景样例">三、Seata场景样例</h2>
+<p>模拟一个简单的用户下单场景，4个子工程分别是 <strong>Bussiness(事务发起者)</strong>、<strong>Order(创建订单)</strong>、<strong>Storage(扣减库存)</strong> 和 <strong>Account(扣减账户余额)</strong></p>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata3.png" alt="file" /></p>
+<h3 id="部署seata的server端">3.1. 部署Seata的Server端</h3>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata4.png" alt="file" /></p>
+<p><code>Discover</code>注册、<code>Config</code>配置和<code>Store</code>存储模块默认都是使用<code>file</code>只能适用于单机，我们安装的时候分别改成使用<code>nacos</code>和<code>Mysql</code>以支持server端集群</p>
+<h4 id="下载最新版本并解压">3.1.1. 下载最新版本并解压</h4>
+<p>https://github.com/seata/seata/releases</p>
+<p> </p>
+<h4 id="修改-confregistry.conf-配置">3.1.2. 修改 conf/registry.conf 配置</h4>
+<p>注册中心和配置中心默认是<code>file</code>这里改为<code>nacos</code>；设置 <strong>registry</strong> 和 <strong>config</strong> 节点中的<code>type</code>为<code>nacos</code>，修改<code>serverAddr</code>为你的<code>nacos</code>节点地址。</p>
+<pre><code><code>registry {
+  type = &quot;nacos&quot;
+
+  nacos {
+    serverAddr = &quot;192.168.28.130&quot;
+    namespace = &quot;public&quot;
+    cluster = &quot;default&quot;
+  }
+}
+
+config {
+  type = &quot;nacos&quot;
+
+  nacos {
+    serverAddr = &quot;192.168.28.130&quot;
+    namespace = &quot;public&quot;
+    cluster = &quot;default&quot;
+  }
+}</code></code></pre>
+<p> </p>
+<h4 id="修改-confnacos-config.txt配置">3.1.3. 修改 conf/nacos-config.txt配置</h4>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata5.png" alt="file" /></p>
+<ul>
+<li><p>修改 <strong>service.vgroup_mapping</strong> 为自己应用对应的名称；如果有多个服务，添加相应的配置</p>
+<blockquote>
+<p>默认组名为<code>${spring.application.name}-fescar-service-group</code>，可通过<code>spring.cloud.alibaba.seata.tx-service-group</code>配置修改</p>
+</blockquote></li>
+<li><p>修改 <strong>store.mode</strong> 为<code>db</code>，并修改数据库相关配置</p></li>
+</ul>
+<p> </p>
+<h4 id="初始化seata的nacos配置">3.1.4. 初始化seata的nacos配置</h4>
+<pre class="bash"><code>cd conf
+sh nacos-config.sh 192.168.28.130</code></code></pre>
+<p>成功后在<code>nacos</code>的配置列表中能看到<code>seata</code>的相关配置</p>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata6.png" alt="file" /></p>
+<p> </p>
+<h4 id="初始化数据库">3.1.5. 初始化数据库</h4>
+<p>执行<code>conf/db_store.sql</code>中的脚本</p>
+<p> </p>
+<h4 id="启动seata-server">3.1.6. 启动seata-server</h4>
+<pre class="bash"><code>sh bin/seata-server.sh -p 8091 -h 192.168.28.130</code></code></pre>
+<p> </p>
+<h3 id="应用配置">3.2. 应用配置</h3>
+<h4 id="初始化数据库-1">3.2.1. 初始化数据库</h4>
+<p>执行脚本 <a href="https://gitee.com/zlt2000/microservices-platform/blob/master/zlt-demo/seata-demo/seata-demo.sql">seata-demo.sql</a></p>
+<blockquote>
+<p>需在业务相关的数据库中添加 <strong>undo_log</strong> 表，用于保存需要回滚的数据</p>
+</blockquote>
+<p> </p>
+<h4 id="添加registry.conf配置">3.2.2. 添加registry.conf配置</h4>
+<p>直接把 <strong>seata-server</strong> 中的<code>registry.conf</code>复制到每个服务中去即可，不需要修改<br />
+<img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata7.png" alt="file" /></p>
+<p> </p>
+<h4 id="修改配置">3.2.3. 修改配置</h4>
+<p>demo中的每个服务各自修改配置文件</p>
+<ul>
+<li><strong>bootstrap.yml</strong> 修改nacos地址</li>
+<li><strong>application.yml</strong> 修改数据库配置</li>
+</ul>
+<p> </p>
+<h4 id="配置数据源代理">3.2.4. 配置数据源代理</h4>
+<p><code>Seata</code>是通过代理数据源实现分布式事务，所以需要配置<code>io.seata.rm.datasource.DataSourceProxy</code>的<code>Bean</code>，且是<code>@Primary</code>默认的数据源，否则事务不会回滚，无法实现分布式事务</p>
+<pre class="java"><code>public class DataSourceProxyConfig {
+    @Bean
+    @ConfigurationProperties(prefix = &quot;spring.datasource&quot;)
+    public DruidDataSource druidDataSource() {
+        return new DruidDataSource();
+    }
+
+    @Primary
+    @Bean
+    public DataSourceProxy dataSourceProxy(DruidDataSource druidDataSource) {
+        return new DataSourceProxy(druidDataSource);
+    }
+}</code></code></pre>
+<p>因为使用了mybatis的starter所以需要排除<code>DataSourceAutoConfiguration</code>，不然会产生循环依赖</p>
+<pre class="java"><code>@SpringBootApplication(exclude = {DataSourceAutoConfiguration.class})</code></code></pre>
+<p> </p>
+<h4 id="事务发起者添加全局事务注解">3.2.5. 事务发起者添加全局事务注解</h4>
+<p>事务发起者 <code>business-service</code> 添加 <code>@GlobalTransactional</code> 注解</p>
+<pre class="java"><code>@GlobalTransactional
+public void placeOrder(String userId) {
+    ......
+}</code></code></pre>
+<p> </p>
+<h3 id="测试">3.3. 测试</h3>
+<p>提供两个接口测试</p>
+<ol>
+<li>事务成功：扣除库存成功 &gt; 创建订单成功 &gt; 扣减账户余额成功<br />
+http://localhost:9090/placeOrder</li>
+<li>事务失败：扣除库存成功 &gt; 创建订单成功 &gt; 扣减账户余额失败，事务回滚<br />
+http://localhost:9090/placeOrderFallBack</li>
+</ol>
+<p> </p>
+<h3 id="demo下载地址">3.4. demo下载地址</h3>
+<p><a href="https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-demo/seata-demo" class="uri">https://gitee.com/zlt2000/microservices-platform/tree/master/zlt-demo/seata-demo</a></p>
+<p> </p>
+<p><strong>推荐阅读</strong></p>
+<ul>
+<li><a href="https://mp.weixin.qq.com/s/NG-RIPDBkJsH3qo6_rJGWQ">日志排查问题困难？分布式日志链路跟踪来帮你</a></li>
+<li><a href="https://mp.weixin.qq.com/s/I_piUnr63asLUcrN0eUxAA">zuul集成Sentinel最新的网关流控组件</a></li>
+<li><a href="https://mp.weixin.qq.com/s/bVo83Z0G3MxJ10yyF1ZzXw">阿里注册中心Nacos生产部署方案</a></li>
+<li><a href="https://mp.weixin.qq.com/s/fe8qziEijVmtti2kILdaEg">Spring Boot自定义配置项在IDE里面实现自动提示</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9fR-hgJ69R1iiYXiARMTLw">Spring Cloud Zuul的动态路由怎样做？集成Nacos实现很简单</a></li>
+<li><a href="https://mp.weixin.qq.com/s/9XQ-SIbYsov3KBx9TGFN0g">Spring Cloud开发人员如何解决服务冲突和实例乱窜？</a></li>
+</ul>
+<p> <br />
+扫码关注有惊喜！</p>
+<p><img src="./images/Spring Cloud同步场景分布式事务怎样做？试试Seata8.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

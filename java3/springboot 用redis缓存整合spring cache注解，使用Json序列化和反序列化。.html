@@ -1,0 +1,176 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot 用redis缓存整合spring cache注解，使用Json序列化和反序列化。' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot 用redis缓存整合spring cache注解，使用Json序列化和反序列化。</center></div><div class='banquan'>原文出处:本文由博客园博主枫飘雪落提供。<br/>
+原文连接:https://www.cnblogs.com/yanlong300/p/11905978.html</div><br>
+    <h1 id="springboot下用cache注解整合redis并使用json序列化反序列化">springboot下用cache注解整合redis并使用json序列化反序列化。</h1>
+<h3 id="cache注解整合redis">cache注解整合redis</h3>
+<p>最近发现spring的注解用起来真的是很方便。随即产生了能不能吧spring注解使用redis实现的方式。<br />
+只需要在配置文件中（application.propertoes）添加如下一个配置</p>
+<pre><code><code>spring.cache.type=redis</code></code></pre>
+<p>并配置好redis的相关信息</p>
+<pre><code><code>spring.redis.database=0
+spring.redis.host=
+spring.redis.port=
+spring.redis.password=
+spring.redis.timeout=5000ms
+spring.redis.lettuce.pool.max-active=8
+spring.redis.lettuce.pool.max-wait=-1ms
+spring.redis.lettuce.pool.max-idle=8
+spring.redis.lettuce.pool.min-idle=0</code></code></pre>
+<p>springcache注解整合redis非常容易就整合完成了。</p>
+<h3 id="redis缓存序列化与反序列化">redis缓存序列化与反序列化</h3>
+<p>由于缓存数据使用的是jdk自带的序列化 需要序列化的实体类继承Serializable接口。而且序列化后的内容在redis中看起来也不是很方便。<br />
+于是萌生了需要将数据序列化成json的想法。<br />
+经过一番研究后决定写一个redis 配置文件。RedisConfig具体内容如下</p>
+<pre class="java"><code>
+@Configuration
+public class RedisConfig  extends CachingConfigurerSupport {
+
+  @Bean
+  public RedisCacheConfiguration redisCacheConfiguration(){
+      Jackson2JsonRedisSerializer&lt;Object&gt; jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer&lt;&gt;(Object.class);
+      RedisCacheConfiguration configuration = RedisCacheConfiguration.defaultCacheConfig();
+      configuration = configuration.serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jackson2JsonRedisSerializer)).entryTtl(Duration.ofDays(30));
+      return configuration;
+  }
+
+  @Bean
+  public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+      //初始化一个RedisCacheWriter
+      RedisCacheWriter redisCacheWriter = RedisCacheWriter.nonLockingRedisCacheWriter(connectionFactory);
+      //设置CacheManager的值序列化方式为 fastJsonRedisSerializer,但其实RedisCacheConfiguration默认使用StringRedisSerializer序列化key，
+      Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer&lt;&gt;(Object.class);
+      RedisSerializationContext.SerializationPair&lt;Object&gt; pair = RedisSerializationContext.SerializationPair.fromSerializer(jackson2JsonRedisSerializer);
+      RedisCacheConfiguration defaultCacheConfig=RedisCacheConfiguration.defaultCacheConfig().serializeValuesWith(pair);
+      return new RedisCacheManager(redisCacheWriter, defaultCacheConfig);
+  }
+}
+</code></code></pre>
+<p>配置完成后，数据访问序列化都非常正常，redis中也可以看到有序的json数据。</p>
+<pre class="json"><code>{
+  &quot;name&quot;: &quot;long&quot;,
+  &quot;age&quot;: 18,
+  &quot;height&quot;: 1.72
+}</code></code></pre>
+<p>但是。。。。</p>
+<p>当再次访问时出现了一个奇怪的问题。<br />
+LinkedHashMap 不能转换为实体类。</p>
+<pre><code><code>java.lang.ClassCastException: java.util.LinkedHashMap cannot be cast to com.alance.springcachedemo.entity.User</code></code></pre>
+<p>这看起来很像泛型丢失啊。<br />
+随即第三版配置文件出炉了,配置一下序列化的泛型保存</p>
+<pre class="java"><code>@Configuration
+public class RedisConfig  extends CachingConfigurerSupport {
+
+
+    @Bean
+    public RedisTemplate&lt;Object, Object&gt; redisTemplate(RedisConnectionFactory factory) {
+        RedisTemplate&lt;Object, Object&gt; redisTemplate = new RedisTemplate&lt;&gt;();
+        redisTemplate.setConnectionFactory(factory);
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+        MyObjectMapper objectMapper = new MyObjectMapper();
+        objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        objectMapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        jackson2JsonRedisSerializer.setObjectMapper(objectMapper);
+        redisTemplate.setValueSerializer(jackson2JsonRedisSerializer);
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.afterPropertiesSet();
+        return redisTemplate;
+    }
+
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory factory) {
+        RedisSerializer&lt;String&gt; redisSerializer = new StringRedisSerializer();
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+        MyObjectMapper objectMapper = new MyObjectMapper();
+        objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        objectMapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        jackson2JsonRedisSerializer.setObjectMapper(objectMapper);
+        // 配置序列化
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig();
+        RedisCacheConfiguration redisCacheConfiguration = config.serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(redisSerializer)).serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jackson2JsonRedisSerializer));
+        return RedisCacheManager.builder(factory).cacheDefaults(redisCacheConfiguration).build();
+
+    }
+
+
+    private class MyObjectMapper extends ObjectMapper {
+
+        private static final long serialVersionUID = 1L;
+
+        public MyObjectMapper() {
+            super();
+            // 去掉各种@JsonSerialize注解的解析
+            this.configure(MapperFeature.USE_ANNOTATIONS, false);
+            // 只针对非空的值进行序列化
+            this.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+            // 将类型序列化到属性json字符串中
+            this.enableDefaultTyping(DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+            // 对于找不到匹配属性的时候忽略报错
+            this.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            // 不包含任何属性的bean也不报错
+            this.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        }
+    }
+
+}
+</code></code></pre>
+<p>好了这下反序列化的问题解决了，<br />
+redis中</p>
+<pre class="json"><code>[
+  &quot;com.alance.springcachedemo.entity.User&quot;,
+  {
+    &quot;name&quot;: &quot;long&quot;,
+    &quot;age&quot;: 18,
+    &quot;height&quot;: 1.72
+  }
+]</code></code></pre>
+<p>redis存储的json中带上了类型<br />
+至此这个问题就解决了。</p>
+<h3 id="后记">后记</h3>
+<p>在愉快使用缓存注解的时候，发现缓存注解并 <strong>不能和诸如事务注解线程池注解一起使用</strong>。这是aop代理的特性决定的。而且 <strong>方法的类内部调用也不走注解</strong>。</p>
+<p>enableDefaultTyping 这个功能涉及到java著名的反序列化漏洞。各位系统之间调用数据的项目还是慎重使用.<br />
+<a href="https://cwiki.apache.org/confluence/display/WW/S2-055">漏洞详情</a></p>
+<h3 id="后记的后记">后记的后记</h3>
+<p>在写代码的过程中发现了一个更优雅的解决方案分享给大家。<br />
+只需要在配置文件中配置一下CacheManger,使用jackson的一个带泛型的序列化工具实现。</p>
+<pre class="java"><code>    /**
+     * spring cache 注解相关序列化操作
+     */
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory factory) {
+        GenericJackson2JsonRedisSerializer genericJackson2JsonRedisSerializer = new GenericJackson2JsonRedisSerializer();
+        StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
+        // 配置序列化
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig();
+        RedisCacheConfiguration redisCacheConfiguration = config
+                // 键序列化方式 redis字符串序列化
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(stringRedisSerializer))
+                // 值序列化方式 简单json序列化
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(genericJackson2JsonRedisSerializer));
+        return RedisCacheManager.builder(factory).cacheDefaults(redisCacheConfiguration).build();
+
+    }</code></code></pre>
+<h5 id="大佬的启发">大佬的启发</h5>
+<p>https://www.cnblogs.com/Kidezyq/p/8942111.html</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

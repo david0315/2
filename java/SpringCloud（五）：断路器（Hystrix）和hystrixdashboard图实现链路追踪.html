@@ -1,0 +1,288 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪</center></div><div class='banquan'>原文出处:本文由博客园博主探歌提供。<br/>
+原文连接:https://www.cnblogs.com/lgg20/p/11765207.html</div><br>
+    <p>&nbsp;<span style="font-size: 16px;"><strong>第一：关于服务调用和熔断安全：</strong></span></p>
+<p>&nbsp;<span style="font-size: 16px;">ribbon和Feign:</span></p>
+<p><span style="font-size: 16px;">1. 相当于nigx+doubbe，微服务间的服务调用，API网关的请求转发等内容</span><br /><span style="font-size: 16px;">2. Feign整合了Ribbon和Hystrix</span></p>
+<p><strong>&nbsp;<span style="font-size: 16px;">Hystrix：</span></strong></p>
+<p><span style="font-size: 16px;">1. 断路器：</span><br /><span style="font-size: 16px;">2. 熔断模式.</span><br /><span style="font-size: 16px;">3. 隔离模式</span><br /><span style="font-size: 16px;">4. 限流模式</span><br /><span style="font-size: 16px;">在微服务场景中，通常会有很多层的服务调用。如果一个底层服务出现问题，故障会被向上传播给用户。</span><br /><span style="font-size: 16px;">当底层服务不可用时，可以阻断故障的传播。</span></p>
+<p>&nbsp;<span style="font-size: 16px;"><strong>为什么需要 Hystrix?</strong></span></p>
+<p><span style="font-size: 16px;"><strong>hystrix主要是用来防止服务雪崩效应的。</strong></span></p>
+<p>在微服务架构中，我们将业务拆分成一个个的服务，服务与服务之间可以相互调用（RPC）。为了保证其高可用，单个服务又必须集群部署。由于网络原因或者自身的原因，服务并不能保证服务的100%可用，如果单个服务出现问题，调用这个服务就会出现网络延迟，此时若有大量的网络涌入，会形成任务累计，导致服务瘫痪，甚至导致服务&ldquo;雪崩&rdquo;。为了解决这个问题，就出现断路器模型。</p>
+<p>Hystrix 是一个帮助解决分布式系统交互时超时处理和容错的类库, 它同样拥有保护系统的能力.什么是服务雪崩</p>
+<p>分布式系统中经常会出现某个基础服务不可用造成整个系统不可用的情况, 这种现象被称为服务雪崩效应. 为了应对服务雪崩, 一种常见的做法是手动服务降级. 而Hystrix的出现,给我们提供了另一种选择.</p>
+<p>1.流量控制</p>
+<p>2.改进缓存模式</p>
+<p>3.服务自动扩容</p>
+<p>4.服务调用者降级服务</p>
+<p>引用自：<a href="https://www.cnblogs.com/xyhero/p/53852cf0245c229fe3e22756a220508b.html">https://www.cnblogs.com/xyhero/p/53852cf0245c229fe3e22756a220508b.html</a></p>
+<h4>二、Ribbon+Hystrix（第一种）</h4>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪0.png" alt="" /></p>
+<p>&nbsp;<strong>pom:</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">　　&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-eureka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-ribbon<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-hystrix<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p><strong>application.properties:</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring.application.name=hello-consumer-ribbon-hystrix
+server.port=8041
+eureka.client.serviceUrl.defaultZone=http://localhost:8001/eureka/</span></code></pre>
+
+<p><strong>HelloService:</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo.service;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Service;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.client.RestTemplate;
+
+@Service
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> HelloService {
+
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> RestTemplate restTemplate;
+
+    @HystrixCommand(fallbackMethod </span>= "fallback", commandProperties =<span style="color: #000000;"> {
+            @HystrixProperty(name</span>= "execution.isolation.thread.timeoutInMilliseconds", value="2000"<span style="color: #000000;">)
+    })
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String hello (String name) {
+        </span><span style="color: #0000ff;">return</span> restTemplate.getForEntity("http://USER-SERVICE/hello?name=" + name, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getBody();
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String fallback (String name) {
+        </span><span style="color: #0000ff;">return</span> "hello, hystrix熔断启动=== fail name:" +<span style="color: #000000;"> name;
+    }
+
+}</span></code></pre>
+
+<p><strong>HelloConsumerRibbonHystrixApplication:</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.client.loadbalancer.LoadBalanced;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.hystrix.EnableHystrix;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Bean;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RestController;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.client.RestTemplate;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> cn.demo.service.HelloService;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+@EnableHystrix
+@RestController
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> HelloConsumerRibbonHystrixApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(HelloConsumerRibbonHystrixApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+
+    @Bean
+    @LoadBalanced
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> RestTemplate restTemplate () {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> RestTemplate();
+    }
+
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> HelloService helloService;
+
+    @RequestMapping(</span>"hello"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String hello (String name) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> helloService.hello(name);
+    }
+
+}</span></code></pre>
+
+<p>测试：</p>
+<p>启动eureka-server:8001, hello-service:8012,8002，hello-consumer-ribbon-hystrix:8041</p>
+<p>访问：<strong><code>http://localhost:8041/hello?name=ribbon_hystrix</code></strong></p>
+<p>返回：<strong>hello, ribbon_hystrix</strong></p>
+<p>访问正常，接下来我们把hello-service服务停了，再次访问：</p>
+<p>返回：<strong>hello, hystrix熔断启动=== fail name:ribbon_hystrix&nbsp;&nbsp;</strong></p>
+<p>------成功触发熔断。</p>
+<p>然后我们再次启动hello-service服务，然后访问：</p>
+<p>hello, ribbon_hystrix</p>
+<p>没有触发熔断，正常。</p>
+<p>同样我们测试访问超时触发熔断的情况，我们在hello-service接口加上线程等待1s：</p>
+<src class="cnblogs_code">
+<pre><code>@RequestMapping("hello"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> String hello (String name) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        Thread.sleep(</span>1000<span style="color: #000000;">);
+        System.out.println(</span>"hello, " +<span style="color: #000000;"> name);
+        </span><span style="color: #0000ff;">return</span> "hello, " +<span style="color: #000000;"> name;
+    }</span></code></pre>
+
+<p>访问，发现同样触发熔断，因为hystrix默认超时1s触发熔断，我们可以通过修改属性来改变超时时间。</p>
+<p>这里我们把超时时间修改为2s：</p>
+<src class="cnblogs_code">
+<pre><code>@HystrixCommand(fallbackMethod = "fallback", commandProperties =<span style="color: #000000;"> {
+            @HystrixProperty(name</span>= "execution.isolation.thread.timeoutInMilliseconds", value="2000"<span style="color: #000000;">)
+    })
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String hello (String name) {
+        </span><span style="color: #0000ff;">return</span> restTemplate.getForEntity("http://HELLO-SERVICE/hello?name=" + name, String.<span style="color: #0000ff;">class</span><span style="color: #000000;">).getBody();
+    }<br /></span></code></pre>
+
+<p><strong>再次访问，发现没有触发熔断。</strong></p>
+<h4>三、Feign With Hystrix（第二种）</h4>
+<p>Feign默认是自带Hystrix的，所以依赖Jar的时候无需再依赖hystrix</p>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪1.png" alt="" /></p>
+<p>&nbsp;<strong>pom.xml</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-eureka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-feign<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p><strong>application.properties：</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">spring.application.name=hello-consumer-feign-hystrix
+server.port=8051
+eureka.client.serviceUrl.defaultZone=http://localhost:8001/eureka/
+## 开启hystrix
+feign.hystrix.enabled=true
+## hystrix熔断触发默认超时时间
+<strong>hystrix.command.default.execution.isolation.thread.timeoutInMilliseconds=2000</strong></span></code></pre>
+
+<p><strong>HelloService：</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.feign.FeignClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestParam;
+
+@FeignClient(value </span>= "hello-service", fallback = HelloServiceFallBack.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> HelloService {
+
+    @RequestMapping(</span>"hello"<span style="color: #000000;">)
+    String hello(@RequestParam(value </span>= "name"<span style="color: #000000;">) String name) ;
+}</span></code></pre>
+
+<p><strong>熔断触发类HelloServiceFallBack：</strong></p>
+<src class="cnblogs_code">
+<p>import org.springframework.stereotype.Component;</p>
+<p>@Component<br />public class HelloServiceFallBack implements HelloService{</p>
+<p>    @Override<br />    public String hello(String name) {<br />        　　return "hello, hystrix 触发熔断     == fail name : " + name;<br />    }<br />}</p>
+
+
+
+
+
+<p><strong>启动类：</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> cn.saytime.service.HelloService;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.feign.EnableFeignClients;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RequestMapping;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.web.bind.annotation.RestController;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+@EnableFeignClients
+@RestController
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> HelloConsumerFeignHystrixApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(HelloConsumerFeignHystrixApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> HelloService helloService;
+
+    @RequestMapping(</span>"hello"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String hello(String name){
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> helloService.hello(name);
+    }
+}</span></code></pre>
+
+<p>测试：</p>
+<p>启动eureka-server:8001, hello-service:8011，hello-consumer-feign-hystrix:8051</p>
+<p>访问：<code>http://localhost:8051/hello?name=feign_hystrix</code></p>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪2.png" alt="" /></p>
+<p>&nbsp;接下来关闭hello-service服务，再次访问：</p>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪3.png" alt="" /></p>
+<p>&nbsp;将hello-service服务重新启动，访问正常，没有触发熔断。</p>
+<p>将hello-service服务接口加上线程等待3s，重启hello-service服务，再次调用，同样成功触发熔断</p>
+<p>修改application.properties里面熔断超时时间为4s，再次调用，没有触发熔断。</p>
+<h4><span style="font-size: 16px;">四、Hystrix Dashboard （Hystrix 仪表盘</span></h4>
+<p>ribbon-hystrix 与 feign-hystrix 两个项目的pom文件都添加以下依赖：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-actuator<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-hystrix-dashboard<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>启动类都加上如下注解：&nbsp;@EnableHystrixDashboard</p>
+<p>然后访问</p>
+<p><code>http://localhost:8041/hystrix</code><br /><code>http://localhost:8051/hystrix</code></p>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪4.png" alt="" /></p>
+<p>&nbsp;<em id="__mceDel"><em id="__mceDel">输入链接：http://localhost:8041/hystrix.stream</em></em></p>
+<p>同理，如果是feign-hystrix项目，输入 http://localhost:8051/hystrix.stream</p>
+<p>点击Monitor Stream</p>
+<p>然后我们访问一下 http://localhost:8041/hello?name=ribbon_hystrix</p>
+<p>会出现如下监控页面：</p>
+<p><img src="./images/SpringCloud（五）：断路器（Hystrix）和hystrixdashboard图实现链路追踪5.png" alt="" /></p>
+<p>&nbsp;这个微服务监控如何查看监控结果。</p>
+<p>图中实心圆共有两种含义，他通过颜色的变化代表了实例的健康程度，它的健康度颜色从绿色&lt;黄色&lt;橙色&lt;红色递减。</p>
+<p>该实心圆除了颜色的变化之外，它的大小也会根据实例的请求流量发生变化，流量越大该实心圆就越大。所以通过该实心圆的展示可以在大量的实例中快速的发现故障实例和高压力实例。</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,167 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka自我保护机制源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka自我保护机制源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11756764.html</div><br>
+    <blockquote>
+<p>默认情况下，当EurekaServer在一定时间内（默认90秒）没有接收到某个客户端实例的心跳，EurekaServer将会注销该实例。但是当网络分区故障发生时，客户端与EurekaServer之间无法正常通信，此时不应该注销客户端。Eureka通过“自我保护机制”来解决这个问题：当EurekaServer短时间内丢失过多客户端时，这个节点就会进入自我保护模式。在自我保护模式下，EurekaServer不会剔除任何客户端。当网络故障恢复后，该节点会自动退出自我保护模式</p>
+</blockquote>
+<p>自我保护机制的实现是基于维护服务注册表的类<code>AbstractInstanceRegistry</code>中的2个变量来维护的</p>
+<pre><code><code>/**
+* 期望最小每分钟续租次数
+*/
+protected volatile int numberOfRenewsPerMinThreshold;
+/**
+* 期望最大每分钟续租次数
+*/
+protected volatile int expectedNumberOfRenewsPerMin;</code></code></pre>
+<h5 id="服务端初始化">服务端初始化</h5>
+<p>服务端的启动文章可以看这篇文章：<a href="https://mp.weixin.qq.com/s/6R1tWi5W_B6FiVpkIonnaw">EurekaServer自动装配及启动流程解析</a><br />
+在服务端启动、从其他集群同步完信息后执行了一个方法：<code>openForTraffic</code></p>
+<pre><code><code>public void openForTraffic(ApplicationInfoManager applicationInfoManager, int count) {
+   this.expectedNumberOfRenewsPerMin = count * 2;
+   this.numberOfRenewsPerMinThreshold =
+           (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+    }</code></code></pre>
+<p>期望每分钟最大续租次数为：当前服务端已经注册的客户端的数量乘2，为啥呢，因为默认Eureka的续约是30秒<br />
+期望每分钟最小续租次数为：最大续租次数乘续租百分比，默认续租百分比是0.85，也就是说当某个时间窗内如果存在超过百分之十五的客户端没有再续租的话则开启自我保护模式</p>
+<h5 id="自我保护模式的定时任务">自我保护模式的定时任务</h5>
+<p><code>DefaultEurekaServerContext</code>类中有一个<code>initialize</code>方法，这个方法在执行过程中会启动一个定时任务</p>
+<pre><code><code>    @PostConstruct
+    @Override
+    public void initialize() {
+        logger.info(&quot;Initializing ...&quot;);
+        peerEurekaNodes.start();
+        try {
+            registry.init(peerEurekaNodes);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        logger.info(&quot;Initialized&quot;);
+    }
+
+public void init(PeerEurekaNodes peerEurekaNodes) throws Exception {
+        this.numberOfReplicationsLastMin.start();
+        this.peerEurekaNodes = peerEurekaNodes;
+        initializedResponseCache();
+        scheduleRenewalThresholdUpdateTask();
+        initRemoteRegionRegistry();
+
+        try {
+            Monitors.registerObject(this);
+        } catch (Throwable e) {
+            logger.warn(&quot;Cannot register the JMX monitor for the InstanceRegistry :&quot;, e);
+        }
+    }</code></code></pre>
+<p><code>scheduleRenewalThresholdUpdateTask</code>这个定时任务就是跟自我保护模式相关的了</p>
+<pre><code><code>    private void scheduleRenewalThresholdUpdateTask() {
+        timer.schedule(new TimerTask() {
+                           @Override
+                           public void run() {
+                               updateRenewalThreshold();
+                           }
+                       }, serverConfig.getRenewalThresholdUpdateIntervalMs(),
+                serverConfig.getRenewalThresholdUpdateIntervalMs());
+    }</code></code></pre>
+<p>其中<code>getRenewalThresholdUpdateIntervalMs</code>默认值是15分钟</p>
+<pre><code><code>private void updateRenewalThreshold() {
+   try {
+       // 1. 计算应用实例数
+       Applications apps = eurekaClient.getApplications();
+       int count = 0;
+       for (Application app : apps.getRegisteredApplications()) {
+           for (InstanceInfo instance : app.getInstances()) {
+               if (this.isRegisterable(instance)) {
+                   ++count;
+               }
+           }
+       }
+       // 2. 计算expectedNumberOfRenewsPerMin 、 numberOfRenewsPerMinThreshold 参数
+       synchronized (lock) {
+           if ((count * 2) &gt; (serverConfig.getRenewalPercentThreshold() * numberOfRenewsPerMinThreshold)
+                   || (!this.isSelfPreservationModeEnabled())) {
+               this.expectedNumberOfRenewsPerMin = count * 2;
+               this.numberOfRenewsPerMinThreshold = (int) ((count * 2) * serverConfig.getRenewalPercentThreshold());
+           }
+       }
+       logger.info(&quot;Current renewal threshold is : {}&quot;, numberOfRenewsPerMinThreshold);
+   } catch (Throwable e) {
+       logger.error(&quot;Cannot update renewal threshold&quot;, e);
+   }
+}</code></code></pre>
+<p>分为2步，第一步就不说了，看第二步<br />
+当最大续租数量大于最小续租数量时或者没有开启自我保护模式时可以重新计算两个值，否则不能重新计算</p>
+<h5 id="客户端注册">客户端注册</h5>
+<pre><code><code>public void register(InstanceInfo registrant, int leaseDuration, boolean isReplication) {
+    synchronized (lock) {
+         if (this.expectedNumberOfRenewsPerMin &gt; 0) {
+             this.expectedNumberOfRenewsPerMin = this.expectedNumberOfRenewsPerMin + 2;
+             this.numberOfRenewsPerMinThreshold =
+                     (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+         }
+     }
+
+}</code></code></pre>
+<p>每当有一个实例注册上来时，两个参数都要重新计算，最大期望续租数量+2同样是因为默认1分钟续租2次</p>
+<h5 id="客户端下线">客户端下线</h5>
+<pre><code><code>public boolean cancel(final String appName, final String id,
+                     final boolean isReplication) {
+      
+   synchronized (lock) {
+        if (this.expectedNumberOfRenewsPerMin &gt; 0) {
+               this.expectedNumberOfRenewsPerMin = this.expectedNumberOfRenewsPerMin - 2;
+               this.numberOfRenewsPerMinThreshold = (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+        }
+   }
+}</code></code></pre>
+<p>于注册的处理逻辑恰好相反</p>
+<h5 id="开启自我保护模式">开启自我保护模式</h5>
+<p>之前在<a href="https://mp.weixin.qq.com/s/cE0lLz9D8Yz4nTEtlQ5p6A">Eureka客户端续约及服务端过期租约清理源码解析</a>一文的租约过期清理解析过程中省略了关于自我保护模式的判断，现在再看一下。这个判断在租约过期处理方法的开头：</p>
+<pre><code><code>    public void evict(long additionalLeaseMs) {
+        logger.debug(&quot;Running the evict task&quot;);
+
+        if (!isLeaseExpirationEnabled()) {
+            logger.debug(&quot;DS: lease expiration is currently disabled.&quot;);
+            return;
+        }
+        //....
+   }</code></code></pre>
+<p>详细内容在<code>isLeaseExpirationEnabled</code>中</p>
+<pre><code><code>    public boolean isLeaseExpirationEnabled() {
+        if (!isSelfPreservationModeEnabled()) {
+            return true;
+        }
+        return numberOfRenewsPerMinThreshold &gt; 0 &amp;&amp; getNumOfRenewsInLastMin() &gt; numberOfRenewsPerMinThreshold;
+    }
+    public boolean isSelfPreservationModeEnabled() {
+        return serverConfig.shouldEnableSelfPreservation();
+    }
+    public long getNumOfRenewsInLastMin() {
+        return renewsLastMin.getCount();
+    }</code></code></pre>
+<p>第一个if是判断是否开启自我保护模式<br />
+最后的return则是如果当前最小续租次数大于0，并且最近续约实例数量大于最小期待续租数量</p>
+<blockquote>
+<p><a href="https://shiyujun.cn">原文地址</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

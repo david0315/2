@@ -1,0 +1,231 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring5源码解析5-ConfigurationClassPostProcessor (上)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring5源码解析5-ConfigurationClassPostProcessor (上)</center></div><div class='banquan'>原文出处:本文由博客园博主Coder小黑提供。<br/>
+原文连接:https://www.cnblogs.com/coderxiaohei/p/11685144.html</div><br>
+    <p>接上回，我们讲到了<code>refresh()</code>方法中的<code>invokeBeanFactoryPostProcessors(beanFactory)</code>方法主要在执行<code>BeanFactoryPostProcessor</code>和其子接口<code>BeanDefinitionRegistryPostProcessor</code>的方法。</p>
+<p>在创建<code>AnnotationConfigApplicationContext</code>对象时Spring就添加了一个非常重要的<code>BeanFactoryPostProcessor</code>接口实现类：<code>ConfigurationClassPostProcessor</code>。注意，这里说的添加只是添加到容器的<code>beanDefinitionMap</code>中，还没有创建真正的实例Bean。</p>
+<p>简单回顾一下<code>ConfigurationClassPostProcessor</code>是在什么时候被添加到容器中的：在<code>AnnotationConfigApplicationContext</code>的无参构造器中创建<code>AnnotatedBeanDefinitionReader</code>对象时会向传入的<code>BeanDefinitionRegistry</code>中注册解析注解配置类相关的processors的<code>BeanDefinition</code>，<code>ConfigurationClassPostProcessor</code>就是在此处被添加到容器中的。</p>
+<hr />
+<h2 id="configurationclasspostprocessor">ConfigurationClassPostProcessor</h2>
+<p>先看一些<code>ConfigurationClassPostProcessor</code>的继承体系：</p>
+<p><img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)0.png" alt="ConfigurationClassPostProcessor" /></p>
+<p><code>ConfigurationClassPostProcessor</code>实现了<code>BeanDefinitionRegistryPostProcessor</code>接口，也就拥有了在Spring容器启动时，往容器中注册<code>BeanDefinition</code>的能力。</p>
+<p>我们知道，<code>ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry</code>方法是在<code>refresh();</code>方法中的<code>invokeBeanFactoryPostProcessors(beanFactory);</code>中被执行的，下面我们就一起来看一下该方法。</p>
+<h3 id="configurationclasspostprocessorpostprocessbeandefinitionregistry">ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry</h3>
+<pre><code><code>@Override
+public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) {
+    int registryId = System.identityHashCode(registry);
+    if (this.registriesPostProcessed.contains(registryId)) {
+        throw new IllegalStateException(
+                &quot;postProcessBeanDefinitionRegistry already called on this post-processor against &quot; + registry);
+    }
+    if (this.factoriesPostProcessed.contains(registryId)) {
+        throw new IllegalStateException(
+                &quot;postProcessBeanFactory already called on this post-processor against &quot; + registry);
+    }
+    this.registriesPostProcessed.add(registryId);
+
+    processConfigBeanDefinitions(registry);
+}</code></code></pre>
+<p>主要的逻辑在<code>processConfigBeanDefinitions(registry);</code>中，点开源码：</p>
+<pre><code><code>public void processConfigBeanDefinitions(BeanDefinitionRegistry registry) {
+    List&lt;BeanDefinitionHolder&gt; configCandidates = new ArrayList&lt;&gt;();
+    //获取所有的BeanDefinitionName
+    String[] candidateNames = registry.getBeanDefinitionNames();
+
+    for (String beanName : candidateNames) {
+        BeanDefinition beanDef = registry.getBeanDefinition(beanName);
+
+        // https://docs.spring.io/spring/docs/5.1.8.RELEASE/spring-framework-reference/core.html#beans-java-basic-concepts
+        // Full @Configuration vs “lite” @Bean mode
+        if (ConfigurationClassUtils.isFullConfigurationClass(beanDef) ||
+                ConfigurationClassUtils.isLiteConfigurationClass(beanDef)) {
+            if (logger.isDebugEnabled()) {
+                logger.debug(&quot;Bean definition has already been processed as a configuration class: &quot; + beanDef);
+            }
+        }
+
+        // 校验是否为配置类
+        // 配置类分为两种 Full @Configuration vs “lite” @Bean mode
+        // 校验之后在 BeanDefinition 中添加标志属性
+        // 如果满足条件则加入到configCandidates
+        else if (ConfigurationClassUtils.checkConfigurationClassCandidate(beanDef, this.metadataReaderFactory)) {
+            // 如果是配置类,就放到 configCandidates 变量中
+            configCandidates.add(new BeanDefinitionHolder(beanDef, beanName));
+        }
+    }
+
+    // Return immediately if no @Configuration classes were found
+    if (configCandidates.isEmpty()) {
+        return;
+    }
+
+    // Sort by previously determined @Order value, if applicable
+    configCandidates.sort((bd1, bd2) -&gt; {
+        int i1 = ConfigurationClassUtils.getOrder(bd1.getBeanDefinition());
+        int i2 = ConfigurationClassUtils.getOrder(bd2.getBeanDefinition());
+        return Integer.compare(i1, i2);
+    });
+
+    // Detect any custom bean name generation strategy supplied through the enclosing application context
+    SingletonBeanRegistry sbr = null;
+    // 传入的 registry 是 DefaultListableBeanFactory
+    if (registry instanceof SingletonBeanRegistry) {
+        sbr = (SingletonBeanRegistry) registry;
+        if (!this.localBeanNameGeneratorSet) {
+            //获取自定义BeanNameGenerator,一般情况下为空
+            BeanNameGenerator generator = (BeanNameGenerator) sbr.getSingleton(CONFIGURATION_BEAN_NAME_GENERATOR);
+            if (generator != null) {
+                this.componentScanBeanNameGenerator = generator;
+                this.importBeanNameGenerator = generator;
+            }
+        }
+    }
+
+    if (this.environment == null) {
+        this.environment = new StandardEnvironment();
+    }
+
+    // Parse each @Configuration class
+    // new ConfigurationClassParser,用来解析 @Configuration 类
+    ConfigurationClassParser parser = new ConfigurationClassParser(
+            this.metadataReaderFactory, this.problemReporter, this.environment,
+            this.resourceLoader, this.componentScanBeanNameGenerator, registry);
+
+    // 将 configCandidates 转成 set  candidates , 去重
+    Set&lt;BeanDefinitionHolder&gt; candidates = new LinkedHashSet&lt;&gt;(configCandidates);
+    Set&lt;ConfigurationClass&gt; alreadyParsed = new HashSet&lt;&gt;(configCandidates.size());
+    do {
+        // 解析配置类
+        parser.parse(candidates);
+        parser.validate();
+
+        Set&lt;ConfigurationClass&gt; configClasses = new LinkedHashSet&lt;&gt;(parser.getConfigurationClasses());
+        configClasses.removeAll(alreadyParsed);
+
+        // Read the model and create bean definitions based on its content
+        if (this.reader == null) {
+            this.reader = new ConfigurationClassBeanDefinitionReader(
+                    registry, this.sourceExtractor, this.resourceLoader, this.environment,
+                    this.importBeanNameGenerator, parser.getImportRegistry());
+        }
+        // Import类,@Bean,@ImportResource 转化为 BeanDefinition
+        this.reader.loadBeanDefinitions(configClasses);
+        alreadyParsed.addAll(configClasses);
+
+        candidates.clear();
+        // 再获取一下容器中BeanDefinition的数据,如果发现数量增加了,说明有新的BeanDefinition被注册了
+        if (registry.getBeanDefinitionCount() &gt; candidateNames.length) {
+            String[] newCandidateNames = registry.getBeanDefinitionNames();
+            Set&lt;String&gt; oldCandidateNames = new HashSet&lt;&gt;(Arrays.asList(candidateNames));
+            Set&lt;String&gt; alreadyParsedClasses = new HashSet&lt;&gt;();
+            for (ConfigurationClass configurationClass : alreadyParsed) {
+                alreadyParsedClasses.add(configurationClass.getMetadata().getClassName());
+            }
+            for (String candidateName : newCandidateNames) {
+                if (!oldCandidateNames.contains(candidateName)) {
+                    BeanDefinition bd = registry.getBeanDefinition(candidateName);
+                    if (ConfigurationClassUtils.checkConfigurationClassCandidate(bd, this.metadataReaderFactory) &amp;&amp;
+                            !alreadyParsedClasses.contains(bd.getBeanClassName())) {
+                        candidates.add(new BeanDefinitionHolder(bd, candidateName));
+                    }
+                }
+            }
+            candidateNames = newCandidateNames;
+        }
+    }
+    while (!candidates.isEmpty());
+
+    // Register the ImportRegistry as a bean in order to support ImportAware @Configuration classes
+    if (sbr != null &amp;&amp; !sbr.containsSingleton(IMPORT_REGISTRY_BEAN_NAME)) {
+        sbr.registerSingleton(IMPORT_REGISTRY_BEAN_NAME, parser.getImportRegistry());
+    }
+
+    if (this.metadataReaderFactory instanceof CachingMetadataReaderFactory) {
+        // Clear cache in externally provided MetadataReaderFactory; this is a no-op
+        // for a shared cache since it&#39;ll be cleared by the ApplicationContext.
+        ((CachingMetadataReaderFactory) this.metadataReaderFactory).clearCache();
+    }
+}</code></code></pre>
+<p>获取所有的BeanDefinitionNames，然后循环这个数组，判断其是否为配置类。</p>
+<p><img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)1.png" alt="candidateNames" /></p>
+<p>前5个是Spring注册的内置processor，最后一个是传入给<code>AnnotationConfigApplicationContext</code>的配置类<code>AppConfig.class</code>。</p>
+<p>在Spring中存在两种ConfigurationClass，一种是<code>FullConfigurationClass</code>另一种是<code>LiteConfigurationClass</code>。关于这两者的区别，可以参看笔者文章之前关于Full @Configuration 和 lite @Bean mode的文章。</p>
+<p><code>ConfigurationClassUtils#checkConfigurationClassCandidate</code>方法内部就是在判断属于哪种配置类，并在<code>BeanDefinition</code>中标记判断结果。其具体的判断逻辑如下：</p>
+<pre><code><code>public static boolean isFullConfigurationCandidate(AnnotationMetadata metadata) {
+    return metadata.isAnnotated(Configuration.class.getName());
+}
+private static final Set&lt;String&gt; candidateIndicators = new HashSet&lt;&gt;(8);
+
+static {
+    candidateIndicators.add(Component.class.getName());
+    candidateIndicators.add(ComponentScan.class.getName());
+    candidateIndicators.add(Import.class.getName());
+    candidateIndicators.add(ImportResource.class.getName());
+}
+
+public static boolean isLiteConfigurationCandidate(AnnotationMetadata metadata) {
+    // Do not consider an interface or an annotation...
+    if (metadata.isInterface()) {
+        return false;
+    }
+
+    // Any of the typical annotations found?
+    for (String indicator : candidateIndicators) {
+        if (metadata.isAnnotated(indicator)) {
+            return true;
+        }
+    }
+
+    // Finally, let&#39;s look for @Bean methods...
+    try {
+        return metadata.hasAnnotatedMethods(Bean.class.getName());
+    } catch (Throwable ex) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(&quot;Failed to introspect @Bean methods on class [&quot; + metadata.getClassName() + &quot;]: &quot; + ex);
+        }
+        return false;
+    }
+}</code></code></pre>
+<p>判断<code>configCandidates</code>变量中存放的</p>
+<p>配置类是否为空，如果不为空，则对其进行排序。</p>
+<p><img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)2.png" alt="configCandidates" /></p>
+<p>创建<code>ConfigurationClassParser</code>对象，用于解析<code>@Configuration</code>类，完成包的扫描、<code>BeanDefinition</code>的注册。主要通过执行<code>parser.parse(candidates);</code>方法来完成。</p>
+<p>执行<code>parser.parse(candidates)</code>方法前 ：</p>
+<p><img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)3.png" alt="执行parser.parse(candidates)方法前" /></p>
+<p>执行<code>parser.parse(candidates)</code>方法后 ：</p>
+<p><img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)4.png" alt="执行parser.parse(candidates)方法后" /></p>
+<p>解析完配置类之后，紧接着又执行了<code>this.reader.loadBeanDefinitions(configClasses);</code>方法。这个方法主要是用来处理<code>Import类</code>、<code>@Bean</code>和<code>@ImportResource</code>注解。关于这两个方法的具体细节，我们下次再讲。</p>
+<p>最后又加了入了对<code>ImportAware</code>接口支持所需要的Bean。</p>
+<pre><code><code>// Register the ImportRegistry as a bean in order to support ImportAware @Configuration classes
+if (sbr != null &amp;&amp; !sbr.containsSingleton(IMPORT_REGISTRY_BEAN_NAME)) {
+    sbr.registerSingleton(IMPORT_REGISTRY_BEAN_NAME, parser.getImportRegistry());
+}</code></code></pre>
+<p>关于对<code>ImportAware</code>接口的使用，我们也下次再讲。</p>
+<hr />
+<p>未完待续......</p>
+<p>源码学习笔记：https://github.com/shenjianeng/spring-code-study</p>
+<p>欢迎各位关注公众号，大家一起学习成长。<br />
+<img src="./images/Spring5源码解析5-ConfigurationClassPostProcessor (上)5.png" alt="Coder小黑" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

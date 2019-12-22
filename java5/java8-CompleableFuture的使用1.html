@@ -1,0 +1,554 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修java8-CompleableFuture的使用1' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>java8-CompleableFuture的使用1</center></div><div class='banquan'>原文出处:本文由博客园博主春天springcarter提供。<br/>
+原文连接:https://www.cnblogs.com/snidget/p/11892097.html</div><br>
+    <h1 id="背景">背景</h1>
+<blockquote>
+<ol>
+<li>硬件的极速发展，多核心CPU司空见惯；分布式的软件架构司空见惯；</li>
+<li>功能API大多采用混聚的方式把基础服务的内容链接在一起，方便用户生活。</li>
+</ol>
+</blockquote>
+<p>抛出了两个问题：</p>
+<blockquote>
+<ol>
+<li>如何发挥多核能力；</li>
+<li>切分大型任务，让每个子任务并行运行；</li>
+</ol>
+</blockquote>
+<h1 id="并发和并行的区别">并发和并行的区别</h1>
+<table>
+<thead>
+<tr class="header">
+<th>项目</th>
+<th>区别1</th>
+<th>实现技术</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>并行</td>
+<td>每个任务跑在单独的cpu核心上</td>
+<td>分支合并框架，并行流</td>
+</tr>
+<tr class="even">
+<td>并发</td>
+<td>不同任务共享cpu核心，基于时间片调度</td>
+<td>CompletableFuture</td>
+</tr>
+</tbody>
+</table>
+<h1 id="future接口">Future接口</h1>
+<blockquote>
+<p>java5开始引入。将来某个时刻发生的事情进行建模。<br />
+进行一个异步计算，返回一个执行运算的结果引用，当运算结束后，这个引用可以返回给调用方。<br />
+可以使用Future把哪些潜在耗时的任务放到异步线程中，让主线程继续执行其他有价值的工作，不在白白等待。</p>
+</blockquote>
+<p>下面是一个例子：使用Future，可以让两个任务并发的运行，然后汇聚结果；</p>
+<pre><code><code>package com.test.completable;
+
+import com.google.common.base.Stopwatch;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+/**
+ * 说明：Future应用实例
+ * @author carter
+ * 创建时间： 2019年11月18日 10:53
+ **/
+
+public class FutureTest {
+
+    static final ExecutorService pool = Executors.newFixedThreadPool(2);
+
+
+    public static void main(String[] args) {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+
+        Future&lt;Long&gt; longFuture = pool.submit(() -&gt; doSomethingLongTime());
+
+        doSomething2();
+        try {
+            final Long longValue = longFuture.get(3, TimeUnit.SECONDS);
+            System.out.println(Thread.currentThread().getName() + &quot; future return value :&quot; + longValue + &quot; : &quot; + stopwatch.stop());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }
+        pool.shutdown();
+    }
+
+    private static void doSomething2() {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println(Thread.currentThread().getName() + &quot; doSomething2 :&quot; + stopwatch.stop());
+    }
+
+    private static Long doSomethingLongTime() {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println(Thread.currentThread().getName() + &quot; doSomethingLongTime : &quot; + stopwatch.stop());
+        return 1000L;
+    }
+
+
+}
+</code></code></pre>
+<p>没法编写简介的并发代码。描叙能力不够；比如如下场景：</p>
+<ol>
+<li>将两个异步计算的结果合并为一个，这两个异步计算之间互相独立，但是第二个有依赖第一个结果。</li>
+<li>等待Future中所有的任务都完成；</li>
+<li>仅等待Future集合中最快结束的任务完成，并返回它的结果；</li>
+<li>通过编程的方式完成一个Future任务的执行；</li>
+<li>响应Future的完成事件。</li>
+</ol>
+<p>基于这个缺陷，java8中引入了CompletableFuture 类；</p>
+<h1 id="实现异步api">实现异步API</h1>
+<p>技能点：</p>
+<ol>
+<li>提供异步API;</li>
+<li>修改同步的API为异步的API,如何使用流水线把两个任务合并为一个异步计算操作；</li>
+<li>响应式的方式处理异步操作的完成事件；</li>
+</ol>
+<table>
+<thead>
+<tr class="header">
+<th>类型</th>
+<th>区别</th>
+<th>是否堵塞</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>同步API</td>
+<td>调用方在被调用运行的过程中等待，被调用方运行结束后返回，调用方取得返回值后继续运行</td>
+<td>堵塞</td>
+</tr>
+<tr class="even">
+<td>异步API</td>
+<td>调用方和被调用方是异步的，调用方不用等待被调用方返回结果</td>
+<td>非堵塞</td>
+</tr>
+</tbody>
+</table>
+<pre><code><code>package com.test.completable;
+
+import com.google.common.base.Stopwatch;
+import com.google.common.base.Ticker;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 说明：异步调用计算价格的方法
+ * @author carter
+ * 创建时间： 2019年11月18日 13:32
+ **/
+
+public class Test {
+
+    public static void main(String[] args) {
+        Shop shop = new Shop(&quot;BestShop&quot;);
+
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        Stopwatch stopwatch2 = Stopwatch.createStarted();
+
+        Future&lt;Double&gt; doubleFuture = shop.getPriceFuture(&quot;pizza&quot;);
+
+        System.out.println(&quot;getPriceFuture return after: &quot; + stopwatch.stop());
+
+        doSomethingElse();
+        try{
+            final Double price = doubleFuture.get();
+            System.out.println(&quot;price is &quot; + price + &quot; return after: &quot; + stopwatch2.stop());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void doSomethingElse() {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        DelayUtil.delay();
+        System.out.println(&quot;doSomethingElse &quot; + stopwatch.stop());
+
+    }
+
+
+}
+</code></code></pre>
+<p><strong>错误处理</strong></p>
+<p>如果计算价格的方法产生了错误，提示错误的异常会被现在在试图计算商品价格的当前线程的范围内，最终计算的异步线程会被杀死，这会导致get方法返回结果的客户端永久的被等待。</p>
+<p>如何避免异常被掩盖， completeExceptionally会把CompletableFuture内发生的问题抛出去。</p>
+<pre><code><code>
+    private static void test2() {
+        Shop shop = new Shop(&quot;BestShop&quot;);
+
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        Stopwatch stopwatch2 = Stopwatch.createStarted();
+
+        Future&lt;Double&gt; doubleFuture = shop.getPriceFutureException(&quot;pizza&quot;);
+
+        System.out.println(&quot;getPriceFuture return after: &quot; + stopwatch.stop());
+
+        doSomethingElse();
+        try{
+            final Double price = doubleFuture.get();
+            System.out.println(&quot;price is &quot; + price + &quot; return after: &quot; + stopwatch2.stop());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }</code></code></pre>
+<p>方法改造：</p>
+<pre><code><code>//异步方式查询产品价格,异常抛出去
+    public Future&lt;Double&gt; getPriceFutureException(String product){
+
+
+        final CompletableFuture&lt;Double&gt; doubleCompletableFuture = new CompletableFuture&lt;&gt;();
+
+        new Thread(()-&gt;{try {
+            doubleCompletableFuture.complete(alculatePriceException(product));
+        }catch (Exception ex){
+            doubleCompletableFuture.completeExceptionally(ex);
+        }
+        }).start();
+
+        return doubleCompletableFuture;
+    }</code></code></pre>
+<h1 id="无堵塞">无堵塞</h1>
+<p>即让多个线程去异步并行或者并发的执行任务，计算完之后汇聚结果；</p>
+<pre><code><code>
+    private static void test3(String productName) {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .map(item -&gt; String.format(&quot;商店:%s的商品：%s 售价是：%s&quot;, item.getName(), productName, item.getPrice(productName)))
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test3 done in  &quot; + stopwatch.stop());
+
+
+    }
+
+    private static void test3_parallelStream(String productName) {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .parallel()
+                .map(item -&gt; String.format(&quot;商店:%s的商品：%s 售价是：%s&quot;, item.getName(), productName, item.getPrice(productName)))
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test3_parallelStream done in  &quot; + stopwatch.stop());
+
+
+    }
+
+
+    private static void test3_completableFuture(String productName) {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .map(item -&gt;CompletableFuture.supplyAsync(()-&gt; String.format(&quot;商店:%s的商品：%s 售价是：%s&quot;, item.getName(), productName, item.getPrice(productName))))
+                .collect(Collectors.toList())
+                .stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test3_completableFuture done in  &quot; + stopwatch.stop());
+
+
+    }
+
+
+
+    private static void test3_completableFuture_pool(String productName) {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .map(item -&gt;CompletableFuture.supplyAsync(()-&gt; String.format(&quot;商店:%s的商品：%s 售价是：%s&quot;, item.getName(), productName, item.getPrice(productName)),pool))
+                .collect(Collectors.toList())
+                .stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test3_completableFuture done in  &quot; + stopwatch.stop());
+
+
+    }</code></code></pre>
+<p>代码中有一个简单的计算场景，我想查询4家商店的iphone11售价；</p>
+<p>华强北，益田苹果店，香港九龙城，京东商城；</p>
+<p>每一家的查询大概耗时1s;</p>
+<table>
+<thead>
+<tr class="header">
+<th>任务处理方式</th>
+<th>耗时</th>
+<th>优缺点说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>顺序执行</td>
+<td>4秒多</td>
+<td>简单，好理解</td>
+</tr>
+<tr class="even">
+<td>并行流</td>
+<td>1秒多</td>
+<td>无法定制流内置的线程池，使用简单，改造简单</td>
+</tr>
+<tr class="odd">
+<td>CompletableFuture 默认线程池</td>
+<td>2秒多</td>
+<td>默认线程池</td>
+</tr>
+<tr class="even">
+<td>CompletableFuture 指定线程池</td>
+<td>1秒多</td>
+<td>指定了线程池，可定制性更好，相比于并行流</td>
+</tr>
+</tbody>
+</table>
+<h1 id="多个异步任务的流水线操作">多个异步任务的流水线操作</h1>
+<blockquote>
+<p>场景： 先计算价格，在拿到折扣，最后计算折扣价格；</p>
+</blockquote>
+<pre><code><code>
+    
+    private static void test4(String productName) {
+
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .map(shop-&gt;shop.getPrice_discount(productName))
+                .map(Quote::parse)
+                .map(DisCount::applyDiscount)
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test4 done in  &quot; + stopwatch.stop());
+
+
+    }
+
+    private static void test4_completableFuture(String productName) {
+
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        final List&lt;String&gt; stringList = Stream.of(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;))
+                .map(shop-&gt;CompletableFuture.supplyAsync(()-&gt;shop.getPrice_discount(productName),pool))
+                .map(future-&gt;future.thenApply( Quote::parse))
+                .map(future-&gt;future.thenCompose(quote -&gt; CompletableFuture.supplyAsync(()-&gt;DisCount.applyDiscount(quote),pool)))
+                .collect(Collectors.toList())
+                .stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        System.out.println(stringList);
+        System.out.println(&quot;test4_completableFuture done in  &quot; + stopwatch.stop());
+
+
+    }</code></code></pre>
+<p>以上是有依赖关系的两个任务的聚合，即任务2，依赖任务1的结果。使用的是thenCompose方法；</p>
+<p>接下来如果有两个任务可以异步执行，最后需要依赖着两个任务的结果计算得到最终结果，采用的是thenCombine;</p>
+<pre><code><code>//两个不同的任务，最后需要汇聚结果，采用combine
+    private static void test5(String productName) {
+
+        Stopwatch stopwatch = Stopwatch.createStarted();
+
+
+        Shop shop = new Shop(&quot;香港九龙&quot;);
+
+      Double pricefinal =  CompletableFuture.supplyAsync(()-&gt;shop.getPrice(productName))
+                .thenCombine(CompletableFuture.supplyAsync(shop::getRate),(price, rate)-&gt;price * rate).join();
+
+
+        System.out.println(&quot;test4 done in  &quot; + stopwatch.stop());
+
+
+    }</code></code></pre>
+<h1 id="completion事件">completion事件</h1>
+<p>让任务尽快结束，无需等待；<br />
+有多个服务来源，你请求多个，谁先返回，就先响应；</p>
+<p>结果依次返回：</p>
+<pre><code><code> //等待所有的任务执行完毕； CompletableFuture.allOf()
+    public void findPriceStream(String productName){
+        List&lt;Shop&gt; shops = Arrays.asList(new Shop(&quot;华强北&quot;), new Shop(&quot;益田假日广场&quot;), new Shop(&quot;香港九龙城&quot;), new Shop(&quot;京东商城&quot;));
+        final CompletableFuture[] completableFutureArray = shops.stream()
+                .map(shop -&gt; CompletableFuture.supplyAsync(() -&gt; shop.getPrice_discount(productName), pool))
+                .map(future -&gt; future.thenApply(Quote::parse))
+                .map(future -&gt; future.thenCompose(quote -&gt; CompletableFuture.supplyAsync(() -&gt; DisCount.applyDiscount(quote), pool)))
+                .map(f -&gt; f.thenAccept(System.out::println))
+                .toArray(size -&gt; new CompletableFuture[size]);
+
+
+        CompletableFuture.allOf(completableFutureArray).join();
+
+    }</code></code></pre>
+<p>多个来源获取最快的结果：</p>
+<pre><code><code>//有两个获取天气的途径，哪个快最后结果就取哪一个
+    public static void getWeather(){
+        final Object join = CompletableFuture.anyOf(CompletableFuture.supplyAsync(() -&gt; a_weather()), CompletableFuture.supplyAsync(() -&gt; b_weather())).join();
+
+        System.out.println(join);
+    }
+
+    private static String b_weather() {
+        DelayUtil.delay(3);
+        return &quot;bWeather&quot;;
+    }
+
+    private static String a_weather() {
+        DelayUtil.delay(5);
+        return &quot;aWeather&quot;;
+    }</code></code></pre>
+<h1 id="源码分析">源码分析</h1>
+<p>可完备化的将来；CompletableFuture ;</p>
+<p>先看签名：</p>
+<pre><code><code>public class CompletableFuture&lt;T&gt; implements Future&lt;T&gt;, CompletionStage&lt;T&gt; {}
+</code></code></pre>
+<p>实现了Futrue,CompletionStage接口；<br />
+这两个接口简单说明一下：</p>
+<table>
+<thead>
+<tr class="header">
+<th>接口</th>
+<th>关键特性</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Future</td>
+<td>直接翻译为未来,标识把一个任务异步执行，需要的的时候，通过get方法获取，也可以取消cancel，此外还提供了状态查询方法，isDone, isCancled,实现类是FutureTask</td>
+</tr>
+<tr class="even">
+<td>CompletionStage</td>
+<td>直接翻译是完成的阶段,提供了函数式编程方法</td>
+</tr>
+</tbody>
+</table>
+<p>可以分为如下几类方法</p>
+<table>
+<thead>
+<tr class="header">
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>thenApply(Function f)</td>
+<td>当前阶段正常完成之后，返回一个新的阶段，新的阶段把当前阶段的结果作为参数输入;</td>
+</tr>
+<tr class="even">
+<td>thenConsume(Consumer c),</td>
+<td>当前阶段完成之后，结果作为参数输入，直接消费掉，得到不返回结果的完成阶段；</td>
+</tr>
+<tr class="odd">
+<td>thenRun(Runnable action),</td>
+<td>不接受参数，只是继续执行任务，得到一个新的完成阶段；</td>
+</tr>
+<tr class="even">
+<td>thenCombine(otherCompletionStage，BiFunction),</td>
+<td>当两个完成阶段都完成的时候，执行BIFunction,返回一个新的阶段；</td>
+</tr>
+<tr class="odd">
+<td>thenAcceptBoth(OtherCompletionStage, BiConsumer)</td>
+<td>两个完成阶段都完成之后，对两个结果进行消费；</td>
+</tr>
+<tr class="even">
+<td>runAfterBoth(OtherCompletionStage,Runable)</td>
+<td>两个完成阶段都完成之后，执行一个动作；</td>
+</tr>
+<tr class="odd">
+<td>applyToEither(OtherCompletionStage,Function)</td>
+<td>两个完成阶段的任何一个执行结束，进入函数操作，并返回一个新的阶段</td>
+</tr>
+<tr class="even">
+<td>acceptEither(OtherCompletionStage,Consumer)</td>
+<td>两个完成阶段的任何一个执行结束，消费掉，返回一个空返回值的完成阶段</td>
+</tr>
+<tr class="odd">
+<td>runAfterEither（OtherCompletionStage,Runable）</td>
+<td>两个完成阶段的任何一个结束，执行一个动作，返回一个空返回值的完成阶段</td>
+</tr>
+<tr class="even">
+<td>thenCompose（Function）</td>
+<td>当前阶段完成，返回值作为参数，进行函数运算，然后结果作为一个新的完成阶段</td>
+</tr>
+<tr class="odd">
+<td>exceptionally（Function）</td>
+<td>无论当前阶段是否正常完成，消费掉异常，然后返回值作为一个新的完成阶段</td>
+</tr>
+<tr class="even">
+<td>whenComplete</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>handle</td>
+<td>无论当前完成阶段是否正常结束，都执行一个BIFunction的函数，并返回一个新结果作为一个新的完成阶段</td>
+</tr>
+<tr class="even">
+<td>toCompletableFuture</td>
+<td>转换为ComplatableFuture</td>
+</tr>
+</tbody>
+</table>
+<p>里面的实现细节后面单独成文章再讲。</p>
+<h1 id="小结">小结</h1>
+<blockquote>
+<ol>
+<li>执行一些比较耗时的操作，尤其是依赖一个或者多个远程服务的操作，可以使用异步任务改善程序的性能，加快程序的响应速度；</li>
+<li>使用CompletableFuture你可以轻松的实现异步API;</li>
+<li>CompletableFuture提供了异常管理机制，让主线程有机会接管子任务抛出的异常；</li>
+<li>把同步API封装到CompletableFuture中，可以异步得到它的结果；</li>
+<li>如果异步任务之间互相独立，而他们之间的某一些结果是另外一些的输入，可以把这些任务进行compose;</li>
+<li>可以为CompletableFuture中的任务注册一个回调函数，当任务执行完毕之后再进行一些其它操作；</li>
+<li>你可以决定什么时候结束程序的运行，是所有的CompletableFuture任务所有对象执行完毕，或者只要其中任何一个完成即可。</li>
+</ol>
+</blockquote>
+<blockquote>
+<p>原创不易，转载请注明出处。</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

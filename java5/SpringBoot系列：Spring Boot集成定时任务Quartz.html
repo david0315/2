@@ -1,0 +1,186 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot系列：Spring Boot集成定时任务Quartz' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot系列：Spring Boot集成定时任务Quartz</center></div><div class='banquan'>原文出处:本文由博客园博主杨小格子提供。<br/>
+原文连接:https://www.cnblogs.com/imyanger/p/11828301.html</div><br>
+    <h3 id="一关于quartz">一、关于Quartz</h3>
+<p>Quartz是OpenSymphony开源组织在Job scheduling领域又一个开源项目，它可以与J2EE与J2SE应用程序相结合也可以单独使用。在java企业级应用中，Quartz是使用最广泛的定时调度框架。</p>
+<p>在Quartz中的主要概念：</p>
+<ul>
+<li>Scheduler：调度任务的主要API</li>
+<li>ScheduleBuilder：用于构建Scheduler，例如其简单实现类SimpleScheduleBuilder</li>
+<li>Job：调度任务执行的接口，也即定时任务执行的方法</li>
+<li>JobDetail：定时任务作业的实例</li>
+<li>JobBuilder：关联具体的Job，用于构建JobDetail</li>
+<li>Trigger：定义调度执行计划的组件，即定时执行</li>
+<li>TriggerBuilder：构建Trigger</li>
+</ul>
+<h3 id="一quartz演示示例">一、Quartz演示示例</h3>
+<p>在SpringBoot中，我们需要引入quartz的依赖。</p>
+<pre><code><code> &lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+&lt;/dependency&gt;
+
+&lt;!--quartz定时调度依赖--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-quartz&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>首先定义定时具体执行逻辑Job，创建类QuartzJob1，这里集继承QuartzJobBean实现executeInternal即可，该方法即定时执行任务逻辑，这里简单打印了下当前时间。</p>
+<pre class="java"><code>public class QuartzJob1 extends QuartzJobBean {
+
+    @Override
+    protected void executeInternal(JobExecutionContext jobExecutionContext) throws JobExecutionException {
+        SimpleDateFormat sdf=new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;);
+        System.out.println(&quot;QuartzJob1----&quot; + sdf.format(new Date()));
+    }
+
+}</code></code></pre>
+<p>然后创建QuartzConfig，接着定义JobDetail，JobDetail由JobBuilder构建，同时关联了任务QuartzJob1。</p>
+<pre class="java"><code>@Configuration
+public class QuartzConfig {
+
+    @Bean
+    public JobDetail jobDetail1(){
+        return JobBuilder.newJob(QuartzJob1.class).storeDurably().build();
+    }
+    
+}</code></code></pre>
+<p>最后我们需要定义定时调度Trigger，简单实现类SimpleScheduleBuilder用于构建Scheduler，TriggerBuilder则用于构建Trigger，</p>
+<pre class="java"><code>@Configuration
+public class QuartzConfig {
+
+    @Bean
+    public JobDetail jobDetail1(){
+        return JobBuilder.newJob(QuartzJob1.class).storeDurably().build();
+    }
+
+    @Bean
+    public Trigger trigger1(){
+        SimpleScheduleBuilder scheduleBuilder = SimpleScheduleBuilder.simpleSchedule()
+                .withIntervalInSeconds(1) //每一秒执行一次
+                .repeatForever(); //永久重复，一直执行下去
+        return TriggerBuilder.newTrigger()
+                .forJob(jobDetail1())
+                .withSchedule(scheduleBuilder)
+                .build();
+    }
+    
+}</code></code></pre>
+<p>这样一个Quartz定时任务就配置完成了。</p>
+<p>其实Job的定义也可以使用内部类，这样可以省去Job类的创建，例如下面定时任务2 jobDetail2和trigger2。</p>
+<pre class="java"><code>@Bean
+public JobDetail jobDetail2(){
+    QuartzJobBean quartzJob2 = new QuartzJobBean() {
+        @Override
+        protected void executeInternal(JobExecutionContext jobExecutionContext) throws JobExecutionException {
+            SimpleDateFormat sdf=new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;);
+            System.out.println(&quot;内部类quartzJob2----&quot; + sdf.format(new Date()));
+        }
+    };
+    return JobBuilder.newJob(quartzJob2.getClass()).storeDurably().build();
+}
+
+@Bean
+public Trigger trigger2(){
+    //JobDetail的bean注入不能省略
+    //JobDetail jobDetail3 = JobBuilder.newJob(QuartzJob2.class).storeDurably().build();
+    SimpleScheduleBuilder scheduleBuilder = SimpleScheduleBuilder.simpleSchedule()
+            .withIntervalInSeconds(2) //每2秒执行一次
+            .repeatForever(); //永久重复，一直执行下去
+    return TriggerBuilder.newTrigger()
+            .forJob(jobDetail2())
+            .withSchedule(scheduleBuilder).build();
+}</code></code></pre>
+<p>启动程序，我们就可以看到控制台的时间输出了。</p>
+<p><img src="./images/SpringBoot系列：Spring Boot集成定时任务Quartz0.png" /></p>
+<p>同时Quartz是支持数据持久化的，可以将定时调度信息持久化到数据库。</p>
+<p>选择持久化到数据库，我们需要创建对应的表，建表语句可以在<a href="http://www.quartz-scheduler.org/downloads/">Quartz官网</a>进行下载，解压后在docs\dbTables目录下寻找对应数据库的SQL脚本。</p>
+<p>为了方便，我也将该文件放在了项目源码resources里。</p>
+<p>操作数据库，我们引入相关的依赖。若有ORM框架，例如mybatis，hibernate或者jpa，则无需再引入jdbc依赖。</p>
+<pre class="java"><code>&lt;!--mysql连接--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;mysql&lt;/groupId&gt;
+    &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
+    &lt;scope&gt;runtime&lt;/scope&gt;
+&lt;/dependency&gt;
+
+&lt;!--druid连接池--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+    &lt;artifactId&gt;druid-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.1.10&lt;/version&gt;
+&lt;/dependency&gt;
+
+&lt;!--jdbc依赖--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-jdbc&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>在application.yml配置文件中，我们对quartz持久化方式进行声明。</p>
+<pre class="yml"><code>server:
+  port: 10900
+
+spring:
+  profiles:
+    active: dev
+  quartz:
+    job-store-type: jdbc #持久化到数据库
+    properties:
+      org:
+        quartz:
+          datasource:
+            # 新版驱动从com.mysql.jdbc.Driver变更为com.mysql.cj.jdbc.Driver
+            driver-class-name: com.mysql.cj.jdbc.Driver
+            # 数据源需要添加时间标准和指定编码格式解决乱码 You must configure either the server or JDBC driver (via the serverTimezone configuration property) to use a more specifc time zone value if you want to utilize time zone support.
+            url: jdbc:mysql://localhost:3306/springboot?useUnicode=true&amp;characterEncoding=UTF-8&amp;serverTimezone=UTC
+            username: root
+            password: 1234
+          scheduler:
+            instancName: clusteredScheduler
+            instanceId: AUTO
+          jobStore:
+            class: org.quartz.impl.jdbcjobstore.JobStoreTX
+            driverDelegateClass: org.quartz.impl.jdbcjobstore.StdJDBCDelegate #StdJDBCDelegate说明支持集群
+            tablePrefix: QRTZ_
+            isClustered: true
+            clusterCheckinInterval: 1000
+            useProperties: false
+          threadPool:
+            class: org.quartz.simpl.SimpleThreadPool
+            threadCount: 20
+            threadPriority: 5</code></code></pre>
+<p>这里主要就是job-store-type: jdbc，表示持久化到数据库，然后就是数据源，由于该演示项目没有其他ORM的数据源，所以这里将数据源信息定义在了quartz节点下的datasource节点，如果已经存在，可使用同一个属性配置，当然最关键的是QuartzDataSource声明。</p>
+<p>这里关键的是@QuartzDataSource，这个要和项目中已经存在的数据源区分开。</p>
+<pre class="java"><code>//Error:EmbeddedDatabaseType class not found，Druid数据源初始化需要引入spring-jdbc依赖，JPA或mybatis依赖已经包含该依赖
+@Bean
+@QuartzDataSource
+@ConfigurationProperties(prefix = &quot;spring.quartz.properties.org.quartz.datasource&quot;)
+DataSource quartzDataSource(){
+    return DruidDataSourceBuilder.create().build();
+}</code></code></pre>
+<p>这样持久化就已经配置好了，我们执行sql，再启动项目，启动完成后，我们可以看到数据库中已经有我们的定时调度数据了。</p>
+<p><img src="./images/SpringBoot系列：Spring Boot集成定时任务Quartz1.png" /></p>
+<p>源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p25-springboot-quartz" class="uri">https://github.com/imyanger/springboot-project/tree/master/p25-springboot-quartz</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

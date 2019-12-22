@@ -1,0 +1,336 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot健康检查实现原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot健康检查实现原理</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11645753.html</div><br>
+    <p>相信看完之前文章的同学都知道了SpringBoot自动装配的套路了，直接看<code>spring.factories</code>文件，当我们使用的时候只需要引入如下依赖</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>然后在<code>org.springframework.boot.spring-boot-actuator-autoconfigure</code>包下去就可以找到这个文件</p>
+<h5 id="自动装配">自动装配</h5>
+<p>查看这个文件发现引入了很多的配置类，这里先关注一下<code>XXXHealthIndicatorAutoConfiguration</code>系列的类，这里咱们拿第一个<code>RabbitHealthIndicatorAutoConfiguration</code>为例来解析一下。看名字就知道这个是RabbitMQ的健康检查的自动配置类</p>
+<pre><code><code>@Configuration
+@ConditionalOnClass(RabbitTemplate.class)
+@ConditionalOnBean(RabbitTemplate.class)
+@ConditionalOnEnabledHealthIndicator(&quot;rabbit&quot;)
+@AutoConfigureBefore(HealthIndicatorAutoConfiguration.class)
+@AutoConfigureAfter(RabbitAutoConfiguration.class)
+public class RabbitHealthIndicatorAutoConfiguration extends
+        CompositeHealthIndicatorConfiguration&lt;RabbitHealthIndicator, RabbitTemplate&gt; {
+
+    private final Map&lt;String, RabbitTemplate&gt; rabbitTemplates;
+
+    public RabbitHealthIndicatorAutoConfiguration(
+            Map&lt;String, RabbitTemplate&gt; rabbitTemplates) {
+        this.rabbitTemplates = rabbitTemplates;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = &quot;rabbitHealthIndicator&quot;)
+    public HealthIndicator rabbitHealthIndicator() {
+        return createHealthIndicator(this.rabbitTemplates);
+    }
+}</code></code></pre>
+<p>按照以往的惯例，先解析注解</p>
+<ol>
+<li><code>@ConditionalOnXXX</code>系列又出现了，前两个就是说如果当前存在<code>RabbitTemplate</code>这个bean也就是说我们的项目中使用到了RabbitMQ才能进行下去</li>
+<li><code>@ConditionalOnEnabledHealthIndicator</code>这个注解很明显是SpringBoot actuator自定义的注解，看一下吧</li>
+</ol>
+<pre><code><code>@Conditional(OnEnabledHealthIndicatorCondition.class)
+public @interface ConditionalOnEnabledHealthIndicator {
+    String value();
+}
+class OnEnabledHealthIndicatorCondition extends OnEndpointElementCondition {
+
+    OnEnabledHealthIndicatorCondition() {
+        super(&quot;management.health.&quot;, ConditionalOnEnabledHealthIndicator.class);
+    }
+
+}
+public abstract class OnEndpointElementCondition extends SpringBootCondition {
+
+    private final String prefix;
+
+    private final Class&lt;? extends Annotation&gt; annotationType;
+
+    protected OnEndpointElementCondition(String prefix,
+            Class&lt;? extends Annotation&gt; annotationType) {
+        this.prefix = prefix;
+        this.annotationType = annotationType;
+    }
+
+    @Override
+    public ConditionOutcome getMatchOutcome(ConditionContext context,
+            AnnotatedTypeMetadata metadata) {
+        AnnotationAttributes annotationAttributes = AnnotationAttributes
+                .fromMap(metadata.getAnnotationAttributes(this.annotationType.getName()));
+        String endpointName = annotationAttributes.getString(&quot;value&quot;);
+        ConditionOutcome outcome = getEndpointOutcome(context, endpointName);
+        if (outcome != null) {
+            return outcome;
+        }
+        return getDefaultEndpointsOutcome(context);
+    }
+
+    protected ConditionOutcome getEndpointOutcome(ConditionContext context,
+            String endpointName) {
+        Environment environment = context.getEnvironment();
+        String enabledProperty = this.prefix + endpointName + &quot;.enabled&quot;;
+        if (environment.containsProperty(enabledProperty)) {
+            boolean match = environment.getProperty(enabledProperty, Boolean.class, true);
+            return new ConditionOutcome(match,
+                    ConditionMessage.forCondition(this.annotationType).because(
+                            this.prefix + endpointName + &quot;.enabled is &quot; + match));
+        }
+        return null;
+    }
+
+    protected ConditionOutcome getDefaultEndpointsOutcome(ConditionContext context) {
+        boolean match = Boolean.valueOf(context.getEnvironment()
+                .getProperty(this.prefix + &quot;defaults.enabled&quot;, &quot;true&quot;));
+        return new ConditionOutcome(match,
+                ConditionMessage.forCondition(this.annotationType).because(
+                        this.prefix + &quot;defaults.enabled is considered &quot; + match));
+    }
+
+}
+public abstract class SpringBootCondition implements Condition {
+
+    private final Log logger = LogFactory.getLog(getClass());
+
+    @Override
+    public final boolean matches(ConditionContext context,
+            AnnotatedTypeMetadata metadata) {
+        String classOrMethodName = getClassOrMethodName(metadata);
+        try {
+            ConditionOutcome outcome = getMatchOutcome(context, metadata);
+            logOutcome(classOrMethodName, outcome);
+            recordEvaluation(context, classOrMethodName, outcome);
+            return outcome.isMatch();
+        }
+        catch (NoClassDefFoundError ex) {
+            throw new IllegalStateException(
+                    &quot;Could not evaluate condition on &quot; + classOrMethodName + &quot; due to &quot;
+                            + ex.getMessage() + &quot; not &quot;
+                            + &quot;found. Make sure your own configuration does not rely on &quot;
+                            + &quot;that class. This can also happen if you are &quot;
+                            + &quot;@ComponentScanning a springframework package (e.g. if you &quot;
+                            + &quot;put a @ComponentScan in the default package by mistake)&quot;,
+                    ex);
+        }
+        catch (RuntimeException ex) {
+            throw new IllegalStateException(
+                    &quot;Error processing condition on &quot; + getName(metadata), ex);
+        }
+    }
+    private void recordEvaluation(ConditionContext context, String classOrMethodName,
+            ConditionOutcome outcome) {
+        if (context.getBeanFactory() != null) {
+            ConditionEvaluationReport.get(context.getBeanFactory())
+                    .recordConditionEvaluation(classOrMethodName, this, outcome);
+        }
+    }
+}</code></code></pre>
+<p>上方的入口方法是<code>SpringBootCondition</code>类的<code>matches</code>方法，<code>getMatchOutcome</code> 这个方法则是子类<code>OnEndpointElementCondition</code>的，这个方法首先会去环境变量中查找是否存在<code>management.health.rabbit.enabled</code>属性，如果没有的话则去查找<code>management.health.defaults.enabled</code>属性，如果这个属性还没有的话则设置默认值为true</p>
+<p>当这里返回true时整个<code>RabbitHealthIndicatorAutoConfiguration</code>类的自动配置才能继续下去</p>
+<ol>
+<li><code>@AutoConfigureBefore</code>既然这样那就先看看类<code>HealthIndicatorAutoConfiguration</code>都是干了啥再回来吧</li>
+</ol>
+<pre><code><code>@Configuration
+@EnableConfigurationProperties({ HealthIndicatorProperties.class })
+public class HealthIndicatorAutoConfiguration {
+
+    private final HealthIndicatorProperties properties;
+
+    public HealthIndicatorAutoConfiguration(HealthIndicatorProperties properties) {
+        this.properties = properties;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean({ HealthIndicator.class, ReactiveHealthIndicator.class })
+    public ApplicationHealthIndicator applicationHealthIndicator() {
+        return new ApplicationHealthIndicator();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(HealthAggregator.class)
+    public OrderedHealthAggregator healthAggregator() {
+        OrderedHealthAggregator healthAggregator = new OrderedHealthAggregator();
+        if (this.properties.getOrder() != null) {
+            healthAggregator.setStatusOrder(this.properties.getOrder());
+        }
+        return healthAggregator;
+    }
+
+}</code></code></pre>
+<p>首先这个类引入了配置文件<code>HealthIndicatorProperties</code>这个配置类是系统状态相关的配置</p>
+<pre><code><code>@ConfigurationProperties(prefix = &quot;management.health.status&quot;)
+public class HealthIndicatorProperties {
+
+    private List&lt;String&gt; order = null;
+
+    private final Map&lt;String, Integer&gt; httpMapping = new HashMap&lt;&gt;();
+}</code></code></pre>
+<p>接着就是注册了2个bean<code>ApplicationHealthIndicator</code>和<code>OrderedHealthAggregator</code><br />
+这两个bean的作用稍后再说，现在回到<code>RabbitHealthIndicatorAutoConfiguration</code>类</p>
+<ol>
+<li><code>@AutoConfigureAfter</code>这个对整体逻辑没影响，暂且不提</li>
+<li>类中注册了一个bean<code>HealthIndicator</code>这个bean的创建逻辑是在父类中的</li>
+</ol>
+<pre><code><code>public abstract class CompositeHealthIndicatorConfiguration&lt;H extends HealthIndicator, S&gt; {
+
+    @Autowired
+    private HealthAggregator healthAggregator;
+
+    protected HealthIndicator createHealthIndicator(Map&lt;String, S&gt; beans) {
+        if (beans.size() == 1) {
+            return createHealthIndicator(beans.values().iterator().next());
+        }
+        CompositeHealthIndicator composite = new CompositeHealthIndicator(
+                this.healthAggregator);
+        for (Map.Entry&lt;String, S&gt; entry : beans.entrySet()) {
+            composite.addHealthIndicator(entry.getKey(),
+                    createHealthIndicator(entry.getValue()));
+        }
+        return composite;
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected H createHealthIndicator(S source) {
+        Class&lt;?&gt;[] generics = ResolvableType
+                .forClass(CompositeHealthIndicatorConfiguration.class, getClass())
+                .resolveGenerics();
+        Class&lt;H&gt; indicatorClass = (Class&lt;H&gt;) generics[0];
+        Class&lt;S&gt; sourceClass = (Class&lt;S&gt;) generics[1];
+        try {
+            return indicatorClass.getConstructor(sourceClass).newInstance(source);
+        }
+        catch (Exception ex) {
+            throw new IllegalStateException(&quot;Unable to create indicator &quot; + indicatorClass
+                    + &quot; for source &quot; + sourceClass, ex);
+        }
+    }
+
+}</code></code></pre>
+<ol>
+<li>首先这里注入了一个对象<code>HealthAggregator</code>，这个对象就是刚才注册的<code>OrderedHealthAggregator</code></li>
+<li>第一个<code>createHealthIndicator</code>方法执行逻辑为：如果传入的beans的size 为1,则调用<code>createHealthIndicator</code>创建<code>HealthIndicator</code><br />
+否则创建<code>CompositeHealthIndicator</code>,遍历传入的beans,依次创建<code>HealthIndicator</code>,加入到<code>CompositeHealthIndicator</code>中</li>
+<li>第二个<code>createHealthIndicator</code>的执行逻辑为：获得<code>CompositeHealthIndicatorConfiguration</code>中的泛型参数根据泛型参数H对应的class和S对应的class,在H对应的class中找到声明了参数为S类型的构造器进行实例化</li>
+<li>最后这里创建出来的bean为<code>RabbitHealthIndicator</code></li>
+<li>回忆起之前学习健康检查的使用时，如果我们需要自定义健康检查项时一般的操作都是实现<code>HealthIndicator</code>接口，由此可以猜测<code>RabbitHealthIndicator</code>应该也是这样做的。观察这个类的继承关系可以发现这个类继承了一个实现实现此接口的类<code>AbstractHealthIndicator</code>，而RabbitMQ的监控检查流程则如下代码所示</li>
+</ol>
+<pre><code><code>    //这个方法是AbstractHealthIndicator的
+public final Health health() {
+        Health.Builder builder = new Health.Builder();
+        try {
+            doHealthCheck(builder);
+        }
+        catch (Exception ex) {
+            if (this.logger.isWarnEnabled()) {
+                String message = this.healthCheckFailedMessage.apply(ex);
+                this.logger.warn(StringUtils.hasText(message) ? message : DEFAULT_MESSAGE,
+                        ex);
+            }
+            builder.down(ex);
+        }
+        return builder.build();
+    }
+//下方两个方法是由类RabbitHealthIndicator实现的
+protected void doHealthCheck(Health.Builder builder) throws Exception {
+        builder.up().withDetail(&quot;version&quot;, getVersion());
+    }
+
+    private String getVersion() {
+        return this.rabbitTemplate.execute((channel) -&gt; channel.getConnection()
+                .getServerProperties().get(&quot;version&quot;).toString());
+    }</code></code></pre>
+<h5 id="健康检查">健康检查</h5>
+<p>上方一系列的操作之后，其实就是搞出了一个RabbitMQ的<code>HealthIndicator</code>实现类，而负责检查RabbitMQ健康不健康也是这个类来负责的。由此我们可以想象到如果当前环境存在MySQL、Redis、ES等情况应该也是这么个操作</p>
+<p>那么接下来无非就是当有调用方访问如下地址时，分别调用整个系统的所有的<code>HealthIndicator</code>的实现类的<code>health</code>方法即可了</p>
+<pre><code><code>http://ip:port/actuator/health</code></code></pre>
+<h6 id="healthendpointautoconfiguration"><code>HealthEndpointAutoConfiguration</code></h6>
+<p>上边说的这个操作过程就在类<code>HealthEndpointAutoConfiguration</code>中，这个配置类同样也是在<code>spring.factories</code>文件中引入的</p>
+<pre><code><code>@Configuration
+@EnableConfigurationProperties({HealthEndpointProperties.class, HealthIndicatorProperties.class})
+@AutoConfigureAfter({HealthIndicatorAutoConfiguration.class})
+@Import({HealthEndpointConfiguration.class, HealthEndpointWebExtensionConfiguration.class})
+public class HealthEndpointAutoConfiguration {
+    public HealthEndpointAutoConfiguration() {
+    }
+}</code></code></pre>
+<p>这里重点的地方在于引入的<code>HealthEndpointConfiguration</code>这个类</p>
+<pre><code><code>@Configuration
+class HealthEndpointConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnEnabledEndpoint
+    public HealthEndpoint healthEndpoint(ApplicationContext applicationContext) {
+        return new HealthEndpoint(HealthIndicatorBeansComposite.get(applicationContext));
+    }
+
+}</code></code></pre>
+<p>这个类只是构建了一个类<code>HealthEndpoint</code>，这个类我们可以理解为一个SpringMVC的Controller，也就是处理如下请求的</p>
+<pre><code><code>http://ip:port/actuator/health</code></code></pre>
+<p>那么首先看一下它的构造方法传入的是个啥对象吧</p>
+<pre><code><code>public static HealthIndicator get(ApplicationContext applicationContext) {
+        HealthAggregator healthAggregator = getHealthAggregator(applicationContext);
+        Map&lt;String, HealthIndicator&gt; indicators = new LinkedHashMap&lt;&gt;();
+        indicators.putAll(applicationContext.getBeansOfType(HealthIndicator.class));
+        if (ClassUtils.isPresent(&quot;reactor.core.publisher.Flux&quot;, null)) {
+            new ReactiveHealthIndicators().get(applicationContext)
+                    .forEach(indicators::putIfAbsent);
+        }
+        CompositeHealthIndicatorFactory factory = new CompositeHealthIndicatorFactory();
+        return factory.createHealthIndicator(healthAggregator, indicators);
+    }</code></code></pre>
+<p>跟我们想象中的一样，就是通过Spring容器获取所有的<code>HealthIndicator</code>接口的实现类，我这里只有几个默认的和RabbitMQ的<br />
+<img src="./images/SpringBoot健康检查实现原理0.png" alt="1" /><br />
+然后都放入了其中一个聚合的实现类<code>CompositeHealthIndicator</code>中</p>
+<p>既然<code>HealthEndpoint</code>构建好了，那么只剩下最后一步处理请求了</p>
+<pre><code><code>@Endpoint(id = &quot;health&quot;)
+public class HealthEndpoint {
+
+    private final HealthIndicator healthIndicator;
+
+    @ReadOperation
+    public Health health() {
+        return this.healthIndicator.health();
+    }
+
+}</code></code></pre>
+<p>刚刚我们知道，这个类是通过<code>CompositeHealthIndicator</code>构建的，所以<code>health</code>方法的实现就在这个类中</p>
+<pre><code><code>public Health health() {
+        Map&lt;String, Health&gt; healths = new LinkedHashMap&lt;&gt;();
+        for (Map.Entry&lt;String, HealthIndicator&gt; entry : this.indicators.entrySet()) {
+          //循环调用
+            healths.put(entry.getKey(), entry.getValue().health());
+        }
+        //对结果集排序
+        return this.healthAggregator.aggregate(healths);
+    }</code></code></pre>
+<p>至此SpringBoot的健康检查实现原理全部解析完成</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

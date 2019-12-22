@@ -1,0 +1,126 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Docker下dubbo开发三部曲之三：java开发' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Docker下dubbo开发三部曲之三：java开发</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11539600.html</div><br>
+    <p>在前两章<a href="http://blog.csdn.net/boling_cavalry/article/details/72303126">《Docker下dubbo开发，三部曲之一：极速体验》</a>和<a href="http://blog.csdn.net/boling_cavalry/article/details/72460526">《Docker下dubbo开发，三部曲之二：本地环境搭建》</a>中，我们体验了dubbo环境搭建以及服务的发布和消费，对dubbo有了初步认识，本章我们来实战dubbo服务的发布和消费代码的编写，实战后的我们能将自己的服务发布到dubbo环境供别人调用，也能让自己的工程去调用dubbo环境中的已有服务；</p>
+<h2 id="源码下载">源码下载</h2>
+<p>本次实战一共有两个工程，分别是服务的提供者和消费者，都是web工程，代码在github上，地址是https://github.com/zq2599/blog_demos ，这里面有多个工程，本章所需的代码如下：</p>
+<ol>
+<li>服务提供者的代码在目录dubbo_service_provider下，如下图红框所示：</li>
+</ol>
+<p><img src="./images/Docker下dubbo开发三部曲之三：java开发0.png" alt="这里写图片描述" /></p>
+<ol>
+<li>服务消费者的代码在目录dubbo_service_consumer下，如下图红框所示：</li>
+</ol>
+<p><img src="./images/Docker下dubbo开发三部曲之三：java开发1.png" alt="这里写图片描述" /></p>
+<p>接下来我们逐个分析，实战开发；</p>
+<h2 id="服务提供者开发">服务提供者开发</h2>
+<p>首先是pom中的依赖关系，除了常用的spring相关的，我们还要加入dubbo和zookeeper的依赖，如下所示：</p>
+<pre><code><code>&lt;!-- dubbo --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+      &lt;artifactId&gt;dubbo&lt;/artifactId&gt;
+      &lt;version&gt;2.5.3&lt;/version&gt;
+      &lt;exclusions&gt;
+        &lt;exclusion&gt;
+          &lt;artifactId&gt;spring&lt;/artifactId&gt;
+          &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+        &lt;/exclusion&gt;
+      &lt;/exclusions&gt;
+    &lt;/dependency&gt;
+    &lt;!-- zkclient  --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;com.github.sgroschupf&lt;/groupId&gt;
+      &lt;artifactId&gt;zkclient&lt;/artifactId&gt;
+      &lt;version&gt;0.1&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;!--  zookeeper --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.apache.zookeeper&lt;/groupId&gt;
+      &lt;artifactId&gt;zookeeper&lt;/artifactId&gt;
+      &lt;version&gt;3.3.6&lt;/version&gt;
+    &lt;/dependency&gt;</code></code></pre>
+<p>接下来看代码，本次实战提供了两个服务，分别实现了一下两个接口：</p>
+<ol>
+<li>CalculateService定义add方法，执行最基础的int型加法服务，实现如下：</li>
+</ol>
+<pre class="java"><code>public class CalculateServiceImpl implements CalculateService{
+
+    @Override
+    public int add(int a, int b) {
+        return a + b;
+    }
+}</code></code></pre>
+<ol>
+<li>PlatformService定义getRpcFrom方法，返回当前环境系统中的换变量TOMCAT_SERVER_ID的值，这个值是docker容器启动的时候从docker-compose.yml中传入的；</li>
+</ol>
+<pre class="java"><code>public class PlatformServiceImpl implements PlatformService {
+
+    @Override
+    public String getRpcFrom() {
+        return System.getenv().get(&quot;TOMCAT_SERVER_ID&quot;);
+    }
+}</code></code></pre>
+<p>以上是两个演示用的服务实现，逻辑很简单，现在看如何将服务发布到dubbo环境：</p>
+<p>spring-extends.xml是我们自定义的spring配置文件，想发布到dubbo环境的服务都在这里声明：</p>
+<pre><code><code>&lt;dubbo:application name=&quot;dubbo_service_provider&quot; /&gt;
+    &lt;!-- 本机 伪集群 测试 --&gt;
+    &lt;!--
+    &lt;dubbo:registry  protocol=&quot;zookeeper&quot;  address=&quot;192.9.145.19:2181,192.9.145.19:2182,192.9.145.19:2183&quot;  /&gt;
+    --&gt;
+    &lt;dubbo:registry address=&quot;zookeeper://zkhost:2181&quot; /&gt;
+    &lt;dubbo:protocol name=&quot;dubbo&quot; port=&quot;20880&quot; /&gt;
+    &lt;dubbo:service interface=&quot;com.bolingcavalry.service.CalculateService&quot;
+                   ref=&quot;calculateService&quot; /&gt;
+    &lt;dubbo:service interface=&quot;com.bolingcavalry.service.PlatformService&quot;
+                   ref=&quot;platformService&quot; /&gt;
+    &lt;!-- 和本地bean一样实现服务 --&gt;
+    &lt;bean id=&quot;calculateService&quot; class=&quot;com.bolingcavalry.service.impl.CalculateServiceImpl&quot; /&gt;
+    &lt;bean id=&quot;platformService&quot; class=&quot;com.bolingcavalry.service.impl.PlatformServiceImpl&quot; /&gt;</code></code></pre>
+<p>dubbo:application定义了服务归属的应用为dubbo_service_provider;<br />
+dubbo:registry定义了注册中心地址，本次实战的zookeeper配置为单机，所以只填写了一个地址&quot;zookeeper://zkhost:2181&quot;，其中zkhost是docker容器的link属性的别名(连接到zookeeper容器)，在dubbo:registry配置的上面有一个被注释掉的dubbo:registry配置，里面是zookeeper集群时候的连接方式；<br />
+dubbo:protocol定义采用dubbo协议，使用20880端口；<br />
+dubbo:service配置了要发布的服务，指定服务接口以及对应的bean；</p>
+<p>使用以上配置，在spring环境启动后注册中心就会感知到，在pom.xml文件所在目录下执行<font color="blue">mvn clean package -Dmaven.test.skip=true<br />
+</font>即可编译打包，在docker容器发布运行方式请参照<a href="http://blog.csdn.net/boling_cavalry/article/details/72460526">《Docker下dubbo开发，三部曲之二：本地环境搭建》</a>；</p>
+<h2 id="服务消费者开发">服务消费者开发</h2>
+<p>服务消费者工程是dubbo_service_consumer，pom中的依赖关系和服务提供者的一样的，由于要调用dubbo_service_provider提供的服务，所以要把CalculateService和PlatformService这两个接口引入到工程中，一般是通过jar包方式引入，这里图个方便，直接将两个接口的源码复制到工程中，如下图：</p>
+<p><img src="./images/Docker下dubbo开发三部曲之三：java开发2.png" alt="这里写图片描述" /></p>
+<p>再来看看调用服务的代码，如下图所示，通过普通的Autowired就能直接使用了，就像普通的spring环境中使用服务一样简单：</p>
+<p>[外链图片转存中...(img-uShHNkJu-1568769121752)]</p>
+<p>从dubbo环境获取远程服务的能力，是通过以下spring配置来实现的：</p>
+<pre><code><code>&lt;!-- 消费方应用名，用于计算依赖关系，不是匹配条件，不要与提供方一样 --&gt;
+    &lt;dubbo:application name=&quot;dubbo_service_consumer&quot; /&gt;
+    &lt;!-- 使用multicast广播注册中心暴露发现服务地址 --&gt;
+    &lt;!--
+    &lt;dubbo:registry  protocol=&quot;zookeeper&quot;  address=&quot;192.9.145.19:2181,192.9.145.19:2182,192.9.145.19:2183&quot; /&gt;
+    --&gt;
+    &lt;dubbo:registry address=&quot;zookeeper://172.28.0.3:2181&quot; /&gt;
+    &lt;!-- 生成远程服务代理，可以和本地bean一样使用demoService --&gt;
+    &lt;dubbo:reference id=&quot;calculateService&quot; interface=&quot;com.bolingcavalry.service.CalculateService&quot; /&gt;
+    &lt;dubbo:reference id=&quot;platformService&quot; interface=&quot;com.bolingcavalry.service.PlatformService&quot; /&gt;</code></code></pre>
+<p>dubbo:application和dubbo:registry的作用和前面分析的服务提供者的一样，dubbo:reference是指从dubbo环境获得远程的服务，interface指定了服务类型，应用启动后，用到服务端的时候就会根据注册中心的信息，远程调用服务提供者的服务；</p>
+<p>以上就是dubbo的服务提供者和消费者的实战源码，实际的生产环境中，还会涉及到更详细更复杂的配置和使用，请读者们关注dubbo官网的开发手册。</p>
+<h3 id="欢迎关注我的公众号程序员欣宸">欢迎关注我的公众号：程序员欣宸</h3>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

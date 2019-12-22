@@ -1,0 +1,106 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring源码分析系列3BeanFactory核心容器的研究' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring源码分析系列3BeanFactory核心容器的研究</center></div><div class='banquan'>原文出处:本文由博客园博主三人行{必有我师}提供。<br/>
+原文连接:https://www.cnblogs.com/smallstudent/p/11641173.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        
+    
+
+<p>@(spring源码分析系列3:核心容器的研究)<br />
+在讲容器之前，再明确一下知识点。</p>
+<ul>
+<li><font color="red">BeanDefinition是Bean在容器的描述。BeanDefinition与Bean不是一个东西。</font></li>
+<li><font color="red">Bean是根据BeanDefinition创建出来的。也即是我们所说的对象。</font></li>
+</ul>
+<p><strong><em>BeanDefinition物料需要有地方存储，Bean成品需要有地方存。今天我们讲讲仓库。</em></strong></p>
+<h4 id="beanfactory家族">BeanFactory家族</h4>
+<p><img src="./images/spring源码分析系列3BeanFactory核心容器的研究0.png" alt="在这里插入图片描述" /><br />
+此图是默认容器DefaultListableBeanFactory的继承,实现关系图.我们从右向左来分析下.</p>
+<ol>
+<li>BeanFactory接口：<br />
+容器顶级接口，提供了容器最基本的能力，包括获取bean,是否包含bean,是否单例，获取bean类型，Bean的别名等方法。</li>
+<li>ListableBeanFactory接口：<br />
+BeanFactory的子接口；具有批量获取Bean的能力</li>
+<li>HierarchicalBeanFactory接口：具有访问父容器的能力。有层次的BeanFactory。</li>
+<li>AutowireCapableBeanFactory接口：继承BeanFactory，扩展了自动装配能力。这个接口更多的作用是用于于与其他框架集成，把不在spring容器中的Bean加入到Spring容器生命周期管理中来。此接口很少用</li>
+<li>ConfigurableBeanFactory：定义了BeanFactory的配置。继承HierarchicalBeanFactory和SingletonBeanRegistry接口。实现了此接口的容器，具有层次，单例BeanDefinition注册功能。</li>
+<li><p>ConfigurableListableBeanFactory：<br />
+大融合接口，除了具有上述接口的能外，还具有:类加载器,类型转化,属性编辑器,BeanPostProcessor,作用域,bean定义,处理bean依赖关系, bean销毁等功能。</p></li>
+<li><p>SingletonBeanRegistry接口: 具有Bean的操作能力.注册,查询,获取Bean数量等能力. 注意此处的Bean是实例.区别于BeanDefinition.</p></li>
+<li><p>SimpleAliasRegistry:Bean的别名操作类,实现了AliasRegistry.具有存储Bean别名,注册Bean别名,获取Bean别名的功能.aliasMap属性存储Bean别名</p></li>
+<li>DefaultSingletonBeanRegistry:除了继承了SimpleAliasRegistry的功能外. 最重要的是实现了SingletonBeanRegistry接口.具有存储Bean实例,注册Bean,获取Bean的能力.我们定义的被Spring管理的Class类的实例对象,以及实例的之间的相互依赖关系都是存储在此类中.默认常用的容器DefaultListableBeanFactory的Bean的相关能力.就是通过间接继承此类来实现的.</li>
+</ol>
+<pre><code><code>    /** Disposable bean instances: bean name --&gt; disposable instance */
+    private final Map&lt;String, Object&gt; disposableBeans = new LinkedHashMap&lt;String, Object&gt;();
+
+    /** Map between containing bean names: bean name --&gt; Set of bean names that the bean contains */
+    private final Map&lt;String, Set&lt;String&gt;&gt; containedBeanMap = new ConcurrentHashMap&lt;String, Set&lt;String&gt;&gt;(16);
+
+    /** Map between dependent bean names: bean name --&gt; Set of dependent bean names */
+    private final Map&lt;String, Set&lt;String&gt;&gt; dependentBeanMap = new ConcurrentHashMap&lt;String, Set&lt;String&gt;&gt;(64);
+
+    /** Map between depending bean names: bean name --&gt; Set of bean names for the bean&#39;s dependencies */
+    private final Map&lt;String, Set&lt;String&gt;&gt; dependenciesForBeanMap = new ConcurrentHashMap&lt;String, Set&lt;String&gt;&gt;(64)</code></code></pre>
+<ol>
+<li>FactoryBeanRegistrySupport: 提供多工厂Bean的支持.FactoryBean通过其名字我也可以看出是生产Bean的Bean.</li>
+<li>AbstractBeanFactory抽象类: <strong>承上启下</strong>.从图中我们看出. AbstractBeanFactory.通过继承关系,继承FactoryBeanRegistrySupport各种能力.而且实现了右边部分接口.已然是比较完备的Bean容器了.AbstractBeanFactory还通过模板模式定义了获取Bean的算法骨架,</li>
+<li>AbstractAutowireCapableBeanFactory: .具有大部分的能力. 实现了AbstractBeanFactory定义的模板方法.其中doCreateBean方法逻辑是把一个BeanDefinition变成Bean的过程.<strong>这个方法非常重要</strong>.通常我们使用类创建对象.直接new出来. spring把BeanDefinition到Bean的过程模板化,留下了很多扩展点. 留给使用者可以在不同的时刻自定义BeanDefition创建Bean的过程.</li>
+<li>DefaultListableBeanFactory常用的默认容器实现,也是spring最常使用的容器类.看左边DefaultListableBeanFactory实现了BeanDefinitionRegistry接口. 这说明什么?说明DefaultListableBeanFactory具有存储BeanDefinition,操作BeanDefinition的能力.DefaultListableBeanFactory通过继承关系也具有了Bean的存储操作功能.</li>
+</ol>
+<p><strong>小结</strong>:</p>
+<ol>
+<li>BeanFactory体系，接口分明，完美的体现了接口分离原则。</li>
+<li>BeanFactory体系中有两种存储,一种是BeanDefinition的存储,另一个是Bean的存储.</li>
+<li>DefaultListableBeanFactory作为最常用的容器类.不但具有BeanDefinition的存储操作功能,而且通过继承具有Bean的存储操作功能.<strong>DefaultListableBeanFactory把存储的BeanDefinition通过一定算法创建Bean并存储起来</strong>.</li>
+</ol>
+<h4 id="beandefinitionbeanfactorybean三者关系">BeanDefinition,BeanFactory,Bean三者关系</h4>
+<p>通过上面的对各个接口,类的认识.我们再来看看三者的关系.</p>
+<p><strong>我们向BeanFactory容器中注入一个BeanDefinition。BeanFactory帮我们存储起来.当我们想要得到一个Bean时.BeanFactory 帮我们把BeanDefinition创建Bean.并缓存起来.这个创建过程是可参与的</strong>.</p>
+<ul>
+<li>BeanFactory保存了BeanDefiniton与Bean.</li>
+<li>BeanFactory具有使用BeanDefinition创建Bean的功能</li>
+<li>BeanFactory允许使用者可以干预BeanDefinition生成Bean的功能.</li>
+</ul>
+<h4 id="beanfactory中的扩展点">BeanFactory中的扩展点</h4>
+<p>设计原则之开闭原则说的特别好：说一个软件实体应该通过扩展来实现变化.<br />
+很多优秀的框架都有类似的扩展点设计,列如:</p>
+<ul>
+<li>Tomcat中的Filter</li>
+<li>Tomcat中的pipline-valve</li>
+<li>springmvc中的Interceptor</li>
+</ul>
+<p>BeanFactory中从BeanDefinition到Bean并不是一下子就完成的.这有一个过程.spring正是在这个过程中留下扩展点.来实现BeanDefinition到Bean的过程中的各种自定义变化.</p>
+<p>从上面我们得知:AbstractAutowireCapableBeanFactory中有个doCreateBean()正是BeanDefinition到Bean的创建方法.接下来我们看看这个方法.有哪些扩展点:</p>
+<ol>
+<li>xxxAware接口:使Bean可以获得xxx. 列如实现了BeanFactoryAware接口的类，可以在该Bean被加载的过程中获取加载该Bean的BeanFactory</li>
+<li>BeanPostProcessor:BeanPostProcessor接口定义的两个方法，分别在bean的初始化方法（InitializingBean接口，或者init-method定义）执行的前后执行</li>
+<li>InitializingBean接口: 实现了InitializingBean接口的类,执行afterPropertiesSet</li>
+<li>自定义的init-method方法:</li>
+</ol>
+<h4 id="总结">总结:</h4>
+<p>BeanFactory是物料与成品仓库，并配生产线，把BeanDefinition生产成Bean 。BeanFactory留下很多扩展点, 方便开发人员可以参与BeanDefinition到Bean的创建过程.</p>
+<p>欢迎大家关注我的公众号【源码行动】，最新个人理解及时奉送。<br />
+<img src="./images/spring源码分析系列3BeanFactory核心容器的研究1.png" alt="在这里插入图片描述" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

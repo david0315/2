@@ -1,0 +1,67 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Rocketmq】通过 docker 快速搭建 rocketmq 环境' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Rocketmq】通过 docker 快速搭建 rocketmq 环境</center></div><div class='banquan'>原文出处:本文由博客园博主KIWI的碎碎念提供。<br/>
+原文连接:https://www.cnblogs.com/kiwifly/p/11546008.html</div><br>
+    <p><img src="./images/【Rocketmq】通过 docker 快速搭建 rocketmq 环境0.png" alt="rocket" /></p>
+<h3 id="安装-namesrv">1. 安装 Namesrv</h3>
+<h4 id="拉取镜像">拉取镜像</h4>
+<pre><code><code>docker pull rocketmqinc/rocketmq:4.4.0`</code></code></pre>
+<h4 id="启动容器">启动容器</h4>
+<pre><code><code>docker run -d -p 9876:9876 -v {RmHome}/data/namesrv/logs:/root/logs -v {RmHome}/data/namesrv/store:/root/store --name rmqnamesrv -e &quot;MAX_POSSIBLE_HEAP=100000000&quot; rocketmqinc/rocketmq:4.4.0 sh mqnamesrv</code></code></pre>
+<h4 id="注意事项">注意事项</h4>
+<p>  <strong>{RmHome}</strong> 要替换成你的宿主机想保存 MQ 的日志与数据的地方，通过 docker 的 -v 参数使用 volume 功能，把你本地的目录映射到容器内的目录上。否则所有数据都默认保存在容器运行时的内存中，重启之后就又回到最初的起点。</p>
+<h3 id="安装-broker-服务器">2. 安装 broker 服务器</h3>
+<h4 id="拉取镜像-1">拉取镜像</h4>
+<p>与上步是同一个镜像，如果上步完成，此步无需拉取</p>
+<h4 id="创建-broker.conf-文件">创建 broker.conf 文件</h4>
+<ol>
+<li>在 {RmHome}/conf 目录下创建 broker.conf 文件</li>
+<li>在 broker.conf 中写入如下内容</li>
+</ol>
+<pre><code><code>brokerClusterName = DefaultCluster
+brokerName = broker-a
+brokerId = 0
+deleteWhen = 04
+fileReservedTime = 48
+brokerRole = ASYNC_MASTER
+flushDiskType = ASYNC_FLUSH
+brokerIP1 = {本地外网 IP}</code></code></pre>
+<p><strong>brokerIP1 要修改成你自己宿主机的 IP</strong></p>
+<h4 id="启动容器-1">启动容器</h4>
+<pre><code><code>docker run -d -p 10911:10911 -p 10909:10909 -v  {RmHome}/data/broker/logs:/root/logs -v  {RmHome}/rocketmq/data/broker/store:/root/store -v  {RmHome}/conf/broker.conf:/opt/rocketmq-4.4.0/conf/broker.conf --name rmqbroker --link rmqnamesrv:namesrv -e &quot;NAMESRV_ADDR=namesrv:9876&quot; -e &quot;MAX_POSSIBLE_HEAP=200000000&quot; rocketmqinc/rocketmq:4.4.0 sh mqbroker -c /opt/rocketmq-4.4.0/conf/broker.conf</code></code></pre>
+<h4 id="注意事项-1">注意事项</h4>
+<p>注意: <strong>{RmHome}</strong> 同上步一样，不再缀述。broker.conf 的文件中的 brokerIP1 是你的 broker 注册到 Namesrv 中的 ip。如果不指定他会默认取容器中的内网 IP。除非你的应用也同时部署在网络相通的容器中，本地或容器外就无法连接 broker 服务了，进而导致类似 RemotingTooMuchRequestException 等各种异常。</p>
+<h3 id="安装-rocketmq-控制台">3. 安装 rocketmq 控制台</h3>
+<h4 id="拉取镜像-2">拉取镜像</h4>
+<pre><code><code>docker pull pangliang/rocketmq-console-ng</code></code></pre>
+<h4 id="启动容器-2">启动容器</h4>
+<pre><code><code>docker run -e &quot;JAVA_OPTS=-Drocketmq.namesrv.addr={本地外网 IP}:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false&quot; -p 8080:8080 -t pangliang/rocketmq-console-ng</code></code></pre>
+<h3 id="其它">其它</h3>
+<h4 id="参考文档">参考文档</h4>
+<ol>
+<li><a href="https://blog.csdn.net/javahighness/article/details/90708210">Docker 安装 Rocketmq 服务</a> 主要参考这位博主的文章，写的很好，但是实际安装时遇到几个坑，在此基础上优化一版。加了一 broker.conf 配置，以及换了 rocketmq-console-ng 的镜像源，原文的有点老，有些功能不支持。<br />
+2.<a href="https://blog.csdn.net/huang_550/article/details/90693656">rocketmq 连接不上 broker 问题解决</a></li>
+</ol>
+<p>欢迎关注我的公众号「KIWI的碎碎念」，也可以收藏 <a href="http://blog.coder4j.cn/">我的博客</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

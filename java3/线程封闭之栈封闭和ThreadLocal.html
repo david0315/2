@@ -1,0 +1,112 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修线程封闭之栈封闭和ThreadLocal' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>线程封闭之栈封闭和ThreadLocal</center></div><div class='banquan'>原文出处:本文由博客园博主张小云的博客提供。<br/>
+原文连接:https://www.cnblogs.com/zhangweicheng/p/11717824.html</div><br>
+    <h1>线程封闭</h1>
+<p>　　在多线程的环境中，我们经常使用锁来保证线程的安全，但是对于每个线程都要用的资源使用锁的话那么程序执行的效率就会受到影响，这个时候可以把这些资源变成线程封闭的形式。</p>
+<h2>1、栈封闭</h2>
+<p>　　所谓的栈封闭其实就是使用局部变量存放资源，我们知道局部变量在内存中是存放在虚拟机栈中，而栈又是每个线程私有独立的，所以这样可以保证线程的安全。</p>
+<h2>2、ThreadLocal</h2>
+<p>　　我们先看ThreadLocal和线程Thread的关系图。</p>
+<p>　　<img style="display: block; margin-left: auto; margin-right: auto;" src="./images/线程封闭之栈封闭和ThreadLocal0.png" alt="" width="682" height="335" /></p>
+<p>&nbsp;　　再看下ThreadLocal的操作，以get为例</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> T get() {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 当前线程</span>
+        Thread t =<span style="color: #000000;"> Thread.currentThread();
+　　　</span><span style="color: #008000;">//</span><span style="color: #008000;"> 拿到当前线程的threadLocalMap，即上图中的map引用</span>
+        ThreadLocalMap map =<span style="color: #000000;"> getMap(t);
+        </span><span style="color: #0000ff;">if</span> (map != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 拿到当前ThreadLocal为Key对应的Entry，里面做了防止内存泄漏的处理</span>
+            ThreadLocalMap.Entry e = map.getEntry(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+            </span><span style="color: #0000ff;">if</span> (e != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+                T result </span>=<span style="color: #000000;"> (T)e.value;
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果为null设置默认值</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> setInitialValue();
+    }</span></code></pre>
+
+<p>　　如上面get方法的源码所示，在调用<strong>threadLocal</strong>.<strong>get</strong>()方法的时候，<strong>threadLocal</strong>拿到当前线程中<strong>ThreadLocalMap</strong>中以<strong>threadLocal</strong>自身为key对应的entry，在这个<strong>getEntry</strong>方法中里面做了内存泄漏的处理，大概处理逻辑就是如果threadLocal对应的Entry为null的话，让这个entry的value为null并且map中threadLocal对应下标置null，如果不为null的话返回，否则的话则调用默认值方法<strong>setInitialValue</strong>()</p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #0000ff;">private</span><span style="color: #000000;"> T setInitialValue() {
+        T value </span>=<span style="color: #000000;"> initialValue();
+        Thread t </span>=<span style="color: #000000;"> Thread.currentThread();
+        ThreadLocalMap map </span>=<span style="color: #000000;"> getMap(t);
+        </span><span style="color: #0000ff;">if</span> (map != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            map.set(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">, value);
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;">
+            createMap(t, value);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> value;
+    }
+
+  </span><span style="color: #008000;">//</span><span style="color: #008000;"> 默认null实现</span>
+ <span style="color: #0000ff;">protected</span><span style="color: #000000;"> T initialValue() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+  }</span></code></pre>
+
+<p>　　<strong>setInitialValue</strong>()方法逻辑比较简单，这里不多赘述，值得注意的是里面调用的<strong>initialValue</strong>()，并没有任何的实现，所以我们使用<strong>threadLocal</strong>的时候一般都会选择重写实现这个方法。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;"> // 这里main方法测试，所以用static修饰，会延长threadLocal的生命周期，有内存泄漏的风险，一般作为成员变量就足够了<br /> public</span> <span style="color: #0000ff;">static</span> ThreadLocal&lt;String&gt; threadLocal = <span style="color: #0000ff;">new</span> ThreadLocal&lt;String&gt;<span style="color: #000000;">(){
+        @Override
+        </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> String initialValue() {
+            </span><span style="color: #0000ff;">return</span> "init string from initialValue method"<span style="color: #000000;">;
+        }
+    };
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 未放入value直接调用get</span>
+        System.err.println("invoke get before any set：" +<span style="color: #000000;"> threadLocal.get());
+        threadLocal.set(</span>"test"<span style="color: #000000;">);
+        System.err.println(</span>"before thread start : " +<span style="color: #000000;"> threadLocal.get());
+        </span><span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 对相同的threadLocal对象放入值</span>
+            threadLocal.set("test in thread"<span style="color: #000000;">);
+            System.err.println(</span>"In thread[" + Thread.currentThread().getName() + "] threadLocal value : " +<span style="color: #000000;"> threadLocal.get());
+        }).start();
+        TimeUnit.SECONDS.sleep(</span>1<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 证明threadLocal中的value不在线程中共享</span>
+        System.err.println("after thread value : " +<span style="color: #000000;"> threadLocal.get());
+    }<br /><strong>result:<br />　　<img src="./images/线程封闭之栈封闭和ThreadLocal1.png" alt="" width="782" height="172" /></strong></span></code></pre>
+<pre><code><span style="color: #000000;"><strong>　　结合这个小程序和上面的图就可以对threadLocal有一个大概的理解了。其他的方法如set、remove等方法都大同小异，可以结合图片去看源码，这里不再赘述。</strong></span></code></pre>
+
+<blockquote>
+<p><strong>关于内存泄漏的问题:</strong></p>
+<p>　　1、在<strong>threadLocal</strong>的get、set、remove方法中，其对本身可能发生的内存泄漏都做了处理，内部逻辑上面也提到了。如果对应entry为null，将其value置null，将map中对应下标引用置null。</p>
+<p>　　2、而对于<strong>threadLocal</strong>中这个对象的泄漏来说，则是采用弱引用的方式来实现，在上面的图中，我用虚线来表示弱引用，弱引用的意思是在JVM进行垃圾回收的时候这个引用会被回收（无论内存足够与否）;试想一下，如果使用强引用并且栈中的引用消失了，那么在线程结束之前这个threadLocal对象不会被回收且无法访问，也就是造成内存泄漏。</p>
+</blockquote>
+<h2>3、Java四种引用的简要概述</h2>
+<p>　　上面在ThreadLocal提到了<strong>弱引用</strong>，这里顺便简单的说下Java中的四种引用。</p>
+<ol>
+<li><strong>强引用：</strong>指new出来的对象，一般没有特别申明的对象都是强引用。这种对象只有在GCroots找不到它的时候才会被回收。</li>
+<li><strong>软引用（SoftReference的子类）：</strong>GC后内存不足的情况将只有这种引用的对象回收。</li>
+<li><strong>弱引用（WeakReference的子类）:</strong>GC时回收只有此引用的对象（无论内存是否不足）。</li>
+<li><strong>虚引用（PhantomReference子类）：</strong>没有特别的功能，类似一个追踪符，配合引用队列来记录对象何时被回收。（实际上这四种引用都可以配合引用队列使用，只要在构造方法中传入需要关联的引用队列就行，在对象调用finalize方法的时候会被写入到队列当中）</li>
+</ol>
+<p>&nbsp;</p>
+<blockquote>
+<p>若有不正之处，望指出！</p>
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

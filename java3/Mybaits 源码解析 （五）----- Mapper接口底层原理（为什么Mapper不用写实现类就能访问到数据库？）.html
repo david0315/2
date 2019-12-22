@@ -1,0 +1,412 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybaits 源码解析 （五）----- Mapper接口底层原理（为什么Mapper不用写实现类就能访问到数据库？）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybaits 源码解析 （五）----- Mapper接口底层原理（为什么Mapper不用写实现类就能访问到数据库？）</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11752084.html</div><br>
+    <p>刚开始使用Mybaits的同学有没有这样的疑惑，为什么我们没有编写Mapper的实现类，却能调用Mapper的方法呢？本篇文章我带大家一起来解决这个疑问</p>
+<p>上一篇文章我们获取到了DefaultSqlSession，接着我们来看第一篇文章测试用例后面的代码</p>
+<src class="cnblogs_code">
+<pre><code>EmployeeMapper employeeMapper = sqlSession.getMapper(Employee.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+List</span>&lt;Employee&gt; allEmployees = employeeMapper.getAll();</code></pre>
+
+<h2 id="autoid-3-1-0">为 Mapper 接口创建代理对象</h2>
+<p>我们先从 DefaultSqlSession 的 getMapper 方法开始看起，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #0000ff;">public</span> &lt;T&gt; T getMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+</span><span style="color: #008080;"> 2</span>     <span style="color: #0000ff;">return</span> configuration.&lt;T&gt;getMapper(type, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span> <span style="color: #008000;">//</span><span style="color: #008000;"> Configuration</span>
+<span style="color: #008080;"> 6</span> <span style="color: #0000ff;">public</span> &lt;T&gt; T getMapper(Class&lt;T&gt;<span style="color: #000000;"> type, SqlSession sqlSession) {
+</span><span style="color: #008080;"> 7</span>     <span style="color: #0000ff;">return</span><span style="color: #000000;"> mapperRegistry.getMapper(type, sqlSession);
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">}
+</span><span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span> <span style="color: #008000;">//</span><span style="color: #008000;"> MapperRegistry</span>
+<span style="color: #008080;">11</span> <span style="color: #0000ff;">public</span> &lt;T&gt; T getMapper(Class&lt;T&gt;<span style="color: #000000;"> type, SqlSession sqlSession) {
+</span><span style="color: #008080;">12</span>     <strong><span style="color: #008000;">//</span><span style="color: #008000;"> 从 knownMappers 中获取与 type 对应的 MapperProxyFactory</span></strong>
+<span style="color: #008080;">13</span>     <strong><span style="color: #0000ff;">final</span> MapperProxyFactory&lt;T&gt; mapperProxyFactory = (MapperProxyFactory&lt;T&gt;<span style="color: #000000;">) knownMappers.get(type);
+</span></strong><span style="color: #008080;">14</span>     <span style="color: #0000ff;">if</span> (mapperProxyFactory == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Type " + type + " is not known to the MapperRegistry."<span style="color: #000000;">);
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">17</span>     <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">18</span>         <strong><span style="color: #008000;">//</span><span style="color: #008000;"> 创建代理对象</span></strong>
+<span style="color: #008080;">19</span>        <strong> <span style="color: #0000ff;">return</span><span style="color: #000000;"> mapperProxyFactory.newInstance(sqlSession);
+</span></strong><span style="color: #008080;">20</span>     } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+</span><span style="color: #008080;">21</span>         <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Error getting mapper instance. Cause: " +<span style="color: #000000;"> e, e);
+</span><span style="color: #008080;">22</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">23</span> }</code></pre>
+
+<p>这里最重要就是两行代码，第13行和第19行，我们接下来就分析这两行代码</p>
+<h3><strong>获取MapperProxyFactory</strong></h3>
+<p>根据名称看，可以理解为Mapper代理的创建工厂，是不是Mapper的代理对象由它创建呢？我们先来回顾一下knownMappers 集合中的元素是何时存入的。这要在我前面的文章中找答案，MyBatis 在解析配置文件的 &lt;mappers&gt; 节点的过程中，会调用 MapperRegistry 的 addMapper 方法将 Class 到 MapperProxyFactory 对象的映射关系存入到 knownMappers。有兴趣的同学可以看看我之前的文章，我们来回顾一下源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> bindMapperForNamespace() {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 获取映射文件的命名空间</span>
+    String namespace =<span style="color: #000000;"> builderAssistant.getCurrentNamespace();
+    </span></strong><span style="color: #0000ff;">if</span> (namespace != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        Class</span>&lt;?&gt; boundType = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><strong><span style="color: #008000;"> 根据命名空间解析 mapper 类型</span>
+            boundType =</strong><span style="color: #000000;"><strong> Resources.classForName(namespace);</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException e) {
+        }
+        </span><span style="color: #0000ff;">if</span> (boundType != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测当前 mapper 类是否被绑定过</span>
+            <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">configuration.hasMapper(boundType)) {
+                configuration.addLoadedResource(</span>"namespace:" +<span style="color: #000000;"> namespace);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 绑定 mapper 类</span>
+<span style="color: #000000;">                configuration.addMapper(boundType);
+            }
+        }
+    }
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> Configuration</span>
+<span style="color: #0000ff;">public</span> &lt;T&gt; <span style="color: #0000ff;">void</span> addMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过 MapperRegistry 绑定 mapper 类</span>
+<span style="color: #000000;">    mapperRegistry.addMapper(type);
+}
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;"> MapperRegistry</span>
+<span style="color: #0000ff;">public</span> &lt;T&gt; <span style="color: #0000ff;">void</span> addMapper(Class&lt;T&gt;<span style="color: #000000;"> type) {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (type.isInterface()) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (hasMapper(type)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Type " + type + " is already known to the MapperRegistry."<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">boolean</span> loadCompleted = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 将 type 和 MapperProxyFactory 进行绑定，MapperProxyFactory 可为 mapper 接口生成代理类
+             </span><span style="color: #008000;">*/</span><strong><span style="color: #000000;">
+            knownMappers.put(type, </span><span style="color: #0000ff;">new</span> MapperProxyFactory&lt;T&gt;</strong><span style="color: #000000;"><strong>(type));</strong>
+            
+            MapperAnnotationBuilder parser </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MapperAnnotationBuilder(config, type);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析注解中的信息</span>
+<span style="color: #000000;">            parser.parse();
+            loadCompleted </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">loadCompleted) {
+                knownMappers.remove(type);
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>在解析Mapper.xml的最后阶段，获取到Mapper.xml的namespace，然后利用反射，获取到namespace的Class,并创建一个<strong>MapperProxyFactory的实例，namespace的Class作为参数，最后将namespace的Class为key，<strong>MapperProxyFactory的实例为value存入</strong></strong><strong>knownMappers。</strong></p>
+<p><strong>注意，我们这里是通过</strong><strong>映射文件的命名空间的Class当做<strong>knownMappers的Key。然后我们看看</strong></strong>getMapper方法的13行，是通过参数Employee.class也就是Mapper接口的Class来获取<strong><strong>MapperProxyFactory，所以我们明白了为什么要求xml配置中的namespace要和和对应的Mapper接口的全限定名了</strong></strong></p>
+<h3>生成代理对象</h3>
+<p>我们看第19行代码<strong>&nbsp;return mapperProxyFactory.newInstance(sqlSession);，</strong>很明显是调用了MapperProxyFactory的一个工厂方法，我们跟进去看看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MapperProxyFactory&lt;T&gt;<span style="color: #000000;"> {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存放Mapper接口Class</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Class&lt;T&gt;<span style="color: #000000;"> mapperInterface;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;Method, MapperMethod&gt; methodCache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ConcurrentHashMap();
+
+    </span><span style="color: #0000ff;">public</span> MapperProxyFactory(Class&lt;T&gt;<span style="color: #000000;"> mapperInterface) {
+        </span><span style="color: #0000ff;">this</span>.mapperInterface =<span style="color: #000000;"> mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Class&lt;T&gt;<span style="color: #000000;"> getMapperInterface() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Map&lt;Method, MapperMethod&gt;<span style="color: #000000;"> getMethodCache() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache;
+    }
+
+    </span><span style="color: #0000ff;">protected</span> T newInstance(MapperProxy&lt;T&gt;<span style="color: #000000;"> mapperProxy) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">生成mapperInterface的代理类</span>
+        <span style="color: #0000ff;">return</span> Proxy.newProxyInstance(<span style="color: #0000ff;">this</span>.mapperInterface.getClassLoader(), <span style="color: #0000ff;">new</span> Class[]{<span style="color: #0000ff;">this</span><span style="color: #000000;">.mapperInterface}, mapperProxy);
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> T newInstance(SqlSession sqlSession) {
+         </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+         * 创建 MapperProxy 对象，MapperProxy 实现了 InvocationHandler 接口，代理逻辑封装在此类中
+         * 将sqlSession传入MapperProxy对象中，第二个参数是Mapper的接口，并不是其实现类
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        MapperProxy</span>&lt;T&gt; mapperProxy = <span style="color: #0000ff;">new</span> MapperProxy(sqlSession, <span style="color: #0000ff;">this</span>.mapperInterface, <span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache);
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.newInstance(mapperProxy);
+    }
+}</span></code></pre>
+
+<p>上面的代码首先创建了一个 MapperProxy 对象，该对象实现了 InvocationHandler 接口。然后将对象作为参数传给重载方法，并在重载方法中调用 JDK 动态代理接口为 Mapper接口 生成代理对象。</p>
+<p>这里要注意一点，MapperProxy这个InvocationHandler 创建的时候，传入的参数并不是Mapper接口的实现类，我们以前是怎么创建JDK动态代理的？先创建一个接口，然后再创建一个接口的实现类，最后创建一个InvocationHandler并将实现类传入其中作为目标类，创建接口的代理类，然后调用代理类方法时会回调InvocationHandler的invoke方法，最后在invoke方法中调用目标类的方法，但是我们这里调用Mapper接口代理类的方法时，需要调用其实现类的方法吗？不需要，我们需要调用对应的配置文件的SQL，所以这里并不需要传入Mapper的实现类到MapperProxy中，那Mapper接口的代理对象是如何调用对应配置文件的SQL呢？下面我们来看看。</p>
+<h2>Mapper代理类如何执行SQL？</h2>
+<p>上面一节中我们已经获取到了EmployeeMapper的代理类，并且其InvocationHandler为MapperProxy，那我们接着看Mapper接口方法的调用</p>
+<src class="cnblogs_code">
+<pre><code>List&lt;Employee&gt; allEmployees = employeeMapper.getAll();</code></pre>
+
+<p>知道JDK动态代理的同学都知道，调用代理类的方法，最后都会回调到InvocationHandler的Invoke方法，那我们来看看这个InvocationHandler（MapperProxy）</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MapperProxy&lt;T&gt; <span style="color: #0000ff;">implements</span><span style="color: #000000;"> InvocationHandler, Serializable {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> SqlSession sqlSession;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Class&lt;T&gt;<span style="color: #000000;"> mapperInterface;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;Method, MapperMethod&gt;<span style="color: #000000;"> methodCache;
+
+    </span><span style="color: #0000ff;">public</span> MapperProxy(SqlSession sqlSession, Class&lt;T&gt; mapperInterface, Map&lt;Method, MapperMethod&gt;<span style="color: #000000;"> methodCache) {
+        </span><span style="color: #0000ff;">this</span>.sqlSession =<span style="color: #000000;"> sqlSession;
+        </span><span style="color: #0000ff;">this</span>.mapperInterface =<span style="color: #000000;"> mapperInterface;
+        </span><span style="color: #0000ff;">this</span>.methodCache =<span style="color: #000000;"> methodCache;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Object <strong>invoke</strong>(Object proxy, Method method, Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果方法是定义在 Object 类中的，则直接调用</span>
+        <span style="color: #0000ff;">if</span> (Object.<span style="color: #0000ff;">class</span><span style="color: #000000;">.equals(method.getDeclaringClass())) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">return</span> method.invoke(<span style="color: #0000ff;">this</span><span style="color: #000000;">, args);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var5) {
+                </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ExceptionUtil.unwrapThrowable(var5);
+            }
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 从缓存中获取 MapperMethod 对象，若缓存未命中，则创建 MapperMethod 对象</span>
+            MapperMethod mapperMethod = <span style="color: #0000ff;">this</span><span style="color: #000000;">.cachedMapperMethod(method);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用 execute 方法执行 SQL</span>
+            <span style="color: #0000ff;">return</span> mapperMethod.execute(<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.sqlSession, args);</strong>
+        }
+    }
+
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MapperMethod cachedMapperMethod(Method method) {
+        MapperMethod mapperMethod </span>= (MapperMethod)<span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache.get(method);
+        </span><span style="color: #0000ff;">if</span> (mapperMethod == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个MapperMethod，参数为mapperInterface和method还有Configuration</span>
+            mapperMethod = <span style="color: #0000ff;">new</span> MapperMethod(<span style="color: #0000ff;">this</span>.mapperInterface, method, <span style="color: #0000ff;">this</span><span style="color: #000000;">.sqlSession.getConfiguration());
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache.put(method, mapperMethod);
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> mapperMethod;
+    }
+}</span></code></pre>
+
+<p>如上，回调函数<strong>invoke</strong>逻辑会首先检测被拦截的方法是不是定义在 Object 中的，比如 equals、hashCode 方法等。对于这类方法，直接执行即可。紧接着从缓存中获取或者创建 MapperMethod 对象，然后通过该对象中的 execute 方法执行 SQL。我们先来看看如何创建MapperMethod</p>
+<h3>创建 MapperMethod 对象</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MapperMethod {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">包含SQL相关信息，比喻MappedStatement的id属性，（mapper.EmployeeMapper.getAll）</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> SqlCommand command;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">包含了关于执行的Mapper方法的参数类型和返回类型。</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> MethodSignature method;
+
+    </span><span style="color: #0000ff;">public</span> MapperMethod(Class&lt;?&gt;<span style="color: #000000;"> mapperInterface, Method method, Configuration config) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 SqlCommand 对象，该对象包含一些和 SQL 相关的信息</span>
+        <span style="color: #0000ff;">this</span>.command = <span style="color: #0000ff;">new</span><span style="color: #000000;"> SqlCommand(config, mapperInterface, method);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建 MethodSignature 对象，从类名中可知，该对象包含了被拦截方法的一些信息</span>
+        <span style="color: #0000ff;">this</span>.method = <span style="color: #0000ff;">new</span><span style="color: #000000;"> MethodSignature(config, mapperInterface, method);
+    }
+}</span></code></pre>
+
+<p>MapperMethod包含SqlCommand 和MethodSignature 对象，我们来看看其创建过程</p>
+<p><strong>① 创建 SqlCommand 对象</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SqlCommand {
+    </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">name为MappedStatement的id，也就是namespace.methodName（mapper.EmployeeMapper.getAll）</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> String name;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">SQL的类型，如insert，delete，update</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> SqlCommandType type;
+
+    </span></strong><span style="color: #0000ff;">public</span> SqlCommand(Configuration configuration, Class&lt;?&gt;<span style="color: #000000;"> mapperInterface, Method method) {
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">拼接Mapper接口名和方法名，（mapper.EmployeeMapper.getAll）</span>
+        String statementName = mapperInterface.getName() + "." +<span style="color: #000000;"> method.getName();
+        MappedStatement ms </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">检测configuration是否有key为mapper.EmployeeMapper.getAll的MappedStatement</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (configuration.hasStatement(statementName)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">获取MappedStatement</span>
+            ms =</strong><span style="color: #000000;"><strong> configuration.getMappedStatement(statementName);</strong>
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">mapperInterface.equals(method.getDeclaringClass())) {
+            String parentStatementName </span>= method.getDeclaringClass().getName() + "." +<span style="color: #000000;"> method.getName();
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (configuration.hasStatement(parentStatementName)) {
+                ms </span>=<span style="color: #000000;"> configuration.getMappedStatement(parentStatementName);
+            }
+        }
+        
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测当前方法是否有对应的 MappedStatement</span>
+        <span style="color: #0000ff;">if</span> (ms == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (method.getAnnotation(Flush.<span style="color: #0000ff;">class</span>) != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                name </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                type </span>=<span style="color: #000000;"> SqlCommandType.FLUSH;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Invalid bound statement (not found): "
+                    + mapperInterface.getName() + "." +<span style="color: #000000;"> methodName);
+            }
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 设置 name 和 type 变量</span>
+            name =<span style="color: #000000;"> ms.getId();
+            type </span>=<span style="color: #000000;"> ms.getSqlCommandType();
+            </span></strong><span style="color: #0000ff;">if</span> (type ==<span style="color: #000000;"> SqlCommandType.UNKNOWN) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Unknown execution method for: " +<span style="color: #000000;"> name);
+            }
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> hasStatement(String statementName, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> validateIncompleteStatements) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">检测configuration是否有key为statementName的MappedStatement</span>
+    <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.mappedStatements.containsKey(statementName);
+}</span></code></pre>
+
+<p>通过拼接接口名和方法名，在configuration获取对应的MappedStatement，并设置设置 name 和 type 变量，代码很简单</p>
+<p><strong>② 创建 MethodSignature 对象</strong></p>
+<p><strong>MethodSignature&nbsp;</strong>包含了被拦截方法的一些信息，如目标方法的返回类型，目标方法的参数列表信息等。下面，我们来看一下 MethodSignature 的构造方法。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MethodSignature {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> returnsMany;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> returnsMap;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> returnsVoid;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> returnsCursor;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Class&lt;?&gt;<span style="color: #000000;"> returnType;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> String mapKey;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Integer resultHandlerIndex;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> Integer rowBoundsIndex;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ParamNameResolver paramNameResolver;
+
+    </span><span style="color: #0000ff;">public</span> MethodSignature(Configuration configuration, Class&lt;?&gt;<span style="color: #000000;"> mapperInterface, Method method) {
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 通过反射解析方法返回类型</span>
+        Type resolvedReturnType =<span style="color: #000000;"> TypeParameterResolver.resolveReturnType(method, mapperInterface);
+        </span><span style="color: #0000ff;">if</span> (resolvedReturnType <span style="color: #0000ff;">instanceof</span> Class&lt;?&gt;<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span>.returnType = (Class&lt;?&gt;<span style="color: #000000;">) resolvedReturnType;
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (resolvedReturnType <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ParameterizedType) {
+            </span><span style="color: #0000ff;">this</span>.returnType = (Class&lt;?&gt;<span style="color: #000000;">) ((ParameterizedType) resolvedReturnType).getRawType();
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">this</span>.returnType =<span style="color: #000000;"> method.getReturnType();
+        }
+        
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 检测返回值类型是否是 void、集合或数组、Cursor、Map 等</span>
+        <span style="color: #0000ff;">this</span>.returnsVoid = <span style="color: #0000ff;">void</span>.<span style="color: #0000ff;">class</span>.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.returnType);
+        </span><span style="color: #0000ff;">this</span>.returnsMany = configuration.getObjectFactory().isCollection(<span style="color: #0000ff;">this</span>.returnType) || <span style="color: #0000ff;">this</span><span style="color: #000000;">.returnType.isArray();
+        </span><span style="color: #0000ff;">this</span>.returnsCursor = Cursor.<span style="color: #0000ff;">class</span>.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.returnType);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析 @MapKey 注解，获取注解内容</span>
+        <span style="color: #0000ff;">this</span>.mapKey =<span style="color: #000000;"> getMapKey(method);
+        </span><span style="color: #0000ff;">this</span>.returnsMap = <span style="color: #0000ff;">this</span>.mapKey != <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+         * 获取 RowBounds 参数在参数列表中的位置，如果参数列表中
+         * 包含多个 RowBounds 参数，此方法会抛出异常
+         </span><span style="color: #008000;">*/</span> 
+        <span style="color: #0000ff;">this</span>.rowBoundsIndex = getUniqueParamIndex(method, RowBounds.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取 ResultHandler 参数在参数列表中的位置</span>
+        <span style="color: #0000ff;">this</span>.resultHandlerIndex = getUniqueParamIndex(method, ResultHandler.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 解析参数列表</span>
+        <span style="color: #0000ff;">this</span>.paramNameResolver = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ParamNameResolver(configuration, method);
+    }
+}</span></code></pre>
+
+<h3 id="autoid-3-1-2">执行 execute 方法</h3>
+<p>前面已经分析了 MapperMethod 的初始化过程，现在 MapperMethod 创建好了。那么，接下来要做的事情是调用 MapperMethod 的 execute 方法，执行 SQL。传递参数sqlSession和method的运行参数args</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">return</span> mapperMethod.execute(<span style="color: #0000ff;">this</span>.sqlSession, args);</code></pre>
+
+<p>我们去MapperMethod 的execute方法中看看</p>
+<p><strong>MapperMethod</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object execute(SqlSession sqlSession, Object[] args) {
+    Object result;
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据 SQL 类型执行相应的数据库操作</span>
+    <span style="color: #0000ff;">switch</span><span style="color: #000000;"> (command.getType()) {
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"><strong> INSERT</strong>: {
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 对用户传入的参数进行转换，下同</span>
+            Object param =<span style="color: #000000;"> method.convertArgsToSqlCommandParam(args);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行插入操作，rowCountResult 方法用于处理返回值</span>
+            result =<span style="color: #000000;"> rowCountResult(sqlSession.insert(command.getName(), param));
+            </span></strong><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"><strong> UPDATE</strong>: {
+            Object param </span>=<span style="color: #000000;"> method.convertArgsToSqlCommandParam(args);
+            </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 执行更新操作</span>
+            result =<span style="color: #000000;"> rowCountResult(sqlSession.update(command.getName(), param));
+            </span></strong><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"><strong> DELETE</strong>: {
+            Object param </span>=<span style="color: #000000;"> method.convertArgsToSqlCommandParam(args);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行删除操作</span>
+            result =<span style="color: #000000;"> rowCountResult(sqlSession.delete(command.getName(), param));
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"><strong> SELECT</strong>:
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 根据目标方法的返回类型进行相应的查询操作</span>
+            <span style="color: #0000ff;">if</span> (method.returnsVoid() &amp;&amp;<span style="color: #000000;"> method.hasResultHandler()) {
+                executeWithResultHandler(sqlSession, args);
+                result </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (method.returnsMany()) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行查询操作，并返回多个结果 </span>
+                result =<span style="color: #000000;"> executeForMany(sqlSession, args);
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (method.returnsMap()) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行查询操作，并将结果封装在 Map 中返回</span>
+                result =<span style="color: #000000;"> executeForMap(sqlSession, args);
+            } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (method.returnsCursor()) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行查询操作，并返回一个 Cursor 对象</span>
+                result =<span style="color: #000000;"> executeForCursor(sqlSession, args);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                Object param </span>=<span style="color: #000000;"> method.convertArgsToSqlCommandParam(args);
+                </span><strong><span style="color: #008000;">//</span><span style="color: #008000;"> 执行查询操作，并返回一个结果</span>
+                result =</strong><span style="color: #000000;"><strong> sqlSession.selectOne(command.getName(), param);</strong>
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> FLUSH:
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 执行刷新操作</span>
+            result =<span style="color: #000000;"> sqlSession.flushStatements();
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BindingException("Unknown execution method for: " +<span style="color: #000000;"> command.getName());
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+}</span></code></pre>
+
+<p>如上，execute 方法主要由一个 switch 语句组成，用于根据 SQL 类型执行相应的数据库操作。我们先来看看是参数的处理方法convertArgsToSqlCommandParam是如何将方法参数数组转化成Map的</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object convertArgsToSqlCommandParam(Object[] args) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> paramNameResolver.getNamedParams(args);
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getNamedParams(Object[] args) {
+    </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> paramCount =<span style="color: #000000;"> names.size();
+    </span><span style="color: #0000ff;">if</span> (args == <span style="color: #0000ff;">null</span> || paramCount == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (!hasParamAnnotation &amp;&amp; paramCount == 1<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> args[names.firstKey()];
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个Map，key为method的参数名，值为method的运行时参数值</span>
+        <span style="color: #0000ff;">final</span> Map&lt;String, Object&gt; param = <span style="color: #0000ff;">new</span> ParamMap&lt;Object&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">int</span> i = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span> (Map.Entry&lt;Integer, String&gt;<span style="color: #000000;"> entry : names.entrySet()) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 添加 &lt;参数名, 参数值&gt; 键值对到 param 中</span>
+<span style="color: #000000;">            param.put(entry.getValue(), args[entry.getKey()]);
+            </span><span style="color: #0000ff;">final</span> String genericParamName = GENERIC_NAME_PREFIX + String.valueOf(i + 1<span style="color: #000000;">);
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">names.containsValue(genericParamName)) {
+                param.put(genericParamName, args[entry.getKey()]);
+            }
+            i</span>++<span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> param;
+    }
+}</span></code></pre>
+
+<p>我们看到，将Object[] args转化成了一个Map&lt;参数名, 参数值&gt; ，接着我们就可以看查询过程分析了，如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;"> 执行查询操作，并返回一个结果</span>
+result = sqlSession.selectOne(command.getName(), param);</code></pre>
+
+<p>我们看到是通过sqlSession来执行查询的，并且传入的参数为command.getName()和param，也就是<strong>namespace.methodName（mapper.EmployeeMapper.getAll）和方法的运行参数。</strong></p>
+<p>查询操作我们下一篇文章单独来讲</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

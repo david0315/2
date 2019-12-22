@@ -1,0 +1,224 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot集成Druid连接池' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot集成Druid连接池</center></div><div class='banquan'>原文出处:本文由博客园博主noneplus提供。<br/>
+原文连接:https://www.cnblogs.com/noneplus/p/11532065.html</div><br>
+    <h2 id="关于数据库连接池">关于数据库连接池</h2>
+<ul>
+<li><p>早期数据库访问（也没多少人上网）</p>
+<p>​ 　①装载数据库驱动程序；</p>
+<p>　　②通过jdbc建立数据库连接；</p>
+<p>　　③访问数据库，执行sql语句；</p>
+<p>　　④断开数据库连接。</p>
+<p><br></p>
+<p>对于并发量大的网站，会导致以下问题：</p>
+<ul>
+<li><p>每一次web请求都要建立一次数据库连接，在同样的步骤下重复占用系统资源</p></li>
+<li><p>不能控制被创建的连接对象数，系统资源会被毫无顾及的分配出去</p>
+<p>如连接过多，也可能导致内存泄漏，服务器崩溃。</p></li>
+</ul></li>
+<li><p><strong>数据库连接池</strong></p>
+<p>连接池的作用是为了提高性能，将已经创建好的连接保存在池中，当有请求来时，直接使用已经创建好的连接对Server端进行访问。</p>
+<p>这样省略（复用）了创建连接和销毁连接的过程（TCP连接建立时的三次握手和销毁时的四次握手），从而在性能上得到了提高。</p></li>
+<li><p>嚣张的Druid（GitHub的Wiki上自称是Java语言最好的数据库连接池）</p>
+<p><img src="./images/SpringBoot集成Druid连接池0.png" alt="1568630680898" /></p></li>
+</ul>
+<h2 id="集成druid">集成Druid</h2>
+<p>在上次Thymeleaf基础上进行集成</p>
+<p>https://www.cnblogs.com/noneplus/p/11528129.html</p>
+<ul>
+<li>引入pom</li>
+</ul>
+<pre><code><code>&lt;!-- https://mvnrepository.com/artifact/com.alibaba/druid --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+    &lt;artifactId&gt;druid&lt;/artifactId&gt;
+    &lt;version&gt;1.1.20&lt;/version&gt;
+&lt;/dependency&gt;
+</code></code></pre>
+<ul>
+<li><p>yaml</p>
+<pre><code><code>spring:
+  datasource:
+    #   数据源基本配置
+    username: noneplus
+    password: Noneplus564925080!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://47.103.6.247:3306/user?serverTimezone=UTC
+    type: com.alibaba.druid.pool.DruidDataSource
+    #   Druid数据源配置
+    initialSize: 5
+    minIdle: 5
+    maxActive: 20
+    maxWait: 60000
+    timeBetweenEvictionRunsMillis: 60000
+    minEvictableIdleTimeMillis: 300000
+    validationQuery: SELECT 1 FROM DUAL
+    testWhileIdle: true
+    testOnBorrow: false
+    testOnReturn: false
+    poolPreparedStatements: true
+    #   配置监控统计拦截的filters，去掉后监控界面sql无法统计，&#39;wall&#39;用于防火墙
+    filters: stat,wall,log4j
+    maxPoolPreparedStatementPerConnectionSize: 20
+    useGlobalDataSourceStat: true
+    connectionProperties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=500
+  thymeleaf:
+    cache: false
+pagehelper:
+  helperDialect: mysql
+  reasonable: true
+  supportMethodsArguments: true
+  pageSizeZero: false #pageSize=0
+</code></code></pre></li>
+<li><p>DruidConfig</p>
+<pre><code><code>package zkrun.top.web.config;
+
+
+import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.druid.support.http.StatViewServlet;
+import com.alibaba.druid.support.http.WebStatFilter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import javax.sql.DataSource;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class DruidConfig {
+
+    //加载application.yaml中的Druid配置
+    @ConfigurationProperties(prefix = &quot;spring.datasource&quot;)
+    @Bean
+    public DataSource druid(){
+        return  new DruidDataSource();
+    }
+
+    //配置Druid的监控
+    //1、配置一个管理后台的Servlet
+    @Bean
+    public ServletRegistrationBean statViewServlet(){
+        ServletRegistrationBean bean = new ServletRegistrationBean(new StatViewServlet(), &quot;/druid/*&quot;);
+        Map&lt;String,String&gt; initParams = new HashMap&lt;&gt;();
+
+        initParams.put(&quot;loginUsername&quot;,&quot;hq&quot;);
+        initParams.put(&quot;loginPassword&quot;,&quot;564925080&quot;);
+        initParams.put(&quot;allow&quot;,&quot;&quot;);//默认就是允许所有访问
+        initParams.put(&quot;deny&quot;,&quot;192.168.15.21&quot;);
+
+        bean.setInitParameters(initParams);
+        return bean;
+    }
+
+
+    //2、配置一个web监控的filter
+    @Bean
+    public FilterRegistrationBean webStatFilter(){
+        FilterRegistrationBean bean = new FilterRegistrationBean();
+        bean.setFilter(new WebStatFilter());
+
+        Map&lt;String,String&gt; initParams = new HashMap&lt;&gt;();
+        initParams.put(&quot;exclusions&quot;,&quot;*.js,*.css,/druid/*&quot;);
+
+        bean.setInitParameters(initParams);
+
+        bean.setUrlPatterns(Arrays.asList(&quot;/*&quot;));
+
+        return  bean;
+    }
+}</code></code></pre></li>
+<li><p>log4j</p>
+<pre><code><code> &lt;dependency&gt;
+            &lt;groupId&gt;log4j&lt;/groupId&gt;
+            &lt;artifactId&gt;log4j&lt;/artifactId&gt;
+            &lt;version&gt;1.2.17&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre></li>
+</ul>
+<h2 id="测试">测试</h2>
+<p>访问：</p>
+<p>http://localhost:8080/druid/</p>
+<p><img src="./images/SpringBoot集成Druid连接池1.png" alt="1568639129611" /></p>
+<p>实时监控：</p>
+<p><img src="./images/SpringBoot集成Druid连接池2.png" alt="1568639371677" /></p>
+<p><img src="./images/SpringBoot集成Druid连接池3.png" alt="1568639332218" /></p>
+<h2 id="数据源配置文件密码加密显示">数据源配置文件密码加密显示</h2>
+<ul>
+<li>找到jar包，在终端打开：</li>
+</ul>
+<p><img src="./images/SpringBoot集成Druid连接池4.png" alt="1568640407073" /></p>
+<ul>
+<li>生成密码</li>
+</ul>
+<pre><code><code>java -cp druid-1.0.16.jar com.alibaba.druid.filter.config.ConfigTools yourPassword</code></code></pre>
+<p>其中druid-1.0.16.jar换成正在使用对应的版本，yourPassword改成数据库连接的密码。</p>
+<p>生成privateKey和publicKey以及password</p>
+<pre><code><code>privateKey:MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAgiX0+n2diIixWASA642qrI8hTo2xg1LItfeDFwGEg9G1wvlarF69gq+wDBpPhY63DDbry8d3I/vNZMaG0bGxwwIDAQABAkAQfiDiUWLSN4hJwCBaOVSkk2rEGp6hJq
+96p8f79VxGm/FneqyzLgiIQvvIutsOWSSQses+C/cDoXYEgfddieSpAiEAuq1lcFuBPh7MWZwlbIi0GM4+/1tNQed+W9Lm3qGJYk0CIQCyepaXbrY8Vk8pUZMOKr74kFFBfG5WqbAJuNYym1PMTwIgZttPfx8METxLADzm6exQvzI0x+J4qQ1yNAn
+6p0R+PCkCIFPZ8EI5C3kRe6OH5bT0NECHXQWNNjGVC1Wl90xTWW1VAiEAnKdXLI45e1e8jgpCQ4TG90PmDlKlrcxUnBiHUrOhyew=
+publicKey:MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAIIl9Pp9nYiIsVgEgOuNqqyPIU6NsYNSyLX3gxcBhIPRtcL5WqxevYKvsAwaT4WOtww268vHdyP7zWTGhtGxscMCAwEAAQ==
+password:MEMMpYHaOUFVuaR37bMbUmGW76WVSLAD7pnFLrbup5H4Q6sZvWMDsYAcnZvAL2hY2Man1rc6SCJMYwrse1xPKw==
+</code></code></pre>
+<ul>
+<li>yaml配置</li>
+</ul>
+<p>修改password，添加公钥。</p>
+<pre><code><code>spring:
+  datasource:
+    #   数据源基本配置
+    username: noneplus
+    password: MEMMpYHaOUFVuaR37bMbUmGW76WVSLAD7pnFLrbup5H4Q6sZvWMDsYAcnZvAL2hY2Man1rc6SCJMYwrse1xPKw==   # 1.配置生成的password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://47.103.6.247:3306/user?serverTimezone=UTC
+    type: com.alibaba.druid.pool.DruidDataSource
+    #   Druid数据源配置
+    initialSize: 5
+    minIdle: 5
+    maxActive: 20
+    maxWait: 60000
+    timeBetweenEvictionRunsMillis: 60000
+    minEvictableIdleTimeMillis: 300000
+    validationQuery: SELECT 1 FROM DUAL
+    testWhileIdle: true
+    testOnBorrow: false
+    testOnReturn: false
+    poolPreparedStatements: true
+    #   配置监控统计拦截的filters，去掉后监控界面sql无法统计，&#39;wall&#39;用于防火墙
+    filters: stat,wall,log4j,config  # 3.添加config
+    maxPoolPreparedStatementPerConnectionSize: 20
+    useGlobalDataSourceStat: true
+    # 2.开启加密，配置公钥
+    connectionProperties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=500;config.decrypt=true;config.decrypt.key=MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAIIl9Pp9nYiIsVgEgOuNqqyPIU6NsYNSyLX3gxcBhIPRtcL5WqxevYKvsAwaT4WOtww268vHdyP7zWTGhtGxscMCAwEAAQ==
+  thymeleaf:
+    cache: false
+pagehelper:
+  helperDialect: mysql
+  reasonable: true
+  supportMethodsArguments: true
+  pageSizeZero: false #pageSize=0
+</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

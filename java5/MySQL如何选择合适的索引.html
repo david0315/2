@@ -1,0 +1,514 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修MySQL如何选择合适的索引' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>MySQL如何选择合适的索引</center></div><div class='banquan'>原文出处:本文由博客园博主小强的进阶之路提供。<br/>
+原文连接:https://www.cnblogs.com/xiaoqiang-code/p/11474036.html</div><br>
+    <blockquote>
+<p>先来看一个栗子</p>
+</blockquote>
+<pre><code><code>EXPLAIN select * from employees where name &gt; &#39;a&#39;;</code></code></pre>
+<p><img src="./images/MySQL如何选择合适的索引0.png" /></p>
+<p>如果用name索引查找数据需要遍历name字段联合索引树，然后根据遍历出来的主键值去主键索引树里再去查出最终数据，成本比全表扫描还高。<br />
+可以用覆盖索引优化，这样只需要遍历name字段的联合索引树就可以拿到所有的结果。</p>
+<pre><code><code>EXPLAIN select name,age,position from employees where name &gt; &#39;a&#39;;</code></code></pre>
+<p><img src="./images/MySQL如何选择合适的索引1.png" /></p>
+<p>可以看到通过select出的字段是覆盖索引，MySQL底层使用了索引优化。<br />
+在看另一个case：</p>
+<pre><code><code>EXPLAIN select * from employees where name &gt; &#39;zzz&#39;;</code></code></pre>
+<p><img src="./images/MySQL如何选择合适的索引2.png" /></p>
+<p>对于上面的这两种 name&gt;'a' 和 name&gt;'zzz'的执行结果， mysql最终是否选择走索引或者一张表涉及多个索引， mysql最终如何选择索引，可以通过trace工具来一查究竟，开启trace工具会影响mysql性能，所以只能临时分析sql使用，用完之后需要立即关闭。</p>
+<pre><code><code>SET SESSION optimizer_trace=&quot;enabled=on&quot;,end_markers_in_json=on;  --开启trace
+SELECT * FROM employees WHERE name &gt; &#39;a&#39; ORDER BY position;
+SELECT * FROM information_schema.OPTIMIZER_TRACE;
+
+查看trace字段：
+{
+  &quot;steps&quot;: [
+    {
+      &quot;join_preparation&quot;: {  --第一阶段：SQl准备阶段
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;expanded_query&quot;: &quot;/* select#1 */ select `employees`.`id` AS `id`,`employees`.`name` AS `name`,`employees`.`age` AS `age`,`employees`.`position` AS `position`,`employees`.`hire_time` AS `hire_time` from `employees` where (`employees`.`name` &gt; &#39;a&#39;) order by `employees`.`position`&quot;
+          }
+        ] /* steps */
+      } /* join_preparation */
+    },
+    {
+      &quot;join_optimization&quot;: { --第二阶段：SQL优化阶段
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;condition_processing&quot;: { --条件处理
+              &quot;condition&quot;: &quot;WHERE&quot;,
+              &quot;original_condition&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;,
+              &quot;steps&quot;: [
+                {
+                  &quot;transformation&quot;: &quot;equality_propagation&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;
+                },
+                {
+                  &quot;transformation&quot;: &quot;constant_propagation&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;
+                },
+                {
+                  &quot;transformation&quot;: &quot;trivial_condition_removal&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;
+                }
+              ] /* steps */
+            } /* condition_processing */
+          },
+          {
+            &quot;table_dependencies&quot;: [  --表依赖详情
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;row_may_be_null&quot;: false,
+                &quot;map_bit&quot;: 0,
+                &quot;depends_on_map_bits&quot;: [
+                ] /* depends_on_map_bits */
+              }
+            ] /* table_dependencies */
+          },
+          {
+            &quot;ref_optimizer_key_uses&quot;: [
+            ] /* ref_optimizer_key_uses */
+          },
+          {
+            &quot;rows_estimation&quot;: [  --预估标的访问成本
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;range_analysis&quot;: {
+                  &quot;table_scan&quot;: { --全表扫描情况
+                    &quot;rows&quot;: 3,  --扫描行数
+                    &quot;cost&quot;: 3.7  --查询成本
+                  } /* table_scan */,
+                  &quot;potential_range_indices&quot;: [  --查询可能使用的索引
+                    {
+                      &quot;index&quot;: &quot;PRIMARY&quot;, --主键索引
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;not_applicable&quot;
+                    },
+                    {
+                      &quot;index&quot;: &quot;idx_name_age_position&quot;,  --辅助索引
+                      &quot;usable&quot;: true,
+                      &quot;key_parts&quot;: [
+                        &quot;name&quot;,
+                        &quot;age&quot;,
+                        &quot;position&quot;,
+                        &quot;id&quot;
+                      ] /* key_parts */
+                    },
+                    {
+                      &quot;index&quot;: &quot;idx_age&quot;,
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;not_applicable&quot;
+                    }
+                  ] /* potential_range_indices */,
+                  &quot;setup_range_conditions&quot;: [
+                  ] /* setup_range_conditions */,
+                  &quot;group_index_range&quot;: {
+                    &quot;chosen&quot;: false,
+                    &quot;cause&quot;: &quot;not_group_by_or_distinct&quot;
+                  } /* group_index_range */,
+                  &quot;analyzing_range_alternatives&quot;: {  ‐‐分析各个索引使用成本
+                    &quot;range_scan_alternatives&quot;: [
+                      {
+                        &quot;index&quot;: &quot;idx_name_age_position&quot;,
+                        &quot;ranges&quot;: [
+                          &quot;a &lt; name&quot;
+                        ] /* ranges */,
+                        &quot;index_dives_for_eq_ranges&quot;: true,
+                        &quot;rowid_ordered&quot;: false,
+                        &quot;using_mrr&quot;: false,
+                        &quot;index_only&quot;: false,  ‐‐是否使用覆盖索引
+                        &quot;rows&quot;: 3,  --‐‐索引扫描行数
+                        &quot;cost&quot;: 4.61,  --索引使用成本
+                        &quot;chosen&quot;: false,  ‐‐是否选择该索引
+                        &quot;cause&quot;: &quot;cost&quot;
+                      }
+                    ] /* range_scan_alternatives */,
+                    &quot;analyzing_roworder_intersect&quot;: {
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;too_few_roworder_scans&quot;
+                    } /* analyzing_roworder_intersect */
+                  } /* analyzing_range_alternatives */
+                } /* range_analysis */
+              }
+            ] /* rows_estimation */
+          },
+          {
+            &quot;considered_execution_plans&quot;: [
+              {
+                &quot;plan_prefix&quot;: [
+                ] /* plan_prefix */,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;best_access_path&quot;: {
+                  &quot;considered_access_paths&quot;: [
+                    {
+                      &quot;access_type&quot;: &quot;scan&quot;,
+                      &quot;rows&quot;: 3,
+                      &quot;cost&quot;: 1.6,
+                      &quot;chosen&quot;: true,
+                      &quot;use_tmp_table&quot;: true
+                    }
+                  ] /* considered_access_paths */
+                } /* best_access_path */,
+                &quot;cost_for_plan&quot;: 1.6,
+                &quot;rows_for_plan&quot;: 3,
+                &quot;sort_cost&quot;: 3,
+                &quot;new_cost_for_plan&quot;: 4.6,
+                &quot;chosen&quot;: true
+              }
+            ] /* considered_execution_plans */
+          },
+          {
+            &quot;attaching_conditions_to_tables&quot;: {
+              &quot;original_condition&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;,
+              &quot;attached_conditions_computation&quot;: [
+              ] /* attached_conditions_computation */,
+              &quot;attached_conditions_summary&quot;: [
+                {
+                  &quot;table&quot;: &quot;`employees`&quot;,
+                  &quot;attached&quot;: &quot;(`employees`.`name` &gt; &#39;a&#39;)&quot;
+                }
+              ] /* attached_conditions_summary */
+            } /* attaching_conditions_to_tables */
+          },
+          {
+            &quot;clause_processing&quot;: {
+              &quot;clause&quot;: &quot;ORDER BY&quot;,
+              &quot;original_clause&quot;: &quot;`employees`.`position`&quot;,
+              &quot;items&quot;: [
+                {
+                  &quot;item&quot;: &quot;`employees`.`position`&quot;
+                }
+              ] /* items */,
+              &quot;resulting_clause_is_simple&quot;: true,
+              &quot;resulting_clause&quot;: &quot;`employees`.`position`&quot;
+            } /* clause_processing */
+          },
+          {
+            &quot;refine_plan&quot;: [
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;access_type&quot;: &quot;table_scan&quot;
+              }
+            ] /* refine_plan */
+          },
+          {
+            &quot;reconsidering_access_paths_for_index_ordering&quot;: {
+              &quot;clause&quot;: &quot;ORDER BY&quot;,
+              &quot;index_order_summary&quot;: {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;index_provides_order&quot;: false,
+                &quot;order_direction&quot;: &quot;undefined&quot;,
+                &quot;index&quot;: &quot;unknown&quot;,
+                &quot;plan_changed&quot;: false
+              } /* index_order_summary */
+            } /* reconsidering_access_paths_for_index_ordering */
+          }
+        ] /* steps */
+      } /* join_optimization */
+    },
+    {
+      &quot;join_execution&quot;: {  --第三阶段：SQL执行阶段
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;filesort_information&quot;: [
+              {
+                &quot;direction&quot;: &quot;asc&quot;,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;field&quot;: &quot;position&quot;
+              }
+            ] /* filesort_information */,
+            &quot;filesort_priority_queue_optimization&quot;: {
+              &quot;usable&quot;: false,
+              &quot;cause&quot;: &quot;not applicable (no LIMIT)&quot;
+            } /* filesort_priority_queue_optimization */,
+            &quot;filesort_execution&quot;: [
+            ] /* filesort_execution */,
+            &quot;filesort_summary&quot;: {
+              &quot;rows&quot;: 3,
+              &quot;examined_rows&quot;: 3,
+              &quot;number_of_tmp_files&quot;: 0,
+              &quot;sort_buffer_size&quot;: 200704,
+              &quot;sort_mode&quot;: &quot;&lt;sort_key, additional_fields&gt;&quot;
+            } /* filesort_summary */
+          }
+        ] /* steps */
+      } /* join_execution */
+    }
+  ] /* steps */
+}</code></code></pre>
+<p>全表扫描的成本低于索引扫描， 索引MySQL最终会选择全表扫描。</p>
+<pre><code><code>SELECT * FROM employees WHERE name &gt; &#39;zzz&#39; ORDER BY position;
+SELECT * FROM information_schema.OPTIMIZER_TRACE;
+
+{
+  &quot;steps&quot;: [
+    {
+      &quot;join_preparation&quot;: {
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;expanded_query&quot;: &quot;/* select#1 */ select `employees`.`id` AS `id`,`employees`.`name` AS `name`,`employees`.`age` AS `age`,`employees`.`position` AS `position`,`employees`.`hire_time` AS `hire_time` from `employees` where (`employees`.`name` &gt; &#39;zzz&#39;) order by `employees`.`position`&quot;
+          }
+        ] /* steps */
+      } /* join_preparation */
+    },
+    {
+      &quot;join_optimization&quot;: {
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;condition_processing&quot;: {
+              &quot;condition&quot;: &quot;WHERE&quot;,
+              &quot;original_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;,
+              &quot;steps&quot;: [
+                {
+                  &quot;transformation&quot;: &quot;equality_propagation&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;
+                },
+                {
+                  &quot;transformation&quot;: &quot;constant_propagation&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;
+                },
+                {
+                  &quot;transformation&quot;: &quot;trivial_condition_removal&quot;,
+                  &quot;resulting_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;
+                }
+              ] /* steps */
+            } /* condition_processing */
+          },
+          {
+            &quot;table_dependencies&quot;: [
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;row_may_be_null&quot;: false,
+                &quot;map_bit&quot;: 0,
+                &quot;depends_on_map_bits&quot;: [
+                ] /* depends_on_map_bits */
+              }
+            ] /* table_dependencies */
+          },
+          {
+            &quot;ref_optimizer_key_uses&quot;: [
+            ] /* ref_optimizer_key_uses */
+          },
+          {
+            &quot;rows_estimation&quot;: [
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;range_analysis&quot;: {
+                  &quot;table_scan&quot;: {
+                    &quot;rows&quot;: 3,
+                    &quot;cost&quot;: 3.7
+                  } /* table_scan */,
+                  &quot;potential_range_indices&quot;: [
+                    {
+                      &quot;index&quot;: &quot;PRIMARY&quot;,
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;not_applicable&quot;
+                    },
+                    {
+                      &quot;index&quot;: &quot;idx_name_age_position&quot;,
+                      &quot;usable&quot;: true,
+                      &quot;key_parts&quot;: [
+                        &quot;name&quot;,
+                        &quot;age&quot;,
+                        &quot;position&quot;,
+                        &quot;id&quot;
+                      ] /* key_parts */
+                    },
+                    {
+                      &quot;index&quot;: &quot;idx_age&quot;,
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;not_applicable&quot;
+                    }
+                  ] /* potential_range_indices */,
+                  &quot;setup_range_conditions&quot;: [
+                  ] /* setup_range_conditions */,
+                  &quot;group_index_range&quot;: {
+                    &quot;chosen&quot;: false,
+                    &quot;cause&quot;: &quot;not_group_by_or_distinct&quot;
+                  } /* group_index_range */,
+                  &quot;analyzing_range_alternatives&quot;: {
+                    &quot;range_scan_alternatives&quot;: [
+                      {
+                        &quot;index&quot;: &quot;idx_name_age_position&quot;,
+                        &quot;ranges&quot;: [
+                          &quot;zzz &lt; name&quot;
+                        ] /* ranges */,
+                        &quot;index_dives_for_eq_ranges&quot;: true,
+                        &quot;rowid_ordered&quot;: false,
+                        &quot;using_mrr&quot;: false,
+                        &quot;index_only&quot;: false,
+                        &quot;rows&quot;: 1,
+                        &quot;cost&quot;: 2.21,
+                        &quot;chosen&quot;: true
+                      }
+                    ] /* range_scan_alternatives */,
+                    &quot;analyzing_roworder_intersect&quot;: {
+                      &quot;usable&quot;: false,
+                      &quot;cause&quot;: &quot;too_few_roworder_scans&quot;
+                    } /* analyzing_roworder_intersect */
+                  } /* analyzing_range_alternatives */,
+                  &quot;chosen_range_access_summary&quot;: {
+                    &quot;range_access_plan&quot;: {
+                      &quot;type&quot;: &quot;range_scan&quot;,
+                      &quot;index&quot;: &quot;idx_name_age_position&quot;,
+                      &quot;rows&quot;: 1,
+                      &quot;ranges&quot;: [
+                        &quot;zzz &lt; name&quot;
+                      ] /* ranges */
+                    } /* range_access_plan */,
+                    &quot;rows_for_plan&quot;: 1,
+                    &quot;cost_for_plan&quot;: 2.21,
+                    &quot;chosen&quot;: true
+                  } /* chosen_range_access_summary */
+                } /* range_analysis */
+              }
+            ] /* rows_estimation */
+          },
+          {
+            &quot;considered_execution_plans&quot;: [
+              {
+                &quot;plan_prefix&quot;: [
+                ] /* plan_prefix */,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;best_access_path&quot;: {
+                  &quot;considered_access_paths&quot;: [
+                    {
+                      &quot;access_type&quot;: &quot;range&quot;,
+                      &quot;rows&quot;: 1,
+                      &quot;cost&quot;: 2.41,
+                      &quot;chosen&quot;: true,
+                      &quot;use_tmp_table&quot;: true
+                    }
+                  ] /* considered_access_paths */
+                } /* best_access_path */,
+                &quot;cost_for_plan&quot;: 2.41,
+                &quot;rows_for_plan&quot;: 1,
+                &quot;sort_cost&quot;: 1,
+                &quot;new_cost_for_plan&quot;: 3.41,
+                &quot;chosen&quot;: true
+              }
+            ] /* considered_execution_plans */
+          },
+          {
+            &quot;attaching_conditions_to_tables&quot;: {
+              &quot;original_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;,
+              &quot;attached_conditions_computation&quot;: [
+              ] /* attached_conditions_computation */,
+              &quot;attached_conditions_summary&quot;: [
+                {
+                  &quot;table&quot;: &quot;`employees`&quot;,
+                  &quot;attached&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;
+                }
+              ] /* attached_conditions_summary */
+            } /* attaching_conditions_to_tables */
+          },
+          {
+            &quot;clause_processing&quot;: {
+              &quot;clause&quot;: &quot;ORDER BY&quot;,
+              &quot;original_clause&quot;: &quot;`employees`.`position`&quot;,
+              &quot;items&quot;: [
+                {
+                  &quot;item&quot;: &quot;`employees`.`position`&quot;
+                }
+              ] /* items */,
+              &quot;resulting_clause_is_simple&quot;: true,
+              &quot;resulting_clause&quot;: &quot;`employees`.`position`&quot;
+            } /* clause_processing */
+          },
+          {
+            &quot;refine_plan&quot;: [
+              {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;pushed_index_condition&quot;: &quot;(`employees`.`name` &gt; &#39;zzz&#39;)&quot;,
+                &quot;table_condition_attached&quot;: null,
+                &quot;access_type&quot;: &quot;range&quot;
+              }
+            ] /* refine_plan */
+          },
+          {
+            &quot;reconsidering_access_paths_for_index_ordering&quot;: {
+              &quot;clause&quot;: &quot;ORDER BY&quot;,
+              &quot;index_order_summary&quot;: {
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;index_provides_order&quot;: false,
+                &quot;order_direction&quot;: &quot;undefined&quot;,
+                &quot;index&quot;: &quot;idx_name_age_position&quot;,
+                &quot;plan_changed&quot;: false
+              } /* index_order_summary */
+            } /* reconsidering_access_paths_for_index_ordering */
+          }
+        ] /* steps */
+      } /* join_optimization */
+    },
+    {
+      &quot;join_execution&quot;: {
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;filesort_information&quot;: [
+              {
+                &quot;direction&quot;: &quot;asc&quot;,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;field&quot;: &quot;position&quot;
+              }
+            ] /* filesort_information */,
+            &quot;filesort_priority_queue_optimization&quot;: {
+              &quot;usable&quot;: false,
+              &quot;cause&quot;: &quot;not applicable (no LIMIT)&quot;
+            } /* filesort_priority_queue_optimization */,
+            &quot;filesort_execution&quot;: [
+            ] /* filesort_execution */,
+            &quot;filesort_summary&quot;: {
+              &quot;rows&quot;: 0,
+              &quot;examined_rows&quot;: 0,
+              &quot;number_of_tmp_files&quot;: 0,
+              &quot;sort_buffer_size&quot;: 200704,
+              &quot;sort_mode&quot;: &quot;&lt;sort_key, additional_fields&gt;&quot;
+            } /* filesort_summary */
+          }
+        ] /* steps */
+      } /* join_execution */
+    }
+  ] /* steps */
+}</code></code></pre>
+<p>查看trace字段可知索引扫描的成本低于全表扫描的成本，所以MySQL最终选择索引扫描。</p>
+<pre><code><code>SET SESSION optimizer_trace=&quot;enabled=off&quot;; -- 关闭trace</code></code></pre>
+<blockquote>
+<p>还没关注我的公众号？</p>
+</blockquote>
+<ul>
+<li>扫文末二维码关注公众号【小强的进阶之路】可领取如下:</li>
+<li>学习资料： 1T视频教程：涵盖Javaweb前后端教学视频、机器学习/人工智能教学视频、Linux系统教程视频、雅思考试视频教程；</li>
+<li>100多本书：包含C/C++、Java、Python三门编程语言的经典必看图书、LeetCode题解大全；</li>
+<li>软件工具：几乎包括你在编程道路上的可能会用到的大部分软件；</li>
+<li>项目源码：20个JavaWeb项目源码。<br />
+<img src="./images/MySQL如何选择合适的索引3.png" alt="小强的进阶之路二维码" /></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

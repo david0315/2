@@ -1,0 +1,153 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修工作中遇到的99%SQL优化，这里都能给你解决方案(二)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>工作中遇到的99%SQL优化，这里都能给你解决方案(二)</center></div><div class='banquan'>原文出处:本文由博客园博主小强的进阶之路提供。<br/>
+原文连接:https://www.cnblogs.com/xiaoqiang-code/p/11495359.html</div><br>
+    <pre><code><code>-- 示例表
+CREATE TABLE `employees` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(24) NOT NULL DEFAULT &#39;&#39; COMMENT &#39;姓名&#39;,
+  `age` int(20) NOT NULL DEFAULT &#39;0&#39; COMMENT &#39;年龄&#39;,
+  `position` varchar(20) NOT NULL DEFAULT &#39;&#39; COMMENT &#39;职位&#39;,
+  `hire_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT &#39;入职时间&#39;,
+  PRIMARY KEY (`id`),
+  KEY `idx_name_age_position` (`name`,`age`,`position`) USING BTREE,
+  KEY `idx_age` (`age`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=136326 DEFAULT CHARSET=utf8 COMMENT=&#39;员工表&#39;</code></code></pre>
+<h3 id="order-by与group-by优化">Order by与Group by优化</h3>
+<pre><code><code>EXPLAIN select * from employees WHERE name=&#39;LiLei&#39; and position=&#39;dev&#39; order by age;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)0.png" /></p>
+<p>利用最左前缀法则：中间字段不能断，因此查询用到了name索引，从key_len=74也能看出，age索引列用在排序的过程中，因为Extra字段里没有using filesort。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name=&#39;LiLei&#39;  order by position;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)1.png" /><br />
+从explain的执行结果来看：key_len=74, 查询使用name索引，由于用了position进行排序，跳过了age，出现了Using filesort。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name=&#39;LiLei&#39;  order by age,position;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)2.png" /></p>
+<p>查找只用到了name索引，age和position用于排序，无Using filesort。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name=&#39;LiLei&#39;  order by position,age;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)3.png" /></p>
+<p>和上一个case不同的是，Extra中出现了Using filesort，因为索引的创建顺序为name，age，position，但是排序的时候age和position颠倒了位置。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name=&#39;LiLei&#39;  order by age asc, position desc;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)4.png" /></p>
+<p>虽然排序的字段和联合索引顺序是一样的，且order by是默认升序，这里position desc是降序，导致与索引的排序方式不同，从而产生Using filesort。Mysql8以上版本有降序索引可以支持该种查询方式。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name in(&#39;LiLei&#39;, &#39;zhuge&#39;)  order by age, position ;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)5.png" /></p>
+<p>对于排序来说，多个相等条件也是范围查询。</p>
+<pre><code><code>EXPLAIN select * from employees WHERE name &gt; &#39;a&#39; order by name;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)6.png" /></p>
+<p>可以用覆盖索引优化</p>
+<pre><code><code>EXPLAIN select name,age,position from employees WHERE name &gt; &#39;a&#39; order by name;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)7.png" /></p>
+<h3 id="filesort排序">filesort排序</h3>
+<pre><code><code>EXPLAIN select * from employees where name=&#39;LiLei&#39; order by position;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)8.png" /></p>
+<p>查看这条sql对应trace结果（只展示排序部分）：</p>
+<pre><code><code>set session optimizer_trace=&quot;enabled=on&quot;,end_markers_in_json=on; ‐‐开启trace
+select * from employees where name = &#39;LiLei&#39; order by position;
+select * from information_schema.OPTIMIZER_TRACE;
+
+{
+      &quot;join_execution&quot;: {  --sql执行阶段
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;filesort_information&quot;: [
+              {
+                &quot;direction&quot;: &quot;asc&quot;,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;field&quot;: &quot;position&quot;
+              }
+            ] /* filesort_information */,
+            &quot;filesort_priority_queue_optimization&quot;: {
+              &quot;usable&quot;: false,
+              &quot;cause&quot;: &quot;not applicable (no LIMIT)&quot;
+            } /* filesort_priority_queue_optimization */,
+            &quot;filesort_execution&quot;: [
+            ] /* filesort_execution */,
+            &quot;filesort_summary&quot;: {  --文件排序信息
+              &quot;rows&quot;: 1,  --预计扫描行数
+              &quot;examined_rows&quot;: 1,  --参与排序的行
+              &quot;number_of_tmp_files&quot;: 0, --使用临时文件的个数，这个值为0代表全部使用sort_buffer内存排序，否则使用磁盘文件排序
+              &quot;sort_buffer_size&quot;: 200704,  --排序缓存的大小
+              &quot;sort_mode&quot;: &quot;&lt;sort_key, additional_fields&gt;&quot;  --排序方式，这里用的单路排序
+            } /* filesort_summary */
+          }
+        ] /* steps */
+      } /* join_execution */
+    }</code></code></pre>
+<p>修改max_length_for_sort_data=10</p>
+<pre><code><code>set max_length_for_sort_data = 10;  --employees表所有字段长度总和肯定大于10字节
+select * from employees where name = &#39;LiLei&#39; order by position;
+select * from information_schema.OPTIMIZER_TRACE;
+
+{
+      &quot;join_execution&quot;: {
+        &quot;select#&quot;: 1,
+        &quot;steps&quot;: [
+          {
+            &quot;filesort_information&quot;: [
+              {
+                &quot;direction&quot;: &quot;asc&quot;,
+                &quot;table&quot;: &quot;`employees`&quot;,
+                &quot;field&quot;: &quot;position&quot;
+              }
+            ] /* filesort_information */,
+            &quot;filesort_priority_queue_optimization&quot;: {
+              &quot;usable&quot;: false,
+              &quot;cause&quot;: &quot;not applicable (no LIMIT)&quot;
+            } /* filesort_priority_queue_optimization */,
+            &quot;filesort_execution&quot;: [
+            ] /* filesort_execution */,
+            &quot;filesort_summary&quot;: {
+              &quot;rows&quot;: 1,
+              &quot;examined_rows&quot;: 1,
+              &quot;number_of_tmp_files&quot;: 0,
+              &quot;sort_buffer_size&quot;: 53248,
+              &quot;sort_mode&quot;: &quot;&lt;sort_key, rowid&gt;&quot;  --排序方式为双路排序
+            } /* filesort_summary */
+          }
+        ] /* steps */
+      } /* join_execution */
+    }</code></code></pre>
+<p>对比这两个排序模式，单路排序会把所有的需要查询的字段数据都放到sort_buffer中，而双路排序只会把主键id和需要排序的字段放到sort_buffer中进行排序，然后再通过主键id 回到原表 查询需要的字段数据。MySQL通过max_length_for_sort_data这个参数来控制排序，在不同场景下使用不同的排序模式，从而提升排序效率。</p>
+<h3 id="优化总结">优化总结</h3>
+<ul>
+<li>Mysql支持两种方式的排序filesort和index，using index是指Mysql扫描索引本身完成排序。index效率高，filesort效率低。</li>
+<li>order by满足两种情况会使用using index。<br />
+order by语句使用索引最左前列。<br />
+使用where子句和order by子句 条件列组合满足索引最左前列。</li>
+<li>尽量在索引列上完成排序，遵循索引建立（索引创建的顺序）时候的最左前缀法则。</li>
+<li>如果order by 的条件不在索引列上，就会产生using filesort。</li>
+</ul>
+<blockquote>
+<p>还没关注我的公众号？</p>
+</blockquote>
+<ul>
+<li>扫文末二维码关注公众号【小强的进阶之路】可领取如下:</li>
+<li>学习资料： 1T视频教程：涵盖Javaweb前后端教学视频、机器学习/人工智能教学视频、Linux系统教程视频、雅思考试视频教程；</li>
+<li>100多本书：包含C/C++、Java、Python三门编程语言的经典必看图书、LeetCode题解大全；</li>
+<li>软件工具：几乎包括你在编程道路上的可能会用到的大部分软件；</li>
+<li>项目源码：20个JavaWeb项目源码。<br />
+<img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(二)9.png" alt="小强的进阶之路二维码" /></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

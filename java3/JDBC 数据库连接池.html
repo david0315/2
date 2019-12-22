@@ -1,0 +1,161 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JDBC 数据库连接池' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JDBC 数据库连接池</center></div><div class='banquan'>原文出处:本文由博客园博主初入江湖的仔提供。<br/>
+原文连接:https://www.cnblogs.com/churujianghudezai/p/11450487.html</div><br>
+    <p><strong><span style="font-size: 14pt;">数据库连接池原理-传统方式</span></strong></p>
+<p><span style="font-size: 14pt;">当有多个线程，每个线程都需要连接数据库执行SQL语句的话，那么每个线程都会创建一个连接，并且在使用完毕后，关闭连接。</span><br /><span style="font-size: 14pt;">创建连接和关闭连接的过程也是比较消耗时间的，当多线程并发的时候，系统就会变得很卡顿。</span><br /><span style="font-size: 14pt;">同时，一个数据库同时支持的连接总数也是有限的，如果多线程并发量很大，那么数据库连接的总数就会被消耗光，后续线程发起的数据库连接就会失败。</span>&nbsp;</p>
+<p><img src="./images/JDBC 数据库连接池0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 14pt;"><strong>数据库连接池原理-使用池</strong></span></p>
+<p><span style="font-size: 16px;">与传统方式不同，连接池在使用之前，就会创建好一定数量的连接。<br />如果有任何线程需要使用连接，那么就从连接池里面<span class="strong">借用，<span class="strong">而不是自己重新创建. <br />使用完毕后，又把这个连接<span class="strong">归还给连接池供下一次或者其他线程使用。<br />倘若发生多线程并发情况，连接池里的连接被<span class="strong">借用光了，那么其他线程就会临时等待，直到有连接被<span class="strong">归还回来，再继续使用。<br />整个过程，这些连接都<span class="strong">不会被关闭，而是不断的被循环使用，从而节约了启动和关闭连接的时间。
+</span></span></span></span></span></span></span></p>
+<p><span style="font-size: 16px;"><span class="strong"><span class="strong"><span class="strong"><span class="strong"><span class="strong"><span class="strong"><img src="./images/JDBC 数据库连接池1.png" alt="" /></span></span></span></span></span></span></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<src id="step1832" class="panel-heading ">
+<h2><span style="font-size: 14pt;">ConnectionPool构造方法和初始化</span></h2>
+<src class="requireAuthentication pull-right">&nbsp;
+
+<src class="stepbody panel-body1">
+<src>
+<src class="interviewAnswer stephighlightDesc">
+<src class="stephighlightDescOnly mask4spider-false"><span style="font-size: 16px;"> 1. ConnectionPool() 构造方法约定了这个连接池一共有多少连接。</span><br /><span style="font-size: 16px;">2. 在init() 初始化方法中，创建了size条连接。 注意，这里不能使用try-with-resource这种自动关闭连接的方式。</span>
+<src class="stephighlightDescOnly mask4spider-false"><span style="font-size: 16px;">因为连接恰恰需要保持不关闭状态，供后续循环使用。</span><br /><span style="font-size: 16px;">3. getConnection， 判断是否为空，如果是空的就wait等待，否则就借用一条连接出去。</span><br /><span style="font-size: 16px;">4. returnConnection， 在使用完毕后，归还这个连接到连接池，并且在归还完毕后，调用notifyAll，通知那些等待的线程，有新的连接可以借用了。</span><br /><br /><span style="font-size: 16px;">注：连接池设计用到了多线程的wait和notifyAll</span>
+<src class="stephighlightDescOnly mask4spider-false">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ConnectionPool {
+    List</span>&lt;Connection&gt; cs = <span style="color: #0000ff;">new</span> ArrayList&lt;Connection&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> size;
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">定义连接池里的最大连接数</span>
+    <span style="color: #0000ff;">public</span> ConnectionPool(<span style="color: #0000ff;">int</span><span style="color: #000000;"> size){
+        </span><span style="color: #0000ff;">this</span>.size =<span style="color: #000000;"> size;
+        init();
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> init(){
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">这里恰恰不能使用try-with-resource的方式，
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 因为这些连接都需要是活的，不要被自动关闭</span>
+        <span style="color: #0000ff;">try</span><span style="color: #000000;">{
+            Class.forName(</span>"com.mysql.jdbc.Driver"<span style="color: #000000;">);
+            </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0;i&lt;size;i++<span style="color: #000000;">){
+                Connection c </span>= DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/how2java?characterEncoding=UTF-8"<span style="color: #000000;">,
+                        </span>"root", "123456"<span style="color: #000000;">);
+                cs.add(c);
+            }
+        }</span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException e){
+            e.printStackTrace();
+        }</span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e){
+            e.printStackTrace();
+        }
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">需要连接时，将连接分配出去的方法</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> Connection getConnection(){
+        </span><span style="color: #0000ff;">while</span><span style="color: #000000;">(cs.isEmpty()){
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;">{
+                </span><span style="color: #0000ff;">this</span>.wait();<span style="color: #008000;">//</span><span style="color: #008000;">this表示引用该函数所属类的当前对象</span>
+            }<span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        Connection c </span>= cs.remove(0<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> c;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">用完连接后，将连接还给连接池的方法</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">synchronized</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> returnConnection(Connection c){
+        cs.add(c);
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.notifyAll();
+    }
+}</span></code></pre>
+
+<src id="step1833" class="panel-heading ">
+<h2><span style="font-size: 14pt;">测试类</span></h2>
+<src class="requireAuthentication pull-right"><span style="font-size: 16px;">首先初始化一个有3条连接的数据库连接池</span><span style="font-size: 16px;"><span style="font-size: 16px;">然后创建100个线程，每个线程都会从连接池中<span class="strong">借用连接，并且在借用之后，归还连接。 拿到连接之后，执行一个耗时1秒的SQL语句。</span></span></span>
+
+<src class="stepbody panel-body1">
+<src>
+<src class="interviewAnswer stephighlightDesc">
+<src class="stephighlightDescOnly mask4spider-false">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestConnectionPool {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ConnectionPool cp </span>= <span style="color: #0000ff;">new</span> ConnectionPool(3<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0;i&lt;100;i++<span style="color: #000000;">){
+            </span><span style="color: #0000ff;">new</span> WorkingThread("working thread"+<span style="color: #000000;">i,cp).start();
+        }
+    }
+}
+
+</span><span style="color: #0000ff;">class</span> WorkingThread <span style="color: #0000ff;">extends</span><span style="color: #000000;"> Thread{
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> ConnectionPool cp;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> WorkingThread(String name,ConnectionPool cp){
+        </span><span style="color: #0000ff;">super</span>(name);<span style="color: #008000;">//</span><span style="color: #008000;">给当前thread命名</span>
+        <span style="color: #0000ff;">this</span>.cp =<span style="color: #000000;"> cp;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run(){
+        Connection c </span>=<span style="color: #000000;"> cp.getConnection();
+        System.out.println(</span><span style="color: #0000ff;">this</span>.getName()+":\t 获取了一根连接，并开始工作"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">try</span>(Statement st =<span style="color: #000000;"> c.createStatement()){
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">模拟时耗1秒的数据库SQL语句</span>
+            Thread.sleep(1000<span style="color: #000000;">);
+            st.execute(</span>"select * from hero"<span style="color: #000000;">);
+        }</span><span style="color: #0000ff;">catch</span> (SQLException |<span style="color: #000000;"> InterruptedException e){
+            e.printStackTrace();
+        }
+        cp.returnConnection(c);
+    }
+}</span></code></pre>
+
+<p><span style="font-size: 16px;"><span class="strong">&nbsp;</span></span></p>
+<em id="__mceDel"><em id="__mceDel"><em id="__mceDel"><span style="font-size: 16px;"><span class="strong">运行程序，就可以观察到如图所示的效果
+</span></span></em></em></em>
+<src class="stephighlightDescOnly mask4spider-false"><em><em><em><em><em><span style="font-size: 16px;"><span class="strong"><img src="./images/JDBC 数据库连接池2.png" alt="" /></span></span></em></em></em></em></em>
+<p>&nbsp;</p>
+<em><em><em><em><span style="font-size: 16px;"><span class="strong"></span></span></em></em></em></em>
+<p>&nbsp;</p>
+<p><span style="font-size: 18px;">原文链接：http://how2j.cn/k/jdbc/jdbc-connection-pool/610.html</span></p>
+
+<src class="stephighlightDescOnly mask4spider-false">
+<src>&nbsp;
+<p>&nbsp;</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

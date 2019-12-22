@@ -1,0 +1,216 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修八、springboot 简单优雅的通过docker-compose 构建' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>八、springboot 简单优雅的通过docker-compose 构建</center></div><div class='banquan'>原文出处:本文由博客园博主quellanan提供。<br/>
+原文连接:https://www.cnblogs.com/quellanan/p/11837448.html</div><br>
+    <h1 id="前言">前言</h1>
+<p>这个项目有一段时间没有更新了，不过我可没有偷懒哟，是偷偷准备了一个大招，现在是时候展示啦哈哈。</p>
+<p>我们今天要做的，就是将我们的项目通过docker-compose 构建成镜像运行。为什么要这样做呢？比我我前面的这些教程，用到了mysql,如果你们想要运行我的程序，就必须在自己电脑上装mysql 数据库才行，也就是项目用依赖了哪些环境，都必须先将这些环境部署好才能运行项目，那我们要做的，只用安装docker和docke-compose ，然后运行就完事了，不用管什么环境的。</p>
+<p>初一听，好像还行，但是根本没有接触docker-compose 怎么办？不要慌，一个专题带你飞，虽不能让你所向披靡，但也足你叱咤江湖啦<br />
+传送门：<a href="https://blog.csdn.net/qq_27790011/article/category/9429389">docker自我修炼从0到1</a></p>
+<p>还有我查看项目发现竟然没有配置Redis，但是Redis 使用也是很广泛的，我之前的文章有详细的讲解springboot项目怎么使用redis。我这里只是简单的将他配上去确保架构的完整性，就不做更多的讲解，需要详细了解的可以参考<a href="https://blog.csdn.net/qq_27790011/article/category/9187012">Redis--从零开始随笔</a></p>
+<p>好了，前面说了这么多无非是想表达这篇文章分两个大部分，部署Redis和通过docker-compose 搭建。</p>
+<h1 id="配置redis">配置Redis</h1>
+<h2 id="增加配置">增加配置</h2>
+<p>在pom.xml文件中增加Redis的依赖</p>
+<pre><code><code>&lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-data-redis&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>在application.properties 中存在redis 连接信息。</p>
+<pre><code><code>#配置redis
+# Redis数据库索引（默认为0）
+spring.redis.database=0  
+# Redis服务器地址
+spring.redis.host=192.168.252.53
+# Redis服务器连接端口
+spring.redis.port=6389 
+# Redis服务器连接密码（默认为空）
+spring.redis.password=
+# 连接池最大连接数（使用负值表示没有限制） 默认 8
+spring.redis.lettuce.pool.max-active=8
+# 连接池最大阻塞等待时间（使用负值表示没有限制） 默认 -1
+spring.redis.lettuce.pool.max-wait=-1
+# 连接池中的最大空闲连接 默认 8
+spring.redis.lettuce.pool.max-idle=8
+# 连接池中的最小空闲连接 默认 0
+spring.redis.lettuce.pool.min-idle=0</code></code></pre>
+<h2 id="简单使用">简单使用</h2>
+<p>配置好了，我们还是说一下简单使用，这些在之前也有讲，代码也是差不多的。我们在controller 层创建一个 redis 包，在Redis包下创建一个RedisController类。<br />
+代码如下：</p>
+<pre><code><code>@RestController
+@RequestMapping(&quot;/redis&quot;)
+@Slf4j
+public class RedisController {
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+    @RequestMapping(value = &quot;/add&quot;,method = RequestMethod.GET)
+    public String add(@RequestParam(value=&quot;key&quot;)String key,@RequestParam(value = &quot;value&quot;) String value){
+        ValueOperations ops=stringRedisTemplate.opsForValue();
+        ops.set(key,value);
+        return &quot;success&quot;;
+    }
+
+    @RequestMapping(value = &quot;/get&quot;,method = RequestMethod.GET)
+    public String get(@RequestParam(value = &quot;key&quot;)String key){
+        ValueOperations ops=stringRedisTemplate.opsForValue();
+        return (String) ops.get(key);
+    }
+
+}</code></code></pre>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建0.png" alt="file" /></p>
+<p>好了项目整合Redis 就这么多了，至于测试我们待会后面部署好了一起测试。接下来开始重头戏。</p>
+<h1 id="docker-compose-部署">docker-compose 部署</h1>
+<p>我们现在有一个springboot项目，现在怎么构建成一个镜像放在服务器上运行呢？<br />
+我们一步步来，首先是增加配置。</p>
+<h2 id="pom.xml">pom.xml</h2>
+<p>还是我们熟悉的pom.xml 我们需要在pom.xml 中 build--&gt;plugins 中增加配置：</p>
+<pre><code><code>&lt;!-- Docker --&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;com.spotify&lt;/groupId&gt;
+                &lt;artifactId&gt;docker-maven-plugin&lt;/artifactId&gt;
+                &lt;version&gt;1.0.0&lt;/version&gt;
+                &lt;!-- 将插件绑定在某个phase执行 --&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;id&gt;build-image&lt;/id&gt;
+                        &lt;!-- 用户只需执行mvn package ，就会自动执行mvn docker:build --&gt;
+                        &lt;phase&gt;package&lt;/phase&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;build&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+                &lt;configuration&gt;
+                    &lt;!-- 指定生成的镜像名 --&gt;
+                    &lt;imageName&gt;${docker.image.prefix}/${project.artifactId}:${project.version}&lt;/imageName&gt;
+                    &lt;!-- 指定标签 --&gt;
+                    &lt;imageTags&gt;
+                        &lt;imageTag&gt;${project.version}&lt;/imageTag&gt;
+                    &lt;/imageTags&gt;
+                    &lt;!-- 指定 Dockerfile 路径 --&gt;
+                    &lt;dockerDirectory&gt;src/main/docker&lt;/dockerDirectory&gt;
+                    &lt;!-- 指定远程 docker api地址 --&gt;
+                    &lt;dockerHost&gt;http://127.0.0.1:2375&lt;/dockerHost&gt;
+                    &lt;resources&gt;
+                        &lt;resource&gt;
+                            &lt;targetPath&gt;/&lt;/targetPath&gt;
+                            &lt;!-- jar包所在的路径此处配置的对应target目录 --&gt;
+                            &lt;directory&gt;${project.build.directory}&lt;/directory&gt;
+                            &lt;!-- 需要包含的jar包,这里对应的是Dockerfile中添加的文件名　--&gt;
+                            &lt;include&gt;${project.build.finalName}.jar&lt;/include&gt;
+                        &lt;/resource&gt;
+                    &lt;/resources&gt;
+                &lt;/configuration&gt;
+            &lt;/plugin&gt;</code></code></pre>
+<p>上面都有注释没有什么好讲的，其中指定生成镜像名的${docker.image.prefix} 的值在properties 中配置。<br />
+<img src="./images/八、springboot 简单优雅的通过docker-compose 构建1.png" alt="file" /></p>
+<h2 id="dockerfile">Dockerfile</h2>
+<p>我们在项目的src--&gt;main 创建一个docker 包，包下创建一个Dockerfile 问价 ，内容如下：</p>
+<pre><code><code>FROM java:8
+VOLUME /tmp
+ADD zlflovemm-1.0.0.jar zlflovemm-1.0.0.jar
+ENTRYPOINT [&quot;java&quot;,&quot;-jar&quot;,&quot;/zlflovemm-1.0.0.jar&quot;]</code></code></pre>
+<h2 id="mvn-package">mvn package</h2>
+<p>接下来我们使用maven package 打包，就可以将项目打包成镜像并发送到我们配置的服务器上。可以看到我们的镜像已经到我们的服务器了。<br />
+<img src="./images/八、springboot 简单优雅的通过docker-compose 构建2.png" alt="file" /></p>
+<h2 id="docker-compose.yml">docker-compose.yml</h2>
+<p>我们现在项目镜像有了，现在需要通过docker-compose.yml 将项目，mysql .redis 都管理起来。<br />
+我们创建一个docker-compose.yml 内容如下：</p>
+<pre><code><code>version: &quot;3&quot;
+
+services:
+  webapp:
+    image: quellanan/zlflovemm:1.0.0
+    ports:
+      - &quot;9001:9090&quot;
+    volumes:
+      - &quot;/data&quot;
+    depends_on: 
+      - redis
+      - mysql
+
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - &quot;6389:6379&quot;
+    volumes:
+      - /redis/redis.conf:/etc/redis/redis.conf
+    command: redis-server /etc/redis/redis.conf
+
+  mysql:
+    image: mysql:latest
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: &quot;123456&quot;
+      MYSQL_USER: &#39;root&#39;
+      MYSQL_PASS: &#39;123456&#39;
+    ports:
+       - &quot;3306:3306&quot;
+    volumes:
+       - &quot;./db:/var/lib/mysql&quot;
+       - &quot;./conf/my.cnf:/etc/my.cnf&quot;
+       - &quot;./init:/docker-entrypoint-initdb.d/&quot;
+</code></code></pre>
+<p>webapp 和Redis 配置我就不说了，上一篇文章已经说了，这里我们说一下mysql 的配置。<br />
+image:mysql:laster 我们选择最新的版本的mysql 镜像。</p>
+<pre><code><code>    environment:
+      MYSQL_ROOT_PASSWORD: &quot;123456&quot;
+      MYSQL_USER: &#39;root&#39;
+      MYSQL_PASS: &#39;123456&#39;</code></code></pre>
+<p>environment 配置的是mysql 的root 用户密码普通的用户及密码。<br />
+配置我们自定义的mysql 配置，如果使用的默认的，这里的数据卷其实可以不用指定。</p>
+<pre><code><code>volumes:
+       - &quot;./db:/var/lib/mysql&quot;
+       - &quot;./conf/my.cnf:/etc/my.cnf&quot;
+       - &quot;./init:/docker-entrypoint-initdb.d/&quot;</code></code></pre>
+<p>我们创建好了docker-compose 后，在同级目录下执行</p>
+<pre><code><code>docker-compose up</code></code></pre>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建3.png" alt="file" /><br />
+就可以看到镜像容器已经启动了。项目包含三个镜像,现在我们来验证一下项目正常启动没有。</p>
+<h2 id="测试">测试</h2>
+<p>由于我们使用了docker镜像的mysql 。所以之前的项目使用的数据库需要重新执行一次，我们代码中有，我就不贴出来了。项目的接口我们现在调一下看看。</p>
+<pre><code><code># 检测项目正常启动没有
+http://192.168.252.53:9001/zlflovemm/</code></code></pre>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建4.png" alt="file" /></p>
+<pre><code><code># 检测mysql 是否正常
+http://192.168.252.53:9001/zlflovemm/user/list</code></code></pre>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建5.png" alt="file" /></p>
+<pre><code><code># 检测Redis 是否正常
+http://192.168.252.53:9001/zlflovemm/redis/add?key=a&amp;value=123
+http://192.168.252.53:9001/zlflovemm/redis/get?key=a</code></code></pre>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建6.png" alt="file" /></p>
+<h1 id="番外">番外</h1>
+<p>到此为止，将springboot项目构建成镜像完成啦，感觉整篇文件将的比较粗糙，这篇主要是整合，详细的都在前面的博客已经讲了，所以这里就没有再讲了。</p>
+<p>好了，就说这么多啦<br />
+代码上传到github：<br />
+https://github.com/QuellanAn/zlflovemm</p>
+<p>后续加油♡</p>
+<p>欢迎大家关注个人公众号 &quot;程序员爱酸奶&quot;</p>
+<p>分享各种学习资料，包含java，linux，大数据等。资料包含视频文档以及源码，同时分享本人及投递的优质技术博文。</p>
+<p>如果大家喜欢记得关注和分享哟❤</p>
+<p><img src="./images/八、springboot 简单优雅的通过docker-compose 构建7.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,178 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修10分钟彻底理解Redis的持久化机制：RDB和AOF' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>10分钟彻底理解Redis的持久化机制：RDB和AOF</center></div><div class='banquan'>原文出处:本文由博客园博主Java知音*提供。<br/>
+原文连接:https://www.cnblogs.com/javazhiyin/p/11425060.html</div><br>
+    <blockquote>
+<p>作者：张君鸿</p>
+<p>juejin.im/post/5d09a9ff51882577eb133aa9</p>
+</blockquote>
+<h2>什么是Redis持久化?</h2>
+<p>Redis作为一个键值对内存数据库(NoSQL)，数据都存储在内存当中，在处理客户端请求时，所有操作都在内存当中进行，如下所示：</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF0.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF0.png" /></p>
+<p><strong>这样做有什么问题呢？</strong></p>
+<p>其实，只要稍微有点计算机基础知识的人都知道，存储在内存当中的数据，只要服务器关机(各种原因引起的)，内存中的数据就会消失了，不仅服务器关机会造成数据消失，Redis服务器守护进程退出，内存中的数据也一样会消失。</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF1.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF1.png" /></p>
+<p>对于只把Redis当缓存来用的项目来说，数据消失或许问题不大，重新从数据源把数据加载进来就可以了，但如果直接把用户提交的业务数据存储在Redis当中，把Redis作为数据库来使用，在其放存储重要业务数据，那么Redis的内存数据丢失所造成的影响也许是毁灭性。</p>
+<p>为了避免内存中数据丢失，Redis提供了对持久化的支持，我们可以选择不同的方式将数据从内存中保存到硬盘当中，使数据可以持久化保存。</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF2.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF2.png" /></p>
+<p>Redis提供了RDB和AOF两种不同的数据持久化方式，下面我们就来详细介绍一下这种不同的持久化方式吧。</p>
+<hr />
+<h2>RDB</h2>
+<p>RDB是一种快照存储持久化方式，具体就是将Redis某一时刻的内存数据保存到硬盘的文件当中，默认保存的文件名为dump.rdb，而在Redis服务器启动时，会重新加载dump.rdb文件的数据到内存当中恢复数据。</p>
+<h3>开启RDB持久化方式</h3>
+<p>开启RDB持久化方式很简单，客户端可以通过向Redis服务器发送save或bgsave命令让服务器生成rdb文件，或者通过服务器配置文件指定触发RDB条件。</p>
+<h4>1. save命令</h4>
+<p>save命令是一个同步操作。</p>
+<pre><code><code class="hljs markdown"><span class="hljs-section">#&nbsp;同步数据到磁盘上<br /><span class="hljs-quote">&gt;&nbsp;save&nbsp;<br /></span></span></code></code></pre>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF3.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF3.png" /></p>
+<p>当客户端向服务器发送save命令请求进行持久化时，服务器会阻塞save命令之后的其他客户端的请求，直到数据同步完成。</p>
+<p>如果数据量太大，同步数据会执行很久，而这期间Redis服务器也无法接收其他请求，所以，最好不要在生产环境使用save命令。</p>
+<h4>2. bgsave</h4>
+<p>与save命令不同，bgsave命令是一个异步操作。</p>
+<pre><code><code class="hljs markdown"><span class="hljs-section">#&nbsp;异步保存数据集到磁盘上<br /><span class="hljs-quote">&gt;&nbsp;bgsave<br /></span></span></code></code></pre>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF4.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF4.png" /></p>
+<p>当客户端发服务发出bgsave命令时，Redis服务器主进程会forks一个子进程来数据同步问题，在将数据保存到rdb文件之后，子进程会退出。</p>
+<p>所以，与save命令相比，Redis服务器在处理bgsave采用子线程进行IO写入，而主进程仍然可以接收其他请求，但forks子进程是同步的，所以forks子进程时，一样不能接收其他请求，这意味着，如果forks一个子进程花费的时间太久(一般是很快的)，bgsave命令仍然有阻塞其他客户的请求的情况发生。</p>
+<h4>3. 服务器配置自动触发</h4>
+<p>除了通过客户端发送命令外，还有一种方式，就是在Redis配置文件中的save指定到达触发RDB持久化的条件，比如【多少秒内至少达到多少写操作】就开启RDB数据同步。</p>
+<p>例如我们可以在配置文件redis.conf指定如下的选项：</p>
+<pre><code><code class="hljs nginx"><span class="hljs-comment">#&nbsp;900s内至少达到一条写命令<br /><span class="hljs-attribute">save&nbsp;<span class="hljs-number">900&nbsp;<span class="hljs-number">1<br /><span class="hljs-comment">#&nbsp;300s内至少达至10条写命令<br />save&nbsp;<span class="hljs-number">300&nbsp;<span class="hljs-number">10<br /><span class="hljs-comment">#&nbsp;60s内至少达到10000条写命令<br />save&nbsp;<span class="hljs-number">60&nbsp;<span class="hljs-number">10000<br /></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>之后在启动服务器时加载配置文件。</p>
+<pre><code><code class="hljs apache"><span class="hljs-comment">#&nbsp;启动服务器加载配置文件<br /><span class="hljs-attribute">redis-server&nbsp;redis.conf<br /></span></span></code></code></pre>
+<p>这种通过服务器配置文件触发RDB的方式，与bgsave命令类似，达到触发条件时，会forks一个子进程进行数据同步，不过最好不要通过这方式来触发RDB持久化，因为设置触发的时间太短，则容易频繁写入rdb文件，影响服务器性能，时间设置太长则会造成数据丢失。</p>
+<h3>rdb文件</h3>
+<p>前面介绍了三种让服务器生成rdb文件的方式，无论是由主进程生成还是子进程来生成，其过程如下：</p>
+<ul class="list-paddingleft-2">
+<li>
+<p>生成临时rdb文件，并写入数据。</p>
+</li>
+<li>
+<p>完成数据写入，用临时文代替代正式rdb文件。</p>
+</li>
+<li>
+<p>删除原来的db文件。</p>
+</li>
+</ul>
+<p>RDB默认生成的文件名为dump.rdb，当然，我可以通过配置文件进行更加详细配置，比如在单机下启动多个redis服务器进程时，可以通过端口号配置不同的rdb名称，如下所示：</p>
+<pre><code><code class="hljs coffeescript"><span class="hljs-comment">#&nbsp;是否压缩rdb文件<br />rdbcompression&nbsp;<span class="hljs-literal">yes<br /><br /><span class="hljs-comment">#&nbsp;rdb文件的名称<br />dbfilename&nbsp;redis<span class="hljs-number">-6379.rdb<br /><br /><span class="hljs-comment">#&nbsp;rdb文件保存目录<br />dir&nbsp;~<span class="hljs-regexp">/redis/<br /></span></span></span></span></span></span></code></code></pre>
+<p><strong>RDB的几个优点</strong></p>
+<ul class="list-paddingleft-2">
+<li>
+<p>与AOF方式相比，通过rdb文件恢复数据比较快。</p>
+</li>
+<li>
+<p>rdb文件非常紧凑，适合于数据备份。</p>
+</li>
+<li>
+<p>通过RDB进行数据备，由于使用子进程生成，所以对Redis服务器性能影响较小。</p>
+</li>
+</ul>
+<p><strong>RDB的几个缺点</strong></p>
+<ul class="list-paddingleft-2">
+<li>
+<p>如果服务器宕机的话，采用RDB的方式会造成某个时段内数据的丢失，比如我们设置10分钟同步一次或5分钟达到1000次写入就同步一次，那么如果还没达到触发条件服务器就死机了，那么这个时间段的数据会丢失。</p>
+</li>
+<li>
+<p>使用save命令会造成服务器阻塞，直接数据同步完成才能接收后续请求。</p>
+</li>
+<li>
+<p>使用bgsave命令在forks子进程时，如果数据量太大，forks的过程也会发生阻塞，另外，forks子进程会耗费内存。</p>
+</li>
+</ul>
+<hr />
+<h2>AOF</h2>
+<p>聊完了RDB,来聊聊Redis的另外一个持久化方式：AOF(Append-only file)。</p>
+<p>与RDB存储某个时刻的快照不同，AOF持久化方式会记录客户端对服务器的每一次写操作命令，并将这些写操作以Redis协议追加保存到以后缀为aof文件末尾，在Redis服务器重启时，会加载并运行aof文件的命令，以达到恢复数据的目的。</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF5.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF5.png" /></p>
+<p><strong>开启AOF持久化方式</strong></p>
+<p>Redis默认不开启AOF持久化方式，我们可以在配置文件中开启并进行更加详细的配置，如下面的redis.conf文件：</p>
+<pre><code><code class="hljs coffeescript"><span class="hljs-comment">#&nbsp;开启aof机制<br />appendonly&nbsp;<span class="hljs-literal">yes<br /><br /><span class="hljs-comment">#&nbsp;aof文件名<br />appendfilename&nbsp;<span class="hljs-string">"appendonly.aof"<br /><br /><span class="hljs-comment">#&nbsp;写入策略,always表示每个写操作都保存到aof文件中,也可以是everysec或no<br />appendfsync&nbsp;always<br /><br /><span class="hljs-comment">#&nbsp;默认不重写aof文件<br /><span class="hljs-literal">no-appendfsync-<span class="hljs-literal">on-rewrite&nbsp;<span class="hljs-literal">no<br /><br /><span class="hljs-comment">#&nbsp;保存目录<br />dir&nbsp;~<span class="hljs-regexp">/redis/<br /></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p><strong>三种写入策略</strong></p>
+<p>在上面的配置文件中，我们可以通过appendfsync选项指定写入策略,有三个选项</p>
+<pre><code><code class="hljs nginx"><span class="hljs-attribute">appendfsync&nbsp;always<br /><span class="hljs-comment">#&nbsp;appendfsync&nbsp;everysec<br /><span class="hljs-comment">#&nbsp;appendfsync&nbsp;no<br /></span></span></span></code></code></pre>
+<h4>1. always</h4>
+<p>客户端的每一个写操作都保存到aof文件当，这种策略很安全，但是每个写请注都有IO操作，所以也很慢。</p>
+<h4>2. everysec</h4>
+<p>appendfsync的默认写入策略，每秒写入一次aof文件，因此，最多可能会丢失1s的数据。</p>
+<h4>3. no</h4>
+<p>Redis服务器不负责写入aof，而是交由操作系统来处理什么时候写入aof文件。更快，但也是最不安全的选择，不推荐使用。</p>
+<h3>AOF文件重写</h3>
+<p>AOF将客户端的每一个写操作都追加到aof文件末尾，比如对一个key多次执行incr命令，这时候，aof保存每一次命令到aof文件中，aof文件会变得非常大。</p>
+<pre><code><code class="hljs dart">incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">1<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">2<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">3<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">4<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">5<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">6<br />...<br />incr&nbsp;<span class="hljs-built_in">num&nbsp;<span class="hljs-number">100000<br /></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>aof文件太大，加载aof文件恢复数据时，就会非常慢，为了解决这个问题，Redis支持aof文件重写，通过重写aof，可以生成一个恢复当前数据的最少命令集，比如上面的例子中那么多条命令，可以重写为：</p>
+<pre><code><code class="hljs sql"><span class="hljs-keyword">set&nbsp;<span class="hljs-keyword">num&nbsp;<span class="hljs-number">100000<br /></span></span></span></code></code></pre>
+<p>aof文件是一个二进制文件，并不是像上面的例子一样，直接保存每个命令，而使用Redis自己的格式，上面只是方便演示。</p>
+<h3>两种重写方式</h3>
+<p>通过在redis.conf配置文件中的选项no-appendfsync-on-rewrite可以设置是否开启重写，这种方式会在每次fsync时都重写，影响服务器性以，因此默认值为no，不推荐使用。</p>
+<pre><code><code class="hljs coffeescript"><span class="hljs-comment">#&nbsp;默认不重写aof文件<br /><span class="hljs-literal">no-appendfsync-<span class="hljs-literal">on-rewrite&nbsp;<span class="hljs-literal">no<br /></span></span></span></span></code></code></pre>
+<p>客户端向服务器发送bgrewriteaof命令，也可以让服务器进行AOF重写。</p>
+<pre><code><code class="bash language-bash hljs"><span class="hljs-comment">#&nbsp;让服务器异步重写追加aof文件命令<br />&gt;&nbsp;bgrewriteaof<br /></span></code></code></pre>
+<p>AOF重写方式也是异步操作，即如果要写入aof文件，则Redis主进程会forks一个子进程来处理，如下所示：</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF6.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF6.png" /></p>
+<p>重写aof文件的好处</p>
+<ul class="list-paddingleft-2">
+<li>
+<p>压缩aof文件，减少磁盘占用量。</p>
+</li>
+<li>
+<p>将aof的命令压缩为最小命令集，加快了数据恢复的速度。</p>
+</li>
+</ul>
+<h3>AOF文件损坏</h3>
+<p>在写入aof日志文件时，如果Redis服务器宕机，则aof日志文件文件会出格式错误，在重启Redis服务器时，Redis服务器会拒绝载入这个aof文件，可以通过以下步骤修复aof并恢复数据。</p>
+<p>1、备份现在aof文件，以防万一。</p>
+<p>2、使用redis-check-aof命令修复aof文件，该命令格式如下：</p>
+<pre><code><code class="hljs php"><span class="hljs-comment">#&nbsp;修复aof日志文件<br />$&nbsp;redis-check-aof&nbsp;-fix&nbsp;file.aof<br /></span></code></code></pre>
+<p>3、重启Redis服务器，加载已经修复的aof文件，恢复数据。</p>
+<h3>AOF的优点</h3>
+<ul class="list-paddingleft-2">
+<li>
+<p>AOF只是追加日志文件，因此对服务器性能影响较小，速度比RDB要快，消耗的内存较少。</p>
+</li>
+</ul>
+<h3>AOF的缺点</h3>
+<ul class="list-paddingleft-2">
+<li>
+<p>AOF方式生成的日志文件太大，即使通过AFO重写，文件体积仍然很大。</p>
+</li>
+<li>
+<p>恢复数据的速度比RDB慢。</p>
+</li>
+</ul>
+<hr />
+<h2>选择RDB还是AOF呢？</h2>
+<p>通过上面的介绍，我们了解了RDB与AOF各自的优点与缺点，到底要如何选择呢？</p>
+<p>通过下面的表示，我们可以从几个方面对比一下RDB与AOF,在应用时，要根本自己的实际需求，选择RDB或者AOF，其实，如果想要数据足够安全，可以两种方式都开启，但两种持久化方式同时进行IO操作，会严重影响服务器性能，因此有时候不得不做出选择。</p>
+<p><img title="10分钟彻底理解Redis的持久化机制：RDB和AOF" src="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF7.png" alt="10分钟彻底理解Redis的持久化机制：RDB和AOF" data-original="./images/10分钟彻底理解Redis的持久化机制：RDB和AOF7.png" /></p>
+<p>当RDB与AOF两种方式都开启时，Redis会优先使用AOF日志来恢复数据，因为AOF保存的文件比RDB文件更完整。</p>
+<hr />
+<h2>小结</h2>
+<p>上面讲了一大堆Redis的持久化机制的知识，其实，如果你只是单纯把Redis作为缓存服务器，那么可以完全不用考虑持久化，但是，在如今的大多数服务器架构中，Redis的单单只是扮演一个缓存服务器的角色，还可以作为数据库，保存我们的业务数据，此时，我们则需要好好了解有关Redis持久化策略的区别与选择。</p>
+<p><em><strong>推荐阅读(点击即可跳转阅读)</strong></em></p>
+<p><strong>1.</strong>&nbsp;<a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=2&amp;sn=0d054027651bef114ae6bec5a8f62359&amp;chksm=ebd62a07dca1a3111269692dd9b0a5ab8af7d2038b8ec6600a057573364e76db1332adc5fd46&amp;scene=21#wechat_redirect" rel="nofollow" target="_blank">SpringBoot内容聚合</a></p>
+<p><strong>2.&nbsp;</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=3&amp;sn=b04d8fdacf575c7ec959de4107f31091&amp;chksm=ebd62a07dca1a31186f7f62de60ba7c7a88db26233562ed7183c6f609c5e7f4ffb448f30375f&amp;scene=21#wechat_redirect" rel="nofollow" target="_blank">面试题内容聚合</a></p>
+<p><strong>3.&nbsp;</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=4&amp;sn=ec20f59a5b67a59d98d221bd20d78448&amp;chksm=ebd62a07dca1a31188dafea0e6984b4883fa972a32ff31da2df6f52fcc73b56c6c9454751d73&amp;scene=21#wechat_redirect" rel="nofollow" target="_blank">设计模式内容聚合</a></p>
+<p><strong>4.&nbsp;</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488945&amp;idx=2&amp;sn=2c0326af621ac51f33720e2608121cef&amp;chksm=ebd62a9ddca1a38b8e284b413a8eea08aa452fdeda3c4740325803514d30029a2ab4af5bdfed&amp;scene=21#wechat_redirect" rel="nofollow" target="_blank">Mybatis内容聚合</a></p>
+<p><strong>5.&nbsp;</strong><a href="https://www.javazhiyin.com/go?url=http://mp.weixin.qq.com/s?__biz=MzI4Njc5NjM1NQ==&amp;mid=2247488811&amp;idx=6&amp;sn=a769526cf5c4dfc5b0f8e5a40f984cff&amp;chksm=ebd62a07dca1a3116cc6c45ceb7a81d47293b9811c8df97b5ca363c6370ffccfd913bab3599f&amp;scene=21#wechat_redirect" rel="nofollow" target="_blank">多线程内容聚合</a></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

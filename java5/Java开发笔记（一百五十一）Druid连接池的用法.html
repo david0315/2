@@ -1,0 +1,95 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java开发笔记（一百五十一）Druid连接池的用法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java开发笔记（一百五十一）Druid连接池的用法</center></div><div class='banquan'>原文出处:本文由博客园博主pinlantu提供。<br/>
+原文连接:https://www.cnblogs.com/pinlantu/p/11544703.html</div><br>
+    <p>C3P0连接池自诞生以来在Java Web领域反响甚好，业已成为hibenate框架推荐的连接池。谁知人红是非多，C3P0在大型应用场合中暴露了越来越多的局限性，包括但不限于下列几点：<br />1、C3P0管理池内连接时没有采取LRU排队规则（最久未使用算法），意味着C3P0未能将数据库性能调到最优。<br />2、在处理大批量数据的时候，C3P0对耗时操作过于容忍，致使容易出现线程死锁的状况。<br />3、C3P0不支持监控功能，外界难以实时跟踪连接池的运行情况，不利于按需分配和调度系统资源。<br />就上面几点问题的看法因人而异，对老外来说，他们国家人口不多，一百年都难得遇上这种严苛的条件，考虑超大规模的数据处理纯属杞人忧天。但对国人来说，数据库里的业务记录动辄以千万计，亿级以上的海量数据也不罕见，此时一点一滴的性能差距汇总起来就可能出大问题。然而C3P0源自国外，人家才懒得搭理这茬事；再说，此等关键要害岂能由外人扼住咽喉？当然要自己掌握核心技术才让人放心，于是阿里巴巴公司推出了国产的开源连接池Druid，该连接池立足于本国国情，在诸多方面加以调整和优化，比C3P0更适用于国内的业务系统。<br />Druid的用法近似于C3P0，它拥有自己的连接池工具DruidDataSource，该工具的常见方法列举如下：<br />setDriverClassName：设置连接池的数据库驱动。<br />setUrl：设置数据库的连接地址。<br />setUsername：设置数据库的用户名。<br />setPassword：设置数据库的密码。<br />setInitialSize：设置连接池的初始大小。<br />setMinIdle：设置连接池大小的下限。<br />setMaxActive：设置连接池大小的上限。<br />setRemoveAbandoned：设置是否抛弃已超时的连接。<br />setRemoveAbandonedTimeout：设置超时的时间间隔，单位秒。如果某连接超过该时间仍未释放，则会被自动回收。<br />setMaxWait：设置获取连接所允许的等待时间，单位毫秒。超过该时间将不再获取连接。<br />setTimeBetweenEvictionRunsMillis：设置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位毫秒。<br />setValidationQuery：设置检测连接是否有效的SQL语句。<br />setTestWhileIdle：当空闲时是否需要进行有效性测试。建议设置为true，保证安全性。<br />setTestOnBorrow：设置为true，表示申请连接时将调用validationQuery方法来检测连接是否有效。<br />getDbType：获取数据库的名称。<br />getActiveCount：获取活跃连接的数量。<br />getConnectCount：获取已连上连接的数量。<br />getPoolingCount：获取空闲连接的数量。<br />getConnection：从连接池中获取一个连接，连接类型为DruidPooledConnection。<br />close：关闭连接池。</p>
+<p>至于Druid的编码过程，则依然分成两个步骤：初始化连接池、从连接池中取出一个连接处理，分别说明如下：<br /><strong><span style="font-size: 18px;">1、初始化连接池</span></strong><br />该步骤首先创建Druid连接池的对象，再依次调用相关方法设置详细的参数信息，包括数据库驱动、连接地址、用户名、密码，以及与连接池有关的规格参数。下面是初始化Druid连接池的代码例子：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	private static DruidDataSource dataSource; // 声明Druid连接池的对象
+	// 初始化连接池
+	private static void initDataSource() {
+		dataSource = new DruidDataSource(); // 创建Druid连接池
+		dataSource.setDriverClassName(driver_class); // 设置连接池的数据库驱动
+		dataSource.setUrl(dbUrl); // 设置数据库的连接地址
+		dataSource.setUsername(dbUserName); // 设置数据库的用户名
+		dataSource.setPassword(dbPassword); // 设置数据库的密码
+		dataSource.setInitialSize(1); // 设置连接池的初始大小
+		dataSource.setMinIdle(1); // 设置连接池大小的下限
+		dataSource.setMaxActive(20); // 设置连接池大小的上限
+	}
+</code></pre>
+
+<p>　　</p>
+<p><strong><span style="font-size: 18px;">2、从连接池中取出一个连接处理</span></strong><br />注意该步骤的getConnection方法拿到的是DruidPooledConnection类型的连接对象，再根据该连接创建对应的报告，并开展后续的数据库操作。为方便观察连接池的运行情况，可在其中添加几个连接池的检测方法，例如getActiveCount、getConnectCount、getPoolingCount等等。修改后的数据库操作代码示例如下：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>	// 显示性别分组
+	private static void showRecordGroupBySex() {
+		String sql = "select sex,count(1) count from teacher group by sex order by sex asc";
+		// 从连接池中获取连接、创建连接的报告、命令报告执行指定的SQL语句
+		try (DruidPooledConnection conn = dataSource.getConnection();
+				Statement stmt = conn.createStatement();
+				ResultSet rs = stmt.executeQuery(sql)) {
+			while (rs.next()) { // 循环遍历结果集里面的所有记录
+				int sex = rs.getInt("sex"); // 获取指定字段的整型值
+				int count = rs.getInt("count"); // 获取指定字段的整型值
+				String desc = String.format("%s老师有%d位；", sex==0 ? "男" : "女", count);
+				System.out.print(desc);
+			}
+			System.out.println("\ngetActiveCount="+dataSource.getActiveCount()); // 获取活跃连接的数量
+			System.out.println("getConnectCount="+dataSource.getConnectCount()); // 获取已连上连接的数量
+			System.out.println("getPoolingCount="+dataSource.getPoolingCount()); // 获取空闲连接的数量
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>然后由外部反复调用以上的showRecordGroupBySex方法，假设准备测试连续的三次数据库操作，则外部的调用代码如下所示：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>		for (int i=0; i&lt;3; i++) { // 多次操作数据库
+			showRecordGroupBySex(); // 显示性别分组
+		}
+</code></pre>
+
+<p>&nbsp;</p>
+<p>运行包含上面代码的测试程序，观察到下面的输出日志：</p>
+<src class="cnblogs_Highlighter">
+<pre><code>男老师有2位；女老师有3位；
+getActiveCount=1
+getConnectCount=1
+getPoolingCount=0
+男老师有2位；女老师有3位；
+getActiveCount=1
+getConnectCount=2
+getPoolingCount=0
+男老师有2位；女老师有3位；
+getActiveCount=1
+getConnectCount=3
+getPoolingCount=0
+</code></pre>
+
+<p>&nbsp;</p>
+<p>由日志可见，getActiveCount方法返回了当前正在使用的连接数量，getConnectCount方法返回了曾经连上与已经连上的连接总数，getPoolingCount返回了连接池中剩余的连接数量。</p>
+<p><br /><em id="__mceDel"><br /></em>更多Java技术文章参见《<a href="https://www.cnblogs.com/pinlantu/p/9941789.html" target="_blank">Java开发笔记（序）章节目录</a>》</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

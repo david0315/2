@@ -1,0 +1,96 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Cloud Gateway 之请求坑位[微服务IP不同请求会失败]' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Cloud Gateway 之请求坑位[微服务IP不同请求会失败]</center></div><div class='banquan'>原文出处:本文由博客园博主IsaacZhang提供。<br/>
+原文连接:https://www.cnblogs.com/zhangpan1244/p/11592633.html</div><br>
+    <h1 id="问题产生背景">问题产生背景</h1>
+<p>在使用Spring Cloud Gateway过程中，希望配置多Routes映射不同的微服务，因为Gateway 和Zuul的访问路径不同（zuul 会带有服务service Id）,造成错误。</p>
+<h1 id="现象表现">现象表现</h1>
+<p><img src="./images/Spring Cloud Gateway 之请求坑位[微服务IP不同请求会失败]0.png" alt="file" /></p>
+<h1 id="问题定位">问题定位</h1>
+<ol>
+<li>认为是配置Predicate问题。</li>
+</ol>
+<pre><code><code>      routes:
+        - id: after_route
+          uri: lb://user-center
+          predicates:
+            # 当当前时间晚于设置时间之后,才能访问
+            # 否则得到404错误
+            #- After=2010-01-01T18:00:00.789-07:00[America/Denver]
+            # 当Host属于**.geekplus.com.cn或**.life-runner.com时
+            # http://localhost:9999/** -&gt; user-center/**
+            # eg. http://localhost:9999/users/1 -&gt; user-center/users/1
+            #- Host=**.geekplus.com.cn,**.life-runner.com
+            - TimeBetween=上午6:00,下午11:00
+            - Path=/users/**
+          filters:
+            - AddRequestHeader=CompanyKey,123456
+            - AddResponseHeader=Success,Isaac
+            - PreLog=CustomLogKey,CustomLogValue
+        - id: content_route
+          uri: lb://shared-center
+            - After=2010-01-01T18:00:00.789-07:00[America/Denver]
+            - Path=/share/**
+          filters:
+            - AddRequestHeader=CompanyKey,123456
+            - AddResponseHeader=Success,Isaac
+            - PreLog=CustomLogKey,CustomLogValue</code></code></pre>
+<ol>
+<li>认为是顺序问题</li>
+</ol>
+<pre><code><code>      routes:
+        - id: content_route
+          uri: lb://shared-center
+          predicates:
+            - Path=/share/**
+        - id: after_route
+          uri: lb://user-center
+          predicates:
+            # 当当前时间晚于设置时间之后,才能访问
+            - TimeBetween=上午6:00,下午11:00
+            - Path=/users/**
+          filters:
+            - AddRequestHeader=CompanyKey,123456
+            - AddResponseHeader=Success,Isaac
+            - PreLog=CustomLogKey,CustomLogValue</code></code></pre>
+<ol>
+<li><p>以为自己写错了。</p>
+<blockquote>
+<p>四处寻求帮助，无奈，Gateway的资料网上真的很少。还是自食其力吧，根据错误信息，查看Nacos中元数据，发现异常！</p>
+</blockquote></li>
+</ol>
+<h1 id="问题结论">问题结论</h1>
+<ol>
+<li>gateway 和 user-center 都进行过重启，因为重启后，服务Ip发生了变更，在服务注册中心这两个ip相同，因此可以访问。<br />
+2，shared-center 我长时间没有重启，注册在发现中心的ip 是老的Ip，和gateway/user-center的IP不同，造成请求失败。<br />
+具体如下：<br />
+shared-center: 172.16.33.167<br />
+user-center &amp; gateway : 172.16.29.0</li>
+</ol>
+<p>解决方法，重启shared-center，重新获取实例Ip,结果恢复正常！</p>
+<p><em>Tips</em></p>
+<blockquote>
+<p>我使用的是Spring Cloud Alibaba Nacos作为服务发现中心，在重启内容服务之后，发现中心的失败IPservice并没有被刷新，需要手动处理一下，否则依旧会调用到老的IP。</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

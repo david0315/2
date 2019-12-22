@@ -1,0 +1,158 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据</center></div><div class='banquan'>原文出处:本文由博客园博主布禾卡斐先生提供。<br/>
+原文连接:https://www.cnblogs.com/seve/p/11544065.html</div><br>
+    <h3 id="简介">简介</h3>
+<p>上篇文章中讲了使用Hystrix实现容错，除此之外，Hystrix还提供了近乎实时的监控。本文将介绍如何进行服务监控以及使用Hystrix Dashboard来让监控数据图形化。</p>
+<h3 id="项目介绍">项目介绍</h3>
+<ol>
+<li>sc-parent，父模块(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-eureka，注册中心(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-consumer-hystrix-ribbon，使用Hystrix+Ribbon的消费者(请参照<a href="https://www.cnblogs.com/seve/p/11535891.html">SpringCloud学习笔记(4)：Hystrix容错机制</a>)</li>
+<li>sc-consumer-hystrix-feign，使用Hystrix+Feign的消费者(请参照<a href="https://www.cnblogs.com/seve/p/11535891.html">SpringCloud学习笔记(4)：Hystrix容错机制</a>)</li>
+<li>sc-hystrix-dashboard，用于可视化监控数据</li>
+<li>sc-turbine，用于聚合监控数据</li>
+</ol>
+<h3 id="开启消费者服务监控">开启消费者服务监控</h3>
+<h4 id="修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的pom.xml新增如下依赖">1.修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的pom.xml，新增如下依赖：</h4>
+<pre><code><code>    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+    &lt;/dependency&gt;</code></code></pre>
+<h4 id="修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的application.yml新增如下配置">2.修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的application.yml，新增如下配置：</h4>
+<pre><code><code>management:
+  endpoints:
+    web:
+      exposure:
+        include: &#39;hystrix.stream&#39;  #暴露hystrix.stream端点</code></code></pre>
+<h4 id="测试访问消费者sc-consumer-hystrix-feign的监控数据">3.测试访问消费者sc-consumer-hystrix-feign的监控数据</h4>
+<p>依次启动注册中心sc-eureka和消费者sc-consumer-hystrix-feign，并访问http://localhost:8084/actuator/hystrix.stream，结果显示如下：<br />
+<img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据0.png" /></p>
+<p>出现上图是因为消费者服务没有被访问，所以这里先调用下消费者服务：http://localhost:8084/feign/getBookList，然后再访问http://localhost:8084/actuator/hystrix.stream：</p>
+<p><img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据1.png" /></p>
+<p>可以看到监控数据是以文字的形式展示的，并不直观，下面将介绍使用Hystrix Dashboard可视化监控数据。</p>
+<h3 id="使用hystrix-dashboard可视化监控数据">使用Hystrix Dashboard可视化监控数据</h3>
+<h4 id="在父模块下创建子模块项目sc-hystrix-dashboardpom.xml">1.在父模块下创建子模块项目sc-hystrix-dashboard，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-hystrix-dashboard&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-hystrix-dashboard&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类dashboard.dashboardapplication">2.创建启动类dashboard.DashBoardApplication：</h4>
+<pre><code><code>package dashboard;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
+
+@SpringBootApplication
+@EnableHystrixDashboard
+public class DashBoardApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DashBoardApplication.class, args);
+    }
+}</code></code></pre>
+<h4 id="创建application.yml">3.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 8086
+
+spring:
+  application:
+    name: sc-hystrix-dashboard</code></code></pre>
+<h4 id="测试">4.测试</h4>
+<p>启动sc-hystrix-dashboard后，访问http://localhost:8086/hystrix将会显示Hystrix Dashboard的主界面：</p>
+<p><img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据2.png" /></p>
+<p>然后需要将消费者sc-consumer-hystrix-feign的监控数据添加到Hystrix Dashboard中。依次启动注册中心sc-eureka和消费者sc-consumer-hystrix-feign，将监控数据的地址输入到Hystrix Dashboard主界面的文本框中，点击Monitor Stream，然后重复访问消费者服务http://localhost:8084/feign/getBookList，Hystrix Dashboard显示如下：</p>
+<p><img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据3.png" /></p>
+<p>关于界面上指标表示的内容可以参考下图：<br />
+<img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据4.png" /></p>
+<h3 id="使用turbine聚合监控数据">使用Turbine聚合监控数据</h3>
+<p>/hystrix.stream端点只能监控到单个服务实例，如果需要查看其他服务实例监控信息则需要在Hystrix Dashboard切换想要监控的地址。通过Turbine可以将所有/hystrix.stream端点的数据聚合到一个组合的/turbine.stream中，然后在Hystrix Dashboard中就可以查看所有服务的监控信息。</p>
+<h4 id="修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的application.yml将registerwitheureka设为true或者直接去掉该配置默认为true因为turbine需要从eureka上获取服务的地址信息然后才能获取到服务的监控数据所以消费者服务需要到eureka注册中心注册">1.修改消费者sc-consumer-hystrix-ribbon和sc-consumer-hystrix-feign的application.yml，将registerWithEureka设为true或者直接去掉该配置(默认为true)。因为Turbine需要从Eureka上获取服务的地址信息，然后才能获取到服务的监控数据，所以消费者服务需要到Eureka注册中心注册。</h4>
+<pre><code><code>eureka:
+  client:
+    #registerWithEureka: false 
+    serviceUrl:
+      defaultZone: http://localhost:8080/eureka/  </code></code></pre>
+<h4 id="在父模块下创建子模块项目sc-turbinepom.xml">2.在父模块下创建子模块项目sc-turbine，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-turbine&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-turbine&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类turbine.turbineapplication">3.创建启动类turbine.TurbineApplication：</h4>
+<pre><code><code>package turbine;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.turbine.EnableTurbine;
+
+@SpringBootApplication
+@EnableTurbine
+public class TurbineApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(TurbineApplication.class, args);
+    }
+}</code></code></pre>
+<h4 id="创建application.yml-1">4.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 8087
+
+spring:
+  application:
+    name: sc-turbine
+    
+eureka:
+  client:
+    registerWithEureka: false
+    serviceUrl:
+      defaultZone: http://localhost:8080/eureka/    
+
+turbine:
+  appConfig: sc-consumer-hystrix-ribbon,sc-consumer-hystrix-feign #指定要监控的服务名
+  clusterNameExpression: &quot;&#39;default&#39;&quot;</code></code></pre>
+<h4 id="测试-1">5.测试</h4>
+<p>依次启动注册中心sc-eureka、消费者sc-consumer-hystrix-feign、消费者sc-consumer-hystrix-ribbon、sc-turbine、sc-hystrix-dashboard，访问http://localhost:8086/hystrix进入到Hystrix Dashboard主界面中，然后在Hystrix Dashboard主界面的文本框中输入http://localhost:8087/turbine.stream，点击Monitor Stream进入监控界面，重复访问两个消费者服务，监控界面上将显示两个消费者的监控信息：</p>
+<p><img src="./images/SpringCloud学习笔记(5)：Hystrix Dashboard可视化监控数据5.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

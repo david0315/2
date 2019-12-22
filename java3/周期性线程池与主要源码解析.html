@@ -1,0 +1,182 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修周期性线程池与主要源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>周期性线程池与主要源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主小强的进阶之路提供。<br/>
+原文连接:https://www.cnblogs.com/xiaoqiang-code/p/11432936.html</div><br>
+    <blockquote>
+<p>之前学习ThreadPool的使用以及源码剖析，并且从面试的角度去介绍知识点的解答。今天小强带来周期性线程池的使用和重点源码剖析。</p>
+</blockquote>
+<h2 id="scheduledthreadpoolexecutor">ScheduledThreadPoolExecutor</h2>
+<p>ScheduledThreadPoolExecutor：用来处理延时任务或定时任务<br />
+定时线程池类的类结构图<br />
+<img src="./images/周期性线程池与主要源码解析0.png" alt="定时线程池类的类结构图" /></p>
+<p>ScheduledThreadPoolExecutor接收ScheduleFutureTask类型的任务，是线程池调度任务的最小单位。<br />
+它采用DelayQueue存储等待的任务：<br />
+1、DelayQueue内部封装成一个PriorityQueue，它会根据time的先后时间顺序，如果time相同则根绝sequenceNumber排序；<br />
+2、DelayQueue是无界队列；</p>
+<p><img src="./images/周期性线程池与主要源码解析1.png" alt="周期性线程池任务执行简图" /></p>
+<h2 id="schedulefuturetask">ScheduleFutureTask</h2>
+<p>接收的参数:</p>
+<pre><code><code>private final long sequenceNumber;//任务的序号
+private long time;//任务开始的时间
+private final long period;//任务执行的时间间隔</code></code></pre>
+<p>工作线程的的执行过程：<br />
+工作线程会从DelayQueue取出已经到期的任务去执行；<br />
+执行结束后重新设置任务的到期时间，再次放回DelayQueue；</p>
+<p>ScheduledThreadPoolExecutor会把待执行的任务放到工作队列DelayQueue中，DelayQueue封装了一个PriorityQueue，PriorityQueue会对队列中的ScheduledFutureTask进行排序，具体的排序算法实现如下：</p>
+<pre><code><code>public int compareTo(Delayed other) {
+    if (other == this) // compare zero if same object
+        return 0;
+    if (other instanceof ScheduledFutureTask) {
+        ScheduledFutureTask&lt;?&gt; x = (ScheduledFutureTask&lt;?&gt;)other;
+        //首先按照time排序，time小的排到前面，time大的排到后面
+        long diff = time - x.time;
+        if (diff &lt; 0)
+            return -1;
+        else if (diff &gt; 0)
+            return 1;
+        //time相同，按照sequenceNumber排序;
+        //sequenceNumber小的排在前面,sequenceNumber大的排在后面 
+        else if (sequenceNumber &lt; x.sequenceNumber)
+            return -1;
+        else
+            return 1;
+    }
+    long diff = getDelay(NANOSECONDS) - other.getDelay(NANOSECONDS);
+    return (diff &lt; 0) ? -1 : (diff &gt; 0) ? 1 : 0;
+}</code></code></pre>
+<p>接下来看看ScheduledFutureTask的run方法实现， run方法是调度task的核心，task的执行实际上是run方法的执行。</p>
+<pre><code><code>public void run() {
+    //是否是周期性的
+    boolean periodic = isPeriodic();
+    //线程池是shundown状态不支持处理新任务，直接取消任务
+    if (!canRunInCurrentRunState(periodic))
+        cancel(false);
+    //如果不需要执行执行周期性任务，直接执行run方法结束
+    else if (!periodic)
+        ScheduledFutureTask.super.run();
+    //如果需要周期性执行，则在执行任务完成后，设置下一次执行时间
+    else if (ScheduledFutureTask.super.runAndReset()) {
+        //设置下一次执行该任务的时间
+        setNextRunTime();
+        //重复执行该任务
+        reExecutePeriodic(outerTask);
+    }
+}</code></code></pre>
+<p>run方法的执行步骤：</p>
+<ul>
+<li>1、如果线程池是shundown状态不支持处理新任务，直接取消任务，否则步骤2；</li>
+<li>2、如果不是周期性任务，直接调用ScheduledFutureTask的run方法执行，会设置执行结果，然后直接返回，否则步骤3；</li>
+<li>3、如果是周期性任务，调用ScheduledFutureTask的runAndset方法执行，不会设置执行结果，然后直接返回，否则执行步骤4和步骤5；</li>
+<li>4、计算下一次执行该任务的时间；</li>
+<li>5、重复执行该任务；</li>
+</ul>
+<p>接下来看下reExecutePeriodic方法的执行步骤：</p>
+<pre><code><code>void reExecutePeriodic(RunnableScheduledFuture&lt;?&gt; task) {
+    if (canRunInCurrentRunState(true)) {
+        super.getQueue().add(task);
+        if (!canRunInCurrentRunState(true) &amp;&amp; remove(task))
+            task.cancel(false);
+        else
+            ensurePrestart();
+    }
+}</code></code></pre>
+<p>由于已经执行过一次周期性任务，所以不会reject当前任务，同时传入的任务一定是周期性任务。</p>
+<h2 id="周期性线程池任务的提交方式">周期性线程池任务的提交方式</h2>
+<p>周期性有三种提交的方式：schedule、sceduleAtFixedRate、schedlueWithFixedDelay。下面从使用和源码两个方面进行说明，首先是如果提交任务：</p>
+<pre><code><code>pool.schedule(new Runnable() {
+    @Override
+    public void run() {
+        System.out.println(&quot;延迟执行&quot;);
+    }
+},1, TimeUnit.SECONDS);
+
+/**
+ * 这个执行周期是固定，不管任务执行多长时间，每过3秒中就会产生一个新的任务
+ */
+pool.scheduleAtFixedRate(new Runnable() {
+    @Override
+    public void run() {
+        //这个业务逻辑需要很长的时间，超过了3秒
+        System.out.println(&quot;重复执行&quot;);
+    }
+},1,3,TimeUnit.SECONDS);
+
+pool.shutdown();
+
+/**
+ * 假如run方法30min后执行完成，然后间隔3秒，再周期性执行下一个任务
+ */
+pool.scheduleWithFixedDelay(new Runnable() {
+    @Override
+    public void run() {
+        //30min
+        System.out.println(&quot;重复执行&quot;);
+    }
+},1,3,TimeUnit.SECONDS);</code></code></pre>
+<p>知道了如何提交周期性任务，接下来源码是如何执行的，首先是schedule方法，该方法是指任务在指定延迟时间到达后触发，只会执行一次。</p>
+<pre><code><code>public ScheduledFuture&lt;?&gt; schedule(Runnable command,
+                                   long delay,
+                                   TimeUnit unit) {
+    if (command == null || unit == null)
+        throw new NullPointerException();
+    //把任务封装成ScheduledFutureTask，之后调用decorateTask进行包装；
+    //decorateTask方法是空方法，留给用户去实现的；
+    RunnableScheduledFuture&lt;?&gt; t = decorateTask(command,
+        new ScheduledFutureTask&lt;Void&gt;(command, null,
+                                      triggerTime(delay, unit)));
+    //包装好任务之后，进行任务的提交                                  
+    delayedExecute(t);
+    return t;
+}</code></code></pre>
+<p>任务提交方法：</p>
+<pre><code><code>private void delayedExecute(RunnableScheduledFuture&lt;?&gt; task) {
+    //如果线程池不是RUNNING状态，则使用拒绝策略把提交任务拒绝掉
+    if (isShutdown())
+        reject(task);
+    else {
+        //与ThreadPoolExecutor不同，这里直接把任务加入延迟队列
+        super.getQueue().add(task);
+        //如果当前状态无法执行任务，则取消
+        if (isShutdown() &amp;&amp;
+            !canRunInCurrentRunState(task.isPeriodic()) &amp;&amp;
+            remove(task))
+            task.cancel(false);
+        else
+        //和ThreadPoolExecutor不一样，corePoolSize没有达到会增加Worker;
+        //增加Worker，确保提交的任务能够被执行
+            ensurePrestart();
+    }
+}</code></code></pre>
+<blockquote>
+<p>还没关注我的公众号？</p>
+</blockquote>
+<ul>
+<li>扫文末二维码关注公众号【小强的进阶之路】可领取如下:</li>
+<li>学习资料： 1T视频教程：涵盖Javaweb前后端教学视频、机器学习/人工智能教学视频、Linux系统教程视频、雅思考试视频教程；</li>
+<li>100多本书：包含C/C++、Java、Python三门编程语言的经典必看图书、LeetCode题解大全；</li>
+<li>软件工具：几乎包括你在编程道路上的可能会用到的大部分软件；</li>
+<li>项目源码：20个JavaWeb项目源码。<br />
+<img src="./images/周期性线程池与主要源码解析2.png" alt="小强的进阶之路二维码" /></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

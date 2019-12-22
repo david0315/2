@@ -1,0 +1,76 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修java应用性能调优之详解System的gc垃圾回收方法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>java应用性能调优之详解System的gc垃圾回收方法</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11846543.html</div><br>
+    <h2 id="一什么是system.gc">一、什么是System.gc()？</h2>
+<p><code>System.gc()</code>是用Java，C＃和许多其他流行的高级编程语言提供的API。当它被调用时，它将尽最大努力从内存中清除垃圾（即未被引用的对象）。名词解释：GC，Garbage Collection，垃圾回收，下文会经常使用。</p>
+<h2 id="二谁可以调用system.gc">二、谁可以调用System.gc()？</h2>
+<p> <code>System.gc()</code> 可以从应用程序堆栈的各个部分调用：</p>
+<ul>
+<li>您自己开发的应用程序可以显式的调用 <code>System.gc()</code> 方法。</li>
+<li> <code>System.gc()</code> 也可以由您的第三方库，框架触发。</li>
+<li>可以由外部工具（如VisualVM）通过使用JMX触发</li>
+<li>如果您的应用程序使用了RMI，RMI会定期调用 <code>System.gc()</code> 。</li>
+</ul>
+<h2 id="三调用system.gc有什么弊端">三、调用System.gc()有什么弊端？</h2>
+<p>当 <code>System.gc()</code> 或 <code>Runtime.getRuntime().gc()</code>API被调用时，将触发完整的GC事件。在GC完成之前，整个JVM将冻结（即正在运行的所有服务将被暂停），通常完整的GC需要很长时间才能完成。因此在不合适的时间运行GC，将导致不良的用户体验，甚至是崩溃。<br />
+JVM具有复杂的算法，该算法始终在后台运行，进行所有计算以及有关何时触发GC的计算。当您显式调用System.gc()调用时，所有这些计算都将被抛掉。</p>
+<h2 id="四哪些场景适合显式调用system.gc">四、哪些场景适合显式调用System.gc()？</h2>
+<p>GC操作应该由JVM自行控制，在绝大部分的场景都不建议程序员手动写代码显式进行System.gc()操作，但是也不排除其中个别例外：在我们开发多个微服务时，每个服务都有多个备份节点。在非业务高峰时段，我们可以从微服务-负载均衡的节点池中取出其中一个JVM实例。然后通过该JVM上的JMX显式触发System.gc()调用，一旦GC事件完成并且从内存中清除了垃圾，将该JVM放回到微服务-负载均衡的节点池中。<br />
+当然这个过程需要很好的微服务管理及服务发布机制配合，这样既能保证JVM垃圾内存的有效清理，又不影响业务的正常运行。</p>
+<h2 id="五如何检测您的应用程序正在进行system.gc">五、如何检测您的应用程序正在进行System.gc()？</h2>
+<p>如第二小节所讲： <code>System.gc()</code> 可以从多个渠道进行的调用，而不仅仅是从您的应用程序源代码进行的调用。因此，搜索您的应用程序代码<code>System.gc()</code> 字符串，不足以知道 GC是否正在被调用。这就构成了一个挑战：如何检测应用程序是否正在进行垃圾回收？这就是GC日志派上用场的地方。</p>
+<pre><code><code>// java 8 启用GC日志：
+// -XX:+PrintGCDetails -Xloggc:&lt;gc-log-file-path&gt; ,例如下面这行代码
+-XX:+PrintGCDetails -Xloggc:/opt/tmp/myapp-gc.log
+
+// java 9 启用GC日志：-Xlog:gc*:file=&lt;gc-log-file-path&gt; ,例如下面这行代码
+-Xlog:gc*:file=/opt/tmp/myapp-gc.log</code></code></pre>
+<p>建议始终在所有生产服务器中始终启用GC日志，因为它有助于您排除故障并优化应用程序性能。启用GC日志只会增加微不足道的开销。还可以将您的GC日志上传到垃圾收集日志分析器工具，例如GCeasy，HP JMeter等。这些工具将生成丰富的垃圾收集分析报告。</p>
+<p><img src="./images/java应用性能调优之详解System的gc垃圾回收方法0.png" alt="GCeasy.io工具报告的GC原因" /></p>
+<p>上图摘自GCeasy生成的报告。</p>
+<h2 id="六如何禁止gc显式调用或调整调用gc的频率">六、如何禁止GC显式调用或调整调用GC的频率？</h2>
+<p>如果我们就是想避免程序员显式调用GC，避免不成熟的程序员在不合适时间调用GC，避免人为造成的GC崩溃，该怎么办？可以通过如下方法：</p>
+<h3 id="搜索和替换">搜索和替换</h3>
+<p>在代码库中搜索 <code>System.gc()</code> 和<code>Runtime.getRuntime().gc()</code>。如果看到匹配项，则将其删除。但是这种方法无法避免第三方库、框架或通过外部源进行调用，那么参考第二种方法。</p>
+<h3 id="通过jvm参数强制禁止">通过JVM参数强制禁止</h3>
+<p>通过传递JVM参数  <code>-XX:+DisableExplicitGC</code>来强制禁止显式调用。这种方式强制、有效，应用程序内的任何GC显式代码调用<code>System.gc()</code> 都将被禁止生效。JVM自身的GC策略不受此参数影响，只禁止人为的触发GC。</p>
+<h3 id="rmi">RMI</h3>
+<p>如果您的应用程序正在使用RMI，则可以控制GC调用的频率 。启动应用程序时，可以使用以下JVM参数配置该频率：</p>
+<ul>
+<li> <code>-Dsun.rmi.dgc.server.gcInterval=n</code></li>
+<li> <code>-Dsun.rmi.dgc.client.gcInterval=n</code></li>
+</ul>
+<p>这些属性的默认值在</p>
+<ul>
+<li>JDK 1.4.2和5.0是60000毫秒（即60秒）</li>
+<li>JDK 6和更高版本是3600000毫秒（即60分钟）</li>
+</ul>
+<p>如果您的应用主机内存资源非常富余，您可以将这些属性设置为很高的值，以便可以将GC带来的对应用程序的影响最小化。这也是应用程序性能优化的一种方式之一。</p>
+<h2 id="期待您的关注">期待您的关注</h2>
+<ul>
+<li>博主最近新写了一本书：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

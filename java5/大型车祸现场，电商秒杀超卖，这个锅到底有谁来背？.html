@@ -1,0 +1,194 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修大型车祸现场，电商秒杀超卖，这个锅到底有谁来背？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>大型车祸现场，电商秒杀超卖，这个锅到底有谁来背？</center></div><div class='banquan'>原文出处:本文由博客园博主小柒2012提供。<br/>
+原文连接:https://www.cnblogs.com/smallSevens/p/11691432.html</div><br>
+    <p><img src="./images/大型车祸现场，电商秒杀超卖，这个锅到底有谁来背？0.png" /></p>
+<h2 id="背景">背景</h2>
+<p>小明在一家在线购物商城工作，最近来了一个新需求，需要他负责开发一个商品秒杀模块，而且需求很紧急，老板要求必须尽快上线。</p>
+<h2 id="方案">方案</h2>
+<p>小明一开始是这么做的，直接用数据库锁进行控制，获取秒杀商品数量并加锁，如果数量大于零则成功，否则秒杀失败。</p>
+<pre><code><code>    @Override
+    @Transactional
+    public Result startSeckilDBPCC_ONE(long seckillId, long userId) {
+        //获取秒杀商品数量并加锁
+        String nativeSql = &quot;SELECT number FROM seckill WHERE seckill_id=? FOR UPDATE&quot;;
+        Object object =  dynamicQuery.nativeQueryObject(nativeSql, new Object[]{seckillId});
+        Long number =  ((Number) object).longValue();
+        if(number&gt;0){
+            nativeSql = &quot;UPDATE seckill  SET number=number-1 WHERE seckill_id=?&quot;;
+            dynamicQuery.nativeExecuteUpdate(nativeSql, new Object[]{seckillId});
+            SuccessKilled killed = new SuccessKilled();
+            killed.setSeckillId(seckillId);
+            killed.setUserId(userId);
+            killed.setState((short)0);
+            killed.setCreateTime(new Timestamp(new Date().getTime()));
+            dynamicQuery.save(killed);
+            return Result.ok(SeckillStatEnum.SUCCESS);
+        }else{
+            return Result.error(SeckillStatEnum.END);
+        }
+    }</code></code></pre>
+<p>写了并发线程，跑了一下，没问题，搞定！但是，小明转头一想，老板曾经说过，这次活动宣传力度很大，有可能会有很多用户参与活动。恰好项目中使用了 <code>Redis</code> 作为缓存，何不借用一下 <code>Redis</code> 的发布订阅功能，实现秒杀队列，从而减轻后端数据库的访问压力，提升服务性能！这可是个升职加薪，当上总经理，出任CTO，迎娶白富美的好机会。说干就干，复制、黏贴一把撸，很快小明就把消息队列方案搞定了。</p>
+<p><img src="./images/大型车祸现场，电商秒杀超卖，这个锅到底有谁来背？1.png" /></p>
+<h2 id="事故">事故</h2>
+<p>开发、测试、上线一条龙，活动开始了，秒杀商品是 100 部苹果手机，活动结束以后，居然产生了 106 个订单！老板很生气，后果很严重，这个锅必须有人得背，吓得小明赶紧仔细复查复制粘贴的代码。</p>
+<p>监听配置 <code>RedisSubListenerConfig</code> ：</p>
+<pre><code><code>@Configuration
+public class RedisSubListenerConfig {
+    //初始化监听器
+    @Bean
+    RedisMessageListenerContainer container(RedisConnectionFactory connectionFactory,
+            MessageListenerAdapter listenerAdapter) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(listenerAdapter, new PatternTopic(&quot;seckill&quot;));
+        return container;
+    }
+    //利用反射来创建监听到消息之后的执行方法
+    @Bean
+    MessageListenerAdapter listenerAdapter(RedisConsumer redisReceiver) {
+        return new MessageListenerAdapter(redisReceiver, &quot;receiveMessage&quot;);
+    }
+   //使用默认的工厂初始化redis操作模板
+    @Bean
+    StringRedisTemplate template(RedisConnectionFactory connectionFactory) {
+        return new StringRedisTemplate(connectionFactory);
+    }
+}</code></code></pre>
+<p>生产者 <code>RedisSender：</code></p>
+<pre><code><code>/**
+ * 生产者
+ * @author 爪哇笔记 By https://blog.52itstyle.vip
+ */
+@Service
+public class RedisSender {
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+    public void sendChannelMess(String channel, String message) {
+        stringRedisTemplate.convertAndSend(channel, message);
+    }
+}</code></code></pre>
+<p>消费者 <code>RedisConsumer：</code></p>
+<pre><code><code>/**
+ * 消费者
+ * @author 爪哇笔记 By https://blog.52itstyle.vip
+ */
+@Service
+public class RedisConsumer {
+    
+    @Autowired
+    private ISeckillService seckillService;
+    @Autowired
+    private RedisUtil redisUtil;
+    
+    public void receiveMessage(String message) {
+        //收到通道的消息之后执行秒杀操作
+        String[] array = message.split(&quot;;&quot;);
+        if(redisUtil.getValue(array[0])==null){//control层已经判断了，其实这里不需要再判断了
+            Result result = seckillService.startSeckilDBPCC_TWO(Long.parseLong(array[0]), Long.parseLong(array[1]));
+            if(result.equals(Result.ok(SeckillStatEnum.SUCCESS))){
+                WebSocketServer.sendInfo(array[0], &quot;秒杀成功&quot;);//推送给前台
+            }else{
+                WebSocketServer.sendInfo(array[0], &quot;秒杀失败&quot;);//推送给前台
+                redisUtil.cacheValue(array[0], &quot;ok&quot;);//秒杀结束
+            }
+        }else{
+            WebSocketServer.sendInfo(array[0], &quot;秒杀失败&quot;);//推送给前台
+        }
+    }
+}</code></code></pre>
+<p>数据层代码：</p>
+<pre><code><code>@Override
+@Transactional
+public Result startSeckil(long seckillId,long userId) {
+        //由于使用了队列，小明这里没用数据库锁
+        String nativeSql = &quot;SELECT number FROM seckill WHERE seckill_id=?&quot;;
+        Object object =  dynamicQuery.nativeQueryObject(nativeSql, new Object[]{seckillId});
+        Long number =  ((Number) object).longValue();
+        if(number&gt;0){
+            //扣库存
+            nativeSql = &quot;UPDATE seckill  SET number=number-1 WHERE seckill_id=?&quot;;
+            dynamicQuery.nativeExecuteUpdate(nativeSql, new Object[]{seckillId});
+            //创建订单
+            SuccessKilled killed = new SuccessKilled();
+            killed.setSeckillId(seckillId);
+            killed.setUserId(userId);
+            killed.setState((short)0);
+            Timestamp createTime = new Timestamp(new Date().getTime());
+            killed.setCreateTime(createTime);
+            dynamicQuery.save(killed);
+            //支付
+            return Result.ok(SeckillStatEnum.SUCCESS);
+        }else{
+            return Result.error(SeckillStatEnum.END);
+        }
+}</code></code></pre>
+<p>小明重新审读了代码，一开始小明觉得既然使用了队列，数据库层面就没必要用数据库锁了，然后去掉了 <code>for update</code>，很显然问题就出在这里。导致超卖的因素只有一个，那就是多线程并发抢占资源，如果业务逻辑没有做相应的措施，很有可能导致超卖。</p>
+<p>回到代码来看，虽然秒杀用户进入了队列，但是 <code>RedisConsumer</code> 端有可能是多线程处理队列数据，小明为了验证想法，在消费端加入了以下代码来打印线程名称。</p>
+<pre><code><code>Thread th=Thread.currentThread();
+System.out.println(&quot;Tread name:&quot;+th.getName());</code></code></pre>
+<p>再次运行任务，果不其然，每个秒杀用户都开启了一个线程处理任务：</p>
+<pre><code><code>Tread name:container-1
+Tread name:container-2
+Tread name:container-3
+Tread name:container-4
+Tread name:container-5
+Tread name:container-6
+......</code></code></pre>
+<p>各位看官到这里，线索已经很明确了，我们只需要把消费端改造成单线程处理，问题就迎刃而解了。</p>
+<h2 id="解决方案">解决方案</h2>
+<p>使用 <code>Redis</code> 消息队列，出现超卖问题是因为<code>RedisMessageListenerContainer</code> 的默认使用线程池是<code>SimpleAsyncTaskExecutor</code>，每次消费都会创建一个线程来处理，这样就会有大量的新线程被创建。有兴趣的小伙伴可以跟进源码，了解更多详细内容。</p>
+<p>监听配置 <code>RedisSubListenerConfig</code> 改造为 ：</p>
+<pre><code><code>@Bean
+RedisMessageListenerContainer container(RedisConnectionFactory connectionFactory,
+            MessageListenerAdapter listenerAdapter) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(listenerAdapter, new PatternTopic(&quot;seckill&quot;));
+        /**
+         * 如果不定义线程池，每一次消费都会创建一个线程，如果业务层面不做限制，就会导致秒杀超卖。
+         * 此处感谢网友 DIscord
+         */
+        ThreadFactory factory = new ThreadFactoryBuilder()
+                .setNameFormat(&quot;redis-listener-pool-%d&quot;).build();
+        Executor executor = new ThreadPoolExecutor(
+                1,
+                1,
+                5L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue&lt;&gt;(1000),
+                factory);
+        container.setTaskExecutor(executor);
+        return container;
+}</code></code></pre>
+<p>然后测试改造效果：</p>
+<pre><code><code>Tread name:redis-listener-pool-0
+Tread name:redis-listener-pool-0
+Tread name:redis-listener-pool-0
+......</code></code></pre>
+<h2 id="小结">小结</h2>
+<p>那么问题来了，这个锅到底谁来背，开发、测试还是产品？这么好的宣传机会，直接上头条&quot;XX 电商系统 bug 超卖，亏损超 10W 仍坚持发货，称不能亏了消费者&quot;然后超的钱相关责任人担一部分， perfect~。本故事纯属虚构，谁也不怪，如有雷同，纯属巧合。</p>
+<h2 id="源码">源码</h2>
+<p>分布式秒杀现场：<a href="https://gitee.com/52itstyle/spring-boot-seckill" class="uri" title="https://gitee.com/52itstyle/spring-boot-seckill">https://gitee.com/52itstyle/spring-boot-seckill</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

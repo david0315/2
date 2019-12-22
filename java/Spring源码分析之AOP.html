@@ -1,0 +1,1243 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring源码分析之AOP' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring源码分析之AOP</center></div><div class='banquan'>原文出处:本文由博客园博主Ethan-Wu提供。<br/>
+原文连接:https://www.cnblogs.com/ethan-wu/p/11827029.html</div><br>
+    <h1>1.AOP简介</h1>
+<p>AOP即面向切面编程(Aspect Oriented Programming)，通过预编译方式及运行期动态代理实现程序功能的统一维护的一种技术。使用aop对业务逻辑的各个部分进行隔离，降低业务模块之间的耦合，维护业务模块的单一职责性。</p>
+<p>AOP主要用作：事务控制、安全控制、日志记录、性能统计、异常处理等（这些功能通常在应用程序中的多个业务模块都需要实现，AOP将这些功能与业务模块分离）</p>
+<p>SpringAop通过MethodInterceptor(方法拦截器)实现AOP。</p>
+<h1>2.AOP术语及相应实现</h1>
+<h2>　　2.1连接点(Jointpoint)</h2>
+<p>　　程序执行过程中可以被拦截的点，如方法调用，异常处理等。Spring AOP仅支持方法级别的连接点，也就是说只能增强方法(不包含构造方法)。</p>
+<p>　　下面来看一下Spring中Jointpoint的类图：</p>
+<p><img src="./images/Spring源码分析之AOP0.png" alt="" /></p>
+<p>　　Jointpoint中最重要的方法proceed()方法含义为：继续执行拦截器链中的下一个拦截器。</p>
+<h2>　　2.2切点(Pointcut)</h2>
+<p>　　程序中的连接点有很多，但我们并不会拦截所有的连接点，真正拦截的点被称作切点。切点的定义会匹配通知所要织入的一个或多个连接点，通常使用切点表达式(execution(*))匹配连接点。</p>
+<p>　　下面来看一下Pointcut的类图：</p>
+<p><img src="./images/Spring源码分析之AOP1.png" alt="" /></p>
+<p>AspectJExpressionPointcut实现了Pointcut接口，因此可以通过AspectJ表达式匹配连接点。</p>
+<p>下面来看一下Pointcut接口的定义：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> Pointcut {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获取类过滤器，用于判断切点是否应该应用于给定的接口或目标类</span>
+<span style="color: #000000;">    ClassFilter getClassFilter();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获取方法过滤器，用于判断切点是否应该应用于指定方法</span>
+<span style="color: #000000;">    MethodMatcher getMethodMatcher();
+
+    Pointcut TRUE </span>=<span style="color: #000000;"> TruePointcut.INSTANCE;
+}</span></code></pre>
+
+<h2>　　2.3通知(Advice)</h2>
+<p>　　通知定义了切面是什么以及何时工作。除了描述切面要完成的工作，通知还解决了何时执行工作的问题。是在方法调用前？调用后？调用前和调用后？还是异常时调用？</p>
+<h3>　　Spring中5种类型的通知</h3>
+<p>　　　　<strong>前置通知(Before)</strong>：在目标方法被调用之前调用通知功能。</p>
+<p>　　　　<strong>后置通知(After)</strong>：在目标方法被调用之后调用通知功能(即使目标方法异常，也一定会调用)，此时不关心方法的输出(即返回值)是什么。</p>
+<p>　　　　<strong>返回通知(After-returning)</strong>：在目标方法成功执行后调用通知(目标方法异常则不调用)。</p>
+<p>　　　　<strong>环绕通知(Around)</strong>：通知包裹了被通知的方法，在目标方法调用之前和调用之后执行自定义操作。可以取消对目标方法的调用(通过不调用proceed()方法)</p>
+<p>　　　　<strong>异常通知(After-throwing)</strong>：在目标方法抛出异常后调用通知。</p>
+<p>　　下面来看一下通知的继承体系图：</p>
+<p><img src="./images/Spring源码分析之AOP2.png" alt="" /></p>
+<p>从图中可以看出AspectJMethodBeforeAdvice和AspectJAfterReturningAdvice分别实现了前置通知和后置通知的接口，而后置通知、异常通知、环绕通知实现了MethodInterceptor接口，在Spring中通过调用MethodInterceptor的invoke()方法执行链式调用，因为前置通知和返回通知并未实现MethodInterceptor接口，所以Spring中对前置通知和返回通知分别有MethodBeforeAdviceInterceptor和AfterReturningAdviceInterceptor实现了MethodInterceptor接口，其中持有对应的通知实例。</p>
+<h2>　　2.4切面(Aspect)</h2>
+<p>　　切面是通知与切点的组合。通知和切面共同定义了切面的全部内容：在何时何处执行何种功能。</p>
+<p>　　在AOP中，切面没有与之对应的接口或类。不过有一个接口的与切面的用途很像，找个接口就是切点通知器PointcutAdvisor，下面来看一下定义：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> Advisor {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">返回切面的通知，一个通知可能是一个interceptor，一个前置通知，一个异常通知等等</span>
+<span style="color: #000000;">    Advice getAdvice();
+
+    </span><span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isPerInstance();
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span> PointcutAdvisor <span style="color: #0000ff;">extends</span><span style="color: #000000;"> Advisor {
+
+    Pointcut getPointcut();
+}</span></code></pre>
+
+<p>我们知道一个切面中可以包含多个切点，每个切点可以有多个通知，不过这里PointcutAdvisor 只持有一个切点对象和一个通知，如果一个切点有多个多个通知，也就会有多个PointcutAdvisor。</p>
+<h2>　　2.5织入(Weaving)</h2>
+<p>&nbsp;　　织入是把切面应用到目标对象并创建新的代理对象的过程。切面在指定的连接点(切点)织入到目标对象中。在目标对象的声明周期中可以有多个点可以进行织入：编译期、类加载期、运行期。</p>
+<p>　　Spring AOP是在IOC容器完成目标bean初始化时，织入切面，为目标bean动态创建代理对象。</p>
+<h1>3.AOP入口分析</h1>
+<p>Spring通过扩展点BeanPostProcessor接口将AOP与IOC整合在一起，Spring AOP抽象自动代理创建按器(<span class="line"><span class="class"><span class="title">AbstractAutoProxyCreator</span></span></span>)实现了BeanPostProcessor接口，并在bean初始化完成后向bean织入通知。下面来看一下源码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ProxyProcessorSupport
+        </span><span style="color: #0000ff;">implements</span><span style="color: #000000;"> SmartInstantiationAwareBeanPostProcessor, BeanFactoryAware {
+        
+    @Override
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">bean后置处理器，在bean初始化完成后执行(此时已完成依赖注入)</span>
+    <span style="color: #0000ff;">public</span> Object postProcessAfterInitialization(Object bean, String beanName) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+        </span><span style="color: #0000ff;">if</span> (bean != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            Object cacheKey </span>=<span style="color: #000000;"> getCacheKey(bean.getClass(), beanName);
+            </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.earlyProxyReferences.remove(cacheKey) !=<span style="color: #000000;"> bean) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">如果有需要，将bean包装为代理对象</span>
+                <span style="color: #0000ff;">return</span><span style="color: #000000;"> wrapIfNecessary(bean, beanName, cacheKey);
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }
+        
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+        </span><span style="color: #0000ff;">if</span> (beanName != <span style="color: #0000ff;">null</span> &amp;&amp; <span style="color: #0000ff;">this</span><span style="color: #000000;">.targetSourcedBeans.contains(beanName)) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+        }
+        </span><span style="color: #0000ff;">if</span> (Boolean.FALSE.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.get(cacheKey))) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果是基础设置类(Advice.class,Pointcut.class,Advisor.class,AopInfrastructureBean.class)或是
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">应该跳过的类，则不应该为bean生成代理对象，直接返回bean</span>
+        <span style="color: #0000ff;">if</span> (isInfrastructureClass(bean.getClass()) ||<span style="color: #000000;"> shouldSkip(bean.getClass(), beanName)) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create proxy if we have advice.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">为目标bean查找合适的通知器</span>
+        Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">specificInterceptors != null，说明有通知应用到bean上，则为bean创建代理对象</span>
+        <span style="color: #0000ff;">if</span> (specificInterceptors !=<span style="color: #000000;"> DO_NOT_PROXY) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.TRUE);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">为目标bean创建代理对象</span>
+            Object proxy =<span style="color: #000000;"> createProxy(
+                    bean.getClass(), beanName, specificInterceptors, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SingletonTargetSource(bean));
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.proxyTypes.put(cacheKey, proxy.getClass());
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> proxy;
+        }
+
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisedBeans.put(cacheKey, Boolean.FALSE);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> bean;
+    }    
+        
+}</span></code></pre>
+
+<p>以上就是SpringAop创建代理对象入口分析，主要分为如下几步</p>
+<p>1.如果bean是Spring Aop基础设施类，则直接返回</p>
+<p>2.为bean查找何时的通知器</p>
+<p>3.如果通知器不为空，则为bean生成代理对象，并返回</p>
+<p>4.如果通知器数组为空，则返回原始bean。</p>
+<h1>4.筛选合适的通知器</h1>
+<p>在向目标bean织入通知之前，我们需要先为bean筛选出合适的通知器。我们通常通过AspectJ表达式进行匹配，下面来看一下筛选通知的过程：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAdvisorAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractAutoProxyCreator {
+
+    @Override
+    </span><span style="color: #0000ff;">protected</span> Object[] getAdvicesAndAdvisorsForBean(Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName, TargetSource targetSource) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">为bean找到合适的通知器</span>
+        List&lt;Advisor&gt; advisors =<span style="color: #000000;"> findEligibleAdvisors(beanClass, beanName);
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (advisors.isEmpty()) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> DO_NOT_PROXY;
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors.toArray();
+    }
+
+    </span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt; findEligibleAdvisors(Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">找到候选的通知器</span>
+        List&lt;Advisor&gt; candidateAdvisors =<span style="color: #000000;"> findCandidateAdvisors();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">找到能应用到bean的通知器</span>
+        List&lt;Advisor&gt; eligibleAdvisors =<span style="color: #000000;"> findAdvisorsThatCanApply(candidateAdvisors, beanClass, beanName);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">扩展通知器</span>
+<span style="color: #000000;">        extendAdvisors(eligibleAdvisors);
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">eligibleAdvisors.isEmpty()) {
+            eligibleAdvisors </span>=<span style="color: #000000;"> sortAdvisors(eligibleAdvisors);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+    }
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<pre><code><span>findCandidateAdvisors()方法调用了AnnotationAwareAspectJAutoProxyCreator的findCandidateAdvisors()方法：<br /></span></code></pre>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AnnotationAwareAspectJAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AspectJAwareAdvisorAutoProxyCreator {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+<span style="color: #000000;">    
+    @Override
+    </span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findCandidateAdvisors() {
+        List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">super</span><span style="color: #000000;">.findCandidateAdvisors();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Build Advisors for all AspectJ aspects in the bean factory.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">为IOC容器中所有的AspectJ切面构建通知器</span>
+        advisors.addAll(<span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectJAdvisorsBuilder.buildAspectJAdvisors());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+}</code></pre>
+
+<pre><code><span>&nbsp;下面来看一下</span>super.findCandidateAdvisors()的逻辑：</code></pre>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAdvisorAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractAutoProxyCreator {
+
+    </span><span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findCandidateAdvisors() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorRetrievalHelper.findAdvisorBeans();
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>调用了advisorRetrievalHelper的findAdvisorBeans()方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> BeanFactoryAdvisorRetrievalHelper {
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * Find all eligible Advisor beans in the current bean factory,
+     * ignoring FactoryBeans and excluding beans that are currently in creation.
+     * </span><span style="color: #808080;">@return</span><span style="color: #008000;"> the list of {</span><span style="color: #808080;">@link</span><span style="color: #008000;"> org.springframework.aop.Advisor} beans
+     * </span><span style="color: #808080;">@see</span><span style="color: #008000;"> #isEligibleBean
+     * 找到IOC容器中所有的通知器bean(通过实现Advisor接口，通常我们会实现Advisor的子接口PointcutAdvisor)
+     * 忽略FactoryBeans和正在创建的bean
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> findAdvisorBeans() {
+        String[] advisorNames </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.cachedAdvisorBeanNames;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果缓存的通知器beanName为空，则从IOC容器中查找Advisor.class类型的beanNames</span>
+        <span style="color: #0000ff;">if</span> (advisorNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            advisorNames </span>=<span style="color: #000000;"> BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+                    </span><span style="color: #0000ff;">this</span>.beanFactory, Advisor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+            </span><span style="color: #0000ff;">this</span>.cachedAdvisorBeanNames =<span style="color: #000000;"> advisorNames;
+        }
+        </span><span style="color: #0000ff;">if</span> (advisorNames.length == 0<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> ArrayList&lt;Advisor&gt;<span style="color: #000000;">();
+        }
+
+        List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;Advisor&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String name : advisorNames) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isEligibleBean(name)) {
+                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isCurrentlyInCreation(name)) {
+                    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                        logger.debug(</span>"Skipping currently created advisor '" + name + "'"<span style="color: #000000;">);
+                    }
+                }
+                </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;">从IOC容器中获得Advisor.class类型的bean，加入到advisors中</span>
+                        advisors.add(<span style="color: #0000ff;">this</span>.beanFactory.getBean(name, Advisor.<span style="color: #0000ff;">class</span><span style="color: #000000;">));
+                    }
+                    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (BeanCreationException ex) {
+                        Throwable rootCause </span>=<span style="color: #000000;"> ex.getMostSpecificCause();
+                        </span><span style="color: #0000ff;">if</span> (rootCause <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> BeanCurrentlyInCreationException) {
+                            BeanCreationException bce </span>=<span style="color: #000000;"> (BeanCreationException) rootCause;
+                            </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isCurrentlyInCreation(bce.getBeanName())) {
+                                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                                    logger.debug(</span>"Skipping advisor '" + name +
+                                            "' with dependency on currently created bean: " +<span style="color: #000000;"> ex.getMessage());
+                                }
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Ignore: indicates a reference back to the bean we're trying to advise.
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> We want to find advisors other than the currently created bean itself.</span>
+                                <span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                            }
+                        }
+                        </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex;
+                    }
+                }
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+}</span></code></pre>
+
+<p>findAdvisorBeans()方法做了2件事：</p>
+<p>1.查找容器中Advisor类型的advisorNames&nbsp;</p>
+<p>2.遍历advisorNames ，从容器中获取到对应的bean</p>
+<p>&nbsp;</p>
+<p>下面来分析一下@AspectJ注解的解析过程</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> BeanFactoryAspectJAdvisorsBuilder {
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * Look for AspectJ-annotated aspect beans in the current bean factory,
+     * and return to a list of Spring AOP Advisors representing them.
+     * &lt;p&gt;Creates a Spring Advisor for each AspectJ advice method.
+     * </span><span style="color: #808080;">@return</span><span style="color: #008000;"> the list of {</span><span style="color: #808080;">@link</span><span style="color: #008000;"> org.springframework.aop.Advisor} beans
+     * </span><span style="color: #808080;">@see</span><span style="color: #008000;"> #isEligibleBean
+     * 查找IOC容器中加了AspectJ注解的bean，返回Spring AOP通知器集合
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> buildAspectJAdvisors() {
+        List</span>&lt;String&gt; aspectNames = <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectBeanNames;
+
+        </span><span style="color: #0000ff;">if</span> (aspectNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">) {
+                aspectNames </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectBeanNames;
+                </span><span style="color: #0000ff;">if</span> (aspectNames == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> LinkedList&lt;Advisor&gt;<span style="color: #000000;">();
+                    aspectNames </span>= <span style="color: #0000ff;">new</span> LinkedList&lt;String&gt;<span style="color: #000000;">();
+                    String[] beanNames </span>=<span style="color: #000000;"> BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
+                            </span><span style="color: #0000ff;">this</span>.beanFactory, Object.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+                    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String beanName : beanNames) {
+                        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isEligibleBean(beanName)) {
+                            </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                        }
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;"> We must be careful not to instantiate beans eagerly as in this case they
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;"> would be cached by the Spring container but would not have been weaved.</span>
+                        Class&lt;?&gt; beanType = <span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.getType(beanName);
+                        </span><span style="color: #0000ff;">if</span> (beanType == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                            </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                        }
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果bean加了Aspect注解</span>
+                        <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.isAspect(beanType)) {
+                            aspectNames.add(beanName);
+                            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建切面元数据</span>
+                            AspectMetadata amd = <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectMetadata(beanType, beanName);
+                            </span><span style="color: #0000ff;">if</span> (amd.getAjType().getPerClause().getKind() ==<span style="color: #000000;"> PerClauseKind.SINGLETON) {
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;">创建切面实例工厂</span>
+                                MetadataAwareAspectInstanceFactory factory =
+                                        <span style="color: #0000ff;">new</span> BeanFactoryAspectInstanceFactory(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory, beanName);
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;">获取通知器(重要)</span>
+                                List&lt;Advisor&gt; classAdvisors = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory);
+                                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isSingleton(beanName)) {
+                                    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorsCache.put(beanName, classAdvisors);
+                                }
+                                </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                                    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.put(beanName, factory);
+                                }
+                                advisors.addAll(classAdvisors);
+                            }
+                            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Per target or per this.</span>
+                                <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory.isSingleton(beanName)) {
+                                    </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalArgumentException("Bean with name '" + beanName +
+                                            "' is a singleton, but aspect instantiation model is not singleton"<span style="color: #000000;">);
+                                }
+                                MetadataAwareAspectInstanceFactory factory </span>=
+                                        <span style="color: #0000ff;">new</span> PrototypeAspectInstanceFactory(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory, beanName);
+                                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.put(beanName, factory);
+                                advisors.addAll(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory));
+                            }
+                        }
+                    }
+                    </span><span style="color: #0000ff;">this</span>.aspectBeanNames =<span style="color: #000000;"> aspectNames;
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+                }
+            }
+        }
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (aspectNames.isEmpty()) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> Collections.emptyList();
+        }
+        List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> LinkedList&lt;Advisor&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String aspectName : aspectNames) {
+            List</span>&lt;Advisor&gt; cachedAdvisors = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorsCache.get(aspectName);
+            </span><span style="color: #0000ff;">if</span> (cachedAdvisors != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                advisors.addAll(cachedAdvisors);
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                MetadataAwareAspectInstanceFactory factory </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectFactoryCache.get(aspectName);
+                advisors.addAll(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorFactory.getAdvisors(factory));
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>上面是buildAspectJAdvisors()方法的代码，代码比较多，我们关注重点方法即可，在分析后面的代码前，先对buildAspectJAdvisors()方法的执行流程做下总结：</p>
+<p>1.从容器中获取到所有的beanNames</p>
+<p>2.遍历beanNames,如果beanName对应beanType加了Aspect注解，则根据beanName和beanType创建切面元数据</p>
+<p>3.创建切面实例工厂，调用advisorFactory.getAdvisors(factory)获取通知器列表</p>
+<p>&nbsp;</p>
+<p>下面重点分析下advisorFactory.getAdvisors(factory)的逻辑：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ReflectiveAspectJAdvisorFactory <span style="color: #0000ff;">extends</span> AbstractAspectJAdvisorFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Serializable {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;Advisor&gt;<span style="color: #000000;"> getAdvisors(MetadataAwareAspectInstanceFactory aspectInstanceFactory) {
+        Class</span>&lt;?&gt; aspectClass =<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectClass();
+        String aspectName </span>=<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectName();
+        validate(aspectClass);
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> We need to wrap the MetadataAwareAspectInstanceFactory with a decorator
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> so that it will only instantiate once.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建单例懒加载切面实例工厂，懒加载意思是在真正调用通知时，才会通过getAspectInstance()方法拿到切面对象
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 该工厂会被传入具体的Advice中，以便在调用通知时获取切面对象</span>
+        MetadataAwareAspectInstanceFactory lazySingletonAspectInstanceFactory =
+                <span style="color: #0000ff;">new</span><span style="color: #000000;"> LazySingletonAspectInstanceFactoryDecorator(aspectInstanceFactory);
+
+        List</span>&lt;Advisor&gt; advisors = <span style="color: #0000ff;">new</span> ArrayList&lt;Advisor&gt;<span style="color: #000000;">();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">遍历切面类的所有通知器方法，不包含加了Pointcut注解的方法</span>
+        <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method : getAdvisorMethods(aspectClass)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">从方法中获取通知器</span>
+            Advisor advisor =<span style="color: #000000;"> getAdvisor(method, lazySingletonAspectInstanceFactory, advisors.size(), aspectName);
+            </span><span style="color: #0000ff;">if</span> (advisor != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                advisors.add(advisor);
+            }
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> If it's a per target aspect, emit the dummy instantiating aspect.</span>
+        <span style="color: #0000ff;">if</span> (!advisors.isEmpty() &amp;&amp;<span style="color: #000000;"> lazySingletonAspectInstanceFactory.getAspectMetadata().isLazilyInstantiated()) {
+            Advisor instantiationAdvisor </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> SyntheticInstantiationAdvisor(lazySingletonAspectInstanceFactory);
+            advisors.add(</span>0<span style="color: #000000;">, instantiationAdvisor);
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Find introduction fields.</span>
+        <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Field field : aspectClass.getDeclaredFields()) {
+            Advisor advisor </span>=<span style="color: #000000;"> getDeclareParentsAdvisor(field);
+            </span><span style="color: #0000ff;">if</span> (advisor != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                advisors.add(advisor);
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+    
+    </span><span style="color: #0000ff;">private</span> List&lt;Method&gt; getAdvisorMethods(Class&lt;?&gt;<span style="color: #000000;"> aspectClass) {
+        </span><span style="color: #0000ff;">final</span> List&lt;Method&gt; methods = <span style="color: #0000ff;">new</span> ArrayList&lt;Method&gt;<span style="color: #000000;">();
+        ReflectionUtils.doWithMethods(aspectClass, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ReflectionUtils.MethodCallback() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> doWith(Method method) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IllegalArgumentException {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Exclude pointcuts</span>
+                <span style="color: #0000ff;">if</span> (AnnotationUtils.getAnnotation(method, Pointcut.<span style="color: #0000ff;">class</span>) == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    methods.add(method);
+                }
+            }
+        });
+        Collections.sort(methods, METHOD_COMPARATOR);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> methods;
+    }
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Advisor getAdvisor(Method candidateAdviceMethod, MetadataAwareAspectInstanceFactory aspectInstanceFactory,
+            </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrderInAspect, String aspectName) {
+
+        validate(aspectInstanceFactory.getAspectMetadata().getAspectClass());
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取方法对应的切点</span>
+        AspectJExpressionPointcut expressionPointcut =<span style="color: #000000;"> getPointcut(
+                candidateAdviceMethod, aspectInstanceFactory.getAspectMetadata().getAspectClass());
+        </span><span style="color: #0000ff;">if</span> (expressionPointcut == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建Advisor实现类</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> InstantiationModelAwarePointcutAdvisorImpl(expressionPointcut, candidateAdviceMethod,
+                </span><span style="color: #0000ff;">this</span><span style="color: #000000;">, aspectInstanceFactory, declarationOrderInAspect, aspectName);
+    }
+    
+    </span><span style="color: #0000ff;">private</span> AspectJExpressionPointcut getPointcut(Method candidateAdviceMethod, Class&lt;?&gt;<span style="color: #000000;"> candidateAspectClass) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">找到方法上的AspectJ注解，可能是Pointcut.class, Around.class, Before.class, After.class, AfterReturning.class, AfterThrowing.class
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">中的任意一个</span>
+        AspectJAnnotation&lt;?&gt; aspectJAnnotation =<span style="color: #000000;">
+                AbstractAspectJAdvisorFactory.findAspectJAnnotationOnMethod(candidateAdviceMethod);
+        </span><span style="color: #0000ff;">if</span> (aspectJAnnotation == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建AspectJ切点表达式</span>
+        AspectJExpressionPointcut ajexp =
+                <span style="color: #0000ff;">new</span> AspectJExpressionPointcut(candidateAspectClass, <span style="color: #0000ff;">new</span> String[0], <span style="color: #0000ff;">new</span> Class&lt;?&gt;[0<span style="color: #000000;">]);
+        ajexp.setExpression(aspectJAnnotation.getPointcutExpression());
+        ajexp.setBeanFactory(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ajexp;
+    }
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;getAdvisor(method, lazySingletonAspectInstanceFactory, advisors.size(), aspectName)方法主要分为2部分：</p>
+<p>1.获取AspectJ切点表达式，</p>
+<p>2.创建通知(device)</p>
+<p>&nbsp;下面来看一下创建通知的过程：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">class</span><span style="color: #000000;"> InstantiationModelAwarePointcutAdvisorImpl
+        </span><span style="color: #0000ff;">implements</span><span style="color: #000000;"> InstantiationModelAwarePointcutAdvisor, AspectJPrecedenceInformation, Serializable {
+        
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> InstantiationModelAwarePointcutAdvisorImpl(AspectJExpressionPointcut declaredPointcut,
+            Method aspectJAdviceMethod, AspectJAdvisorFactory aspectJAdvisorFactory,
+            MetadataAwareAspectInstanceFactory aspectInstanceFactory, </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrder, String aspectName) {
+
+        </span><span style="color: #0000ff;">this</span>.declaredPointcut =<span style="color: #000000;"> declaredPointcut;
+        </span><span style="color: #0000ff;">this</span>.declaringClass =<span style="color: #000000;"> aspectJAdviceMethod.getDeclaringClass();
+        </span><span style="color: #0000ff;">this</span>.methodName =<span style="color: #000000;"> aspectJAdviceMethod.getName();
+        </span><span style="color: #0000ff;">this</span>.parameterTypes =<span style="color: #000000;"> aspectJAdviceMethod.getParameterTypes();
+        </span><span style="color: #0000ff;">this</span>.aspectJAdviceMethod =<span style="color: #000000;"> aspectJAdviceMethod;
+        </span><span style="color: #0000ff;">this</span>.aspectJAdvisorFactory =<span style="color: #000000;"> aspectJAdvisorFactory;
+        </span><span style="color: #0000ff;">this</span>.aspectInstanceFactory =<span style="color: #000000;"> aspectInstanceFactory;
+        </span><span style="color: #0000ff;">this</span>.declarationOrder =<span style="color: #000000;"> declarationOrder;
+        </span><span style="color: #0000ff;">this</span>.aspectName =<span style="color: #000000;"> aspectName;
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (aspectInstanceFactory.getAspectMetadata().isLazilyInstantiated()) {
+            Pointcut preInstantiationPointcut </span>=<span style="color: #000000;"> Pointcuts.union(
+                    aspectInstanceFactory.getAspectMetadata().getPerClausePointcut(), </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut);
+            </span><span style="color: #0000ff;">this</span>.pointcut = <span style="color: #0000ff;">new</span><span style="color: #000000;"> PerTargetInstantiationModelPointcut(
+                    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut, preInstantiationPointcut, aspectInstanceFactory);
+            </span><span style="color: #0000ff;">this</span>.lazy = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> A singleton aspect.</span>
+            <span style="color: #0000ff;">this</span>.pointcut = <span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut;
+            </span><span style="color: #0000ff;">this</span>.lazy = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">初始化通知</span>
+            <span style="color: #0000ff;">this</span>.instantiatedAdvice = instantiateAdvice(<span style="color: #0000ff;">this</span><span style="color: #000000;">.declaredPointcut);
+        }
+    }
+    
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Advice instantiateAdvice(AspectJExpressionPointcut pcut) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.aspectJAdvisorFactory.getAdvice(<span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectJAdviceMethod, pcut,
+                </span><span style="color: #0000ff;">this</span>.aspectInstanceFactory, <span style="color: #0000ff;">this</span>.declarationOrder, <span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectName);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>下面来看初始化通知的方法instantiateAdvice(this.declaredPointcut)</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ReflectiveAspectJAdvisorFactory <span style="color: #0000ff;">extends</span> AbstractAspectJAdvisorFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Serializable {
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Advice getAdvice(Method candidateAdviceMethod, AspectJExpressionPointcut expressionPointcut,
+            MetadataAwareAspectInstanceFactory aspectInstanceFactory, </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> declarationOrder, String aspectName) {
+
+        Class</span>&lt;?&gt; candidateAspectClass =<span style="color: #000000;"> aspectInstanceFactory.getAspectMetadata().getAspectClass();
+        validate(candidateAspectClass);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取通知方法上加的AspectJ注解</span>
+        AspectJAnnotation&lt;?&gt; aspectJAnnotation =<span style="color: #000000;">
+                AbstractAspectJAdvisorFactory.findAspectJAnnotationOnMethod(candidateAdviceMethod);
+        </span><span style="color: #0000ff;">if</span> (aspectJAnnotation == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> If we get here, we know we have an AspectJ method.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Check that it's an AspectJ-annotated class</span>
+        <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isAspect(candidateAspectClass)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> AopConfigException("Advice must be declared inside an aspect type: " +
+                    "Offending method '" + candidateAdviceMethod + "' in class [" +<span style="color: #000000;">
+                    candidateAspectClass.getName() </span>+ "]"<span style="color: #000000;">);
+        }
+
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+            logger.debug(</span>"Found AspectJ method: " +<span style="color: #000000;"> candidateAdviceMethod);
+        }
+
+        AbstractAspectJAdvice springAdvice;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">按照注解类型创建对应通知</span>
+        <span style="color: #0000ff;">switch</span><span style="color: #000000;"> (aspectJAnnotation.getAnnotationType()) {
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtPointcut:
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">对于单纯的切点方法，什么都不做</span>
+                <span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+                    logger.debug(</span>"Processing pointcut '" + candidateAdviceMethod.getName() + "'"<span style="color: #000000;">);
+                }
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAround:
+                springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectJAroundAdvice(
+                        candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtBefore:
+                springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectJMethodBeforeAdvice(
+                        candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfter:
+                springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectJAfterAdvice(
+                        candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfterReturning:
+                springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectJAfterReturningAdvice(
+                        candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+                AfterReturning afterReturningAnnotation </span>=<span style="color: #000000;"> (AfterReturning) aspectJAnnotation.getAnnotation();
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(afterReturningAnnotation.returning())) {
+                    springAdvice.setReturningName(afterReturningAnnotation.returning());
+                }
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">case</span><span style="color: #000000;"> AtAfterThrowing:
+                springAdvice </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AspectJAfterThrowingAdvice(
+                        candidateAdviceMethod, expressionPointcut, aspectInstanceFactory);
+                AfterThrowing afterThrowingAnnotation </span>=<span style="color: #000000;"> (AfterThrowing) aspectJAnnotation.getAnnotation();
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (StringUtils.hasText(afterThrowingAnnotation.throwing())) {
+                    springAdvice.setThrowingName(afterThrowingAnnotation.throwing());
+                }
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnsupportedOperationException(
+                        </span>"Unsupported advice type on method: " +<span style="color: #000000;"> candidateAdviceMethod);
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Now to configure the advice...</span>
+<span style="color: #000000;">        springAdvice.setAspectName(aspectName);
+        springAdvice.setDeclarationOrder(declarationOrder);
+        String[] argNames </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.parameterNameDiscoverer.getParameterNames(candidateAdviceMethod);
+        </span><span style="color: #0000ff;">if</span> (argNames != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            springAdvice.setArgumentNamesFromStringArray(argNames);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">对于通知方法第一个参数为JoinPoint.class,ProceedingJoinPoint.class,JoinPoint.StaticPart.class类型的处理和对其他入参的处理</span>
+<span style="color: #000000;">        springAdvice.calculateArgumentBindings();
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> springAdvice;
+    }
+}</span></code></pre>
+
+<p>到这里，通知器就创建完成了。</p>
+<p>下面来总结下getAdvisors(factory)方法：</p>
+<p>1.从目标bean中获取不包含Pointcut注解的方法列表</p>
+<p>2.遍历上一步得到的方法列表，调用getAdvisor获取当前方法对应的advisor</p>
+<p>3.创建AspectJExpressionPointcut切点对象，从方法的注解中获取切点表达式，并设置给切点对象</p>
+<p>4.创建Advisor实现类对象InstantiationModelAwarePointcutAdvisorImpl</p>
+<p>5.调用instantiateAdvice 方法根据注解类型创建相应通知</p>
+<p>到这里就分析完了通知时怎么创建的，下面以前置通知为例，看下源码实现：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AspectJMethodBeforeAdvice <span style="color: #0000ff;">extends</span> AbstractAspectJAdvice <span style="color: #0000ff;">implements</span><span style="color: #000000;"> MethodBeforeAdvice, Serializable {
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> AspectJMethodBeforeAdvice(
+            Method aspectJBeforeAdviceMethod, AspectJExpressionPointcut pointcut, AspectInstanceFactory aif) {
+
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(aspectJBeforeAdviceMethod, pointcut, aif);
+    }
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> before(Method method, Object[] args, Object target) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">调用通知方法</span>
+        invokeAdviceMethod(getJoinPointMatch(), <span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isBeforeAdvice() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isAfterAdvice() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>下面来看invokeAdviceMethod方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAspectJAdvice <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Advice, AspectJPrecedenceInformation, Serializable {
+
+
+    </span><span style="color: #0000ff;">protected</span> Object invokeAdviceMethod(JoinPointMatch jpMatch, Object returnValue, Throwable ex) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> invokeAdviceMethodWithGivenArgs(argBinding(getJoinPoint(), jpMatch, returnValue, ex));
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">根据入参调用通知方法</span>
+    <span style="color: #0000ff;">protected</span> Object invokeAdviceMethodWithGivenArgs(Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        Object[] actualArgs </span>=<span style="color: #000000;"> args;
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.aspectJAdviceMethod.getParameterTypes().length == 0<span style="color: #000000;">) {
+            actualArgs </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            ReflectionUtils.makeAccessible(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectJAdviceMethod);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取切面实例，反射调用通知方法</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.aspectJAdviceMethod.invoke(<span style="color: #0000ff;">this</span><span style="color: #000000;">.aspectInstanceFactory.getAspectInstance(), actualArgs);
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IllegalArgumentException ex) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> AopInvocationException("Mismatch on arguments to advice method [" +
+                    <span style="color: #0000ff;">this</span>.aspectJAdviceMethod + "]; pointcut expression [" +
+                    <span style="color: #0000ff;">this</span>.pointcut.getPointcutExpression() + "]"<span style="color: #000000;">, ex);
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InvocationTargetException ex) {
+            </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex.getTargetException();
+        }
+    }
+}</span></code></pre>
+
+<p>前置通知的代码比较简单，就不再多说了。</p>
+<p>&nbsp;</p>
+<p>找到所有的通知器还没结束！还需要对这些通知器进行筛选，删除不能应用到当前bean的通知器：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAdvisorAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractAutoProxyCreator {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+    
+    <span style="color: #0000ff;">protected</span> List&lt;Advisor&gt;<span style="color: #000000;"> findAdvisorsThatCanApply(
+            List</span>&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName) {
+
+        ProxyCreationContext.setCurrentProxiedBeanName(beanName);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> AopUtils.findAdvisorsThatCanApply(candidateAdvisors, beanClass);
+        }
+        </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            ProxyCreationContext.setCurrentProxiedBeanName(</span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+        }
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+}</code></pre>
+
+<p>下面来看findAdvisorsThatCanApply方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> AopUtils {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;Advisor&gt; findAdvisorsThatCanApply(List&lt;Advisor&gt; candidateAdvisors, Class&lt;?&gt;<span style="color: #000000;"> clazz) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (candidateAdvisors.isEmpty()) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> candidateAdvisors;
+        }
+        List</span>&lt;Advisor&gt; eligibleAdvisors = <span style="color: #0000ff;">new</span> LinkedList&lt;Advisor&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 筛选 IntroductionAdvisor 类型的通知器</span>
+            <span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span> IntroductionAdvisor &amp;&amp;<span style="color: #000000;"> canApply(candidate, clazz)) {
+                eligibleAdvisors.add(candidate);
+            }
+        }
+        </span><span style="color: #0000ff;">boolean</span> hasIntroductions = !<span style="color: #000000;">eligibleAdvisors.isEmpty();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor candidate : candidateAdvisors) {
+            </span><span style="color: #0000ff;">if</span> (candidate <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> already processed</span>
+                <span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">通知是否可以应用到clazz？</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (canApply(candidate, clazz, hasIntroductions)) {
+                eligibleAdvisors.add(candidate);
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> eligibleAdvisors;
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Advisor advisor, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+        </span><span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ((IntroductionAdvisor) advisor).getClassFilter().matches(targetClass);
+        }
+        </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PointcutAdvisor) {
+            PointcutAdvisor pca </span>=<span style="color: #000000;"> (PointcutAdvisor) advisor;
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> canApply(pca.getPointcut(), targetClass, hasIntroductions);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> It doesn't have a pointcut so we assume it applies.</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> canApply(Pointcut pc, Class&lt;?&gt; targetClass, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasIntroductions) {
+        Assert.notNull(pc, </span>"Pointcut must not be null"<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">使用ClassFilter匹配class</span>
+        <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">pc.getClassFilter().matches(targetClass)) {
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        }
+
+        MethodMatcher methodMatcher </span>=<span style="color: #000000;"> pc.getMethodMatcher();
+        </span><span style="color: #0000ff;">if</span> (methodMatcher ==<span style="color: #000000;"> MethodMatcher.TRUE) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> No need to iterate the methods if we're matching any method anyway...</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }
+
+        IntroductionAwareMethodMatcher introductionAwareMethodMatcher </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (methodMatcher <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAwareMethodMatcher) {
+            introductionAwareMethodMatcher </span>=<span style="color: #000000;"> (IntroductionAwareMethodMatcher) methodMatcher;
+        }
+
+        Set</span>&lt;Class&lt;?&gt;&gt; classes = <span style="color: #0000ff;">new</span> LinkedHashSet&lt;Class&lt;?&gt;&gt;<span style="color: #000000;">(ClassUtils.getAllInterfacesForClassAsSet(targetClass));
+        classes.add(targetClass);
+        </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> clazz : classes) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">获取当前类的方法列表，包括从父类继承的方法</span>
+            Method[] methods =<span style="color: #000000;"> ReflectionUtils.getAllDeclaredMethods(clazz);
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Method method : methods) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">使用methodMatcher匹配方法，只要匹配成功就返回true</span>
+                <span style="color: #0000ff;">if</span> ((introductionAwareMethodMatcher != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;">
+                        introductionAwareMethodMatcher.matches(method, targetClass, hasIntroductions)) </span>||<span style="color: #000000;">
+                        methodMatcher.matches(method, targetClass)) {
+                    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                }
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>筛选主要是通过&nbsp;ClassFilter 和 MethodMatcher 实现，AspectJExpressionPointcut 实现了ClassFilter 和 MethodMatcher 接口，所以可以完成匹配工作。</p>
+<p>筛选好可以应用于当前bean的通知器后，还有一个扩展操作：通过extendAdvisors()方法将默认的通知器加入到通知器列表的第一个位置，将MethodInvocation对象设置为线程局部变量，这样在通知器方法中就可以获取到正在执行的拦截器链中的MethodInvocation对象</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AspectJAwareAdvisorAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AbstractAdvisorAutoProxyCreator {
+
+    @Override
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> extendAdvisors(List&lt;Advisor&gt;<span style="color: #000000;"> candidateAdvisors) {
+        AspectJProxyUtils.makeAdvisorChainAspectJCapableIfNecessary(candidateAdvisors);
+    }
+}
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> AspectJProxyUtils {
+    
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">boolean</span> makeAdvisorChainAspectJCapableIfNecessary(List&lt;Advisor&gt;<span style="color: #000000;"> advisors) {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">advisors.isEmpty()) {
+            </span><span style="color: #0000ff;">boolean</span> foundAspectJAdvice = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">循环检测advisors是否包含AspectJ类型的通知</span>
+            <span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor advisor : advisors) {
+                </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isAspectJAdvice(advisor)) {
+                    foundAspectJAdvice </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">向advisors首部添加DefaultPointcutAdvisor，用于在拦截器链执行时暴露MethodInvocation,类似AopContext.currentProxy()</span>
+            <span style="color: #0000ff;">if</span> (foundAspectJAdvice &amp;&amp; !<span style="color: #000000;">advisors.contains(ExposeInvocationInterceptor.ADVISOR)) {
+                advisors.add(</span>0<span style="color: #000000;">, ExposeInvocationInterceptor.ADVISOR);
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>以上就是对筛选出合适的通知器代码的所有分析了。</p>
+<h1>5.创建代理对象</h1>
+<p>&nbsp;上面已经对当前bean筛选出合适的通知器了，如果通知器不为空，则为bean创建代理对象，下面来看一下createProxy()方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ProxyProcessorSupport
+        </span><span style="color: #0000ff;">implements</span><span style="color: #000000;"> SmartInstantiationAwareBeanPostProcessor, BeanFactoryAware {
+        
+
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object createProxy(
+            Class</span>&lt;?&gt;<span style="color: #000000;"> beanClass, String beanName, Object[] specificInterceptors, TargetSource targetSource) {
+
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.beanFactory <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ConfigurableListableBeanFactory) {
+            AutoProxyUtils.exposeTargetClass((ConfigurableListableBeanFactory) </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactory, beanName, beanClass);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建代理工厂</span>
+        ProxyFactory proxyFactory = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ProxyFactory();
+        proxyFactory.copyFrom(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">判断是否设置了&lt;aop:aspectj-autoproxy proxy-target-class="true"/&gt;或@EnableAspectJAutoProxy(proxyTargetClass = true)</span>
+        <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">proxyFactory.isProxyTargetClass()) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (shouldProxyTargetClass(beanClass, beanName)) {
+                proxyFactory.setProxyTargetClass(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                evaluateProxyInterfaces(beanClass, proxyFactory);
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">构建通知器</span>
+        Advisor[] advisors =<span style="color: #000000;"> buildAdvisors(beanName, specificInterceptors);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">设置通知</span>
+<span style="color: #000000;">        proxyFactory.addAdvisors(advisors);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">设置目标类</span>
+<span style="color: #000000;">        proxyFactory.setTargetSource(targetSource);
+        customizeProxyFactory(proxyFactory);
+
+        proxyFactory.setFrozen(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.freezeProxy);
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (advisorsPreFiltered()) {
+            proxyFactory.setPreFiltered(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">调用代理工厂方法生成代理对象并返回</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> proxyFactory.getProxy(getProxyClassLoader());
+    }
+    
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Advisor[] buildAdvisors(String beanName, Object[] specificInterceptors) {
+        Advisor[] commonInterceptors </span>=<span style="color: #000000;"> resolveInterceptorNames();
+
+        List</span>&lt;Object&gt; allInterceptors = <span style="color: #0000ff;">new</span> ArrayList&lt;Object&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">if</span> (specificInterceptors != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            allInterceptors.addAll(Arrays.asList(specificInterceptors));
+            </span><span style="color: #0000ff;">if</span> (commonInterceptors.length &gt; 0<span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.applyCommonInterceptorsFirst) {
+                    allInterceptors.addAll(</span>0<span style="color: #000000;">, Arrays.asList(commonInterceptors));
+                }
+                </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                    allInterceptors.addAll(Arrays.asList(commonInterceptors));
+                }
+            }
+        }
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+            </span><span style="color: #0000ff;">int</span> nrOfCommonInterceptors =<span style="color: #000000;"> commonInterceptors.length;
+            </span><span style="color: #0000ff;">int</span> nrOfSpecificInterceptors = (specificInterceptors != <span style="color: #0000ff;">null</span> ? specificInterceptors.length : 0<span style="color: #000000;">);
+            logger.debug(</span>"Creating implicit proxy for bean '" + beanName + "' with " + nrOfCommonInterceptors +
+                    " common interceptors and " + nrOfSpecificInterceptors + " specific interceptors"<span style="color: #000000;">);
+        }
+
+        Advisor[] advisors </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Advisor[allInterceptors.size()];
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; allInterceptors.size(); i++<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">将Advice包装为Advisor</span>
+            advisors[i] = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorAdapterRegistry.wrap(allInterceptors.get(i));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+    
+}</span></code></pre>
+
+<p>proxyFactory.isProxyTargetClass()用来判断是否设置了强制cglib代理，如果没有设置，则根据实际情况确定是使用Jdk动态代理还是使用Cglib动态代理，下面来看evaluateProxyInterfaces()的逻辑：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ProxyProcessorSupport <span style="color: #0000ff;">extends</span> ProxyConfig <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Ordered, BeanClassLoaderAware, AopInfrastructureBean {
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> evaluateProxyInterfaces(Class&lt;?&gt;<span style="color: #000000;"> beanClass, ProxyFactory proxyFactory) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取beanClass的所有接口</span>
+        Class&lt;?&gt;[] targetInterfaces =<span style="color: #000000;"> ClassUtils.getAllInterfacesForClass(beanClass, getProxyClassLoader());
+        </span><span style="color: #0000ff;">boolean</span> hasReasonableProxyInterface = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> ifc : targetInterfaces) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">排除匹配回调接口(InitializingBean.class,DisposableBean.class,Closeable.class,java.lang.AutoCloseable,Aware.class)
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">和内部语言接口(接口名不等于groovy.lang.GroovyObject,并且不以.cglib.proxy.Factory,.bytebuddy.MockAccess结尾)</span>
+            <span style="color: #0000ff;">if</span> (!isConfigurationCallbackInterface(ifc) &amp;&amp; !isInternalLanguageInterface(ifc) &amp;&amp;<span style="color: #000000;">
+                    ifc.getMethods().length </span>&gt; 0<span style="color: #000000;">) {
+                hasReasonableProxyInterface </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (hasReasonableProxyInterface) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果有自定义的接口，则将接口加入配置</span>
+            <span style="color: #0000ff;">for</span> (Class&lt;?&gt;<span style="color: #000000;"> ifc : targetInterfaces) {
+                proxyFactory.addInterface(ifc);
+            }
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">设置cglib代理</span>
+            proxyFactory.setProxyTargetClass(<span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        }
+    }
+}</span></code></pre>
+
+<p>确定好代理方式后，调用buildAdvisors(beanName, specificInterceptors)构建通知器</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">abstract</span> <span style="color: #0000ff;">class</span> AbstractAutoProxyCreator <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ProxyProcessorSupport
+        </span><span style="color: #0000ff;">implements</span><span style="color: #000000;"> SmartInstantiationAwareBeanPostProcessor, BeanFactoryAware {
+        
+    
+    </span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Advisor[] buildAdvisors(String beanName, Object[] specificInterceptors) {
+        Advisor[] commonInterceptors </span>=<span style="color: #000000;"> resolveInterceptorNames();
+
+        List</span>&lt;Object&gt; allInterceptors = <span style="color: #0000ff;">new</span> ArrayList&lt;Object&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">if</span> (specificInterceptors != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            allInterceptors.addAll(Arrays.asList(specificInterceptors));
+            </span><span style="color: #0000ff;">if</span> (commonInterceptors.length &gt; 0<span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.applyCommonInterceptorsFirst) {
+                    allInterceptors.addAll(</span>0<span style="color: #000000;">, Arrays.asList(commonInterceptors));
+                }
+                </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                    allInterceptors.addAll(Arrays.asList(commonInterceptors));
+                }
+            }
+        }
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+            </span><span style="color: #0000ff;">int</span> nrOfCommonInterceptors =<span style="color: #000000;"> commonInterceptors.length;
+            </span><span style="color: #0000ff;">int</span> nrOfSpecificInterceptors = (specificInterceptors != <span style="color: #0000ff;">null</span> ? specificInterceptors.length : 0<span style="color: #000000;">);
+            logger.debug(</span>"Creating implicit proxy for bean '" + beanName + "' with " + nrOfCommonInterceptors +
+                    " common interceptors and " + nrOfSpecificInterceptors + " specific interceptors"<span style="color: #000000;">);
+        }
+
+        Advisor[] advisors </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Advisor[allInterceptors.size()];
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; allInterceptors.size(); i++<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">将Advice包装为Advisor</span>
+            advisors[i] = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorAdapterRegistry.wrap(allInterceptors.get(i));
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> advisors;
+    }
+    
+}</span></code></pre>
+
+<p>获取到所有的拦截器后，将拦截器包装为通知器Advisor</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultAdvisorAdapterRegistry <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AdvisorAdapterRegistry, Serializable {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Advisor wrap(Object adviceObject) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> UnknownAdviceTypeException {
+        </span><span style="color: #0000ff;">if</span> (adviceObject <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Advisor) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> (Advisor) adviceObject;
+        }
+        </span><span style="color: #0000ff;">if</span> (!(adviceObject <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> Advice)) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnknownAdviceTypeException(adviceObject);
+        }
+        Advice advice </span>=<span style="color: #000000;"> (Advice) adviceObject;
+        </span><span style="color: #0000ff;">if</span> (advice <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> MethodInterceptor) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">后置通知、环绕通知、异常通知实现了MethodInterceptor接口</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultPointcutAdvisor(advice);
+        }
+        </span><span style="color: #0000ff;">for</span> (AdvisorAdapter adapter : <span style="color: #0000ff;">this</span><span style="color: #000000;">.adapters) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">前置通知和返回通知没有实现MethodInterceptor接口,通过适配器模式判断advice否为前置通知或返回通知</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (adapter.supportsAdvice(advice)) {
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultPointcutAdvisor(advice);
+            }
+        }
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnknownAdviceTypeException(advice);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;调用proxyFactory的getProxy()方法创建代理对象</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ProxyFactory <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ProxyCreatorSupport {
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getProxy(ClassLoader classLoader) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">调用子类createAopProxy()方法</span>
+        <span style="color: #0000ff;">return</span><span style="color: #000000;"> createAopProxy().getProxy(classLoader);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>调用了子类的createAopProxy()方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ProxyCreatorSupport <span style="color: #0000ff;">extends</span><span style="color: #000000;"> AdvisedSupport {
+
+    </span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> AopProxy createAopProxy() {
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span><span style="color: #000000;">.active) {
+            activate();
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">getAopProxyFactory()是默认的Aop代理工厂DefaultAopProxyFactory
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">即调用DefaultAopProxyFactory的createAopProxy()方法</span>
+        <span style="color: #0000ff;">return</span> getAopProxyFactory().createAopProxy(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>这个调用getAopProxyFactory()得到的是DefaultAopProxyFactory，继续调用createAopProxy(this)方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultAopProxyFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AopProxyFactory, Serializable {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> AopProxy createAopProxy(AdvisedSupport config) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> AopConfigException {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">配置了proxyTargetClass = true走这个逻辑</span>
+        <span style="color: #0000ff;">if</span> (config.isOptimize() || config.isProxyTargetClass() ||<span style="color: #000000;"> hasNoUserSuppliedProxyInterfaces(config)) {
+            Class</span>&lt;?&gt; targetClass =<span style="color: #000000;"> config.getTargetClass();
+            </span><span style="color: #0000ff;">if</span> (targetClass == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> AopConfigException("TargetSource cannot determine target class: " +
+                        "Either an interface or a target is required for proxy creation."<span style="color: #000000;">);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果目标类是接口，而不是普通类，则创建jdk动态代理</span>
+            <span style="color: #0000ff;">if</span> (targetClass.isInterface() ||<span style="color: #000000;"> Proxy.isProxyClass(targetClass)) {
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> JdkDynamicAopProxy(config);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建cglib动态代理</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ObjenesisCglibAopProxy(config);
+        }
+        </span><span style="color: #0000ff;">else</span> { <span style="color: #008000;">//</span><span style="color: #008000;">默认创建jdk动态代理</span>
+            <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> JdkDynamicAopProxy(config);
+        }
+    }
+
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * Determine whether the supplied {</span><span style="color: #808080;">@link</span><span style="color: #008000;"> AdvisedSupport} has only the
+     * {</span><span style="color: #808080;">@link</span><span style="color: #008000;"> org.springframework.aop.SpringProxy} interface specified
+     * (or no proxy interfaces specified at all).
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> hasNoUserSuppliedProxyInterfaces(AdvisedSupport config) {
+        Class</span>&lt;?&gt;[] ifcs =<span style="color: #000000;"> config.getProxiedInterfaces();
+        </span><span style="color: #0000ff;">return</span> (ifcs.length == 0 || (ifcs.length == 1 &amp;&amp; SpringProxy.<span style="color: #0000ff;">class</span>.isAssignableFrom(ifcs[0<span style="color: #000000;">])));
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>到这里，代理对象就创建完成了。</p>
+<h1>6.拦截器的执行过程</h1>
+<p>&nbsp;在开始介绍拦截器执行过程之前，先来说一下expose-proxy。Spring引入expose-proxy特性是为了解决目标方法调用同对象中其他方法时，其他方法的切面逻辑无法执行的问题，可以通过<span class="line"><span class="tag">&lt;<span class="name">aop:aspectj-autoproxy <span class="attr">expose-proxy=<span class="string">"true" /&gt;或</span></span></span></span></span>@EnableAspectJAutoProxy(exposeProxy = true)配置。</p>
+<p>本小结只分析&nbsp;JdkDynamicAopProxy，至于 CglibAopProxy ，大家若有兴趣可以自己去看一下。</p>
+<p>JdkDynamicAopProxy通过实现InvocationHandler接口使所有对目标类的调用全部都会调用Object invoke(Object proxy, Method method, Object[] args)方法，在方法内部获取方法拦截器链，在执行每个拦截器后，通过MethodInvocation接口的proceed()方法继续执行拦截器链中的下一个拦截器，拦截器执行完成后，调用连接点方法，调用结束后，将结果返回给返回通知，最终通知等通知继续处理后续逻辑。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> JdkDynamicAopProxy <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AopProxy, InvocationHandler, Serializable {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">为目标类生成代理对象后，对代理对象的任何调用都会调用该方法</span>
+<span style="color: #000000;">    @Override
+    </span><span style="color: #0000ff;">public</span> Object invoke(Object proxy, Method method, Object[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        MethodInvocation invocation;
+        Object oldProxy </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">boolean</span> setProxyContext = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+
+        TargetSource targetSource </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.advised.targetSource;
+        Class</span>&lt;?&gt; targetClass = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        Object target </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">省略部分代码...</span>
+<span style="color: #000000;">
+            Object retVal;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果配置了exposeProxy = true，则将代理对象通过AopContext暴露出来，用来解决目标方法调用同对象中的其他方法，
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">其他方法的切面逻辑无法执行的问题</span>
+            <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.advised.exposeProxy) {
+                oldProxy </span>=<span style="color: #000000;"> AopContext.setCurrentProxy(proxy);
+                setProxyContext </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            }
+
+            target </span>=<span style="color: #000000;"> targetSource.getTarget();
+            </span><span style="color: #0000ff;">if</span> (target != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                targetClass </span>=<span style="color: #000000;"> target.getClass();
+            }
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取方法的拦截器链</span>
+            List&lt;Object&gt; chain = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advised.getInterceptorsAndDynamicInterceptionAdvice(method, targetClass);
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果拦截器链为空，则直接反射调用目标方法并返回</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (chain.isEmpty()) {
+                Object[] argsToUse </span>=<span style="color: #000000;"> AopProxyUtils.adaptArgumentsIfNecessary(method, args);
+                retVal </span>=<span style="color: #000000;"> AopUtils.invokeJoinpointUsingReflection(target, method, argsToUse);
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个方法调用，将拦截器链传入</span>
+                invocation = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ReflectiveMethodInvocation(proxy, target, method, args, targetClass, chain);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">开始执行拦截器链</span>
+                retVal =<span style="color: #000000;"> invocation.proceed();
+            }
+
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取方法的返回类型</span>
+            Class&lt;?&gt; returnType =<span style="color: #000000;"> method.getReturnType();
+            </span><span style="color: #0000ff;">if</span> (retVal != <span style="color: #0000ff;">null</span> &amp;&amp; retVal == target &amp;&amp;<span style="color: #000000;">
+                    returnType </span>!= Object.<span style="color: #0000ff;">class</span> &amp;&amp; returnType.isInstance(proxy) &amp;&amp;
+                    !RawTargetAccess.<span style="color: #0000ff;">class</span><span style="color: #000000;">.isAssignableFrom(method.getDeclaringClass())) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">如果方法返回this，则将proxy赋值给retVal返回</span>
+                retVal =<span style="color: #000000;"> proxy;
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果返回值为非空类型并且是基本数据类型，则抛出异常</span>
+            <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (retVal == <span style="color: #0000ff;">null</span> &amp;&amp; returnType != Void.TYPE &amp;&amp;<span style="color: #000000;"> returnType.isPrimitive()) {
+                </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> AopInvocationException(
+                        </span>"Null return value from advice does not match primitive return type for: " +<span style="color: #000000;"> method);
+            }
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> retVal;
+        }
+        </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (target != <span style="color: #0000ff;">null</span> &amp;&amp; !<span style="color: #000000;">targetSource.isStatic()) {
+                targetSource.releaseTarget(target);
+            }
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (setProxyContext) {
+                AopContext.setCurrentProxy(oldProxy);
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>下面来看getInterceptorsAndDynamicInterceptionAdvice()方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AdvisedSupport <span style="color: #0000ff;">extends</span> ProxyConfig <span style="color: #0000ff;">implements</span><span style="color: #000000;"> Advised {
+
+    </span><span style="color: #0000ff;">public</span> List&lt;Object&gt; getInterceptorsAndDynamicInterceptionAdvice(Method method, Class&lt;?&gt;<span style="color: #000000;"> targetClass) {
+        MethodCacheKey cacheKey </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MethodCacheKey(method);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">从缓存中获取</span>
+        List&lt;Object&gt; cached = <span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache.get(cacheKey);
+        </span><span style="color: #0000ff;">if</span> (cached == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">获取方法的所有拦截器</span>
+            cached = <span style="color: #0000ff;">this</span><span style="color: #000000;">.advisorChainFactory.getInterceptorsAndDynamicInterceptionAdvice(
+                    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">, method, targetClass);
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.methodCache.put(cacheKey, cached);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cached;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>调用通知器链工厂的获取拦截器方法：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultAdvisorChainFactory <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AdvisorChainFactory, Serializable {
+
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;Object&gt;<span style="color: #000000;"> getInterceptorsAndDynamicInterceptionAdvice(
+            Advised config, Method method, Class</span>&lt;?&gt;<span style="color: #000000;"> targetClass) {
+        List</span>&lt;Object&gt; interceptorList = <span style="color: #0000ff;">new</span> ArrayList&lt;Object&gt;<span style="color: #000000;">(config.getAdvisors().length);
+        Class</span>&lt;?&gt; actualClass = (targetClass != <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> targetClass : method.getDeclaringClass());
+        </span><span style="color: #0000ff;">boolean</span> hasIntroductions =<span style="color: #000000;"> hasMatchingIntroductions(config, actualClass);
+        AdvisorAdapterRegistry registry </span>=<span style="color: #000000;"> GlobalAdvisorAdapterRegistry.getInstance();
+
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Advisor advisor : config.getAdvisors()) {
+            </span><span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> PointcutAdvisor) {
+                PointcutAdvisor pointcutAdvisor </span>=<span style="color: #000000;"> (PointcutAdvisor) advisor;
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">判断切点是否与actualClass是否匹配</span>
+                <span style="color: #0000ff;">if</span> (config.isPreFiltered() ||<span style="color: #000000;"> pointcutAdvisor.getPointcut().getClassFilter().matches(actualClass)) {
+                    MethodMatcher mm </span>=<span style="color: #000000;"> pointcutAdvisor.getPointcut().getMethodMatcher();
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">判断目标方法是否与切点匹配</span>
+                    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (MethodMatchers.matches(mm, method, actualClass, hasIntroductions)) {
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;">获取拦截器</span>
+                        MethodInterceptor[] interceptors =<span style="color: #000000;"> registry.getInterceptors(advisor);
+                        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (mm.isRuntime()) {
+                            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (MethodInterceptor interceptor : interceptors) {
+                                interceptorList.add(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> InterceptorAndDynamicMethodMatcher(interceptor, mm));
+                            }
+                        }
+                        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                            interceptorList.addAll(Arrays.asList(interceptors));
+                        }
+                    }
+                }
+            }
+            </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (advisor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> IntroductionAdvisor) {
+                IntroductionAdvisor ia </span>=<span style="color: #000000;"> (IntroductionAdvisor) advisor;
+                </span><span style="color: #0000ff;">if</span> (config.isPreFiltered() ||<span style="color: #000000;"> ia.getClassFilter().matches(actualClass)) {
+                    Interceptor[] interceptors </span>=<span style="color: #000000;"> registry.getInterceptors(advisor);
+                    interceptorList.addAll(Arrays.asList(interceptors));
+                }
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                Interceptor[] interceptors </span>=<span style="color: #000000;"> registry.getInterceptors(advisor);
+                interceptorList.addAll(Arrays.asList(interceptors));
+            }
+        }
+
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> interceptorList;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>方法匹配成功后，调用registry.getInterceptors(advisor)</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DefaultAdvisorAdapterRegistry <span style="color: #0000ff;">implements</span><span style="color: #000000;"> AdvisorAdapterRegistry, Serializable {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+<span style="color: #000000;">    
+    @Override
+    </span><span style="color: #0000ff;">public</span> MethodInterceptor[] getInterceptors(Advisor advisor) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> UnknownAdviceTypeException {
+        List</span>&lt;MethodInterceptor&gt; interceptors = <span style="color: #0000ff;">new</span> ArrayList&lt;MethodInterceptor&gt;(3<span style="color: #000000;">);
+        Advice advice </span>=<span style="color: #000000;"> advisor.getAdvice();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果advice是MethodInterceptor类型，则不需要转换，直接加入</span>
+        <span style="color: #0000ff;">if</span> (advice <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> MethodInterceptor) {
+            interceptors.add((MethodInterceptor) advice);
+        }
+        </span><span style="color: #0000ff;">for</span> (AdvisorAdapter adapter : <span style="color: #0000ff;">this</span><span style="color: #000000;">.adapters) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">advice不是MethodInterceptor类型，则通过适配器获取通知对应的MethodInterceptor实现</span>
+            <span style="color: #0000ff;">if</span><span style="color: #000000;"> (adapter.supportsAdvice(advice)) {
+                interceptors.add(adapter.getInterceptor(advisor));
+            }
+        }
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (interceptors.isEmpty()) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> UnknownAdviceTypeException(advisor.getAdvice());
+        }
+        </span><span style="color: #0000ff;">return</span> interceptors.toArray(<span style="color: #0000ff;">new</span><span style="color: #000000;"> MethodInterceptor[interceptors.size()]);
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...</span>
+}</code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;到这里，返回的所有拦截器都是MethodInterceptor类型的了，后面就可以通过调用MethodInterceptor接口的invoke方法对通知进行调用了</p>
+<p>执行拦截器链的工作是在ReflectiveMethodInvocation完成的，下面来看一下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> ReflectiveMethodInvocation <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ProxyMethodInvocation, Cloneable {
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> Object proceed() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Throwable {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">    currentInterceptorIndex从-1开始，每次调用proceed()方法currentInterceptorIndex加1
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">知道满足下面的判断后，说明拦截器链执行完成(前置通知执行完成，其他通知须等待连接点方法调用完成，继续完成相应逻辑)，
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">反射调用连接点方法</span>
+        <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.currentInterceptorIndex == <span style="color: #0000ff;">this</span>.interceptorsAndDynamicMethodMatchers.size() - 1<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> invokeJoinpoint();
+        }
+
+        Object interceptorOrInterceptionAdvice </span>=
+                <span style="color: #0000ff;">this</span>.interceptorsAndDynamicMethodMatchers.get(++<span style="color: #0000ff;">this</span><span style="color: #000000;">.currentInterceptorIndex);
+        </span><span style="color: #0000ff;">if</span> (interceptorOrInterceptionAdvice <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> InterceptorAndDynamicMethodMatcher) {
+             </span><span style="color: #008000;">/*</span><span style="color: #008000;">
+             * 调用具有三个参数（3-args）的 matches 方法动态匹配目标方法，
+             * 两个参数（2-args）的 matches 方法用于静态匹配
+             </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+            InterceptorAndDynamicMethodMatcher dm </span>=<span style="color: #000000;">
+                    (InterceptorAndDynamicMethodMatcher) interceptorOrInterceptionAdvice;
+            </span><span style="color: #0000ff;">if</span> (dm.methodMatcher.matches(<span style="color: #0000ff;">this</span>.method, <span style="color: #0000ff;">this</span>.targetClass, <span style="color: #0000ff;">this</span><span style="color: #000000;">.arguments)) {
+                </span><span style="color: #0000ff;">return</span> dm.interceptor.invoke(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 匹配失败，忽略当前拦截器</span>
+                <span style="color: #0000ff;">return</span><span style="color: #000000;"> proceed();
+            }
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">调用拦截器逻辑，并传递this对象，this实现了MethodInvocation接口，所以拦截器内部逻辑执行完成后，
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">需要调用proceed()方法，然后currentInterceptorIndex加+，继续执行下一个拦截器的逻辑</span>
+            <span style="color: #0000ff;">return</span> ((MethodInterceptor) interceptorOrInterceptionAdvice).invoke(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+        }
+    }
+}</span></code></pre>
+
+<p>上面就是拦截器执行的所有分析了。因个人能力有限，如果有错误之处，还请指出，谢谢！</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

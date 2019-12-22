@@ -1,0 +1,205 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修springboot自动配置原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>springboot自动配置原理</center></div><div class='banquan'>原文出处:本文由博客园博主garfieldzf提供。<br/>
+原文连接:https://www.cnblogs.com/sword-successful/p/11427875.html</div><br>
+    <h2 id="从main函数说起">从main函数说起</h2>
+<p>     一切的开始要从SpringbootApplication注解说起。</p>
+<pre><code><code>@SpringBootApplication
+public class MyBootApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(MyBootApplication.class);
+    } 
+}
+
+
+@SpringBootConfiguration
+@EnableAutoConfiguration
+@ComponentScan
+public @interface SpringBootApplication {
+    
+}</code></code></pre>
+<p>       其中最重要的就是EnableAutoConfiguration注解，开启自动配置。</p>
+<pre><code><code>@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@AutoConfigurationPackage
+@Import({AutoConfigurationImportSelector.class})
+public @interface EnableAutoConfiguration {
+    String ENABLED_OVERRIDE_PROPERTY = &quot;spring.boot.enableautoconfiguration&quot;;
+    Class&lt;?&gt;[] exclude() default {};
+    String[] excludeName() default {};
+}</code></code></pre>
+<p>       通过Import注解导入<strong>AutoConfigurationImportSelector</strong>。在这个类中加载<strong>/META-INF/spring.factories</strong>文件的信息，然后筛选出以EnableAutoConfiguration为key的数据，加载到IOC容器中，实现自动配置功能。</p>
+<pre><code><code>@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@Import(AutoConfigurationPackages.Registrar.class)
+public @interface AutoConfigurationPackage {
+
+}
+</code></code></pre>
+<p>       从表面看就是自动配置包，主要使用了Import注解，导入了Registrar类。这里Registrar类的registerBeanDefinitions方法导包，也就是导入当前main函数所在路径的包地址，我这里是com.zhangfei。<br />
+<img src="./images/springboot自动配置原理0.png" alt="QQ截图20190828173328.jpg" /></p>
+<h2 id="怎么自动装配其他n个类">怎么自动装配其他N个类</h2>
+<p>Import({AutoConfigurationImportSelector.class})该注解给当前配置类导入另外N个自动配置类。<br />
+这里既然导入N个自动配置类，那么都导入哪些类呢？</p>
+<pre><code><code>//AutoConfigurationImportSelector实现DeferredImportSelector接口，而DeferredImportSelector接口又继承了ImportSelector
+public interface ImportSelector {
+    String[] selectImports(AnnotationMetadata var1);
+}</code></code></pre>
+<p><img src="./images/springboot自动配置原理1.png" alt="QQ截图20190828174002.jpg" /><br />
+AutoConfigurationImportSelector通过实现接口ImportSelector的selectImports方法返回需要导入的组件，selectImports方法返回一个全类名字符串数组。</p>
+<h2 id="主角上场">主角上场</h2>
+<pre><code><code>//AutoConfigurationImportSelector.java
+@Override
+public String[] selectImports(AnnotationMetadata annotationMetadata) {
+    if (!isEnabled(annotationMetadata)) {
+        return NO_IMPORTS;
+    }
+    AutoConfigurationMetadata autoConfigurationMetadata = AutoConfigurationMetadataLoader.loadMetadata(this.beanClassLoader);
+    AutoConfigurationEntry autoConfigurationEntry = getAutoConfigurationEntry(autoConfigurationMetadata,annotationMetadata);
+    return StringUtils.toStringArray(autoConfigurationEntry.getConfigurations());
+}
+
+protected AutoConfigurationEntry getAutoConfigurationEntry(AutoConfigurationMetadata autoConfigurationMetadata,AnnotationMetadata annotationMetadata) {
+    if (!isEnabled(annotationMetadata)) {
+        return EMPTY_ENTRY;
+    }
+    AnnotationAttributes attributes = getAttributes(annotationMetadata);
+    List&lt;String&gt; configurations = getCandidateConfigurations(annotationMetadata, attributes);
+    configurations = removeDuplicates(configurations);
+    Set&lt;String&gt; exclusions = getExclusions(annotationMetadata, attributes);
+    checkExcludedClasses(configurations, exclusions);
+    configurations.removeAll(exclusions);
+    configurations = filter(configurations, autoConfigurationMetadata);
+    fireAutoConfigurationImportEvents(configurations, exclusions);
+    return new AutoConfigurationEntry(configurations, exclusions);
+}
+
+protected List&lt;String&gt; getCandidateConfigurations(AnnotationMetadata metadata, AnnotationAttributes attributes) {
+    List&lt;String&gt; configurations = SpringFactoriesLoader.loadFactoryNames(getSpringFactoriesLoaderFactoryClass(),getBeanClassLoader());
+    return configurations;
+}
+</code></code></pre>
+<p>这里又开始调用SpringFactoriesLoader.loadFactoryNames。<br />
+SpringFactoriesLoader.loadFactoryNames方法中关键的三步：<br />
+(1)从当前项目的类路径中获取所有 META-INF/spring.factories 这个文件下的信息.<br />
+(2)将上面获取到的信息封装成一个 Map 返回，EnableAutoConfiguration为key。<br />
+(3)从返回的Map中通过刚才传入的 EnableAutoConfiguration.class参数，获取该 key 下的所有值。</p>
+<pre><code><code>public static List&lt;String&gt; loadFactoryNames(Class&lt;?&gt; factoryClass, @Nullable ClassLoader classLoader) {
+    String factoryClassName = factoryClass.getName();
+    return (List)loadSpringFactories(classLoader).getOrDefault(factoryClassName, Collections.emptyList());
+}
+
+private static Map&lt;String, List&lt;String&gt;&gt; loadSpringFactories(@Nullable ClassLoader classLoader) {
+    MultiValueMap&lt;String, String&gt; result = (MultiValueMap)cache.get(classLoader);
+    if (result != null) {
+        return result;
+    } else {
+        try {
+            Enumeration&lt;URL&gt; urls = classLoader != null ? classLoader.getResources(&quot;META-INF/spring.factories&quot;) : ClassLoader.getSystemResources(&quot;META-INF/spring.factories&quot;);
+            LinkedMultiValueMap result = new LinkedMultiValueMap();
+
+            while(urls.hasMoreElements()) {
+                URL url = (URL)urls.nextElement();
+                UrlResource resource = new UrlResource(url);
+                Properties properties = PropertiesLoaderUtils.loadProperties(resource);
+                Iterator var6 = properties.entrySet().iterator();
+
+                while(var6.hasNext()) {
+                    Entry&lt;?, ?&gt; entry = (Entry)var6.next();
+                    String factoryClassName = ((String)entry.getKey()).trim();
+                    String[] var9 = StringUtils.commaDelimitedListToStringArray((String)entry.getValue());
+                    int var10 = var9.length;
+
+                    for(int var11 = 0; var11 &lt; var10; ++var11) {
+                        String factoryName = var9[var11];
+                        result.add(factoryClassName, factoryName.trim());
+                    }
+                }
+            }
+
+            cache.put(classLoader, result);
+            return result;
+        } catch (IOException var13) {
+            throw new IllegalArgumentException(&quot;Unable to load factories from location [META-INF/spring.factories]&quot;, var13);
+        }
+    }
+}</code></code></pre>
+<h2 id="自动配置都有哪些内容呢">自动配置都有哪些内容呢？</h2>
+<pre><code><code># Auto Configure
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration,\
+org.springframework.boot.autoconfigure.aop.AopAutoConfiguration,\
+org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration,\
+org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration,\
+org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration,\
+...其他省略</code></code></pre>
+<h2 id="xxxautoconfiguration和xxproperties">XXXAutoConfiguration和XXProperties</h2>
+<p>在spring.factories文件中看到的都是自动配置类，那么自动配置用到的属性值在那里呢？我们拿出redis为例</p>
+<pre><code><code>@Configuration
+@ConditionalOnClass(RedisOperations.class) //判断当前项目有没有这个类RedisOperations.class
+@EnableConfigurationProperties(RedisProperties.class) //启用配置属性，这里看到了熟悉的XXXProperties
+@Import({ LettuceConnectionConfiguration.class, JedisConnectionConfiguration.class }) //导入这两个类
+public class RedisAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(name = &quot;redisTemplate&quot;)
+    public RedisTemplate&lt;Object, Object&gt; redisTemplate(RedisConnectionFactory redisConnectionFactory)
+            throws UnknownHostException {
+        RedisTemplate&lt;Object, Object&gt; template = new RedisTemplate&lt;&gt;();
+        template.setConnectionFactory(redisConnectionFactory);
+        return template;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory redisConnectionFactory)
+            throws UnknownHostException {
+        StringRedisTemplate template = new StringRedisTemplate();
+        template.setConnectionFactory(redisConnectionFactory);
+        return template;
+    }
+}
+
+//这里则保存redis初始化时的属性
+@ConfigurationProperties(prefix = &quot;spring.redis&quot;)
+public class RedisProperties {
+
+    private int database = 0;
+
+    private String url;
+
+    private String host = &quot;localhost&quot;;
+
+    private String password;
+
+    private int port = 6379;
+
+    private boolean ssl;
+
+}</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

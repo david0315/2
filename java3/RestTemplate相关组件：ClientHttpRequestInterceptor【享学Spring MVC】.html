@@ -1,0 +1,595 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11532777.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>做事的人和做梦的人最大的区别就是行动力</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p>本文为深入了解<code>Spring</code>提供的Rest调用客户端<code>RestTemplate</code>开山，对它相关的一些组件做讲解。</p>
+<blockquote>
+<p>Tips：请注意区分<code>RestTemplate</code>和<code>RedisTemplate</code>哦~</p>
+</blockquote>
+<h2 id="clienthttprequestfactory">ClientHttpRequestFactory</h2>
+<p>它是个函数式接口，用于根据<code>URI</code>和<code>HttpMethod</code>创建出一个<code>ClientHttpRequest</code>来发送请求~</p>
+<blockquote>
+<p><code>ClientHttpRequest</code>它代表请求的客户端，该接口继承自<code>HttpRequest</code>、<code>HttpOutputMessage</code>，只有一个<code>ClientHttpResponse execute() throws IOException</code>方法。其中<code>Netty、HttpComponents、OkHttp3，HttpUrlConnection</code>对它都有实现~</p>
+</blockquote>
+<pre><code><code>// @since 3.0  RestTemplate这个体系都是3.0后才有的
+@FunctionalInterface
+public interface ClientHttpRequestFactory { 
+
+    // 返回一个ClientHttpRequest，这样调用其execute()方法就可以发送rest请求了~
+    ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException;
+}</code></code></pre>
+<p>它的继承树如下：<br />
+<img src="./images/RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+可以直观的看到，我们可以使用<code>Apache</code>的<code>HttpClient</code>、<code>OkHttp3</code>、<code>Netty4</code>都可，但这些都需要额外导包，默认情况下<code>Spring</code>使用的是<code>java.net.HttpURLConnection</code>。</p>
+<blockquote>
+<p>HttpClient最新版本：4.5.10<br />
+OkHttp最新版本：4.1.1（虽然版本号是4，但是GAV还是3哦：com.squareup.okhttp3）<br />
+Netty最新版本：4.1.39.Final（它的5版本可以宣告已死）</p>
+</blockquote>
+<p><code>Spring4.0</code>是新增了一个对异步支持的<code>AsyncClientHttpRequestFactory</code>（Spring5.0后标记为已废弃）：</p>
+<pre><code><code>// 在Spring5.0后被标记为过时了，被org.springframework.http.client.reactive.ClientHttpConnector所取代（但还是可用的嘛）
+@Deprecated
+public interface AsyncClientHttpRequestFactory {
+
+    // AsyncClientHttpRequest#executeAsync()返回的是ListenableFuture&lt;ClientHttpResponse&gt;
+    // 可见它的异步是通过ListenableFuture实现的
+    AsyncClientHttpRequest createAsyncRequest(URI uri, HttpMethod httpMethod) throws IOException;
+}</code></code></pre>
+<p>使用工厂创建<code>ClientHttpRequest</code>，然后我们发请求就不用关心具体httpClient内部的细节了（可插拔使用二方库、三方库）</p>
+<h4 id="simpleclienthttprequestfactory">SimpleClientHttpRequestFactory</h4>
+<p>它是<code>Spring</code>内置默认的实现，使用的是JDK内置的<code>java.net.URLConnection</code>作为client客户端。</p>
+<pre><code><code>public class SimpleClientHttpRequestFactory implements ClientHttpRequestFactory, AsyncClientHttpRequestFactory {
+
+    private static final int DEFAULT_CHUNK_SIZE = 4096;
+    @Nullable
+    private Proxy proxy; //java.net.Proxy
+    private boolean bufferRequestBody = true; // 默认会缓冲body
+    
+    // URLConnection&#39;s connect timeout (in milliseconds).
+    // 若值设置为0，表示永不超时 @see URLConnection#setConnectTimeout(int)
+    private int connectTimeout = -1;
+    // URLConnection#setReadTimeout(int) 
+    // 超时规则同上
+    private int readTimeout = -1;
+    
+    //Set if the underlying URLConnection can be set to &#39;output streaming&#39; mode.
+    private boolean outputStreaming = true;
+
+    // 异步的时候需要
+    @Nullable
+    private AsyncListenableTaskExecutor taskExecutor;
+    ... // 省略所有的set方法
+    
+    @Override
+    public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+        
+        // 打开一个HttpURLConnection
+        HttpURLConnection connection = openConnection(uri.toURL(), this.proxy);
+        // 设置超时时间、请求方法等一些参数到connection
+        prepareConnection(connection, httpMethod.name());
+
+        //SimpleBufferingClientHttpRequest的excute方法最终使用的是connection.connect();
+        // 然后从connection中得到响应码、响应体~~~
+        if (this.bufferRequestBody) {
+            return new SimpleBufferingClientHttpRequest(connection, this.outputStreaming);
+        } else {
+            return new SimpleStreamingClientHttpRequest(connection, this.chunkSize, this.outputStreaming);
+        }
+    }
+
+    // createAsyncRequest()方法略，无非就是在线程池里异步完成请求
+    ...
+}</code></code></pre>
+<p>需要注意的是：<code>JDK &lt;1.8 doesn't support getOutputStream with HTTP DELETE</code>，也就是说如果<code>JDK</code>的版本低于1.8的话，那么Delete请求是不支持body体的。</p>
+<p><strong>Demo Show：</strong></p>
+<pre><code><code>public static void main(String[] args) throws IOException {
+    SimpleClientHttpRequestFactory clientFactory  = new SimpleClientHttpRequestFactory();
+    
+    // ConnectTimeout只有在网络正常的情况下才有效，因此两个一般都设置
+    clientFactory.setConnectTimeout(5000); //建立连接的超时时间  5秒
+    clientFactory.setReadTimeout(5000); // 传递数据的超时时间（在网络抖动的情况下，这个参数很有用）
+
+    ClientHttpRequest client = clientFactory.createRequest(URI.create(&quot;https://www.baidu.com&quot;), HttpMethod.GET);
+    // 发送请求
+    ClientHttpResponse response = client.execute();
+    System.out.println(response.getStatusCode()); //200 OK
+    System.out.println(response.getStatusText()); // OK
+    System.out.println(response.getHeaders()); //
+
+    // 返回内容 是个InputStream
+    byte[] bytes = FileCopyUtils.copyToByteArray(response.getBody());
+    System.out.println(new String(bytes, StandardCharsets.UTF_8)); // 百度首页内容的html
+}</code></code></pre>
+<p>关于<code>HttpURLConnection</code>的API使用，需注意如下几点：</p>
+<ol>
+<li><code>HttpURLConnection</code>对象不能直接构造，需要通过URL类中的<code>openConnection()</code>方法来获得</li>
+<li><strong><code>HttpURLConnection</code>的connect()函数，实际上只是建立了一个与服务器的TCP连接，并没有实际发送HTTP请求。HTTP请求实际上直到我们获取服务器响应数据（如调用getInputStream()、getResponseCode()等方法）时才正式发送出去</strong><br />
+1. 配置信息都需要在connect()方法执行之前完成</li>
+<li><code>HttpURLConnection</code>是基于HTTP协议的，其底层通过socket通信实现。如果不设置超时（timeout），在网络异常的情况下，可能会导致程序僵死而不继续往下执行。==请务必100%设置==</li>
+<li>HTTP正文的内容是通过OutputStream流写入的， 向流中写入的数据不会立即发送到网络，而是存在于内存缓冲区中，<strong>待流关闭时</strong>，根据写入的内容生成HTTP正文</li>
+<li>调用getInputStream()方法时，返回一个<strong>输入流</strong>，用于从中读取服务器对于HTTP请求的返回信息。</li>
+<li><code>HttpURLConnection.connect()</code>不是必须的。当我们需要返回值时，比如我们使用HttpURLConnection.getInputStream()方法的时候它就会自动发送请求了，所以完全没有必要调用connect()方法了（没必要先建立Tcp嘛~）。</li>
+</ol>
+<h4 id="使用哪一个底层http库">使用哪一个底层http库？</h4>
+<p>我们知道<code>HttpURLConnection</code>它在功能上是有些不足的（简单的提交参数可以满足）。绝大部分情况下Web站点的网页可能没这么简单，这些页面并不是通过一个简单的URL就可访问的，可能需要用户登录而且具有相应的权限才可访问该页面。在这种情况下，<strong>就需要涉及Session、Cookie的处理了，如果打算使用HttpURLConnection来处理这些细节，当然也是可能实现的，只是处理起来难度就大了。</strong></p>
+<p>这个时候，Apache开源组织提供了一个<code>HttpClient</code>项目，可以用于发送HTTP请求，接收HTTP响应（包含HttpGet、HttpPost...等各种发送请求的对象）。</p>
+<blockquote>
+<p>它不会缓存服务器的响应，不能执行HTML页面中嵌入的Javascript代码；也不会对页面内容进行任何解析、处理</p>
+</blockquote>
+<p>因此，下面我就让Spring使用HttpClient为示例演示使用三方库：<br />
+<strong>1、导包</strong></p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.apache.httpcomponents&lt;/groupId&gt;
+    &lt;artifactId&gt;httpclient&lt;/artifactId&gt;
+    &lt;version&gt;4.5.10&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<blockquote>
+<p>Tips：Requires Apache HttpComponents <code>4.3</code> or higher, as of Spring 4.0.</p>
+</blockquote>
+<p><strong>2、案例使用</strong><br />
+案例内容<code>仅仅只需</code>把上例第一句话换成使用<code>HttpComponentsClientHttpRequestFactory</code>它的实例，其余都不用变化即可成功看到效果。可以看看这个类它具体做了什么</p>
+<pre><code><code>// @since 3.1 3.1后出现的。
+public class HttpComponentsClientHttpRequestFactory implements ClientHttpRequestFactory, DisposableBean {
+
+    private HttpClient httpClient;
+    @Nullable
+    private RequestConfig requestConfig; // 这个配置就是可以配置超时等等乱七八糟client属性的类
+    private boolean bufferRequestBody = true;
+
+    //=========下面是构造函数们=========
+    public HttpComponentsClientHttpRequestFactory() {
+        // HttpClientBuilder.create().useSystemProperties().build();
+        // 所有若是这里，配置超时时间可以这么来设置也可：
+        // System.setProperty(”sun.net.client.defaultConnectTimeout”, “5000″);
+        this.httpClient = HttpClients.createSystem();
+    }
+    // 当然可以把你配置好了的Client扔进来
+    public HttpComponentsClientHttpRequestFactory(HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
+    ... // 省略设置超时时间。。。等等属性的一些get/set
+    // 超时信息啥的都是保存在`RequestConfig`里的
+
+
+    @Override
+    public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+        HttpClient client = getHttpClient(); // 拿到你指定的client）=（或者系统缺省的）
+        // switch语句逻辑：HttpMethod == GET --&gt; HttpGet HEAD --&gt; HttpHead ...
+        HttpUriRequest httpRequest = createHttpUriRequest(httpMethod, uri);
+        postProcessHttpRequest(httpRequest);
+        ...
+    }
+}</code></code></pre>
+<p>实际使用的是<code>HttpClient</code>完成的请求。另外<code>OkHttp3ClientHttpRequestFactory</code>使用的是<code>okhttp3.OkHttpClient</code>发送请求；<code>Netty4ClientHttpRequestFactory</code>使用的是<code>io.netty.channel.EventLoopGroup</code>。此处就不一一例举了</p>
+<blockquote>
+<p>Spring5.0以后，<code>Netty4ClientHttpRequestFactory</code>过期了，建议使用<code>org.springframework.http.client.reactive.ReactorClientHttpConnector</code>代替~</p>
+</blockquote>
+<hr />
+<h6 id="关于httpurlconnectionhttpclientokhttpclient的简单比较">关于<code>HttpURLConnection</code>、<code>HttpClient</code>、<code>OkHttpClient</code>的简单比较：</h6>
+<ul>
+<li><code>HttpURLConnection</code>：<br />
+- 优点：JDK内置支持，java的标准类<br />
+- 缺点：API不够友好，什么都没封装，用起来太原始，不方便（这其实有时候也算优点，原始就证明好控~）</li>
+<li><code>HttpClient</code>：<br />
+- 优点：功能强大，API友好，使用率够高，几乎成为了实际意义上的标准（相当于对<code>HttpURLConnection</code>的封装）<br />
+- 缺点：性能稍低（比<code>HttpURLConnection</code>低，但4.3后使用连接池进行了改善），API较臃肿，其实Android已经弃用了它~</li>
+<li><code>OkHttpClient</code>：新一代的Http访问客户端<br />
+- 优点：一个专注于<strong>性能和易用性</strong>的HTTP客户端（节约宽带，Android推荐使用），它设计的首要目标就是高效。提供了最新的 HTTP 协议版本 HTTP/2 和 SPDY 的支持。如果 HTTP/2 和 SPDY 不可用，OkHttp 会使用连接池来复用连接以提高效率<br />
+- 暂无。</li>
+</ul>
+<p><img src="./images/RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】1.png" alt="在这里插入图片描述" /><br />
+关于<code>Apache HttpClient</code>，<code>Android</code>5.0之后已经废弃使用它了（API太多，太重），推荐使用更轻量的<code>HttpUrlConnection</code>。（Java开发还是推荐用<code>HttpClient</code>）</p>
+<p><code>OkHttp</code>优点较多：支持SPDY，可以合并多个到同一个主机的请求；OkHttp实现的诸多技术如：连接池，gziping，缓存等；OkHttp 处理了很多网络疑难杂症：会从很多常用的连接问题中自动恢复。如果您的服务器配置了多个IP地址，当第一个IP连接失败的时候，OkHttp会自动尝试下一个IP；OkHttp是一个Java的HTTP+SPDY客户端开发包，同时也支持Android。<strong>默认情况下，OKHttp会自动处理常见的网络问题，像二次连接、SSL的握手问题</strong>。支持文件上传、下载、cookie、session、https证书等几乎所有功能。<strong>支持取消某个请求</strong></p>
+<p>综上所述，不管是Java还是Android，我推荐的自然都是<code>OkHttp</code>（OkHttp使用Okio进行数据传输。都是Square公司自家的，Square公司还出了一个Retrofit库配合OkHttp战斗力翻倍）~~~</p>
+<blockquote>
+<p><strong>池化技术一般用于长连接，那么像Http这种适合连接池吗？</strong><br />
+HttpClient 4.3以后中使用了<code>PoolingHttpClientConnectionManager</code>连接池来管理持有连接，同一条TCP链路上，连接是可以复用的。HttpClient通过连接池的方式进行连接持久化（所以它这个连接池其实是tcp的连接池。它里面有一个很重要的概念：<code>Route</code>的概念，代表一条线路。比如baidu.com是一个route，163.com是一个route...）。</p>
+</blockquote>
+<blockquote>
+<p>连接池：可能是http请求，也可能是https请求<br />
+加入池话技术，就不用每次发起请求都新建一个连接（每次连接握手三次，效率太低）</p>
+</blockquote>
+<hr />
+<h4 id="abstractclienthttprequestfactorywrapper">AbstractClientHttpRequestFactoryWrapper</h4>
+<p>对其它<code>ClientHttpRequestFactory</code>的一个包装抽象类，它有如下两个子类实现</p>
+<h5 id="interceptingclienthttprequestfactory重要"><code>InterceptingClientHttpRequestFactory</code>（重要）</h5>
+<p><code>Interceptor</code>拦截的概念，还是蛮重要的。它持有的<code>ClientHttpRequestInterceptor</code>对于我们若想要拦截发出去的请求非常之重要（比如全链路压测中，可以使用它设置token之类的~）</p>
+<pre><code><code>// @since 3.1
+public class InterceptingClientHttpRequestFactory extends AbstractClientHttpRequestFactoryWrapper {
+    // 持有所有的请求拦截器
+    private final List&lt;ClientHttpRequestInterceptor&gt; interceptors;
+
+    public InterceptingClientHttpRequestFactory(ClientHttpRequestFactory requestFactory, @Nullable List&lt;ClientHttpRequestInterceptor&gt; interceptors) {
+        super(requestFactory);
+        // 拦截器只允许通过构造函数设置进来，并且并没有提供get方法方法~
+        this.interceptors = (interceptors != null ? interceptors : Collections.emptyList());
+    }
+
+    // 此处返回的是一个InterceptingClientHttpRequest，显然它肯定是个ClientHttpRequest嘛~
+    @Override
+    protected ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod, ClientHttpRequestFactory requestFactory) {
+        return new InterceptingClientHttpRequest(requestFactory, this.interceptors, uri, httpMethod);
+    }
+
+}</code></code></pre>
+<p><code>InterceptingClientHttpRequest</code>的<code>execute()</code>方法的特点是：若存在拦截器，交给给拦截器去执行发送请求<code>return nextInterceptor.intercept(request, body, this)</code>，否则就自己上。</p>
+<hr />
+<h6 id="clienthttprequestinterceptor">ClientHttpRequestInterceptor</h6>
+<p>关于请求拦截器，Spring MVC内置了两个最基础的实现<br />
+<img src="./images/RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】2.png" alt="在这里插入图片描述" /><br />
+==BasicAuthorizationInterceptor==：</p>
+<pre><code><code>// @since 4.3.1  但在Spring5.1.1后推荐使用BasicAuthenticationInterceptor
+@Deprecated
+public class BasicAuthorizationInterceptor implements ClientHttpRequestInterceptor {
+    
+    private final String username;
+    private final String password;
+    
+    // 注意：username不允许包含:这个字符，但是密码是允许的
+    public BasicAuthorizationInterceptor(@Nullable String username, @Nullable String password) {
+        Assert.doesNotContain(username, &quot;:&quot;, &quot;Username must not contain a colon&quot;);
+        this.username = (username != null ? username : &quot;&quot;);
+        this.password = (password != null ? password : &quot;&quot;);
+    }
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+        // 用户名密码连接起来后，用Base64对字节码进行编码~
+        String token = Base64Utils.encodeToString((this.username + &quot;:&quot; + this.password).getBytes(StandardCharsets.UTF_8));
+    
+        // 放进请求头：key为`Authorization`  然后执行请求的发送
+        request.getHeaders().add(&quot;Authorization&quot;, &quot;Basic &quot; + token);
+        return execution.execute(request, body);
+    }
+}</code></code></pre>
+<p>这个拦截器木有对body有任何改动，只是把用户名、密码帮你放进了请求头上。</p>
+<blockquote>
+<p>需要注意的是：若你的header里已经存在了<code>Authorization</code>这个key，这里也不会覆盖的，这会添加哦。但并不建议你有覆盖现象~</p>
+</blockquote>
+<p>==BasicAuthenticationInterceptor==：<br />
+它是用来代替上类的。它使用标准的授权头来处理，参考<code>HttpHeaders#setBasicAuth、HttpHeaders#AUTHORIZATION</code></p>
+<pre><code><code>public class BasicAuthenticationInterceptor implements ClientHttpRequestInterceptor {
+    private final String username;
+    private final String password;
+    // 编码，一般不用指定
+    @Nullable
+    private final Charset charset;
+    ... // 构造函数略
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+
+        HttpHeaders headers = request.getHeaders();
+        // 只有当请求里不包含`Authorization`这个key的时候，此处才会设置授权头哦
+        if (!headers.containsKey(HttpHeaders.AUTHORIZATION)) {
+            
+            // 这个方法是@since 5.1之后才提供的~~~~~
+            // 若不包含此key，就设置标准的授权头（根据用户名、密码） 它内部也有这如下三步：
+            
+            // String credentialsString = username + &quot;:&quot; + password;
+            // byte[] encodedBytes = Base64.getEncoder().encode(credentialsString.getBytes(charset));
+            // String encodedCredentials = new String(encodedBytes, charset);
+            
+            // 注意：它内部最终还是调用set(AUTHORIZATION, &quot;Basic &quot; + encodedCredentials);这个方法的
+            headers.setBasicAuth(this.username, this.password, this.charset);
+        }
+        return execution.execute(request, body);
+    }
+}</code></code></pre>
+<p>说明：这两个请求拦截器虽是Spring提供，但默认都是没有被&quot;装配&quot;的，所亲需要，请手动装配~</p>
+<h5 id="bufferingclienthttprequestfactory">BufferingClientHttpRequestFactory</h5>
+<p>包装其它<code>ClientHttpRequestFactory</code>，使得具有缓存的能力。若开启缓存功能（有开关可控），会使用<code>BufferingClientHttpRequestWrapper</code>包装原来的<code>ClientHttpRequest</code>。这样发送请求后得到的是<code>BufferingClientHttpResponseWrapper</code>响应。</p>
+<hr />
+<h2 id="responseerrorhandler">ResponseErrorHandler</h2>
+<p>用于确定特定响应是否有错误的策略接口。</p>
+<pre><code><code>// @since 3.0
+public interface ResponseErrorHandler {
+
+    // response里是否有错
+    boolean hasError(ClientHttpResponse response) throws IOException;
+    // 只有hasError = true时才会调用此方法
+    void handleError(ClientHttpResponse response) throws IOException;
+     // @since 5.0
+    default void handleError(URI url, HttpMethod method, ClientHttpResponse response) throws IOException {
+        handleError(response);
+    }
+}</code></code></pre>
+<p>继承树如下：<br />
+<img src="./images/RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】3.png" alt="在这里插入图片描述" /></p>
+<h4 id="defaultresponseerrorhandler">DefaultResponseErrorHandler</h4>
+<p><code>Spring</code>对此策略接口的默认实现，<code>RestTemplate</code>默认使用的错误处理器就是它。</p>
+<pre><code><code>// @since 3.0
+public class DefaultResponseErrorHandler implements ResponseErrorHandler {
+
+    // 是否有错误是根据响应码来的，所以请严格遵守响应码的规范啊
+    // 简单的说4xx和5xx都会被认为有错，否则是无错的  参考：HttpStatus.Series
+    @Override
+    public boolean hasError(ClientHttpResponse response) throws IOException {
+        int rawStatusCode = response.getRawStatusCode();
+        HttpStatus statusCode = HttpStatus.resolve(rawStatusCode);
+        return (statusCode != null ? hasError(statusCode) : hasError(rawStatusCode));
+    }
+    ...
+    // 处理错误
+    @Override
+    public void handleError(ClientHttpResponse response) throws IOException {
+        HttpStatus statusCode = HttpStatus.resolve(response.getRawStatusCode());
+        if (statusCode == null) {
+            throw new UnknownHttpStatusCodeException(response.getRawStatusCode(), response.getStatusText(), response.getHeaders(), getResponseBody(response), getCharset(response));
+        }
+        handleError(response, statusCode);
+    }
+    
+    // protected方法，子类对它有复写
+    protected void handleError(ClientHttpResponse response, HttpStatus statusCode) throws IOException {
+        String statusText = response.getStatusText();
+        HttpHeaders headers = response.getHeaders();
+        byte[] body = getResponseBody(response); // 拿到body，把InputStream转换为字节数组
+        Charset charset = getCharset(response); // 注意这里的编码，是从返回的contentType里拿的~~~
+        
+        // 分别针对于客户端错误、服务端错误 包装为HttpClientErrorException和HttpServerErrorException进行抛出
+        // 异常内包含有状态码、状态text、头、body、编码等等信息~~~~
+        switch (statusCode.series()) {
+            case CLIENT_ERROR:
+                throw HttpClientErrorException.create(statusCode, statusText, headers, body, charset);
+            case SERVER_ERROR:
+                throw HttpServerErrorException.create(statusCode, statusText, headers, body, charset);
+            default:
+                throw new UnknownHttpStatusCodeException(statusCode.value(), statusText, headers, body, charset);
+        }
+    }
+    ...
+}</code></code></pre>
+<p>到这里就可以给大家解释一下，为何经常能看到客户端错误，然后还有状态码+一串信息了，就是因为这两个异常。</p>
+<hr />
+<p>HttpClientErrorException：</p>
+<pre><code><code>public class HttpClientErrorException extends HttpStatusCodeException {
+    ...
+    public static HttpClientErrorException create(
+            HttpStatus statusCode, String statusText, HttpHeaders headers, byte[] body, @Nullable Charset charset) {
+
+        switch (statusCode) {
+            case BAD_REQUEST:
+                return new HttpClientErrorException.BadRequest(statusText, headers, body, charset);
+            case UNAUTHORIZED:
+                return new HttpClientErrorException.Unauthorized(statusText, headers, body, charset);
+            case FORBIDDEN:
+                return new HttpClientErrorException.Forbidden(statusText, headers, body, charset);
+            case NOT_FOUND:
+                return new HttpClientErrorException.NotFound(statusText, headers, body, charset);
+            case METHOD_NOT_ALLOWED:
+                return new HttpClientErrorException.MethodNotAllowed(statusText, headers, body, charset);
+            case NOT_ACCEPTABLE:
+                return new HttpClientErrorException.NotAcceptable(statusText, headers, body, charset);
+            case CONFLICT:
+                return new HttpClientErrorException.Conflict(statusText, headers, body, charset);
+            case GONE:
+                return new HttpClientErrorException.Gone(statusText, headers, body, charset);
+            case UNSUPPORTED_MEDIA_TYPE:
+                return new HttpClientErrorException.UnsupportedMediaType(statusText, headers, body, charset);
+            case TOO_MANY_REQUESTS:
+                return new HttpClientErrorException.TooManyRequests(statusText, headers, body, charset);
+            case UNPROCESSABLE_ENTITY:
+                return new HttpClientErrorException.UnprocessableEntity(statusText, headers, body, charset);
+            default:
+                return new HttpClientErrorException(statusCode, statusText, headers, body, charset);
+        }
+    }
+    ...
+}</code></code></pre>
+<p>它针对不同的状态码<code>HttpStatus</code>，创建了不同的类型进行返回，方便使用者控制，这在监控上还是蛮有意义的</p>
+<blockquote>
+<p>BadRequest、Unauthorized、Forbidden...等等都是<code>HttpClientErrorException</code>的子类</p>
+</blockquote>
+<p><code>HttpServerErrorException</code>代码类似，略~</p>
+<hr />
+<h5 id="extractingresponseerrorhandler">ExtractingResponseErrorHandler</h5>
+<p>继承自<code>DefaultResponseErrorHandler</code>。在<code>RESTful</code>大行其道的今天，<code>Spring5.0</code>开始提供了此类。它将http错误响应利用<code>HttpMessageConverter</code>转换为对应的<code>RestClientException</code></p>
+<pre><code><code>// @since 5.0 它出现得还是很晚的。继承自DefaultResponseErrorHandler 
+// 若你的RestTemplate想使用它，请调用RestTemplate#setErrorHandler(ResponseErrorHandler)设置即可
+public class ExtractingResponseErrorHandler extends DefaultResponseErrorHandler {
+    private List&lt;HttpMessageConverter&lt;?&gt;&gt; messageConverters = Collections.emptyList();
+    
+    // 对响应码做缓存
+    private final Map&lt;HttpStatus, Class&lt;? extends RestClientException&gt;&gt; statusMapping = new LinkedHashMap&lt;&gt;();
+    private final Map&lt;HttpStatus.Series, Class&lt;? extends RestClientException&gt;&gt; seriesMapping = new LinkedHashMap&lt;&gt;();
+
+    // 构造函数、set方法给上面两个Map赋值。因为我们可以自己控制哪些状态码应该报错，哪些不应该了~
+    // 以及可以自定义：那个状态码抛我们自定义的异常，哪一系列状态码抛我们自定义的异常，这个十分的便于我们做监控
+    ... // 省略构造函数和set方法。。。
+
+
+    // 增加缓存功能~~~  否则在交给父类
+    @Override
+    protected boolean hasError(HttpStatus statusCode) {
+        if (this.statusMapping.containsKey(statusCode)) {
+            return this.statusMapping.get(statusCode) != null;
+        } else if (this.seriesMapping.containsKey(statusCode.series())) {
+            return this.seriesMapping.get(statusCode.series()) != null;
+        } else {
+            return super.hasError(statusCode);
+        }
+    }
+
+    // 这个它做的事：extract：提取
+    @Override
+    public void handleError(ClientHttpResponse response, HttpStatus statusCode) throws IOException {
+        if (this.statusMapping.containsKey(statusCode)) {
+            extract(this.statusMapping.get(statusCode), response);
+        } else if (this.seriesMapping.containsKey(statusCode.series())) {
+            extract(this.seriesMapping.get(statusCode.series()), response);
+        } else {
+            super.handleError(response, statusCode);
+        }
+    }
+
+
+    private void extract(@Nullable Class&lt;? extends RestClientException&gt; exceptionClass, ClientHttpResponse response) throws IOException {
+        if (exceptionClass == null) {
+            return;
+        }
+
+        // 这里使用到了ResponseExtractor返回值提取器,从返回值里提取内容(本文是提取异常)
+        HttpMessageConverterExtractor&lt;? extends RestClientException&gt; extractor =
+                new HttpMessageConverterExtractor&lt;&gt;(exceptionClass, this.messageConverters);
+        RestClientException exception = extractor.extractData(response);
+        if (exception != null) { // 若提取到了异常信息，抛出即可
+            throw exception;
+        }
+    }
+}</code></code></pre>
+<p>若你想定制请求异常的处理逻辑，你也是可以自定义这个接口的实现的，当然还是建议你通过继承<code>DefaultResponseErrorHandler</code>来扩展~</p>
+<hr />
+<h2 id="responseextractor">ResponseExtractor</h2>
+<p>响应提取器：从<code>Response</code>中提取数据。<code>RestTemplate</code>请求完成后，都是通过它来从<code>ClientHttpResponse</code>提取出指定内容（比如请求头、请求Body体等）~<br />
+<img src="./images/RestTemplate相关组件：ClientHttpRequestInterceptor【享学Spring MVC】4.png" alt="在这里插入图片描述" /><br />
+它的直接实现似乎只有<code>HttpMessageConverterExtractor</code>，当然它也是最为重要的一个实现，和<code>HttpMessageConverter</code>相关。<br />
+在解释它之前，先看看这个：<code>MessageBodyClientHttpResponseWrapper</code>，它的特点：<strong>它不仅可以通过实际读取输入流来检查响应是否有消息体，还可以检查其长度是否为0（即空）</strong></p>
+<pre><code><code>// @since 4.1.5  它是一个访问权限是default的类，是对其它ClientHttpResponse的一个包装
+class MessageBodyClientHttpResponseWrapper implements ClientHttpResponse {
+    private final ClientHttpResponse response;
+    // java.io.PushbackInputStream
+    @Nullable
+    private PushbackInputStream pushbackInputStream;
+    
+    // 判断相应里是否有body体
+    // 若响应码是1xx 或者是204；或者getHeaders().getContentLength() == 0 那就返回false  否则返回true
+    public boolean hasMessageBody() throws IOException {
+        HttpStatus status = HttpStatus.resolve(getRawStatusCode());
+        if (status != null &amp;&amp; (status.is1xxInformational() || status == HttpStatus.NO_CONTENT || status == HttpStatus.NOT_MODIFIED)) {
+            return false;
+        }
+        if (getHeaders().getContentLength() == 0) {
+            return false;
+        }
+        return true;
+    }
+
+    // 上面是完全格局状态码（ContentLength）来判断是否有body体的~~~这里会根据流来判断
+    // 如果response.getBody() == null,返回true
+    // 若流里有内容，最终就用new PushbackInputStream(body)包装起来~~~
+    public boolean hasEmptyMessageBody() throws IOException {
+        ...
+    }
+    
+    ...  // 其余接口方法都委托~
+    @Override
+    public InputStream getBody() throws IOException {
+        return (this.pushbackInputStream != null ? this.pushbackInputStream : this.response.getBody());
+    }
+}</code></code></pre>
+<p>它的作用就是包装后，提供两个方法<code>hasMessageBody、hasEmptyMessageBody</code>方便了对body体内容进行判断</p>
+<pre><code><code>// @since 3.0 泛型T：the data type
+public class HttpMessageConverterExtractor&lt;T&gt; implements ResponseExtractor&lt;T&gt; {
+    // java.lang.reflect.Type
+    private final Type responseType;
+    // 这个泛型也是T，表示数据的Class嘛~
+    // 该calss有可能就是上面的responseType
+    @Nullable
+    private final Class&lt;T&gt; responseClass;
+    // 重要：用于消息解析的转换器
+    private final List&lt;HttpMessageConverter&lt;?&gt;&gt; messageConverters;
+    ... // 省略构造函数
+
+
+    // 从ClientHttpResponse 里提取值
+    @Override
+    @SuppressWarnings({&quot;unchecked&quot;, &quot;rawtypes&quot;, &quot;resource&quot;})
+    public T extractData(ClientHttpResponse response) throws IOException {
+        MessageBodyClientHttpResponseWrapper responseWrapper = new MessageBodyClientHttpResponseWrapper(response);
+        // 若没有消息体（状态码不对 或者 消息体为空都被认为是木有）
+        if (!responseWrapper.hasMessageBody() || responseWrapper.hasEmptyMessageBody()) {
+            return null;
+        }
+    
+        // content-type若响应头header里没有指定，那默认是它MediaType.APPLICATION_OCTET_STREAM
+        MediaType contentType = getContentType(responseWrapper);
+        
+        // 遍历所有的messageConverters，根据contentType 来选则一个消息转换器
+        // 最终return messageConverter.read((Class) this.responseClass, responseWrapper)
+        ...
+    }
+}</code></code></pre>
+<p>它的处理逻辑理解起来非常简单：利用<code>contentType</code>找到一个消息转换器，最终<code>HttpMessageConverter.read()</code>把消息读出来转换成Java对象。</p>
+<p>它还有两个内部类的实现如下（都是<code>RestTemplate</code>的私有内部类）：</p>
+<pre><code><code>RestTemplate：
+
+    // 提取为`ResponseEntity`  最终委托给HttpMessageConverterExtractor完成的
+    private class ResponseEntityResponseExtractor&lt;T&gt; implements ResponseExtractor&lt;ResponseEntity&lt;T&gt;&gt; {
+
+        @Nullable
+        private final HttpMessageConverterExtractor&lt;T&gt; delegate;
+
+        public ResponseEntityResponseExtractor(@Nullable Type responseType) {
+            // 显然：只有请求的返回值不为null 才有意义~
+            if (responseType != null &amp;&amp; Void.class != responseType) {
+                this.delegate = new HttpMessageConverterExtractor&lt;&gt;(responseType, getMessageConverters(), logger);
+            } else {
+                this.delegate = null;
+            }
+        }
+
+        // 数据提取。都是交给`delegate.extractData(response)`做了，然后new一个ResponseEntity出来包装进去
+        // 若木有返回值（delegate=null），那就是一个`ResponseEntity`实例，body为null
+        @Override
+        public ResponseEntity&lt;T&gt; extractData(ClientHttpResponse response) throws IOException {
+            if (this.delegate != null) {
+                T body = this.delegate.extractData(response);
+                return ResponseEntity.status(response.getRawStatusCode()).headers(response.getHeaders()).body(body);
+            }
+            else {
+                return ResponseEntity.status(response.getRawStatusCode()).headers(response.getHeaders()).build();
+            }
+        }
+    }
+
+    // 提取请求头
+    private static class HeadersExtractor implements ResponseExtractor&lt;HttpHeaders&gt; {
+        @Override
+        public HttpHeaders extractData(ClientHttpResponse response) {
+            return response.getHeaders();
+        }
+    }</code></code></pre>
+<hr />
+<h2 id="uritemplatehandler">UriTemplateHandler</h2>
+<p>这个组件它用于<strong>定义用变量扩展uri模板的方法</strong>。</p>
+<pre><code><code>// @since 4.2 出现较晚  
+// @see RestTemplate#setUriTemplateHandler(UriTemplateHandler)
+public interface UriTemplateHandler {
+    URI expand(String uriTemplate, Map&lt;String, ?&gt; uriVariables);
+    URI expand(String uriTemplate, Object... uriVariables);
+}</code></code></pre>
+<p>关于URI的处理，最终都是委托给<code>UriComponentsBuilder</code>来完成。若对这块还存在一定疑问的，强烈强烈强烈 <a href="https://fangshixiang.blog.csdn.net/article/details/100103326">参考这里</a></p>
+<h4 id="推荐阅读">推荐阅读</h4>
+<p><a href="https://fangshixiang.blogcsdn.net/article/details/100753981">RestTemplate的使用和原理你都烂熟于胸了吗？【享学Spring MVC】</a></p>
+<h4 id="总结">总结</h4>
+<p>本文介绍的组件是去理解<code>RestTemplate</code>必备的组件们，属于开山篇。因为<code>RestTemplate</code>使用频繁，并且经常需要调优，因此我寄希望大家也能对它做较为深入的了解，这也是我写本系列的目的，共勉。</p>
+<p>== <strong>若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞</strong> ==<br />
+== <strong>若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞</strong> ==</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

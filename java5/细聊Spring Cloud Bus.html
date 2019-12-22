@@ -1,0 +1,470 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修细聊Spring Cloud Bus' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>细聊Spring Cloud Bus</center></div><div class='banquan'>原文出处:本文由博客园博主维晟提供。<br/>
+原文连接:https://www.cnblogs.com/bluersw/p/11643166.html</div><br>
+    <h1 id="细聊spring-cloud-bus">细聊Spring Cloud Bus</h1>
+<h2 id="spring-事件驱动模型">Spring 事件驱动模型</h2>
+<p>因为Spring Cloud Bus的运行机制也是Spring事件驱动模型所以需要先了解相关知识点：<br />
+<img src="./images/细聊Spring Cloud Bus0.png" alt="Alt text" /><br />
+上面图中是Spring事件驱动模型的实现示意图，以下再补充一些图中未提现的实现细节：抽象类abstract class AbstractApplicationEventMulticaster中根据事件和事件类型获取对应的观察者的方法是：</p>
+<pre><code><code>    protected Collection&lt;ApplicationListener&lt;?&gt;&gt; getApplicationListeners(
+            ApplicationEvent event, ResolvableType eventType)  </code></code></pre>
+<p>该方法内具体检索监听器（观察者的方法）是：</p>
+<pre><code><code>private Collection&lt;ApplicationListener&lt;?&gt;&gt; retrieveApplicationListeners(
+            ResolvableType eventType, @Nullable Class&lt;?&gt; sourceType, @Nullable ListenerRetriever retriever)
+            
+            .....
+        // Add programmatically registered listeners, including ones coming
+        // from ApplicationListenerDetector (singleton beans and inner beans).
+        for (ApplicationListener&lt;?&gt; listener : listeners) {
+            if (supportsEvent(listener, eventType, sourceType)) {
+                if (retriever != null) {
+                    retriever.applicationListeners.add(listener);
+                }
+                allListeners.add(listener);
+            }
+        }
+            .....</code></code></pre>
+<p>此方法内根据传入参数事的件对象遍历所有对应（订阅）的监听者，其中有个很重要的方法boolean supportsEvent，此方法用于判断是否是订阅的监听者：</p>
+<pre><code><code>    protected boolean supportsEvent(
+            ApplicationListener&lt;?&gt; listener, ResolvableType eventType, @Nullable Class&lt;?&gt; sourceType) {
+
+        GenericApplicationListener smartListener = (listener instanceof GenericApplicationListener ?
+                (GenericApplicationListener) listener : new GenericApplicationListenerAdapter(listener));
+        return (smartListener.supportsEventType(eventType) &amp;&amp; smartListener.supportsSourceType(sourceType));
+    }</code></code></pre>
+<p>其中接口GenericApplicationListener和GenericApplicationListenerAdapter类都是为了定义或实现supportsEventType方法和supportsSourceType方法，通过这两个方法确定是否是事件的监听器（观察者、订阅者）。</p>
+<pre><code><code>public interface GenericApplicationListener extends ApplicationListener&lt;ApplicationEvent&gt;, Ordered {
+
+    /**
+     * Determine whether this listener actually supports the given event type.
+     * @param eventType the event type (never {@code null})
+     */
+    boolean supportsEventType(ResolvableType eventType);
+
+    /**
+     * Determine whether this listener actually supports the given source type.
+     * &lt;p&gt;The default implementation always returns {@code true}.
+     * @param sourceType the source type, or {@code null} if no source
+     */
+    default boolean supportsSourceType(@Nullable Class&lt;?&gt; sourceType) {
+        return true;
+    }
+
+    /**
+     * Determine this listener&#39;s order in a set of listeners for the same event.
+     * &lt;p&gt;The default implementation returns {@link #LOWEST_PRECEDENCE}.
+     */
+    @Override
+    default int getOrder() {
+        return LOWEST_PRECEDENCE;
+    }
+
+}</code></code></pre>
+<p>其中判断发布事件的来源对象supportsSourceType方法默认就返回true，意味着如果不重写这个接口方法，是否是订阅事件的监听器不以事件来源对象进行判断，只根据事件类型进行筛选,该方法的具体实现可参考GenericApplicationListenerAdapter类包装的supportsSourceType方法实现：</p>
+<pre><code><code>public boolean supportsSourceType(@Nullable Class&lt;?&gt; sourceType) {
+        return !(this.delegate instanceof SmartApplicationListener) ||
+                ((SmartApplicationListener) this.delegate).supportsSourceType(sourceType);
+    }</code></code></pre>
+<h2 id="spring-cloud-bus的事件发布订阅">Spring Cloud Bus的事件、发布、订阅</h2>
+<p>Spring Cloud Bus的事件都继承于RemoteApplicationEvent类，RemoteApplicationEvent类继承于Spring事件驱动模型的事件抽象类ApplicationEvent，也就说Spring Cloud Bus的事件、发布、订阅也是基于Spring的事件驱动模型，例如Spring Cloud Bus的配置刷新事件RefreshRemoteApplicationEvent：</p>
+<p><img src="./images/细聊Spring Cloud Bus1.png" alt="Alt text" /></p>
+<p>同理订阅事件也是标准的Spring事件驱动模型，例如配置刷新的监听器源码继承了Spring事件驱动模型中的接口ApplicationListener&lt;E extends ApplicationEvent&gt;：</p>
+<pre><code><code>public class RefreshListener
+        implements ApplicationListener&lt;RefreshRemoteApplicationEvent&gt; {
+
+    private static Log log = LogFactory.getLog(RefreshListener.class);
+
+    private ContextRefresher contextRefresher;
+
+    public RefreshListener(ContextRefresher contextRefresher) {
+        this.contextRefresher = contextRefresher;
+    }
+
+    @Override
+    public void onApplicationEvent(RefreshRemoteApplicationEvent event) {
+        Set&lt;String&gt; keys = this.contextRefresher.refresh();
+        log.info(&quot;Received remote refresh request. Keys refreshed &quot; + keys);
+    }
+
+}</code></code></pre>
+<p>在BusRefreshAutoConfiguration类中会将RefreshListener对象注册到Spring的BeanFactory中（不把监听器类注册到Spring的BeanFactory中就无法利用Spring的事件驱动模型对刷新事件进行处理）。</p>
+<pre><code><code>    @Bean
+    @ConditionalOnProperty(value = &quot;spring.cloud.bus.refresh.enabled&quot;,matchIfMissing = true)
+    @ConditionalOnBean(ContextRefresher.class)
+    public RefreshListener refreshListener(ContextRefresher contextRefresher) {
+        return new RefreshListener(contextRefresher);
+    }</code></code></pre>
+<p>也可以使用@EventListener创建监听器，例如TraceListener类：</p>
+<pre><code><code>    @EventListener
+    public void onAck(AckRemoteApplicationEvent event) {
+        Map&lt;String, Object&gt; trace = getReceivedTrace(event);
+        // FIXME boot 2 this.repository.add(trace);
+    }
+
+    @EventListener
+    public void onSend(SentApplicationEvent event) {
+        Map&lt;String, Object&gt; trace = getSentTrace(event);
+        // FIXME boot 2 this.repository.add(trace);
+    }</code></code></pre>
+<p>发布事件也是利用应用程序上下文进行事件发布，比如配置刷新的实现代码：</p>
+<pre><code><code>@Endpoint(id = &quot;bus-refresh&quot;) // TODO: document new id
+public class RefreshBusEndpoint extends AbstractBusEndpoint {
+
+    public RefreshBusEndpoint(ApplicationEventPublisher context, String id) {
+        super(context, id);
+    }
+
+    @WriteOperation
+    public void busRefreshWithDestination(@Selector String destination) { // TODO:
+                                                                            // document
+                                                                            // destination
+        publish(new RefreshRemoteApplicationEvent(this, getInstanceId(), destination));
+    }
+
+    @WriteOperation
+    public void busRefresh() {
+        publish(new RefreshRemoteApplicationEvent(this, getInstanceId(), null));
+    }
+
+}</code></code></pre>
+<p>注解@WriteOperation实现POST操作，@Endpoint结合management.endpoints.web.exposure.include=* 配置项可实现一个接入点，接入点的URL是：/actuator/bus-refresh<br />
+父类AbstractBusEndpoint内用应用程序上下文实现事件的发布：</p>
+<pre><code><code>public class AbstractBusEndpoint {
+
+    private ApplicationEventPublisher context;
+
+    private String appId;
+
+    public AbstractBusEndpoint(ApplicationEventPublisher context, String appId) {
+        this.context = context;
+        this.appId = appId;
+    }
+
+    protected String getInstanceId() {
+        return this.appId;
+    }
+
+    protected void publish(ApplicationEvent event) {
+        this.context.publishEvent(event);
+    }
+
+}</code></code></pre>
+<h2 id="spring-cloud-bus的底层通讯实现对使用者透明">Spring Cloud Bus的底层通讯实现（对使用者透明）</h2>
+<p>Spring Cloud Bus的底层通讯基础是Spring Cloud Stream，定义发送总线事件和接收总线事件监听器的类是BusAutoConfiguration（在网络上发送和接收其他节点的事件消息），因为继承了ApplicationEventPublisherAware所以该类也具备发布本地事件的功能（可以查询Aware接口作用），发布网络事件消息的方法是：</p>
+<pre><code><code>@EventListener(classes = RemoteApplicationEvent.class)
+    public void acceptLocal(RemoteApplicationEvent event) {
+        if (this.serviceMatcher.isFromSelf(event)
+                &amp;&amp; !(event instanceof AckRemoteApplicationEvent)) {
+            this.cloudBusOutboundChannel.send(MessageBuilder.withPayload(event).build());
+        }
+    }</code></code></pre>
+<p>如果监听到RemoteApplicationEvent类事件，首先检查是否是自己发布并且不是ACK事件，如果是自己发布的非ACK事件就在总线上发送这个事件消息。发送AckRemoteApplicationEvent（ACK事件）已经在接收其他节点发的事件消息时触发了，所以这里不用管发送ACK事件的工作了。</p>
+<p>接收事件消息：</p>
+<pre><code><code>@StreamListener(SpringCloudBusClient.INPUT)
+    public void acceptRemote(RemoteApplicationEvent event) {
+        if (event instanceof AckRemoteApplicationEvent) {
+            if (this.bus.getTrace().isEnabled() &amp;&amp; !this.serviceMatcher.isFromSelf(event)
+                    &amp;&amp; this.applicationEventPublisher != null) {
+                this.applicationEventPublisher.publishEvent(event);
+            }
+            // If it&#39;s an ACK we are finished processing at this point
+            return;
+        }
+        if (this.serviceMatcher.isForSelf(event)
+                &amp;&amp; this.applicationEventPublisher != null) {
+            if (!this.serviceMatcher.isFromSelf(event)) {
+                this.applicationEventPublisher.publishEvent(event);
+            }
+            if (this.bus.getAck().isEnabled()) {
+                AckRemoteApplicationEvent ack = new AckRemoteApplicationEvent(this,
+                        this.serviceMatcher.getServiceId(),
+                        this.bus.getAck().getDestinationService(),
+                        event.getDestinationService(), event.getId(), event.getClass());
+                this.cloudBusOutboundChannel
+                        .send(MessageBuilder.withPayload(ack).build());
+                this.applicationEventPublisher.publishEvent(ack);
+            }
+        }
+        if (this.bus.getTrace().isEnabled() &amp;&amp; this.applicationEventPublisher != null) {
+            // We are set to register sent events so publish it for local consumption,
+            // irrespective of the origin
+            this.applicationEventPublisher.publishEvent(new SentApplicationEvent(this,
+                    event.getOriginService(), event.getDestinationService(),
+                    event.getId(), event.getClass()));
+        }
+    }</code></code></pre>
+<p>接收到其他节点发来的事件消息后会将此事件发布到本地的应用程序上下文中（this.applicationEventPublisher），监听此事件类型的订阅者就会相应的进行处理。</p>
+<h2 id="两个跟踪事件ackremoteapplicationevent和sentapplicationevent">两个跟踪事件AckRemoteApplicationEvent和SentApplicationEvent</h2>
+<p>从他们的继承关系可以看出，AckRemoteApplicationEvent可以发送到其他网络节点（继承于RemoteApplicationEvent），SentApplicationEvent只是本地事件（继承于ApplicationEvent），SentApplicationEvent事件可以显示收到事件消息的类型，AckRemoteApplicationEvent事件只显示收到事件消息的ID，TraceListener类负责监听和记录他们的内容（配置项要打开spring.cloud.bus.trace.enabled=true）：</p>
+<pre><code><code>public class TraceListener {
+
+    @EventListener
+    public void onAck(AckRemoteApplicationEvent event) {
+        Map&lt;String, Object&gt; trace = getReceivedTrace(event);
+        // FIXME boot 2 this.repository.add(trace);
+    }
+
+    @EventListener
+    public void onSend(SentApplicationEvent event) {
+        Map&lt;String, Object&gt; trace = getSentTrace(event);
+        // FIXME boot 2 this.repository.add(trace);
+    }
+
+    protected Map&lt;String, Object&gt; getSentTrace(SentApplicationEvent event) {
+        .....
+    }
+
+    protected Map&lt;String, Object&gt; getReceivedTrace(AckRemoteApplicationEvent event) {
+        .....
+    }
+
+}</code></code></pre>
+<p>在总线事件发送端和总线事件接收端日志的记录流程如下：<br />
+<img src="./images/细聊Spring Cloud Bus2.png" alt="Alt text" /></p>
+<h2 id="测试a应用和b应用进行聊天">测试A应用和B应用进行“聊天”</h2>
+<p>首先准备环境：<br />
+创建3个项目：spring-cloud-bus-shared-library、spring-cloud-bus-a、spring-cloud-bus-b</p>
+<ul>
+<li>spring-cloud-bus-shared-library：负责定义事件和监听器还有配置类</li>
+<li>spring-cloud-bus-a：扮演A应用负责引用shared-library并利用BUS发送消息给B应用（此消息实际为广播消息）</li>
+<li>spring-cloud-bus-b：扮演B应用负责引用shared-library并利用BUS回复A应用发来的消息（此消息非广播消息）</li>
+</ul>
+<p>spring-cloud-bus-shared-library的POM的依赖项：</p>
+<pre class="xml"><code>&lt;properties&gt;
+        &lt;java.version&gt;1.8&lt;/java.version&gt;
+        &lt;spring-cloud.version&gt;Greenwich.SR3&lt;/spring-cloud.version&gt;
+    &lt;/properties&gt;
+
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-bus-amqp&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-test&lt;/artifactId&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+
+    &lt;dependencyManagement&gt;
+        &lt;dependencies&gt;
+            &lt;dependency&gt;
+                &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-cloud-dependencies&lt;/artifactId&gt;
+                &lt;version&gt;${spring-cloud.version}&lt;/version&gt;
+                &lt;type&gt;pom&lt;/type&gt;
+                &lt;scope&gt;import&lt;/scope&gt;
+            &lt;/dependency&gt;
+        &lt;/dependencies&gt;</code></code></pre>
+<p>删除构建的Maven插件节点否则构建后其他项目引用不了（格式不对）：</p>
+<pre class="xml"><code>&lt;build&gt;
+        &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;/plugin&gt;
+        &lt;/plugins&gt;
+    &lt;/build&gt;</code></code></pre>
+<p>启动一个rabbitmq:</p>
+<pre class="shell"><code>docker pull rabbitmq:3-management
+
+docker run -d --hostname my-rabbit --name rabbit -p 5672:5672 -p 15672:15672 rabbitmq:3-management</code></code></pre>
+<p>application.properties配置定义：</p>
+<pre class="text"><code>spring.application.name=spring-cloud-bus-shared-library
+server.port=9007
+# 开启消息跟踪
+spring.cloud.bus.trace.enabled=true
+spring.rabbitmq.host=127.0.0.1
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+
+#显示的暴露接入点
+management.endpoints.web.exposure.include=*</code></code></pre>
+<p>spring-cloud-bus-a、spring-cloud-bus-b的配置信息除了spring.application.name和server.port不一样，其他都是一样的。</p>
+<p>自定义一个聊天事件类：</p>
+<pre><code><code>/**
+ * 聊天事件
+ */
+public class ChatRemoteApplicationEvent extends RemoteApplicationEvent {
+
+    private String message;
+
+    //for serializers
+    private ChatRemoteApplicationEvent(){}
+
+    public ChatRemoteApplicationEvent(Object source, String originService,
+            String destinationService,String message){
+        super(source, originService, destinationService);
+
+        this.message = message;
+    }
+
+    public void setMessage(String message){
+        this.message = message;
+    }
+
+    public String getMessage(){
+        return this.message;
+    }
+}</code></code></pre>
+<p>自定义聊天事件监听器：</p>
+<pre><code><code>/**
+ * 聊天事件监听
+ */
+public class ChatListener implements ApplicationListener&lt;ChatRemoteApplicationEvent&gt; {
+
+    private static Log log = LogFactory.getLog(ChatListener.class);
+
+    public ChatListener(){}
+
+    @Override
+    public void onApplicationEvent(ChatRemoteApplicationEvent event){
+        log.info(String.format(&quot;应用%s对应用%s悄悄的说：\&quot;%s\&quot;&quot;,
+                event.getOriginService(),
+                event.getDestinationService(),
+                event.getMessage()));
+    }
+}</code></code></pre>
+<p>配置类将监听器注册到BeanFactory中，并需要显示的告诉Spring Cloud Bus我们有一个自定义事件：@RemoteApplicationEventScan(basePackageClasses=ChatRemoteApplicationEvent.class)，否则BUS收到消息后无法识别事件类型。</p>
+<pre><code><code>@Configuration
+@ConditionalOnClass(ChatListener.class)
+@RemoteApplicationEventScan(basePackageClasses=ChatRemoteApplicationEvent.class)
+public class BusChatConfiguration {
+
+    @Bean
+    public ChatListener ChatListener(){
+        return new ChatListener();
+    }
+}
+</code></code></pre>
+<p>发布到本地Maven仓库：</p>
+<pre class="shell"><code>mvn install</code></code></pre>
+<p>spring-cloud-bus-a、spring-cloud-bus-b的POM依赖：</p>
+<pre class="xml"><code>&lt;properties&gt;
+        &lt;java.version&gt;1.8&lt;/java.version&gt;
+        &lt;spring-cloud.version&gt;Greenwich.SR3&lt;/spring-cloud.version&gt;
+    &lt;/properties&gt;
+
+    &lt;dependencies&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-bus&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-test&lt;/artifactId&gt;
+            &lt;scope&gt;test&lt;/scope&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;com.bluersw&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-bus-shared-library&lt;/artifactId&gt;
+            &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+        &lt;/dependency&gt;
+    &lt;/dependencies&gt;
+
+    &lt;dependencyManagement&gt;
+        &lt;dependencies&gt;
+            &lt;dependency&gt;
+                &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+                &lt;artifactId&gt;spring-cloud-dependencies&lt;/artifactId&gt;
+                &lt;version&gt;${spring-cloud.version}&lt;/version&gt;
+                &lt;type&gt;pom&lt;/type&gt;
+                &lt;scope&gt;import&lt;/scope&gt;
+            &lt;/dependency&gt;
+        &lt;/dependencies&gt;
+    &lt;/dependencyManagement&gt;</code></code></pre>
+<p>在spring-cloud-bus-a、spring-cloud-bus-b的启动Main函数上增加@ComponentScan(value = &quot;com.bluersw&quot;)注解，否则不会扫描引用spring-cloud-bus-shared-library项目的配置类（也就加载不了自定义的事件和监听器类型）。</p>
+<p>spring-cloud-bus-a:</p>
+<pre><code><code>@SpringBootApplication
+@ComponentScan(value = &quot;com.bluersw&quot;)
+public class SpringCloudBusAApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringCloudBusAApplication.class, args);
+    }
+
+}</code></code></pre>
+<p>spring-cloud-bus-b:</p>
+<pre><code><code>@SpringBootApplication
+@ComponentScan(value = &quot;com.bluersw&quot;)
+public class SpringCloudBusBApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringCloudBusBApplication.class, args);
+    }
+
+}</code></code></pre>
+<p>spring-cloud-bus-a发送消息给spring-cloud-bus-b（启动spring-cloud-bus-a程序和spring-cloud-bus-b程序）:</p>
+<pre><code><code>@RunWith(SpringRunner.class)
+@SpringBootTest
+public class SpringCloudBusAApplicationTests {
+
+    @Autowired
+    private ApplicationEventPublisher context;
+
+    @Autowired
+    private BusProperties bp;
+
+    @Test
+    public void AChat() {
+        context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),null,&quot;hi!B应用，我是A应用，。&quot;));
+    }
+
+}</code></code></pre>
+<p>执行AChat()之后，spring-cloud-bus-b的控制台会输出：<br />
+”应用spring-cloud-bus-a👎33b6374cba32e6a3e7e2c8e7631de8c0对应用**悄悄的说：&quot;hi!B应用，我是A应用，。”，说明spring-cloud-bus-b收到了消息并正确解析和执行了事件处理函数，但这条消息是群发的，因为destinationService参数我们给的是个null，所有引用spring-cloud-bus-shared-library项目注册监听器的项目都可以收到此信息。</p>
+<p>spring-cloud-bus-b回复消息给spring-cloud-bus-a：</p>
+<pre><code><code>@RunWith(SpringRunner.class)
+@SpringBootTest
+public class SpringCloudBusBApplicationTests {
+
+    @Autowired
+    private ApplicationEventPublisher context;
+
+    @Autowired
+    private BusProperties bp;
+
+    @Test
+    public void BChat() {
+        context.publishEvent(new ChatRemoteApplicationEvent(this,bp.getId(),&quot;spring-cloud-bus-a:9008&quot;,&quot;hi!我是B应用,这样才能不被其他应用接收到。&quot;));
+    }
+}</code></code></pre>
+<p>spring-cloud-bus-a是项目名称，9008是spring-cloud-bus-a项目的端口号，指定了目标服务参数destinationService后，其他应用就接收不到这条消息了。执行BChat()之后，spring-cloud-bus-a控制台会显示：<br />
+“应用spring-cloud-bus-b👎d577ac1ab28f0fc465a1e4700e7f538a对应用spring-cloud-bus-a:9008:**悄悄的说：&quot;hi!我是B应用,这样才能不被其他应用接收到。”<br />
+此消息现在只有spring-cloud-bus-a项目会接收到。</p>
+<h2 id="源码">源码</h2>
+<p><a href="https://github.com/sunweisheng/spring-cloud-example">Github仓库:https://github.com/sunweisheng/spring-cloud-example</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

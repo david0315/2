@@ -1,0 +1,128 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Redis面试篇 -- Redis主从复制原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Redis面试篇 -- Redis主从复制原理</center></div><div class='banquan'>原文出处:本文由博客园博主盛世半月提供。<br/>
+原文连接:https://www.cnblogs.com/yzh-blog/p/11671681.html</div><br>
+    <src><span>&nbsp;&nbsp; &nbsp;Redis一般是用来支撑读高并发的，为了分担读压力，Redis支持主从复制。架构是主从架构，一主多从， 主负责写，并且将数据复制到其它的 slave 节点，从节点负责读。 所有的读请求全部走从节点。这样也可以很轻松实现水平扩容，支撑读高并发。</span>
+<src><span>&nbsp;</span>
+<src><span>redis主从复制的特点：</span>
+<ul>
+<li>
+<src><span>redis采用异步方式复制数据到slave节点，从redis2.8开始，slave节点会周期性地确认自己每次复制的数据量；</span>
+</li>
+<li>
+<src>一个master节点可以配置多个slave节点；
+</li>
+<li>
+<src>slave节点可以连接其他的slave节点；
+</li>
+<li>
+<src>slave节点做复制的时候，不会阻塞master节点的正常工作；
+</li>
+<li>
+<src>slave节点做复制的时候，也不会阻塞对自己的查询操作，它会用旧数据集来提供服务，但在复制完成时，需要删除旧数据集，加载新数据集，这时会暂停对外服务；
+</li>
+<li>
+<src>slave节点主要用来横向扩容，做读写分离，扩容的slave节点可以提高读的吞吐量；
+</li>
+<li>
+<src>如果采用主从架构，必须开启master节点的持久化，不建议用slave节点作master节点的数据热备，因为如果一旦关掉master的持久化，可能在master宕机重启时数据是空的，然后一经复制，slave节点也会随之丢失。
+</li>
+</ul>
+<src>&nbsp;
+<h3><span style="font-family: 'Microsoft YaHei'; font-size: 16px;"><strong>主从复制</strong></span></h3>
+<hr />
+<src><span>&nbsp; &nbsp; Redis主从复制分为全量复制和增量复制。<br /></span>
+<src><span>&nbsp; &nbsp; 全量复制一般发生在Slave初始化阶段，这时slave需要将master上的所有数据都复制一份。步骤如下：<br /></span>
+<ul>
+<li>
+<src><span>从服务器连接主服务器，发送psync命令；</span>
+
+</li>
+<li>
+<src><span>主服务器接收到SYNC命名后，开始执行BGSAVE命令生成RDB文件并使用缓冲区记录此后执行的所有写命令；</span>
+
+</li>
+<li>
+<src><span>主服务器BGSAVE执行完后，向所有从服务器发送快照文件，并在发送期间继续记录被执行的写命令；&nbsp;</span>
+
+</li>
+<li>
+<src><span>从服务器收到快照文件后丢弃所有旧数据，载入收到的快照；&nbsp;</span>
+
+</li>
+<li>
+<src><span>主服务器快照发送完毕后开始向从服务器发送缓冲区中的写命令；</span>
+
+</li>
+<li>
+<src><span>从服务器完成对快照的载入，开始接收命令请求，并执行来自主服务器缓冲区的写命令；</span>
+
+</li>
+
+</ul>
+<src>&nbsp;
+<src>&nbsp; &nbsp; 增量复制一般是 <span>Slave初始化后开始正常工作时主服务器发生的写操作同步到从服务器的过程。步骤如下：</span>
+<ul>
+<li>
+<src><span>如果全量复制过程中，master-slave 网络连接断掉，那么 slave 重新连接 master 时，会触发增量复制。</span>
+
+</li>
+<li>
+<src><span>master 直接从自己的 backlog 中获取部分丢失的数据，发送给 slave node，默认 backlog 就是 1MB。</span>
+
+</li>
+<li>
+<src><span>master 就是根据 slave 发送的 psync 中的 offset 来从 backlog 中获取数据的。</span>
+
+</li>
+
+</ul>
+<src>&nbsp;
+<h3><span style="font-family: 'Microsoft YaHei'; font-size: 16px;"><strong>其他知识点(可忽略)</strong></span></h3>
+<hr />
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>Redis主从复制的核心原理</strong></span></h4>
+<src><strong>&nbsp; &nbsp; slave</strong>节点初次连接master节点，会发送psync命令并触发全量复制。此时master开启一个后台线程，开始生成一份RDB快照，同时将那些从外面接收到的写命令缓存到缓冲区中。RDB文件生成完毕后，将此文件发送给slave节点，slave先写入磁盘，再从磁盘加载到内存，接着master会将缓冲区中的写命令发送给slave，slave执行写命令并同步数据。如果slave节点和master节点因网络故障断开连接，会自动重连，连接之后master节点会复制缺少的数据给slave节点。
+<src>&nbsp;
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>主从复制的断点续传</strong></span></h4>
+<src><strong>&nbsp; &nbsp;</strong> 从redis2.8开始支持主从复制的断点续传，主从复制过程中网络连接断开了，会接着从上次断开的地方继续复制，而不是从头开始复制。
+<src>&nbsp; &nbsp; master节点会在内存中维护一个backlog，master和slave都会保存一个replica offset和一个master run id，offset就在backlog中，master和slave断开时，slave会让master从上次replica offset开始继续复制，如果没找到对应的offset，就会执行一次&nbsp; <span>resynchronization。</span>
+<h4><span>&nbsp;</span></h4>
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>无磁盘化复制</strong></span></h4>
+<src>&nbsp; &nbsp; master在内存中创建RDB，然后发送给RDB，不会在自己本地落地磁盘了，只需要在配置文件中开始repl-diskless-sync-delay即可。
+<src>&nbsp;
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>过期key处理</strong></span></h4>
+<src>&nbsp; &nbsp; slave不会处理过期key，只能等待master处理。如果master处理了一个key，或者通过LRU淘汰了一个key，那么会模拟一条del命令发送给slave。
+<src>&nbsp;
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>heartbeat</strong></span></h4>
+<src>&nbsp; &nbsp; 主从节点会相互发送heartbeat信息。master默认每隔10秒发送一次heartbeat，slave节点每隔1秒发送一次heartbeat。
+<src>&nbsp;
+<h4><span style="font-family: 'Microsoft YaHei'; font-size: 15px;"><strong>异步复制</strong></span></h4>
+<src><strong>&nbsp; &nbsp;</strong> master每次接收到写命令之后，先在内部写入数据，然后异步发送给slave节点。
+<src>&nbsp;
+<h3><span style="font-family: 'Microsoft YaHei'; font-size: 16px;"><strong>Redis如何做到高可用</strong></span></h3>
+<hr />
+<src><span>&nbsp; &nbsp; 如果系统99%的时间都用于对外服务，那么系统可以说是高可用的。<br /></span>
+<src><span>&nbsp; &nbsp; 一个slave节点挂掉，并不会影响系统的高可用性，其他slave节点可以提供相同的数据对外服务。<br /></span>
+<src><span>&nbsp; &nbsp; 但如果master节点挂掉了，就无法写入数据了，导致slave节点得不到最新的数据，这时就相当于系统不可用了。Redis的高可用架构，叫做failover故障转移，也就主备切换。master节点故障时会自动检测，并将某个slave节点自动切换成master节点的过程，叫做主备切换。这个过程，实现了Redis主从架构的高可用。<br /></span>
+<src>&nbsp;
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

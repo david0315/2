@@ -1,0 +1,152 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修共享资源那么多，如何用一把锁保护多个资源？' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>共享资源那么多，如何用一把锁保护多个资源？</center></div><div class='banquan'>原文出处:本文由博客园博主日拱一兵提供。<br/>
+原文连接:https://www.cnblogs.com/FraserYu/p/11683761.html</div><br>
+    <h2 id="写在前面">写在前面</h2>
+<p>上一篇文章<a href="https://dayarch.top/p/32b8e26a.html">原子性问题的宏观理解</a> 带领大家了解了锁和资源的模型，有了这篇文章的铺垫，相信理解这一篇文章就非常轻松了</p>
+<p>当我们要保护单个资源并对其进行修改其实很简单，只需按照下图分三步走</p>
+<ol>
+<li>创建受保护资源 R 的锁</li>
+<li>加锁进入临界区</li>
+<li>解锁走出临界区</li>
+</ol>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？0.png" /></p>
+<p><strong>上图的关键是「R1 的锁保护 R1」的指向关系是否正确</strong></p>
+<p>如果都是保护单个资源这样简单，程序猿的世界该有多美好，可惜并不是，通常我们需要保护多个资源</p>
+<h2 id="保护多个资源">保护多个资源</h2>
+<h3 id="保护多个没有关系的资源">保护多个没有关系的资源</h3>
+<p>如果多个资源没有关系，那就是保护一个资源模型的复制，同样非常简单，且看下图:</p>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？1.png" /></p>
+<blockquote>
+<p>比如现实中银行取款和修改密码操作。<br />
+银行取款操作对应的资源是「余额」, 修改密码操作对应的资源是「密码」，余额和密码两个资源完全没有关系，所以各自用自家的锁保护自家的资源就好了</p>
+</blockquote>
+<p>如果多个资源没有关系，程序猿的世界该有多美好，可惜并不是，我们保护的资源多数情况都有关联关系</p>
+<h3 id="保护多个关系的资源">保护多个关系的资源</h3>
+<p>拿经典的银行转账案例来说明，账户 A 给账户 B 转账，账户 A 余额减少 100 元，账户 B 余额增加 100 元，这个操作要是原子性的，那么资源「A 余额」和资源「B 余额」就这样&quot;有了关系&quot;，先来看程序:</p>
+<pre><code><code>class Account {
+  private int balance;
+  // 转账
+  synchronized void transfer(
+      Account target, int amt){
+    if (this.balance &gt; amt) {
+      this.balance -= amt;
+      target.balance += amt;
+    }
+  } 
+}</code></code></pre>
+<p>用 synchronized 直接保护 transfer 方法，然后操作资源「A 余额」和资源「B 余额」就可以了</p>
+<p>⚠️: 真的是这样吗？</p>
+<p>先停止向下看，在你的笔记本上按照文章开头的三步走来画个图看一看，是否和下图一样呢？</p>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？2.png" /></p>
+<p><strong>我们通常容易忽略锁和资源的指向关系</strong>，我们想当然的用锁 this 来保护 target 资源了，也就没有起到保护作用</p>
+<blockquote>
+<p>假设 A，B，C 账户初始余额都是 200 原，A 向 B 转账 100，B 向 C 转账 100</p>
+</blockquote>
+<p><strong>我们期盼最终的结果是:</strong><br />
+账户 A 余额: 100 元<br />
+账户 B 余额: 200 元<br />
+账户 C 余额: 300 元</p>
+<p>假线程 1「A 向 B 转账」与线程 2「B 向 C 转账」两个操作同时执行，根据 JMM 模型可知，线程 1 和线程 2 读取线程 B 当前的余额都是 200 元:</p>
+<ul>
+<li>线程 1 执行 transfer 方法锁定的是 A 的实例(A.this)，<strong>并没有锁定 B 的实例</strong></li>
+<li>线程 2 执行 transfer 方法锁定的是 B 的实例(B.this)，并没有锁定 C 的实例</li>
+</ul>
+<p>所以线程 1 和线程 2 可以同时进入 transfer 临界区，上面你认为对的模型其实就会变成这个样子:</p>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？3.png" /></p>
+<p>还记得 <a href="https://dayarch.top/p/815d7647.html">happens-before 规则</a> 这篇文章提到的<strong>监视器锁规则</strong>和<strong>传递性规则</strong>吗？</p>
+<blockquote>
+<h4 id="监视器锁规则">监视器锁规则</h4>
+<p>对一个锁的解锁 happens-before 于随后对这个锁的加锁</p>
+<h4 id="传递性规则">传递性规则</h4>
+<p>如果 A happens-before B, 且 B happens-before C, 那么 A happens-before C</p>
+</blockquote>
+<p><strong>资源 B.balance 存在于两个&quot;临界区&quot;中，所以这个&quot;临界区&quot;对 B.balance 来说形同虚设，也就不满足监视器锁规则，进而导致传递性规则也不生效，说白了，前序线程的更改结果对后一个线程不可见</strong></p>
+<p>这样最终导致:</p>
+<ul>
+<li><p><strong>账户 B 的余额可能是 100: </strong> 线程 1 写 B.balance 100(balance = 300) <strong>先于</strong> 线程 2 写 B.balance(balance = 100)，也就是说线程 1 的结果会被线程 2 覆盖，导致最终账户 B 的余额为 100</p></li>
+<li><p><strong>账户 B 的余额可能是 300:</strong> 与上述情况相反，线程 1 写 B.balance 100(balance = 300) <strong>后于</strong> 线程 2 写 B.balance(balance = 100)，也就是说线程 2 的结果线程 1 覆盖，导致最终账户 B 的余额为 300</p></li>
+</ul>
+<p>就是不能得到我们理想结果 200，感觉生活无比的艰难，那怎么办呢？</p>
+<h2 id="正确姿势">正确姿势</h2>
+<p>上面的问题就是为资源创建的锁不能保护所有关联的资源，那我们就想办法解决这个问题，来看下面代码:</p>
+<pre><code><code>class Account {
+  private int balance;
+  // 转账
+  void transfer(Account target, int amt){
+    synchronized(Account.class) {
+      if (this.balance &gt; amt) {
+        this.balance -= amt;
+        target.balance += amt;
+      }
+    }
+  } 
+}</code></code></pre>
+<p>我们将 this 锁变为 Account.class 锁，Account.class 是虚拟机加载 Account 类时创建的，肯定是唯一的(<a href="https://dayarch.top/p/127ec041.html">双亲委派模型解释了为何该对象是唯一的</a>)， 所有 Account 对象都共享 Account.class, 也就是说，Account.class 锁能保护所有 Account 对象，我们将上面程序再用模型解释一下</p>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？4.png" /></p>
+<h2 id="总结">总结</h2>
+<p>到这里关于锁和资源的关系你应该了解的更加透彻了，单个资源和多个无关联资源的情形都很好处理，为各自资源创建相应的锁就好，如果多个资源有关联，为了让锁起到保护作用，我们需要将锁的粒度变大，比如将 this 锁变成了 Account.class 锁。</p>
+<p>转账业务非常常见，并发量非常大，如果我们将锁的粒度都提升到 Account.class 这个级别(分久必合)，假设每次转账业务都很耗时，那么显然这个锁的性能是比较低的，<strong>所以接下来的文章，我们还会继续优化这个模型，选择合适的锁粒度，同时能保护多个有关联的资源</strong>，</p>
+<p>我们的锁粒度虽然大，但是我们保障了账户的安全，所以并发编程可以先保证事情做对，遇到瓶颈了，慢慢优化改变相应的模型就好了，当然熟练理解这个模型以后，一步到位的并发编程模型当然是极好的......</p>
+<h2 id="灵魂追问">灵魂追问</h2>
+<ol>
+<li>还记得 happens-before 的几个原则吗？</li>
+<li>偏向锁，轻量锁，重量锁是不是和我们这节内容有异曲同工之处呢？</li>
+<li>提前想一下，我们如何来优化这个模型呢？</li>
+</ol>
+<h2 id="附加说明">附加说明</h2>
+<p>如果你对这篇文章理解有些困难，可以按照下面的顺序回忆前序文章相关内容</p>
+<ol>
+<li><a href="https://dayarch.top/p/d7e125a1.html">这次走进并发的世界，请不要错过</a></li>
+<li><a href="https://dayarch.top/p/86243a5b.html">学并发编程，透彻理解这三个核心是关键</a></li>
+<li><a href="https://dayarch.top/p/6d12b8cf.html">并发Bug之源有三，请睁大眼睛看清它们</a></li>
+<li><a href="https://dayarch.top/p/815d7647.html">可见性有序性，Happens-before来搞定</a></li>
+<li><a href="https://dayarch.top/p/32b8e26a.html">解决原子性问题？你首先需要的是宏观理解</a></li>
+<li><a href="https://dayarch.top/p/fb3c7eeb.html">面试并发volatile关键字时，我们应该具备哪些谈资？</a></li>
+</ol>
+<h2 id="推荐阅读">推荐阅读</h2>
+<ul>
+<li><a href="https://dayarch.top/p/af68cfb3.html">每天用SpringBoot，还不懂RESTful API返回统一数据格式是怎么实现的？</a></li>
+<li><a href="https://dayarch.top/p/127ec041.html">双亲委派模型：大厂高频面试题，轻松搞定</a></li>
+<li><a href="https://dayarch.top/p/61d8a472.html">EasyExcel 读取 excel 真的很easy</a></li>
+<li><a href="https://dayarch.top/p/86cf6746.html">红黑树，超强动静图详解，简单易懂</a></li>
+</ul>
+<hr />
+<h2 id="提高效率工具">提高效率工具</h2>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？5.png" /></p>
+<hr />
+<blockquote>
+<h3 id="欢迎持续关注公众号日拱一兵">欢迎持续关注公众号：「日拱一兵」</h3>
+<ul>
+<li>前沿 Java 技术干货分享</li>
+<li>高效工具汇总 | 回复「工具」</li>
+<li>面试问题分析与解答</li>
+<li>技术资料领取 | 回复「资料」</li>
+</ul>
+</blockquote>
+<blockquote>
+<p>以读侦探小说思维轻松趣味学习 Java 技术栈相关知识，本着将复杂问题简单化，抽象问题具体化和图形化原则逐步分解技术问题，技术持续更新，请持续关注......</p>
+</blockquote>
+<p><img src="./images/共享资源那么多，如何用一把锁保护多个资源？6.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

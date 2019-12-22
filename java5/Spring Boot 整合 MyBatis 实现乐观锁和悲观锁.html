@@ -1,0 +1,377 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot 整合 MyBatis 实现乐观锁和悲观锁' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot 整合 MyBatis 实现乐观锁和悲观锁</center></div><div class='banquan'>原文出处:本文由博客园博主浮云Cloud提供。<br/>
+原文连接:https://www.cnblogs.com/cloudfloating/p/11461530.html</div><br>
+    <p>本文以转账操作为例，实现并测试乐观锁和悲观锁。</p>
+<p>完整代码：<a href="https://github.com/imcloudfloating/Lock_Demo" class="uri">https://github.com/imcloudfloating/Lock_Demo</a><br />
+GitHub Page：<a href="http://blog.cloudli.top/posts/Spring-Boot-&amp;-MyBatis-实现乐观锁和悲观锁/" class="uri">http://blog.cloudli.top/posts/Spring-Boot-&amp;-MyBatis-实现乐观锁和悲观锁/</a></p>
+<h2 id="死锁问题">死锁问题</h2>
+<p>当 A, B 两个账户同时向对方转账时，会出现如下情况：</p>
+<table>
+<thead>
+<tr class="header">
+<th>时刻</th>
+<th>事务 1 (A 向 B 转账)</th>
+<th>事务 2 (B 向 A 转账)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>T1</td>
+<td>Lock A</td>
+<td>Lock B</td>
+</tr>
+<tr class="even">
+<td>T2</td>
+<td>Lock B (由于事务 2 已经 Lock A，等待)</td>
+<td>Lock A (由于事务 1 已经 Lock B，等待)</td>
+</tr>
+</tbody>
+</table>
+<p>由于两个事务都在等待对方释放锁，于是死锁产生了，解决方案：按照主键的大小来加锁，总是先锁主键较小或较大的那行数据。</p>
+<h2 id="建立数据表并插入数据mysql">建立数据表并插入数据（MySQL）</h2>
+<pre><code><code>create table account
+(
+    id      int auto_increment
+        primary key,
+    deposit decimal(10, 2) default 0.00 not null,
+    version int            default 0    not null
+);
+
+INSERT INTO vault.account (id, deposit, version) VALUES (1, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (2, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (3, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (4, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (5, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (6, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (7, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (8, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (9, 1000, 0);
+INSERT INTO vault.account (id, deposit, version) VALUES (10, 1000, 0);</code></code></pre>
+<h2 id="mapper-文件">Mapper 文件</h2>
+<p>悲观锁使用 select ... for update，乐观锁使用 version 字段。</p>
+<pre class="xml"><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; ?&gt;
+&lt;!DOCTYPE mapper PUBLIC &quot;-//mybatis.org//DTD Mapper 3.0//EN&quot;
+        &quot;http://mybatis.org/dtd/mybatis-3-mapper.dtd&quot; &gt;
+&lt;mapper namespace=&quot;com.cloud.demo.mapper.AccountMapper&quot;&gt;
+    &lt;select id=&quot;selectById&quot; resultType=&quot;com.cloud.demo.model.Account&quot;&gt;
+        select *
+        from account
+        where id = #{id}
+    &lt;/select&gt;
+    &lt;update id=&quot;updateDeposit&quot; keyProperty=&quot;id&quot; parameterType=&quot;com.cloud.demo.model.Account&quot;&gt;
+        update account
+        set deposit=#{deposit},
+            version = version + 1
+        where id = #{id}
+          and version = #{version}
+    &lt;/update&gt;
+    &lt;select id=&quot;selectByIdForUpdate&quot; resultType=&quot;com.cloud.demo.model.Account&quot;&gt;
+        select *
+        from account
+        where id = #{id} for
+        update
+    &lt;/select&gt;
+    &lt;update id=&quot;updateDepositPessimistic&quot; keyProperty=&quot;id&quot; parameterType=&quot;com.cloud.demo.model.Account&quot;&gt;
+        update account
+        set deposit=#{deposit}
+        where id = #{id}
+    &lt;/update&gt;
+    &lt;select id=&quot;getTotalDeposit&quot; resultType=&quot;java.math.BigDecimal&quot;&gt;
+        select sum(deposit) from account;
+    &lt;/select&gt;
+&lt;/mapper&gt;</code></code></pre>
+<h2 id="mapper-接口">Mapper 接口</h2>
+<pre class="java"><code>@Component
+public interface AccountMapper {
+    Account selectById(int id);
+    Account selectByIdForUpdate(int id);
+    int updateDepositWithVersion(Account account);
+    void updateDeposit(Account account);
+    BigDecimal getTotalDeposit();
+}</code></code></pre>
+<h2 id="account-pojo">Account POJO</h2>
+<pre class="java"><code>@Data
+public class Account {
+    private int id;
+    private BigDecimal deposit;
+    private int version;
+}</code></code></pre>
+<h2 id="accountservice">AccountService</h2>
+<p>在 transferOptimistic 方法上有个自定义注解 @Retry，这个用来实现乐观锁失败后重试。</p>
+<pre class="java"><code>@Slf4j
+@Service
+public class AccountService {
+
+    public enum Result{
+        SUCCESS,
+        DEPOSIT_NOT_ENOUGH,
+        FAILED,
+    }
+
+    @Resource
+    private AccountMapper accountMapper;
+
+    private BiPredicate&lt;BigDecimal, BigDecimal&gt; isDepositEnough = (deposit, value) -&gt; deposit.compareTo(value) &gt; 0;
+
+    /**
+     * 转账操作，悲观锁
+     *
+     * @param fromId 扣款账户
+     * @param toId   收款账户
+     * @param value  金额
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Result transferPessimistic(int fromId, int toId, BigDecimal value) {
+        Account from, to;
+
+        try {
+            // 先锁 id 较大的那行，避免死锁
+            if (fromId &gt; toId) {
+                from = accountMapper.selectByIdForUpdate(fromId);
+                to = accountMapper.selectByIdForUpdate(toId);
+            } else {
+                to = accountMapper.selectByIdForUpdate(toId);
+                from = accountMapper.selectByIdForUpdate(fromId);
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage());
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return Result.FAILED;
+        }
+
+        if (!isDepositEnough.test(from.getDeposit(), value)) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            log.info(String.format(&quot;Account %d is not enough.&quot;, fromId));
+            return Result.DEPOSIT_NOT_ENOUGH;
+        }
+
+        from.setDeposit(from.getDeposit().subtract(value));
+        to.setDeposit(to.getDeposit().add(value));
+
+        accountMapper.updateDeposit(from);
+        accountMapper.updateDeposit(to);
+
+        return Result.SUCCESS;
+    }
+
+    /**
+     * 转账操作，乐观锁
+     *  @param fromId 扣款账户
+     * @param toId   收款账户
+     * @param value  金额
+     */
+    @Retry
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public Result transferOptimistic(int fromId, int toId, BigDecimal value) {
+        Account from = accountMapper.selectById(fromId),
+                to = accountMapper.selectById(toId);
+
+        if (!isDepositEnough.test(from.getDeposit(), value)) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return Result.DEPOSIT_NOT_ENOUGH;
+        }
+
+        from.setDeposit(from.getDeposit().subtract(value));
+        to.setDeposit(to.getDeposit().add(value));
+
+        int r1, r2;
+
+        // 先锁 id 较大的那行，避免死锁
+        if (from.getId() &gt; to.getId()) {
+            r1 = accountMapper.updateDepositWithVersion(from);
+            r2 = accountMapper.updateDepositWithVersion(to);
+        } else {
+            r2 = accountMapper.updateDepositWithVersion(to);
+            r1 = accountMapper.updateDepositWithVersion(from);
+        }
+
+        if (r1 &lt; 1 || r2 &lt; 1) {
+            // 失败，抛出重试异常，执行重试
+            throw new RetryException(&quot;Transfer failed, retry.&quot;);
+        } else {
+            return Result.SUCCESS;
+        }
+    }
+}</code></code></pre>
+<h2 id="使用-spring-aop-实现乐观锁失败后重试">使用 Spring AOP 实现乐观锁失败后重试</h2>
+<h3 id="自定义注解-retry">自定义注解 Retry</h3>
+<pre class="java"><code>@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Retry {
+    int value() default 3; // 重试次数
+}</code></code></pre>
+<h3 id="重试异常-retryexception">重试异常 RetryException</h3>
+<pre class="java"><code>public class RetryException extends RuntimeException {
+    public RetryException(String message) {
+        super(message);
+    }
+}</code></code></pre>
+<h3 id="重试的切面类">重试的切面类</h3>
+<p>tryAgain 方法使用了 @Around 注解（表示环绕通知），可以决定目标方法在何时执行，或者不执行，以及自定义返回结果。这里首先通过 ProceedingJoinPoint.proceed() 方法执行目标方法，如果抛出了重试异常，那么重新执行直到满三次，三次都不成功则回滚并返回 FAILED。</p>
+<pre class="java"><code>@Slf4j
+@Aspect
+@Component
+public class RetryAspect {
+
+    @Pointcut(&quot;@annotation(com.cloud.demo.annotation.Retry)&quot;)
+    public void retryPointcut() {
+
+    }
+
+    @Around(&quot;retryPointcut() &amp;&amp; @annotation(retry)&quot;)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Object tryAgain(ProceedingJoinPoint joinPoint, Retry retry) throws Throwable {
+        int count = 0;
+        do {
+            count++;
+            try {
+                return joinPoint.proceed();
+            } catch (RetryException e) {
+                if (count &gt; retry.value()) {
+                    log.error(&quot;Retry failed!&quot;);
+                    TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                    return AccountService.Result.FAILED;
+                }
+            }
+        } while (true);
+    }
+}</code></code></pre>
+<h2 id="单元测试">单元测试</h2>
+<p>用多个线程模拟并发转账，经过测试，悲观锁除了账户余额不足，或者数据库连接不够以及等待超时，全部成功；乐观锁即使加了重试，成功的线程也很少，500 个平均也就十几个成功。</p>
+<p>所以对于写多读少的操作，使用悲观锁，对于读多写少的操作，可以使用乐观锁。</p>
+<blockquote>
+<p>完整代码请见 Github：<a href="https://github.com/imcloudfloating/Lock_Demo" class="uri">https://github.com/imcloudfloating/Lock_Demo</a>。</p>
+</blockquote>
+<pre class="java"><code>@Slf4j
+@SpringBootTest
+@RunWith(SpringRunner.class)
+class AccountServiceTest {
+
+    // 并发数
+    private static final int COUNT = 500;
+
+    @Resource
+    AccountMapper accountMapper;
+
+    @Resource
+    AccountService accountService;
+
+    private CountDownLatch latch = new CountDownLatch(COUNT);
+    private List&lt;Thread&gt; transferThreads = new ArrayList&lt;&gt;();
+    private List&lt;Pair&lt;Integer, Integer&gt;&gt; transferAccounts = new ArrayList&lt;&gt;();
+
+    @BeforeEach
+    void setUp() {
+        Random random = new Random(currentTimeMillis());
+        transferThreads.clear();
+        transferAccounts.clear();
+
+        for (int i = 0; i &lt; COUNT; i++) {
+            int from = random.nextInt(10) + 1;
+            int to;
+            do{
+                to = random.nextInt(10) + 1;
+            } while (from == to);
+            transferAccounts.add(new Pair&lt;&gt;(from, to));
+        }
+    }
+
+    /**
+     * 测试悲观锁
+     */
+    @Test
+    void transferByPessimisticLock() throws Throwable {
+        for (int i = 0; i &lt; COUNT; i++) {
+            transferThreads.add(new Transfer(i, true));
+        }
+        for (Thread t : transferThreads) {
+            t.start();
+        }
+        latch.await();
+
+        Assertions.assertEquals(accountMapper.getTotalDeposit(),
+                BigDecimal.valueOf(10000).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /**
+     * 测试乐观锁
+     */
+    @Test
+    void transferByOptimisticLock() throws Throwable {
+        for (int i = 0; i &lt; COUNT; i++) {
+            transferThreads.add(new Transfer(i, false));
+        }
+        for (Thread t : transferThreads) {
+            t.start();
+        }
+        latch.await();
+
+        Assertions.assertEquals(accountMapper.getTotalDeposit(),
+                BigDecimal.valueOf(10000).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /**
+     * 转账线程
+     */
+    class Transfer extends Thread {
+        int index;
+        boolean isPessimistic;
+
+        Transfer(int i, boolean b) {
+            index = i;
+            isPessimistic = b;
+        }
+
+        @Override
+        public void run() {
+            BigDecimal value = BigDecimal.valueOf(
+                    new Random(currentTimeMillis()).nextFloat() * 100
+            ).setScale(2, RoundingMode.HALF_UP);
+
+            AccountService.Result result = AccountService.Result.FAILED;
+            int fromId = transferAccounts.get(index).getKey(),
+                    toId = transferAccounts.get(index).getValue();
+            try {
+                if (isPessimistic) {
+                    result = accountService.transferPessimistic(fromId, toId, value);
+                } else {
+                    result = accountService.transferOptimistic(fromId, toId, value);
+                }
+            } catch (Exception e) {
+                log.error(e.getMessage());
+            } finally {
+                if (result == AccountService.Result.SUCCESS) {
+                    log.info(String.format(&quot;Transfer %f from %d to %d success&quot;, value, fromId, toId));
+                }
+                latch.countDown();
+            }
+        }
+    }
+}</code></code></pre>
+<h2 id="mysql-配置">MySQL 配置</h2>
+<pre><code><code>innodb_rollback_on_timeout=&#39;ON&#39;
+max_connections=1000
+innodb_lock_wait_timeout=500</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

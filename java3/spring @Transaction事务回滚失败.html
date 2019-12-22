@@ -1,0 +1,45 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring @Transaction事务回滚失败' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring @Transaction事务回滚失败</center></div><div class='banquan'>原文出处:本文由博客园博主壹佰提供。<br/>
+原文连接:https://www.cnblogs.com/xxjcai/p/11842294.html</div><br>
+    <p>今天客户提出一个新问题，出库一批商品，提示失败了，但是库存数量却减少了。看了一下代码一头雾水，我们的代码加了事物，且捕获异常。</p>
+<p>经过调试代码发现就是两个原因导致的</p>
+<p>第一、在当前方法的catch中处理了捕获的异常，没有向上抛出异常，事务不能回滚</p>
+<p>分析：</p>
+<p>1.在Java中异常的基类为Throwable，他有两个子类Exception与Errors，同时RuntimeException就是Exception的子类；</p>
+<p>2.RuntimeException，即运行时异常，为非受检（UNCHECKED）异常； &nbsp; &nbsp; &nbsp;</p>
+<p>3.Exception的其他子类异常，为非运行时异常，为受检异常（CHECKED）异常；</p>
+<p>Spring事务回滚机制是这样的：当所拦截的方法有指定异常抛出，事务才会自动进行回滚！</p>
+<p>&nbsp; &nbsp; &nbsp;①被拦截方法-&mdash;&mdash; 注解式：方法或者方法所在类被@Transactional注解；</p>
+<p>&nbsp; &nbsp; &nbsp;②异常&mdash;&mdash; 该方法的执行过程必须出现异常，这样事务管理器才能被触发，并对此做出处理；</p>
+<p>&nbsp; &nbsp; ③指定异常&mdash;&mdash; 默认配置下，事务只会对Error与RuntimeException及其子类这些UNChecked异常，做出回滚。一般的Exception这些Checked异常不会发生回滚（如果一般Exception想回滚要做出配置）；</p>
+<p>Spring的声明式事务是基于AOP的<br />&nbsp; &nbsp;spring aop&nbsp;&nbsp;异常捕获原理：被拦截的方法需显式抛出异常，并不能经任何处理（如果自己捕获就不能被声明式事务感知），这样aop代理才能捕获到方法的异常，才能进行回滚，默认情况下aop只捕获runtimeexception的异常，但可以通过 。<br />&nbsp; &nbsp;&nbsp;<br />配置来捕获特定的异常并回滚&nbsp;&nbsp;<br />&nbsp;&nbsp;换句话说在service的方法中不使用try catch 或者在catch中最后加上throw new runtimeexcetpion（），这样程序异常时才能被aop捕获进而回滚<br />&nbsp;&nbsp;解决方案：&nbsp;<br />&nbsp;&nbsp;方案1.方法中不做异常捕获，或者在catch语句中最后增加throw new RuntimeException()语句，以便让aop捕获异常再去回滚，并且在上层（webservice客户端，view层action）要继续捕获这个异常并处理<br />&nbsp;&nbsp;方案2.在方法的catch语句中增加：TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();语句，手动回滚，这样上层就无需去处理异常</p>
+<p>第二、在catch中异常抛出Exception，并不是RuntimeException，导致也没有回滚</p>
+<p>解决方法：</p>
+<p>① 抛出Exception，同时在事务声明中加上@Transactional(rollbackFor = Exception.class)</p>
+<p>② 在catch添加语句</p>
+<pre><code>catch (Exception e) {  
+          e.printStackTrace();     
+         <span style="color: #ff0000;"> TransactionAspectSupport.currentTransactionStatus().setRollbackOnly()</span>;//就是这一句了，加上之后如果异常后会回滚的  
+     }  <br /><br /></code></pre>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

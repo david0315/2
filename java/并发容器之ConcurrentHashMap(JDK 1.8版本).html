@@ -1,0 +1,695 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修并发容器之ConcurrentHashMap(JDK 1.8版本)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>并发容器之ConcurrentHashMap(JDK 1.8版本)</center></div><div class='banquan'>原文出处:本文由博客园博主Java博客手留余香提供。<br/>
+原文连接:https://www.cnblogs.com/yuxiang1/p/11963959.html</div><br>
+    <h2><span style="font-size: 18px;">1.ConcurrentHashmap简介</span></h2>
+<p><span style="font-size: 18px;">在使用HashMap时在多线程情况下扩容会出现CPU接近100%的情况，因为hashmap并不是线程安全的，通常我们可以使用在java体系中古老的hashtable类，该类基本上所有的方法都采用synchronized进行线程安全的控制，可想而知，在高并发的情况下，每次只有一个线程能够获取对象监视器锁，这样的并发性能的确不令人满意。另外一种方式通过Collections的<code>Map&lt;K,V&gt; synchronizedMap(Map&lt;K,V&gt; m)</code>将hashmap包装成一个线程安全的map。比如SynchronzedMap的put方法源码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> V put(K key, V value) {
+    </span><span style="color: #0000ff;">synchronized</span> (mutex) {<span style="color: #0000ff;">return</span><span style="color: #000000;"> m.put(key, value);}
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">实际上SynchronizedMap实现依然是采用synchronized独占式锁进行线程安全的并发控制的。同样，这种方案的性能也是令人不太满意的。针对这种境况，Doug Lea大师不遗余力的为我们创造了一些线程安全的并发容器，让每一个java开发人员倍感幸福。相对于hashmap来说，ConcurrentHashMap就是线程安全的map，其中利用了锁分段的思想提高了并发度。</span></p>
+<p><span style="font-size: 18px;">ConcurrentHashMap在JDK1.6的版本网上资料很多，有兴趣的可以去看看。 JDK 1.6版本关键要素：</span></p>
+<ol>
+<li><span style="font-size: 18px;">segment继承了ReentrantLock充当锁的角色，为每一个segment提供了线程安全的保障；</span></li>
+<li><span style="font-size: 18px;">segment维护了哈希散列表的若干个桶，每个桶由HashEntry构成的链表。</span></li>
+</ol>
+<p><span style="font-size: 18px;">而到了JDK 1.8的ConcurrentHashMap就有了很大的变化，光是代码量就足足增加了很多。1.8版本舍弃了segment，并且大量使用了synchronized，以及CAS无锁操作以保证ConcurrentHashMap操作的线程安全性。</span></p>
+<p><span style="font-size: 18px;">至于为什么不用ReentrantLock而是Synchronzied呢？实际上，synchronzied做了很多的优化，包括偏向锁，轻量级锁，重量级锁，可以依次向上升级锁状态，但不能降级，因此，使用synchronized相较于ReentrantLock的性能会持平甚至在某些情况更优，具体的性能测试可以去网上查阅一些资料。另外，底层数据结构改变为采用数组+链表+红黑树的数据形式。</span></p>
+<h2><span style="font-size: 18px;">2.关键属性及类</span></h2>
+<p><span style="font-size: 18px;">在了解ConcurrentHashMap的具体方法实现前，我们需要系统的来看一下几个关键的地方。</span></p>
+<blockquote><span style="font-size: 18px;">ConcurrentHashMap的关键属性</span></blockquote>
+<ol>
+<li><span style="font-size: 18px;">table&nbsp;volatile Node&lt;K,V&gt;[] table://装载Node的数组，作为ConcurrentHashMap的数据容器，采用懒加载的方式，直到第一次插入数据的时候才会进行初始化操作，数组的大小总是为2的幂次方。</span></li>
+<li><span style="font-size: 18px;">nextTable&nbsp;volatile Node&lt;K,V&gt;[] nextTable; //扩容时使用，平时为null，只有在扩容的时候才为非null</span></li>
+<li><span style="font-size: 18px;">sizeCtl&nbsp;volatile int sizeCtl; 该属性用来控制table数组的大小，根据是否初始化和是否正在扩容有几种情况：&nbsp;当值为负数时：如果为-1表示正在初始化，如果为-N则表示当前正有N-1个线程进行扩容操作；&nbsp;当值为正数时：如果当前数组为null的话表示table在初始化过程中，sizeCtl表示为需要新建数组的长度；</span></li>
+</ol>
+<p><span style="font-size: 18px;">若已经初始化了，表示当前数据容器（table数组）可用容量也可以理解成临界值（插入节点数超过了该临界值就需要扩容），具体指为数组的长度n 乘以 加载因子loadFactor； 当值为0时，即数组长度为默认初始值。</span></p>
+<ol>
+<li><span style="font-size: 18px;">sun.misc.Unsafe U&nbsp;在ConcurrentHashMapde的实现中可以看到大量的U.compareAndSwapXXXX的方法去修改ConcurrentHashMap的一些属性。这些方法实际上是利用了CAS算法保证了线程安全性，这是一种乐观策略，假设每一次操作都不会产生冲突，当且仅当冲突发生的时候再去尝试。</span></li>
+</ol>
+<p><span style="font-size: 18px;">而CAS操作依赖于现代处理器指令集，通过底层CMPXCHG指令实现。CAS(V,O,N)核心思想为：若当前变量实际值V与期望的旧值O相同，则表明该变量没被其他线程进行修改，因此可以安全的将新值N赋值给变量；若当前变量实际值V与期望的旧值O不相同，则表明该变量已经被其他线程做了处理，此时将新值N赋给变量操作就是不安全的，在进行重试。</span></p>
+<p><span style="font-size: 18px;">而在大量的同步组件和并发容器的实现中使用CAS是通过<code>sun.misc.Unsafe</code>类实现的，该类提供了一些可以直接操控内存和线程的底层操作，可以理解为java中的&ldquo;指针&rdquo;。该成员变量的获取是在静态代码块中：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">```
+ </span><span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+     </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+         U </span>=<span style="color: #000000;"> sun.misc.Unsafe.getUnsafe();
+        .......
+     } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {
+         </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> Error(e);
+     }
+ }
+```</span></code></pre>
+
+<p>&nbsp;</p>
+
+<blockquote><span style="font-size: 18px;">ConcurrentHashMap中关键内部类</span></blockquote>
+<ol>
+<li><span style="font-size: 18px;">Node&nbsp;Node类实现了Map.Entry接口，主要存放key-value对，并且具有next域</span><br /><span style="font-size: 18px;">static class Node&lt;K,V&gt; implements Map.Entry&lt;K,V&gt; { final int hash; final K key; volatile V val; volatile Node&lt;K,V&gt; next; ...... }</span></li>
+
+</ol>
+<p><span style="font-size: 18px;">另外可以看出很多属性都是用volatile进行修饰的，也就是为了保证内存可见性。</span></p>
+<ol>
+<li><span style="font-size: 18px;">TreeNode&nbsp;树节点，继承于承载数据的Node类。而红黑树的操作是针对TreeBin类的，从该类的注释也可以看出，也就是TreeBin会将TreeNode进行再一次封装</span><br /><span style="font-size: 18px;">** * Nodes for use in TreeBins */ static final class TreeNode&lt;K,V&gt; extends Node&lt;K,V&gt; { TreeNode&lt;K,V&gt; parent; // red-black tree links TreeNode&lt;K,V&gt; left; TreeNode&lt;K,V&gt; right; TreeNode&lt;K,V&gt; prev; // needed to unlink next upon deletion boolean red; ...... }</span></li>
+<li><span style="font-size: 18px;">TreeBin&nbsp;这个类并不负责包装用户的key、value信息，而是包装的很多TreeNode节点。实际的ConcurrentHashMap&ldquo;数组&rdquo;中，存放的是TreeBin对象，而不是TreeNode对象。</span><br /><span style="font-size: 18px;">static final class TreeBin&lt;K,V&gt; extends Node&lt;K,V&gt; { TreeNode&lt;K,V&gt; root; volatile TreeNode&lt;K,V&gt; first; volatile Thread waiter; volatile int lockState; // values for lockState static final int WRITER = 1; // set while holding write lock static final int WAITER = 2; // set when waiting for write lock static final int READER = 4; // increment value for setting read lock ...... }</span></li>
+<li><span style="font-size: 18px;">ForwardingNode&nbsp;在扩容时才会出现的特殊节点，其key,value,hash全部为null。并拥有nextTable指针引用新的table数组。</span><br /><span style="font-size: 18px;">static final class ForwardingNode&lt;K,V&gt; extends Node&lt;K,V&gt; { final Node&lt;K,V&gt;[] nextTable; ForwardingNode(Node&lt;K,V&gt;[] tab) { super(MOVED, null, null, null); this.nextTable = tab; } ..... }</span></li>
+
+</ol>
+<blockquote><span style="font-size: 18px;">CAS关键操作</span></blockquote>
+<p><span style="font-size: 18px;">在上面我们提及到在ConcurrentHashMap中会大量使用CAS修改它的属性和一些操作。因此，在理解ConcurrentHashMap的方法前我们需要了解下面几个常用的利用CAS算法来保障线程安全的操作。</span></p>
+<ol>
+<li><span style="font-size: 18px;">tabAt</span><br /><span style="font-size: 18px;">static final &lt;K,V&gt; Node&lt;K,V&gt; tabAt(Node&lt;K,V&gt;[] tab, int i) { return (Node&lt;K,V&gt;)U.getObjectVolatile(tab, ((long)i &lt;&lt; ASHIFT) + ABASE); }</span></li>
+
+</ol>
+<p><span style="font-size: 18px;">该方法用来获取table数组中索引为i的Node元素。</span></p>
+<ol>
+<li><span style="font-size: 18px;">casTabAt</span><br /><span style="font-size: 18px;">static final &lt;K,V&gt; boolean casTabAt(Node&lt;K,V&gt;[] tab, int i, Node&lt;K,V&gt; c, Node&lt;K,V&gt; v) { return U.compareAndSwapObject(tab, ((long)i &lt;&lt; ASHIFT) + ABASE, c, v); }&nbsp;</span><br /><span style="font-size: 18px;">利用CAS操作设置table数组中索引为i的元素</span></li>
+<li><span style="font-size: 18px;">setTabAt</span><br /><span style="font-size: 18px;">static final &lt;K,V&gt; void setTabAt(Node&lt;K,V&gt;[] tab, int i, Node&lt;K,V&gt; v) { U.putObjectVolatile(tab, ((long)i &lt;&lt; ASHIFT) + ABASE, v); }&nbsp;</span><br /><span style="font-size: 18px;">该方法用来设置table数组中索引为i的元素</span></li>
+
+</ol>
+<h2><span style="font-size: 18px;">3.重点方法讲解</span></h2>
+<p><span style="font-size: 18px;">在熟悉上面的这核心信息之后，我们接下来就来依次看看几个常用的方法是怎样实现的。</span></p>
+<h2><span style="font-size: 18px;">3.1 实例构造器方法</span></h2>
+<p><span style="font-size: 18px;">在使用ConcurrentHashMap第一件事自然而然就是new 出来一个ConcurrentHashMap对象，一共提供了如下几个构造器方法：</span></p>
+<src class="highlight">
+<pre><code><span style="font-size: 18px;"><code class="language-text">// 1\. 构造一个空的map，即table数组还未初始化，初始化放在第一次插入数据时，默认大小为16
+ConcurrentHashMap()
+// 2\. 给定map的大小
+ConcurrentHashMap(int initialCapacity) 
+// 3\. 给定一个map
+ConcurrentHashMap(Map&lt;? extends K, ? extends V&gt; m)
+// 4\. 给定map的大小以及加载因子
+ConcurrentHashMap(int initialCapacity, float loadFactor)
+// 5\. 给定map大小，加载因子以及并发度（预计同时操作数据的线程）
+ConcurrentHashMap(int initialCapacity,float loadFactor, int concurrencyLevel)
+</code></span></code></pre>
+
+<p><span style="font-size: 18px;">ConcurrentHashMap一共给我们提供了5中构造器方法，具体使用请看注释，我们来看看第2种构造器，传入指定大小时的情况，该构造器源码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> ConcurrentHashMap(<span style="color: #0000ff;">int</span><span style="color: #000000;"> initialCapacity) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">1\. 小于0直接抛异常</span>
+    <span style="color: #0000ff;">if</span> (initialCapacity &lt; 0<span style="color: #000000;">)
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> IllegalArgumentException();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">2\. 判断是否超过了允许的最大值，超过了话则取最大值，否则再对该值进一步处理</span>
+    <span style="color: #0000ff;">int</span> cap = ((initialCapacity &gt;= (MAXIMUM_CAPACITY &gt;&gt;&gt; 1)) ?<span style="color: #000000;">
+               MAXIMUM_CAPACITY :
+               tableSizeFor(initialCapacity </span>+ (initialCapacity &gt;&gt;&gt; 1) + 1<span style="color: #000000;">));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">3\. 赋值给sizeCtl</span>
+    <span style="color: #0000ff;">this</span>.sizeCtl =<span style="color: #000000;"> cap;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">这段代码的逻辑请看注释，很容易理解，如果小于0就直接抛出异常，如果指定值大于了所允许的最大值的话就取最大值，否则，在对指定值做进一步处理。最后将cap赋值给sizeCtl,关于sizeCtl的说明请看上面的说明，当调用构造器方法之后，sizeCtl的大小应该就代表了ConcurrentHashMap的大小，即table数组长度。tableSizeFor做了哪些事情了？源码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Returns a power of two table size for the given desired capacity.
+ * See Hackers Delight, sec 3.2
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> tableSizeFor(<span style="color: #0000ff;">int</span><span style="color: #000000;"> c) {
+    </span><span style="color: #0000ff;">int</span> n = c - 1<span style="color: #000000;">;
+    n </span>|= n &gt;&gt;&gt; 1<span style="color: #000000;">;
+    n </span>|= n &gt;&gt;&gt; 2<span style="color: #000000;">;
+    n </span>|= n &gt;&gt;&gt; 4<span style="color: #000000;">;
+    n </span>|= n &gt;&gt;&gt; 8<span style="color: #000000;">;
+    n </span>|= n &gt;&gt;&gt; 16<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">return</span> (n &lt; 0) ? 1 : (n &gt;= MAXIMUM_CAPACITY) ? MAXIMUM_CAPACITY : n + 1<span style="color: #000000;">;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">通过注释就很清楚了，该方法会将调用构造器方法时指定的大小转换成一个2的幂次方数，也就是说ConcurrentHashMap的大小一定是2的幂次方，比如，当指定大小为18时，为了满足2的幂次方特性，实际上concurrentHashMapd的大小为2的5次方（32）。另外，需要注意的是，调用构造器方法的时候并未构造出table数组（可以理解为ConcurrentHashMap的数据容器），只是算出table数组的长度，当第一次向ConcurrentHashMap插入数据的时候才真正的完成初始化创建table数组的工作。</span></p>
+<h2><span style="font-size: 18px;">3.2 initTable方法</span></h2>
+<p><span style="font-size: 18px;">直接上源码：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Node&lt;K,V&gt;<span style="color: #000000;">[] initTable() {
+    Node</span>&lt;K,V&gt;[] tab; <span style="color: #0000ff;">int</span><span style="color: #000000;"> sc;
+    </span><span style="color: #0000ff;">while</span> ((tab = table) == <span style="color: #0000ff;">null</span> || tab.length == 0<span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> ((sc = sizeCtl) &lt; 0<span style="color: #000000;">)
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1\. 保证只有一个线程正在进行初始化操作</span>
+            Thread.yield(); <span style="color: #008000;">//</span><span style="color: #008000;"> lost initialization race; just spin</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (U.compareAndSwapInt(<span style="color: #0000ff;">this</span>, SIZECTL, sc, -1<span style="color: #000000;">)) {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">if</span> ((tab = table) == <span style="color: #0000ff;">null</span> || tab.length == 0<span style="color: #000000;">) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2\. 得出数组的大小</span>
+                    <span style="color: #0000ff;">int</span> n = (sc &gt; 0) ?<span style="color: #000000;"> sc : DEFAULT_CAPACITY;
+                    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3\. 这里才真正的初始化数组</span>
+                    Node&lt;K,V&gt;[] nt = (Node&lt;K,V&gt;[])<span style="color: #0000ff;">new</span> Node&lt;?,?&gt;<span style="color: #000000;">[n];
+                    table </span>= tab =<span style="color: #000000;"> nt;
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 4\. 计算数组中可用的大小：实际大小n*0.75（加载因子）</span>
+                    sc = n - (n &gt;&gt;&gt; 2<span style="color: #000000;">);
+                }
+            } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+                sizeCtl </span>=<span style="color: #000000;"> sc;
+            }
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tab;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">代码的逻辑请见注释，有可能存在一个情况是多个线程同时走到这个方法中，为了保证能够正确初始化，在第1步中会先通过if进行判断，若当前已经有一个线程正在初始化即sizeCtl值变为-1，这个时候其他线程在If判断为true从而调用Thread.yield()让出CPU时间片。正在进行初始化的线程会调用U.compareAndSwapInt方法将sizeCtl改为-1即正在初始化的状态。</span></p>
+<p><span style="font-size: 18px;">另外还需要注意的事情是，在第四步中会进一步计算数组中可用的大小即为数组实际大小n乘以加载因子0.75.可以看看这里乘以0.75是怎么算的，0.75为四分之三，这里<code>n - (n &gt;&gt;&gt; 2)</code>是不是刚好是n-(1/4)n=(3/4)n，挺有意思的吧:)。如果选择是无参的构造器的话，这里在new Node数组的时候会使用默认大小为<code>DEFAULT_CAPACITY</code>（16），然后乘以加载因子0.75为12，也就是说数组的可用大小为12。</span></p>
+<h2><span style="font-size: 18px;">3.3 put方法</span></h2>
+<p><span style="font-size: 18px;">使用ConcurrentHashMap最长用的也应该是put和get方法了吧，我们先来看看put方法是怎样实现的。调用put方法时实际具体实现是putVal方法，源码如下：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;"> Implementation for put and putIfAbsent </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">final</span> V putVal(K key, V value, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> onlyIfAbsent) {
+    </span><span style="color: #0000ff;">if</span> (key == <span style="color: #0000ff;">null</span> || value == <span style="color: #0000ff;">null</span>) <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NullPointerException();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">1\. 计算key的hash值</span>
+    <span style="color: #0000ff;">int</span> hash =<span style="color: #000000;"> spread(key.hashCode());
+    </span><span style="color: #0000ff;">int</span> binCount = 0<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt;[] tab =<span style="color: #000000;"> table;;) {
+        Node</span>&lt;K,V&gt; f; <span style="color: #0000ff;">int</span><span style="color: #000000;"> n, i, fh;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">2\. 如果当前table还没有初始化先调用initTable方法将tab进行初始化</span>
+        <span style="color: #0000ff;">if</span> (tab == <span style="color: #0000ff;">null</span> || (n = tab.length) == 0<span style="color: #000000;">)
+            tab </span>=<span style="color: #000000;"> initTable();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">3\. tab中索引为i的位置的元素为null，则直接使用CAS将值插入即可</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ((f = tabAt(tab, i = (n - 1) &amp; hash)) == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (casTabAt(tab, i, <span style="color: #0000ff;">null</span><span style="color: #000000;">,
+                         </span><span style="color: #0000ff;">new</span> Node&lt;K,V&gt;(hash, key, value, <span style="color: #0000ff;">null</span><span style="color: #000000;">)))
+                </span><span style="color: #0000ff;">break</span>;                   <span style="color: #008000;">//</span><span style="color: #008000;"> no lock when adding to empty bin</span>
+<span style="color: #000000;">        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4\. 当前正在扩容</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ((fh = f.hash) ==<span style="color: #000000;"> MOVED)
+            tab </span>=<span style="color: #000000;"> helpTransfer(tab, f);
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            V oldVal </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (f) {
+                </span><span style="color: #0000ff;">if</span> (tabAt(tab, i) ==<span style="color: #000000;"> f) {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">5\. 当前为链表，在链表中插入新的键值对</span>
+                    <span style="color: #0000ff;">if</span> (fh &gt;= 0<span style="color: #000000;">) {
+                        binCount </span>= 1<span style="color: #000000;">;
+                        </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt; e = f;; ++<span style="color: #000000;">binCount) {
+                            K ek;
+                            </span><span style="color: #0000ff;">if</span> (e.hash == hash &amp;&amp;<span style="color: #000000;">
+                                ((ek </span>= e.key) == key ||<span style="color: #000000;">
+                                 (ek </span>!= <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> key.equals(ek)))) {
+                                oldVal </span>=<span style="color: #000000;"> e.val;
+                                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">onlyIfAbsent)
+                                    e.val </span>=<span style="color: #000000;"> value;
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            }
+                            Node</span>&lt;K,V&gt; pred =<span style="color: #000000;"> e;
+                            </span><span style="color: #0000ff;">if</span> ((e = e.next) == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                                pred.next </span>= <span style="color: #0000ff;">new</span> Node&lt;K,V&gt;<span style="color: #000000;">(hash, key,
+                                                          value, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+                                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                            }
+                        }
+                    }
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 6.当前为红黑树，将新的键值对插入到红黑树中</span>
+                    <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (f <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> TreeBin) {
+                        Node</span>&lt;K,V&gt;<span style="color: #000000;"> p;
+                        binCount </span>= 2<span style="color: #000000;">;
+                        </span><span style="color: #0000ff;">if</span> ((p = ((TreeBin&lt;K,V&gt;<span style="color: #000000;">)f).putTreeVal(hash, key,
+                                                       value)) </span>!= <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                            oldVal </span>=<span style="color: #000000;"> p.val;
+                            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">onlyIfAbsent)
+                                p.val </span>=<span style="color: #000000;"> value;
+                        }
+                    }
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 7.插入完键值对后再根据实际大小看是否需要转换成红黑树</span>
+            <span style="color: #0000ff;">if</span> (binCount != 0<span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (binCount &gt;=<span style="color: #000000;"> TREEIFY_THRESHOLD)
+                    treeifyBin(tab, i);
+                </span><span style="color: #0000ff;">if</span> (oldVal != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> oldVal;
+                </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+            }
+        }
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">8.对当前容量大小进行检查，如果超过了临界值（实际大小*加载因子）就需要扩容 </span>
+    addCount(1L<span style="color: #000000;">, binCount);
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">put方法的代码量有点长，我们按照上面的分解的步骤一步步来看。从整体而言，为了解决线程安全的问题，ConcurrentHashMap使用了synchronzied和CAS的方式。在之前了解过HashMap以及1.8版本之前的ConcurrenHashMap都应该知道ConcurrentHashMap结构图，为了方面下面的讲解这里先直接给出，如果对这有疑问的话，可以在网上随便搜搜即可。</span></p>
+<p><span style="font-size: 18px;">[图片上传中...(image-326780-1575107646328-1)]</span></p>
+<p><span style="font-size: 18px;">&lt;figcaption&gt;&lt;/figcaption&gt;</span></p>
+<p><span style="font-size: 18px;">如图（图片摘自网络），ConcurrentHashMap是一个哈希桶数组，如果不出现哈希冲突的时候，每个元素均匀的分布在哈希桶数组中。当出现哈希冲突的时候，是标准的链地址的解决方式，将hash值相同的节点构成链表的形式，称为&ldquo;拉链法&rdquo;，另外，在1.8版本中为了防止拉链过长，当链表的长度大于8的时候会将链表转换成红黑树。table数组中的每个元素实际上是单链表的头结点或者红黑树的根节点。当插入键值对时首先应该定位到要插入的桶，即插入table数组的索引i处。那么，怎样计算得出索引i呢？当然是根据key的hashCode值。</span></p>
+<ol>
+<li><span style="font-size: 18px;">spread()重哈希，以减小Hash冲突</span></li>
+</ol>
+<p class="ztext-empty-paragraph"><span style="font-size: 18px;">&nbsp;</span></p>
+<p><span style="font-size: 18px;">我们知道对于一个hash表来说，hash值分散的不够均匀的话会大大增加哈希冲突的概率，从而影响到hash表的性能。因此通过spread方法进行了一次重hash从而大大减小哈希冲突的可能性。spread方法为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> spread(<span style="color: #0000ff;">int</span><span style="color: #000000;"> h) {
+    </span><span style="color: #0000ff;">return</span> (h ^ (h &gt;&gt;&gt; 16)) &amp;<span style="color: #000000;"> HASH_BITS;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">该方法主要是将key的hashCode的低16位于高16位进行异或运算，这样不仅能够使得hash值能够分散能够均匀减小hash冲突的概率，另外只用到了异或运算，在性能开销上也能兼顾，做到平衡的trade-off。</span></p>
+<blockquote><span style="font-size: 18px;">2.初始化table</span></blockquote>
+<p><span style="font-size: 18px;">紧接着到第2步，会判断当前table数组是否初始化了，没有的话就调用initTable进行初始化，该方法在上面已经讲过了。</span></p>
+<blockquote><span style="font-size: 18px;">3.能否直接将新值插入到table数组中</span></blockquote>
+<p><span style="font-size: 18px;">从上面的结构示意图就可以看出存在这样一种情况，如果插入值待插入的位置刚好所在的table数组为null的话就可以直接将值插入即可。那么怎样根据hash确定在table中待插入的索引i呢？很显然可以通过hash值与数组的长度取模操作，从而确定新值插入到数组的哪个位置。而之前我们提过ConcurrentHashMap的大小总是2的幂次方，(n - 1) &amp; hash运算等价于对长度n取模，也就是hash%n，但是位运算比取模运算的效率要高很多，Doug lea大师在设计并发容器的时候也是将性能优化到了极致，令人钦佩。</span></p>
+<p><span style="font-size: 18px;">确定好数组的索引i后，就可以可以tabAt()方法（该方法在上面已经说明了，有疑问可以回过头去看看）获取该位置上的元素，如果当前Node f为null的话，就可以直接用casTabAt方法将新值插入即可。</span></p>
+<blockquote><span style="font-size: 18px;">4.当前是否正在扩容</span></blockquote>
+<p><span style="font-size: 18px;">如果当前节点不为null，且该节点为特殊节点（forwardingNode）的话，就说明当前concurrentHashMap正在进行扩容操作，关于扩容操作，下面会作为一个具体的方法进行讲解。那么怎样确定当前的这个Node是不是特殊的节点了？是通过判断该节点的hash值是不是等于-1（MOVED）,代码为(fh = f.hash) == MOVED，对MOVED的解释在源码上也写的很清楚了：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> MOVED     = -1; <span style="color: #008000;">//</span><span style="color: #008000;"> hash for forwarding nodes</span></code></pre>
+
+<p>&nbsp;</p>
+
+<blockquote><span style="font-size: 18px;">5.当table[i]为链表的头结点，在链表中插入新值</span></blockquote>
+<p><span style="font-size: 18px;">在table[i]不为null并且不为forwardingNode时，并且当前Node f的hash值大于0（fh &gt;= 0）的话说明当前节点f为当前桶的所有的节点组成的链表的头结点。那么接下来，要想向ConcurrentHashMap插入新值的话就是向这个链表插入新值。通过synchronized (f)的方式进行加锁以实现线程安全性。往链表中插入节点的部分代码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> (fh &gt;= 0<span style="color: #000000;">) {
+    binCount </span>= 1<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt; e = f;; ++<span style="color: #000000;">binCount) {
+        K ek;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 找到hash值相同的key,覆盖旧值即可</span>
+        <span style="color: #0000ff;">if</span> (e.hash == hash &amp;&amp;<span style="color: #000000;">
+            ((ek </span>= e.key) == key ||<span style="color: #000000;">
+             (ek </span>!= <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> key.equals(ek)))) {
+            oldVal </span>=<span style="color: #000000;"> e.val;
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">onlyIfAbsent)
+                e.val </span>=<span style="color: #000000;"> value;
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+        Node</span>&lt;K,V&gt; pred =<span style="color: #000000;"> e;
+        </span><span style="color: #0000ff;">if</span> ((e = e.next) == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果到链表末尾仍未找到，则直接将新值插入到链表末尾即可</span>
+            pred.next = <span style="color: #0000ff;">new</span> Node&lt;K,V&gt;<span style="color: #000000;">(hash, key,
+                                      value, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+            </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">这部分代码很好理解，就是两种情况：1. 在链表中如果找到了与待插入的键值对的key相同的节点，就直接覆盖即可；2. 如果直到找到了链表的末尾都没有找到的话，就直接将待插入的键值对追加到链表的末尾即可</span></p>
+<blockquote><span style="font-size: 18px;">6.当table[i]为红黑树的根节点，在红黑树中插入新值</span></blockquote>
+<p><span style="font-size: 18px;">按照之前的数组+链表的设计方案，这里存在一个问题，即使负载因子和Hash算法设计的再合理，也免不了会出现拉链过长的情况，一旦出现拉链过长，甚至在极端情况下，查找一个节点会出现时间复杂度为O(n)的情况，则会严重影响ConcurrentHashMap的性能，于是，在JDK1.8版本中，对数据结构做了进一步的优化，引入了红黑树。而当链表长度太长（默认超过8）时，链表就转换为红黑树，利用红黑树快速增删改查的特点提高ConcurrentHashMap的性能，其中会用到红黑树的插入、删除、查找等算法。当table[i]为红黑树的树节点时的操作为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> (f <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> TreeBin) {
+    Node</span>&lt;K,V&gt;<span style="color: #000000;"> p;
+    binCount </span>= 2<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">if</span> ((p = ((TreeBin&lt;K,V&gt;<span style="color: #000000;">)f).putTreeVal(hash, key,
+                                   value)) </span>!= <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        oldVal </span>=<span style="color: #000000;"> p.val;
+        </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">onlyIfAbsent)
+            p.val </span>=<span style="color: #000000;"> value;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">首先在if中通过<code>f instanceof TreeBin</code>判断当前table[i]是否是树节点，这下也正好验证了我们在最上面介绍时说的TreeBin会对TreeNode做进一步封装，对红黑树进行操作的时候针对的是TreeBin而不是TreeNode。这段代码很简单，调用putTreeVal方法完成向红黑树插入新节点，同样的逻辑，如果在红黑树中存在于待插入键值对的Key相同（hash值相等并且equals方法判断为true）的节点的话，就覆盖旧值，否则就向红黑树追加新节点。</span></p>
+<blockquote><span style="font-size: 18px;">7.根据当前节点个数进行调整</span></blockquote>
+<p><span style="font-size: 18px;">当完成数据新节点插入之后，会进一步对当前链表大小进行调整，这部分代码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> (binCount != 0<span style="color: #000000;">) {
+    </span><span style="color: #0000ff;">if</span> (binCount &gt;=<span style="color: #000000;"> TREEIFY_THRESHOLD)
+        treeifyBin(tab, i);
+    </span><span style="color: #0000ff;">if</span> (oldVal != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> oldVal;
+    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">很容易理解，如果当前链表节点个数大于等于8（TREEIFY_THRESHOLD）的时候，就会调用treeifyBin方法将tabel[i]（第i个散列桶）拉链转换成红黑树。</span></p>
+<p><span style="font-size: 18px;">至此，关于Put方法的逻辑就基本说的差不多了，现在来做一些总结：</span></p>
+<p><span style="font-size: 18px;">整体流程：</span></p>
+<ol>
+<li><span style="font-size: 18px;">首先对于每一个放入的值，首先利用spread方法对key的hashcode进行一次hash计算，由此来确定这个值在 table中的位置；</span></li>
+<li><span style="font-size: 18px;">如果当前table数组还未初始化，先将table数组进行初始化操作；</span></li>
+<li><span style="font-size: 18px;">如果这个位置是null的，那么使用CAS操作直接放入；</span></li>
+<li><span style="font-size: 18px;">如果这个位置存在结点，说明发生了hash碰撞，首先判断这个节点的类型。如果该节点fh==MOVED(代表forwardingNode,数组正在进行扩容)的话，说明正在进行扩容；</span></li>
+<li><span style="font-size: 18px;">如果是链表节点（fh&gt;0）,则得到的结点就是hash值相同的节点组成的链表的头节点。需要依次向后遍历确定这个新加入的值所在位置。如果遇到key相同的节点，则只需要覆盖该结点的value值即可。否则依次向后遍历，直到链表尾插入这个结点；</span></li>
+<li><span style="font-size: 18px;">如果这个节点的类型是TreeBin的话，直接调用红黑树的插入方法进行插入新的节点；</span></li>
+<li><span style="font-size: 18px;">插入完节点之后再次检查链表长度，如果长度大于8，就把这个链表转换成红黑树；</span></li>
+<li><span style="font-size: 18px;">对当前容量大小进行检查，如果超过了临界值（实际大小*加载因子）就需要扩容。</span></li>
+</ol>
+<h2><span style="font-size: 18px;">3.4 get方法</span></h2>
+<p><span style="font-size: 18px;">看完了put方法再来看get方法就很容易了，用逆向思维去看就好，这样存的话我反过来这么取就好了。get方法源码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> V get(Object key) {
+    Node</span>&lt;K,V&gt;[] tab; Node&lt;K,V&gt; e, p; <span style="color: #0000ff;">int</span><span style="color: #000000;"> n, eh; K ek;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1\. 重hash</span>
+    <span style="color: #0000ff;">int</span> h =<span style="color: #000000;"> spread(key.hashCode());
+    </span><span style="color: #0000ff;">if</span> ((tab = table) != <span style="color: #0000ff;">null</span> &amp;&amp; (n = tab.length) &gt; 0 &amp;&amp;<span style="color: #000000;">
+        (e </span>= tabAt(tab, (n - 1) &amp; h)) != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2\. table[i]桶节点的key与查找的key相同，则直接返回</span>
+        <span style="color: #0000ff;">if</span> ((eh = e.hash) ==<span style="color: #000000;"> h) {
+            </span><span style="color: #0000ff;">if</span> ((ek = e.key) == key || (ek != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> key.equals(ek)))
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> e.val;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3\. 当前节点hash小于0说明为树节点，在红黑树中查找即可</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (eh &lt; 0<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">return</span> (p = e.find(h, key)) != <span style="color: #0000ff;">null</span> ? p.val : <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">while</span> ((e = e.next) != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4\. 从链表中查找，查找到则返回该节点的value，否则就返回null即可</span>
+            <span style="color: #0000ff;">if</span> (e.hash == h &amp;&amp;<span style="color: #000000;">
+                ((ek </span>= e.key) == key || (ek != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> key.equals(ek))))
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> e.val;
+        }
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">代码的逻辑请看注释，首先先看当前的hash桶数组节点即table[i]是否为查找的节点，若是则直接返回；若不是，则继续再看当前是不是树节点？通过看节点的hash值是否为小于0，如果小于0则为树节点。如果是树节点在红黑树中查找节点；如果不是树节点，那就只剩下为链表的形式的一种可能性了，就向后遍历查找节点，若查找到则返回节点的value即可，若没有找到就返回null。</span></p>
+<h2><span style="font-size: 18px;">3.5 transfer方法</span></h2>
+<p><span style="font-size: 18px;">当ConcurrentHashMap容量不足的时候，需要对table进行扩容。这个方法的基本思想跟HashMap是很像的，但是由于它是支持并发扩容的，所以要复杂的多。原因是它支持多线程进行扩容操作，而并没有加锁。我想这样做的目的不仅仅是为了满足concurrent的要求，而是希望利用并发处理去减少扩容带来的时间影响。transfer方法源码为：</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span> transfer(Node&lt;K,V&gt;[] tab, Node&lt;K,V&gt;<span style="color: #000000;">[] nextTab) {
+    </span><span style="color: #0000ff;">int</span> n =<span style="color: #000000;"> tab.length, stride;
+    </span><span style="color: #0000ff;">if</span> ((stride = (NCPU &gt; 1) ? (n &gt;&gt;&gt; 3) / NCPU : n) &lt;<span style="color: #000000;"> MIN_TRANSFER_STRIDE)
+        stride </span>= MIN_TRANSFER_STRIDE; <span style="color: #008000;">//</span><span style="color: #008000;"> subdivide range
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">1\. 新建Node数组，容量为之前的两倍</span>
+    <span style="color: #0000ff;">if</span> (nextTab == <span style="color: #0000ff;">null</span>) {            <span style="color: #008000;">//</span><span style="color: #008000;"> initiating</span>
+        <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+            Node</span>&lt;K,V&gt;[] nt = (Node&lt;K,V&gt;[])<span style="color: #0000ff;">new</span> Node&lt;?,?&gt;[n &lt;&lt; 1<span style="color: #000000;">];
+            nextTab </span>=<span style="color: #000000;"> nt;
+        } </span><span style="color: #0000ff;">catch</span> (Throwable ex) {      <span style="color: #008000;">//</span><span style="color: #008000;"> try to cope with OOME</span>
+            sizeCtl =<span style="color: #000000;"> Integer.MAX_VALUE;
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        }
+        nextTable </span>=<span style="color: #000000;"> nextTab;
+        transferIndex </span>=<span style="color: #000000;"> n;
+    }
+    </span><span style="color: #0000ff;">int</span> nextn =<span style="color: #000000;"> nextTab.length;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">2\. 新建forwardingNode引用，在之后会用到</span>
+    ForwardingNode&lt;K,V&gt; fwd = <span style="color: #0000ff;">new</span> ForwardingNode&lt;K,V&gt;<span style="color: #000000;">(nextTab);
+    </span><span style="color: #0000ff;">boolean</span> advance = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">boolean</span> finishing = <span style="color: #0000ff;">false</span>; <span style="color: #008000;">//</span><span style="color: #008000;"> to ensure sweep before committing nextTab</span>
+    <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0, bound = 0<span style="color: #000000;">;;) {
+        Node</span>&lt;K,V&gt; f; <span style="color: #0000ff;">int</span><span style="color: #000000;"> fh;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3\. 确定遍历中的索引i</span>
+        <span style="color: #0000ff;">while</span><span style="color: #000000;"> (advance) {
+            </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> nextIndex, nextBound;
+            </span><span style="color: #0000ff;">if</span> (--i &gt;= bound ||<span style="color: #000000;"> finishing)
+                advance </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ((nextIndex = transferIndex) &lt;= 0<span style="color: #000000;">) {
+                i </span>= -1<span style="color: #000000;">;
+                advance </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span><span style="color: #000000;"> (U.compareAndSwapInt
+                     (</span><span style="color: #0000ff;">this</span><span style="color: #000000;">, TRANSFERINDEX, nextIndex,
+                      nextBound </span>= (nextIndex &gt; stride ?<span style="color: #000000;">
+                                   nextIndex </span>- stride : 0<span style="color: #000000;">))) {
+                bound </span>=<span style="color: #000000;"> nextBound;
+                i </span>= nextIndex - 1<span style="color: #000000;">;
+                advance </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4.将原数组中的元素复制到新数组中去
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4.5 for循环退出，扩容结束修改sizeCtl属性</span>
+        <span style="color: #0000ff;">if</span> (i &lt; 0 || i &gt;= n || i + n &gt;=<span style="color: #000000;"> nextn) {
+            </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> sc;
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (finishing) {
+                nextTable </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                table </span>=<span style="color: #000000;"> nextTab;
+                sizeCtl </span>= (n &lt;&lt; 1) - (n &gt;&gt;&gt; 1<span style="color: #000000;">);
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+            </span><span style="color: #0000ff;">if</span> (U.compareAndSwapInt(<span style="color: #0000ff;">this</span>, SIZECTL, sc = sizeCtl, sc - 1<span style="color: #000000;">)) {
+                </span><span style="color: #0000ff;">if</span> ((sc - 2) != resizeStamp(n) &lt;&lt;<span style="color: #000000;"> RESIZE_STAMP_SHIFT)
+                    </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                finishing </span>= advance = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                i </span>= n; <span style="color: #008000;">//</span><span style="color: #008000;"> recheck before commit</span>
+<span style="color: #000000;">            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4.1 当前数组中第i个元素为null，用CAS设置成特殊节点forwardingNode(可以理解成占位符)</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ((f = tabAt(tab, i)) == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            advance </span>= casTabAt(tab, i, <span style="color: #0000ff;">null</span><span style="color: #000000;">, fwd);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">4.2 如果遍历到ForwardingNode节点  说明这个点已经被处理过了 直接跳过  这里是控制并发扩容的核心</span>
+        <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> ((fh = f.hash) ==<span style="color: #000000;"> MOVED)
+            advance </span>= <span style="color: #0000ff;">true</span>; <span style="color: #008000;">//</span><span style="color: #008000;"> already processed</span>
+        <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (f) {
+                </span><span style="color: #0000ff;">if</span> (tabAt(tab, i) ==<span style="color: #000000;"> f) {
+                    Node</span>&lt;K,V&gt;<span style="color: #000000;"> ln, hn;
+                    </span><span style="color: #0000ff;">if</span> (fh &gt;= 0<span style="color: #000000;">) {
+                        </span><span style="color: #008000;">//</span><span style="color: #008000;">4.3 处理当前节点为链表的头结点的情况，构造两个链表，一个是原链表  另一个是原链表的反序排列</span>
+                        <span style="color: #0000ff;">int</span> runBit = fh &amp;<span style="color: #000000;"> n;
+                        Node</span>&lt;K,V&gt; lastRun =<span style="color: #000000;"> f;
+                        </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt; p = f.next; p != <span style="color: #0000ff;">null</span>; p =<span style="color: #000000;"> p.next) {
+                            </span><span style="color: #0000ff;">int</span> b = p.hash &amp;<span style="color: #000000;"> n;
+                            </span><span style="color: #0000ff;">if</span> (b !=<span style="color: #000000;"> runBit) {
+                                runBit </span>=<span style="color: #000000;"> b;
+                                lastRun </span>=<span style="color: #000000;"> p;
+                            }
+                        }
+                        </span><span style="color: #0000ff;">if</span> (runBit == 0<span style="color: #000000;">) {
+                            ln </span>=<span style="color: #000000;"> lastRun;
+                            hn </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                        }
+                        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                            hn </span>=<span style="color: #000000;"> lastRun;
+                            ln </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                        }
+                        </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt; p = f; p != lastRun; p =<span style="color: #000000;"> p.next) {
+                            </span><span style="color: #0000ff;">int</span> ph = p.hash; K pk = p.key; V pv =<span style="color: #000000;"> p.val;
+                            </span><span style="color: #0000ff;">if</span> ((ph &amp; n) == 0<span style="color: #000000;">)
+                                ln </span>= <span style="color: #0000ff;">new</span> Node&lt;K,V&gt;<span style="color: #000000;">(ph, pk, pv, ln);
+                            </span><span style="color: #0000ff;">else</span><span style="color: #000000;">
+                                hn </span>= <span style="color: #0000ff;">new</span> Node&lt;K,V&gt;<span style="color: #000000;">(ph, pk, pv, hn);
+                        }
+                       </span><span style="color: #008000;">//</span><span style="color: #008000;">在nextTable的i位置上插入一个链表</span>
+<span style="color: #000000;">                       setTabAt(nextTab, i, ln);
+                       </span><span style="color: #008000;">//</span><span style="color: #008000;">在nextTable的i+n的位置上插入另一个链表</span>
+                       setTabAt(nextTab, i +<span style="color: #000000;"> n, hn);
+                       </span><span style="color: #008000;">//</span><span style="color: #008000;">在table的i位置上插入forwardNode节点  表示已经处理过该节点</span>
+<span style="color: #000000;">                       setTabAt(tab, i, fwd);
+                       </span><span style="color: #008000;">//</span><span style="color: #008000;">设置advance为true 返回到上面的while循环中 就可以执行i--操作</span>
+                       advance = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    }
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;">4.4 处理当前节点是TreeBin时的情况，操作和上面的类似</span>
+                    <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (f <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> TreeBin) {
+                        TreeBin</span>&lt;K,V&gt; t = (TreeBin&lt;K,V&gt;<span style="color: #000000;">)f;
+                        TreeNode</span>&lt;K,V&gt; lo = <span style="color: #0000ff;">null</span>, loTail = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                        TreeNode</span>&lt;K,V&gt; hi = <span style="color: #0000ff;">null</span>, hiTail = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                        </span><span style="color: #0000ff;">int</span> lc = 0, hc = 0<span style="color: #000000;">;
+                        </span><span style="color: #0000ff;">for</span> (Node&lt;K,V&gt; e = t.first; e != <span style="color: #0000ff;">null</span>; e =<span style="color: #000000;"> e.next) {
+                            </span><span style="color: #0000ff;">int</span> h =<span style="color: #000000;"> e.hash;
+                            TreeNode</span>&lt;K,V&gt; p = <span style="color: #0000ff;">new</span> TreeNode&lt;K,V&gt;<span style="color: #000000;">
+                                (h, e.key, e.val, </span><span style="color: #0000ff;">null</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+                            </span><span style="color: #0000ff;">if</span> ((h &amp; n) == 0<span style="color: #000000;">) {
+                                </span><span style="color: #0000ff;">if</span> ((p.prev = loTail) == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                                    lo </span>=<span style="color: #000000;"> p;
+                                </span><span style="color: #0000ff;">else</span><span style="color: #000000;">
+                                    loTail.next </span>=<span style="color: #000000;"> p;
+                                loTail </span>=<span style="color: #000000;"> p;
+                                </span>++<span style="color: #000000;">lc;
+                            }
+                            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                                </span><span style="color: #0000ff;">if</span> ((p.prev = hiTail) == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                                    hi </span>=<span style="color: #000000;"> p;
+                                </span><span style="color: #0000ff;">else</span><span style="color: #000000;">
+                                    hiTail.next </span>=<span style="color: #000000;"> p;
+                                hiTail </span>=<span style="color: #000000;"> p;
+                                </span>++<span style="color: #000000;">hc;
+                            }
+                        }
+                        ln </span>= (lc &lt;= UNTREEIFY_THRESHOLD) ?<span style="color: #000000;"> untreeify(lo) :
+                            (hc </span>!= 0) ? <span style="color: #0000ff;">new</span> TreeBin&lt;K,V&gt;<span style="color: #000000;">(lo) : t;
+                        hn </span>= (hc &lt;= UNTREEIFY_THRESHOLD) ?<span style="color: #000000;"> untreeify(hi) :
+                            (lc </span>!= 0) ? <span style="color: #0000ff;">new</span> TreeBin&lt;K,V&gt;<span style="color: #000000;">(hi) : t;
+                        setTabAt(nextTab, i, ln);
+                        setTabAt(nextTab, i </span>+<span style="color: #000000;"> n, hn);
+                        setTabAt(tab, i, fwd);
+                        advance </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                    }
+                }
+            }
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<p><span style="font-size: 18px;">代码逻辑请看注释,整个扩容操作分为两个部分：</span></p>
+<p><span style="font-size: 18px;">第一部分是构建一个nextTable,它的容量是原来的两倍，这个操作是单线程完成的。新建table数组的代码为:<code>Node&lt;K,V&gt;[] nt = (Node&lt;K,V&gt;[])new Node&lt;?,?&gt;[n &lt;&lt; 1]</code>,在原容量大小的基础上右移一位。</span></p>
+<p><span style="font-size: 18px;">第二个部分就是将原来table中的元素复制到nextTable中，主要是遍历复制的过程。 根据运算得到当前遍历的数组的位置i，然后利用tabAt方法获得i位置的元素再进行判断：</span></p>
+<ol>
+<li><span style="font-size: 18px;">如果这个位置为空，就在原table中的i位置放入forwardNode节点，这个也是触发并发扩容的关键点；</span></li>
+<li><span style="font-size: 18px;">如果这个位置是Node节点（fh&gt;=0），如果它是一个链表的头节点，就构造一个反序链表，把他们分别放在nextTable的i和i+n的位置上</span></li>
+<li><span style="font-size: 18px;">如果这个位置是TreeBin节点（fh&lt;0），也做一个反序处理，并且判断是否需要untreefi，把处理的结果分别放在nextTable的i和i+n的位置上</span></li>
+<li><span style="font-size: 18px;">遍历过所有的节点以后就完成了复制工作，这时让nextTable作为新的table，并且更新sizeCtl为新容量的0.75倍 ，完成扩容。设置为新容量的0.75倍代码为&nbsp;<code>sizeCtl = (n &lt;&lt; 1) - (n &gt;&gt;&gt; 1)</code>，仔细体会下是不是很巧妙，n&lt;&lt;1相当于n右移一位表示n的两倍即2n,n&gt;&gt;&gt;1左右一位相当于n除以2即0.5n,然后两者相减为2n-0.5n=1.5n,是不是刚好等于新容量的0.75倍即2n*0.75=1.5n。</span></li>
+</ol>
+<h2><span style="font-size: 18px;">3.6 与size相关的一些方法</span></h2>
+<p><span style="font-size: 18px;">对于ConcurrentHashMap来说，这个table里到底装了多少东西其实是个不确定的数量，因为不可能在调用size()方法的时候像GC的&ldquo;stop the world&rdquo;一样让其他线程都停下来让你去统计，因此只能说这个数量是个估计值。对于这个估计值，ConcurrentHashMap也是大费周章才计算出来的。</span></p>
+<p><span style="font-size: 18px;">为了统计元素个数，ConcurrentHashMap定义了一些变量和一个内部类</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * A padded cell for distributing counts.  Adapted from LongAdder
+ * and Striped64\.  See their internal docs for explanation.
+ </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+@sun.misc.Contended </span><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> CounterCell {
+    </span><span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> value;
+    CounterCell(</span><span style="color: #0000ff;">long</span> x) { value =<span style="color: #000000;"> x; }
+}
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">***************************************</span><span style="color: #008000;">*/</span> 
+
+<span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 实际上保存的是hashmap中的元素个数  利用CAS锁进行更新
+ 但它并不用返回当前hashmap的元素个数 
+
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">transient</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> baseCount;
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Spinlock (locked via CAS) used when resizing and/or creating CounterCells.
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">transient</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> cellsBusy;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Table of counter cells. When non-null, size is a power of 2.
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">private</span> <span style="color: #0000ff;">transient</span> <span style="color: #0000ff;">volatile</span> CounterCell[] counterCells;</code></pre>
+
+<p>&nbsp;</p>
+
+<blockquote><span style="font-size: 18px;">mappingCount与size方法</span></blockquote>
+<p><span style="font-size: 18px;">mappingCount与size方法的类似 从给出的注释来看，应该使用mappingCount代替size方法 两个方法都没有直接返回basecount 而是统计一次这个值，而这个值其实也是一个大概的数值，因此可能在统计的时候有其他线程正在执行插入或删除操作。</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> size() {
+    </span><span style="color: #0000ff;">long</span> n =<span style="color: #000000;"> sumCount();
+    </span><span style="color: #0000ff;">return</span> ((n &lt; 0L) ? 0<span style="color: #000000;"> :
+            (n </span>&gt; (<span style="color: #0000ff;">long</span>)Integer.MAX_VALUE) ?<span style="color: #000000;"> Integer.MAX_VALUE :
+            (</span><span style="color: #0000ff;">int</span><span style="color: #000000;">)n);
+}
+ </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Returns the number of mappings. This method should be used
+ * instead of {</span><span style="color: #808080;">@link</span><span style="color: #008000;"> #size} because a ConcurrentHashMap may
+ * contain more mappings than can be represented as an int. The
+ * value returned is an estimate; the actual count may differ if
+ * there are concurrent insertions or removals.
+ *
+ * </span><span style="color: #808080;">@return</span><span style="color: #008000;"> the number of mappings
+ * </span><span style="color: #808080;">@since</span><span style="color: #008000;"> 1.8
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> mappingCount() {
+    </span><span style="color: #0000ff;">long</span> n =<span style="color: #000000;"> sumCount();
+    </span><span style="color: #0000ff;">return</span> (n &lt; 0L) ? 0L : n; <span style="color: #008000;">//</span><span style="color: #008000;"> ignore transient negative values</span>
+<span style="color: #000000;">}
+
+ </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> sumCount() {
+    CounterCell[] as </span>=<span style="color: #000000;"> counterCells; CounterCell a;
+    </span><span style="color: #0000ff;">long</span> sum =<span style="color: #000000;"> baseCount;
+    </span><span style="color: #0000ff;">if</span> (as != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; as.length; ++<span style="color: #000000;">i) {
+            </span><span style="color: #0000ff;">if</span> ((a = as[i]) != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                sum </span>+= a.value;<span style="color: #008000;">//</span><span style="color: #008000;">所有counter的值求和</span>
+<span style="color: #000000;">        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> sum;
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<blockquote><span style="font-size: 18px;">addCount方法</span></blockquote>
+<p><span style="font-size: 18px;">在put方法结尾处调用了addCount方法，把当前ConcurrentHashMap的元素个数+1这个方法一共做了两件事,更新baseCount的值，检测是否进行扩容。</span></p>
+<src class="highlight">
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span> addCount(<span style="color: #0000ff;">long</span> x, <span style="color: #0000ff;">int</span><span style="color: #000000;"> check) {
+    CounterCell[] as; </span><span style="color: #0000ff;">long</span><span style="color: #000000;"> b, s;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">利用CAS方法更新baseCount的值 </span>
+    <span style="color: #0000ff;">if</span> ((as = counterCells) != <span style="color: #0000ff;">null</span> ||
+        !U.compareAndSwapLong(<span style="color: #0000ff;">this</span>, BASECOUNT, b = baseCount, s = b +<span style="color: #000000;"> x)) {
+        CounterCell a; </span><span style="color: #0000ff;">long</span> v; <span style="color: #0000ff;">int</span><span style="color: #000000;"> m;
+        </span><span style="color: #0000ff;">boolean</span> uncontended = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (as == <span style="color: #0000ff;">null</span> || (m = as.length - 1) &lt; 0 ||<span style="color: #000000;">
+            (a </span>= as[ThreadLocalRandom.getProbe() &amp; m]) == <span style="color: #0000ff;">null</span> ||
+            !(uncontended =<span style="color: #000000;">
+              U.compareAndSwapLong(a, CELLVALUE, v </span>= a.value, v +<span style="color: #000000;"> x))) {
+            fullAddCount(x, uncontended);
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        }
+        </span><span style="color: #0000ff;">if</span> (check &lt;= 1<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        s </span>=<span style="color: #000000;"> sumCount();
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果check值大于等于0 则需要检验是否需要进行扩容操作</span>
+    <span style="color: #0000ff;">if</span> (check &gt;= 0<span style="color: #000000;">) {
+        Node</span>&lt;K,V&gt;[] tab, nt; <span style="color: #0000ff;">int</span><span style="color: #000000;"> n, sc;
+        </span><span style="color: #0000ff;">while</span> (s &gt;= (<span style="color: #0000ff;">long</span>)(sc = sizeCtl) &amp;&amp; (tab = table) != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;">
+               (n </span>= tab.length) &lt;<span style="color: #000000;"> MAXIMUM_CAPACITY) {
+            </span><span style="color: #0000ff;">int</span> rs =<span style="color: #000000;"> resizeStamp(n);
+            </span><span style="color: #008000;">//
+</span>            <span style="color: #0000ff;">if</span> (sc &lt; 0<span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> ((sc &gt;&gt;&gt; RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||<span style="color: #000000;">
+                    sc </span>== rs + MAX_RESIZERS || (nt = nextTable) == <span style="color: #0000ff;">null</span> ||<span style="color: #000000;">
+                    transferIndex </span>&lt;= 0<span style="color: #000000;">)
+                    </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                 </span><span style="color: #008000;">//</span><span style="color: #008000;">如果已经有其他线程在执行扩容操作</span>
+                <span style="color: #0000ff;">if</span> (U.compareAndSwapInt(<span style="color: #0000ff;">this</span>, SIZECTL, sc, sc + 1<span style="color: #000000;">))
+                    transfer(tab, nt);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">当前线程是唯一的或是第一个发起扩容的线程  此时nextTable=null</span>
+            <span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (U.compareAndSwapInt(<span style="color: #0000ff;">this</span><span style="color: #000000;">, SIZECTL, sc,
+                                         (rs </span>&lt;&lt; RESIZE_STAMP_SHIFT) + 2<span style="color: #000000;">))
+                transfer(tab, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+            s </span>=<span style="color: #000000;"> sumCount();
+        }
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+<h2><span style="font-size: 18px;">4. 总结</span></h2>
+<p><span style="font-size: 18px;">JDK6,7中的ConcurrentHashmap主要使用Segment来实现减小锁粒度，分割成若干个Segment，在put的时候需要锁住Segment，get时候不加锁，使用volatile来保证可见性，当要统计全局时（比如size），首先会尝试多次计算modcount来确定，这几次尝试中，是否有其他线程进行了修改操作，如果没有，则直接返回size。如果有，则需要依次锁住所有的Segment来计算。</span></p>
+<p><span style="font-size: 18px;">1.8之前put定位节点时要先定位到具体的segment，然后再在segment中定位到具体的桶。而在1.8的时候摒弃了segment臃肿的设计，直接针对的是Node[] tale数组中的每一个桶，进一步减小了锁粒度。并且防止拉链过长导致性能下降，当链表长度大于8的时候采用红黑树的设计。</span></p>
+<p><span style="font-size: 18px;">主要设计上的变化有以下几点:</span></p>
+<ol>
+<li><span style="font-size: 18px;">不采用segment而采用node，锁住node来实现减小锁粒度。</span></li>
+<li><span style="font-size: 18px;">设计了MOVED状态 当resize的中过程中 线程2还在put数据，线程2会帮助resize。</span></li>
+<li><span style="font-size: 18px;">使用3个CAS操作来确保node的一些操作的原子性，这种方式代替了锁。</span></li>
+<li><span style="font-size: 18px;">sizeCtl的不同值来代表不同含义，起到了控制的作用。</span></li>
+<li><span style="font-size: 18px;">采用synchronized而不是ReentrantLock</span></li>
+</ol>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

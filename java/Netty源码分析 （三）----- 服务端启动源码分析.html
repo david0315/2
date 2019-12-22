@@ -1,0 +1,952 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Netty源码分析 （三）----- 服务端启动源码分析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Netty源码分析 （三）----- 服务端启动源码分析</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11460395.html</div><br>
+    <p>本文接着前两篇文章来讲，主要讲服务端类剩下的部分，我们还是来先看看服务端的代码</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Created by chenhao on 2019/9/4.
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SimpleServer {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+        EventLoopGroup bossGroup </span>= <span style="color: #0000ff;">new</span> NioEventLoopGroup(1<span style="color: #000000;">);
+        EventLoopGroup workerGroup </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> NioEventLoopGroup();
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            ServerBootstrap b </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServerBootstrap();
+            b.group(bossGroup, workerGroup)
+                    .channel(NioServerSocketChannel.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">)
+                    .handler(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleServerHandler())
+                    .childHandler(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleServerInitializer())
+                    .option(ChannelOption.SO_BACKLOG, </span>128<span style="color: #000000;">)
+                    .childOption(ChannelOption.SO_KEEPALIVE, </span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+
+            ChannelFuture f </span>= b.bind(8888<span style="color: #000000;">).sync();
+
+            f.channel().closeFuture().sync();
+        } </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+        }
+    }
+}</span></code></pre>
+
+<p>在前面两篇博文中从源码的角度分析了如下几行代码主要做了哪些工作。</p>
+<src class="cnblogs_code">
+<pre><code>EventLoopGroup bossGroup = <span style="color: #0000ff;">new</span> NioEventLoopGroup(1<span style="color: #000000;">);
+EventLoopGroup workerGroup </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> NioEventLoopGroup();
+ServerBootstrap b </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServerBootstrap();
+b.group(bossGroup, workerGroup)
+        .channel(NioServerSocketChannel.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">)
+        .handler(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleServerHandler())
+        .childHandler(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleServerInitializer())
+        .option(ChannelOption.SO_BACKLOG, </span>128<span style="color: #000000;">)
+        .childOption(ChannelOption.SO_KEEPALIVE, </span><span style="color: #0000ff;">true</span>);</code></pre>
+
+<p>本篇博文将从源码的角度分析<code>ChannelFuture f = b.bind(8888).sync()</code>&nbsp;的内部实现。这样就完成了Netty服务器端启动过程的源码分析。</p>
+<h2 id="源码分析channelfuture-f-bbind8888sync">源码分析ChannelFuture f = b.bind(8888).sync()</h2>
+<p><strong>AbstractBootstrap.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> ChannelFuture bind(<span style="color: #0000ff;">int</span><span style="color: #000000;"> inetPort) {
+    </span><span style="color: #0000ff;">return</span> bind(<span style="color: #0000ff;">new</span><span style="color: #000000;"> InetSocketAddress(inetPort));
+}</span></code></pre>
+
+<p>我们接着看重载的bind</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture bind(SocketAddress localAddress) {
+    validate();</span><span style="color: #008000;">//</span><span style="color: #008000;">相关参数的检查</span>
+    <span style="color: #0000ff;">if</span> (localAddress == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("localAddress"<span style="color: #000000;">);
+    }
+    </span><span style="color: #0000ff;">return</span> doBind(localAddress);<span style="color: #008000;">//</span><span style="color: #008000;">下面将分析</span>
+}</code></pre>
+
+<p>该函数主要看两点：validate()和doBind(localAddress)</p>
+<h3>validate()方法</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">函数功能：检查相关参数是否设置了</span>
+@SuppressWarnings("unchecked"<span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> B validate() {
+    </span><span style="color: #0000ff;">if</span> (group == <span style="color: #0000ff;">null</span>) {<span style="color: #008000;">//</span><span style="color: #008000;">这里的group指的是：b.group(bossGroup, workerGroup)代码中的bossGroup</span>
+        <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalStateException("group not set"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">if</span> (channelFactory == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> IllegalStateException("channel or channelFactory not set"<span style="color: #000000;">);
+    }
+    </span><span style="color: #0000ff;">return</span> (B) <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>该方法主要检查了两个参数，一个是group，一个是channelFactory，在这里可以想一想这两个参数是在哪里以及何时被赋值的？答案是在如下代码块中被赋值的，其中是将bossGroup赋值给了group,将BootstrapChannelFactory赋值给了channelFactory.</p>
+<src class="cnblogs_code">
+<pre><code>ServerBootstrap b = <span style="color: #0000ff;">new</span><span style="color: #000000;"> ServerBootstrap();
+                b.group(bossGroup, workerGroup)
+                        .channel(NioServerSocketChannel.</span><span style="color: #0000ff;">class</span>)</code></pre>
+
+<h3>doBind(localAddress)方法</h3>
+<p>doBind方法的源代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> ChannelFuture doBind(<span style="color: #0000ff;">final</span><span style="color: #000000;"> SocketAddress localAddress) {
+    </span><span style="color: #0000ff;">final</span> ChannelFuture regFuture = initAndRegister();<span style="color: #008000;">//</span><span style="color: #008000;">1</span>
+    <span style="color: #0000ff;">final</span> Channel channel = regFuture.channel();<span style="color: #008000;">//</span><span style="color: #008000;">2</span>
+    <span style="color: #0000ff;">if</span> (regFuture.cause() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> regFuture;
+    }
+
+    </span><span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise;
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (regFuture.isDone()) {
+        promise </span>=<span style="color: #000000;"> channel.newPromise();
+        doBind0(regFuture, channel, localAddress, promise);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Registration future is almost always fulfilled already, but just in case it's not.</span>
+        promise = <span style="color: #0000ff;">new</span><span style="color: #000000;"> PendingRegistrationPromise(channel);
+        regFuture.addListener(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ChannelFutureListener() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> operationComplete(ChannelFuture future) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                doBind0(regFuture, channel, localAddress, promise);
+            }
+        });
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+} </span></code></pre>
+
+<p>doBind这个函数是我们要分析的重点，这个函数的主要工作有如下几点：</p>
+<p>1、通过initAndRegister()方法得到一个ChannelFuture的实例regFuture。</p>
+<p>2、通过regFuture.cause()方法判断是否在执行initAndRegister方法时产生来异常。如果产生来异常，则直接返回，如果没有产生异常则进行第3步。</p>
+<p>3、通过regFuture.isDone()来判断initAndRegister方法是否执行完毕，如果执行完毕来返回true，然后调用doBind0进行socket绑定。如果没有执行完毕则返回false进行第4步。</p>
+<p>4、regFuture会添加一个ChannelFutureListener监听，当initAndRegister执行完成时，调用operationComplete方法并执行doBind0进行socket绑定。</p>
+<p>第3、4点想干的事就是一个：调用doBind0方法进行socket绑定。</p>
+<p>下面将分成4部分对每行代码具体做了哪些工作进行详细分析。</p>
+<h3 id="第1部分-final-channelfuture-regfuture-initandregister">initAndRegister()</h3>
+<p>该方法的具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelFuture initAndRegister() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">结论：这里的channel为一个NioServerSocketChannel对象，具体分析见后面</span>
+   <strong> <span style="color: #0000ff;">final</span> Channel channel = channelFactory().newChannel();<span style="color: #008000;">//</span><span style="color: #008000;">1</span></strong>
+    <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+       <strong> init(channel);</strong></span><strong><span style="color: #008000;">//</span><span style="color: #008000;">2</span></strong>
+    } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        channel.unsafe().closeForcibly();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor</span>
+        <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
+    }
+
+    <strong>ChannelFuture regFuture </strong></span><strong>= group().register(channel);<span style="color: #008000;">//</span><span style="color: #008000;">3</span></strong>
+    <span style="color: #0000ff;">if</span> (regFuture.cause() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (channel.isRegistered()) {
+            channel.close();
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            channel.unsafe().closeForcibly();
+        }
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> regFuture;
+} </span></code></pre>
+
+<p>通过函数名以及内部调用的函数可以猜测该函数干了两件事情：</p>
+<p>1、初始化一个Channel，要想初始化，肯定要先得到一个Channel。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">final</span> Channel channel = channelFactory().newChannel();<span style="color: #008000;">//</span><span style="color: #008000;">1</span>
+init(channel);<span style="color: #008000;">//</span><span style="color: #008000;">2</span></code></pre>
+
+<p>2、将Channel进行注册。</p>
+<src class="cnblogs_code">
+<pre><code>ChannelFuture regFuture = group().register(channel);<span style="color: #008000;">//</span><span style="color: #008000;">3</span></code></pre>
+
+<p>下面我们将分析这几行代码内部干来些什么。</p>
+<h4>final Channel channel = channelFactory().newChannel();</h4>
+<p>在上一篇文章中（<a id="post_title_link_11459808" href="https://www.cnblogs.com/java-chen-hao/p/11459808.html">Netty源码分析 （二）----- ServerBootstrap</a>）分析中，我们知道b.channel(NioServerSocketChannel.class)的功能为：设置父类属性channelFactory 为： BootstrapChannelFactory类的对象。其中这里BootstrapChannelFactory对象中包括一个clazz属性为：<strong>NioServerSocketChannel.class</strong></p>
+<p>因此，final Channel channel = channelFactory().newChannel();就是调用的BootstrapChannelFactory类中的newChannel()方法，该方法的具体内容为：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> BootstrapChannelFactory&lt;T <span style="color: #0000ff;">extends</span> Channel&gt; <span style="color: #0000ff;">implements</span> ChannelFactory&lt;T&gt;<span style="color: #000000;"> {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Class&lt;? <span style="color: #0000ff;">extends</span> T&gt;<span style="color: #000000;"> clazz;
+
+    BootstrapChannelFactory(Class</span>&lt;? <span style="color: #0000ff;">extends</span> T&gt;<span style="color: #000000;"> clazz) {
+        </span><span style="color: #0000ff;">this</span>.clazz =<span style="color: #000000;"> clazz;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> T <strong>newChannel()</strong> {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><strong><span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> clazz.newInstance();</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ChannelException("Unable to create Channel from class " +<span style="color: #000000;"> clazz, t);
+        }
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String toString() {
+        </span><span style="color: #0000ff;">return</span> StringUtil.simpleClassName(clazz) + ".class"<span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>看到这个类，我们可以得到的结论：<code>final Channel channel = channelFactory().newChannel();</code>这行代码的作用为通过反射产生来一个NioServerSocketChannel类的实例。</p>
+<h4><strong>NioServerSocketChannel构造器</strong></h4>
+<p>下面将看下NioServerSocketChannel类的构造函数做了哪些工作。</p>
+<p>NioServerSocketChannel类的继承体系结构如下：</p>
+<p><strong><img src="./images/Netty源码分析 （三）----- 服务端启动源码分析0.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>其无参构造函数如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> NioServerSocketChannel() {
+    </span><span style="color: #0000ff;">this</span><span style="color: #000000;">(newSocket(DEFAULT_SELECTOR_PROVIDER));
+}</span></code></pre>
+
+<p>无参构造函数中<code>SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider()</code>。</p>
+<p>函数newSocket的功能为：利用SelectorProvider产生一个SocketChannelImpl对象。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> ServerSocketChannel newSocket(SelectorProvider provider) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> provider.openServerSocketChannel();
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ChannelException(
+                </span>"Failed to open a server socket."<span style="color: #000000;">, e);
+    }
+} 
+
+</span><span style="color: #0000ff;">public</span> SocketChannel openSocketChannel() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> IOException {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> SocketChannelImpl(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>无参构造函数通过newSocket函数产生了一个SocketChannelImpl对象</p>
+<p>然后调用了如下构造函数，我们继续看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> NioServerSocketChannel(ServerSocketChannel channel) {
+    </span><span style="color: #0000ff;">super</span>(<span style="color: #0000ff;">null</span><span style="color: #000000;">, channel, SelectionKey.OP_ACCEPT);
+    config </span>= <span style="color: #0000ff;">new</span> NioServerSocketChannelConfig(<span style="color: #0000ff;">this</span><span style="color: #000000;">, javaChannel().socket());
+} 
+</span><span style="color: #008000;">//</span><span style="color: #008000;">父类AbstractNioMessageChannel的构造函数</span>
+<span style="color: #0000ff;">protected</span> AbstractNioMessageChannel(Channel parent, SelectableChannel ch, <span style="color: #0000ff;">int</span><span style="color: #000000;"> readInterestOp) {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(parent, ch, readInterestOp);
+}   
+</span><span style="color: #008000;">//</span><span style="color: #008000;">父类 AbstractNioChannel的构造函数</span>
+<span style="color: #0000ff;">protected</span> AbstractNioChannel(Channel parent, SelectableChannel ch, <span style="color: #0000ff;">int</span><span style="color: #000000;"> readInterestOp) {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(parent);
+    </span><span style="color: #0000ff;">this</span>.ch =<span style="color: #000000;"> ch;
+    </span><span style="color: #0000ff;">this</span>.readInterestOp = readInterestOp;<span style="color: #008000;">//</span><span style="color: #008000;">SelectionKey.OP_ACCEPT</span>
+    <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ch.configureBlocking(</span><span style="color: #0000ff;">false</span>);<span style="color: #008000;">//</span><span style="color: #008000;">设置当前的ServerSocketChannel为非阻塞的</span>
+    } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            ch.close();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e2) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isWarnEnabled()) {
+                logger.warn(
+                        </span>"Failed to close a partially initialized socket."<span style="color: #000000;">, e2);
+            }
+        }
+
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ChannelException("Failed to enter non-blocking mode."<span style="color: #000000;">, e);
+    }
+} 
+</span><span style="color: #008000;">//</span><span style="color: #008000;">父类AbstractChannel的构造函数</span>
+<span style="color: #0000ff;">protected</span><span style="color: #000000;"> AbstractChannel(Channel parent) {
+    </span><span style="color: #0000ff;">this</span>.parent =<span style="color: #000000;"> parent;
+    unsafe </span>=<span style="color: #000000;"> newUnsafe();
+    pipeline </span>= <span style="color: #0000ff;">new</span> DefaultChannelPipeline(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>new NioServerSocketChannel()产生一个实例对象时，调用上面这么多构造函数主要干了两件事情：</p>
+<p>1、产生来一个SocketChannelImpl类的实例，设置到ch属性中，并设置为非阻塞的。</p>
+<src class="cnblogs_code">
+<pre><code><span class="hljs-keyword">this.ch = ch;</span><br />ch.configureBlocking(<span style="color: #0000ff;">false</span>);</code></pre>
+
+<p>2、设置了config属性</p>
+<src class="cnblogs_code">
+<pre><code>config = <span style="color: #0000ff;">new</span> NioServerSocketChannelConfig(<span style="color: #0000ff;">this</span>, javaChannel().socket()</code></pre>
+
+<p>3、设置SelectionKey.OP_ACCEPT事件</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">this</span>.readInterestOp = readInterestOp;<span style="color: #008000;">//</span><span style="color: #008000;">SelectionKey.OP_ACCEPT</span></code></pre>
+
+<p>4、设置unsafe属性</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> AbstractNioUnsafe newUnsafe() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NioMessageUnsafe();
+}</span></code></pre>
+
+<p>主要作用为：用来负责底层的connect、register、read和write等操作。</p>
+<p>5、设置pipeline属性</p>
+<src class="cnblogs_code">
+<pre><code>pipeline = <span style="color: #0000ff;">new</span> DefaultChannelPipeline(<span style="color: #0000ff;">this</span>);</code></pre>
+
+<p>每个Channel都有自己的pipeline，当有请求事件发生时，pipeline负责调用相应的hander进行处理。</p>
+<p>这些属性在后面都会用到，至于NioServerSocketChannel 对象中的unsafe、pipeline属性的具体实现后面进行分析。</p>
+<p><span style="color: #0000ff;">结论：<strong><span style="color: #000000;">final Channel channel = channelFactory().newChannel();</span></strong>这行代码的作用为通过反射产生来一个NioServerSocketChannel类的实例，其中这个NioServerSocketChannel类对象有这样几个属性：SocketChannel、NioServerSocketChannelConfig 、SelectionKey.OP_ACCEPT事件、NioMessageUnsafe、DefaultChannelPipeline</span></p>
+<h3>init(channel)</h3>
+<p>init方法的具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">void</span> init(Channel channel) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">1、设置新接入channel的option</span>
+    <span style="color: #0000ff;">final</span> Map&lt;ChannelOption&lt;?&gt;, Object&gt; options =<span style="color: #000000;"> options();
+    </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (options) {
+        channel.config().setOptions(options);</span><span style="color: #008000;">//</span><span style="color: #008000;">NioServerSocketChannelConfig</span>
+<span style="color: #000000;">    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">2、设置新接入channel的attr</span>
+    <span style="color: #0000ff;">final</span> Map&lt;AttributeKey&lt;?&gt;, Object&gt; attrs =<span style="color: #000000;"> attrs();
+    </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (attrs) {
+        </span><span style="color: #0000ff;">for</span> (Entry&lt;AttributeKey&lt;?&gt;, Object&gt;<span style="color: #000000;"> e: attrs.entrySet()) {
+            @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+            AttributeKey</span>&lt;Object&gt; key = (AttributeKey&lt;Object&gt;<span style="color: #000000;">) e.getKey();
+            channel.attr(key).set(e.getValue());
+        }
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">3、设置handler到pipeline上</span>
+    ChannelPipeline p =<span style="color: #000000;"> channel.pipeline();
+    </span><span style="color: #0000ff;">if</span> (handler() != <span style="color: #0000ff;">null</span>) {<span style="color: #008000;">//</span><span style="color: #008000;">这里的handler()返回的就是第二部分.handler(new SimpleServerHandler())所设置的SimpleServerHandler</span>
+<span style="color: #000000;">        p.addLast(handler());
+    }
+
+    </span><span style="color: #0000ff;">final</span> EventLoopGroup currentChildGroup =<span style="color: #000000;"> childGroup;
+    </span><span style="color: #0000ff;">final</span> ChannelHandler currentChildHandler =<span style="color: #000000;"> childHandler;
+    </span><span style="color: #0000ff;">final</span> Entry&lt;ChannelOption&lt;?&gt;, Object&gt;<span style="color: #000000;">[] currentChildOptions;
+    </span><span style="color: #0000ff;">final</span> Entry&lt;AttributeKey&lt;?&gt;, Object&gt;<span style="color: #000000;">[] currentChildAttrs;
+    </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (childOptions) {
+        currentChildOptions </span>=<span style="color: #000000;"> childOptions.entrySet().toArray(newOptionArray(childOptions.size()));
+    }
+    </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (childAttrs) {
+        currentChildAttrs </span>=<span style="color: #000000;"> childAttrs.entrySet().toArray(newAttrArray(childAttrs.size()));
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">p.addLast()向serverChannel的流水线处理器中加入了一个ServerBootstrapAcceptor，从名字上就可以看出来，这是一个接入器，专门接受新请求，把新的请求扔给某个事件循环器</span>
+    p.addLast(<span style="color: #0000ff;">new</span> ChannelInitializer&lt;Channel&gt;<span style="color: #000000;">() {
+        @Override
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> initChannel(Channel ch) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+            ch.pipeline().addLast(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ServerBootstrapAcceptor(
+                    currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
+        }
+    });
+}</span></code></pre>
+
+<p>该函数的功能为：</p>
+<p>1、设置channel的options</p>
+<p>如果没有设置，则options为空，该属性在ServerBootstrap类中的定义如下</p>
+<src class="cnblogs_code">
+<pre><code>Map&lt;ChannelOption&lt;?&gt;, Object&gt; options = <span style="color: #0000ff;">new</span> LinkedHashMap&lt;ChannelOption&lt;?&gt;, Object&gt;();</code></pre>
+
+<p>options可能如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> &lt;T&gt; <span style="color: #0000ff;">boolean</span> setOption(ChannelOption&lt;T&gt;<span style="color: #000000;"> option, T value) {
+    validate(option, value);
+
+    </span><span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> CONNECT_TIMEOUT_MILLIS) {
+        setConnectTimeoutMillis((Integer) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> MAX_MESSAGES_PER_READ) {
+        setMaxMessagesPerRead((Integer) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> WRITE_SPIN_COUNT) {
+        setWriteSpinCount((Integer) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> ALLOCATOR) {
+        setAllocator((ByteBufAllocator) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> RCVBUF_ALLOCATOR) {
+        setRecvByteBufAllocator((RecvByteBufAllocator) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> AUTO_READ) {
+        setAutoRead((Boolean) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> AUTO_CLOSE) {
+        setAutoClose((Boolean) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> WRITE_BUFFER_HIGH_WATER_MARK) {
+        setWriteBufferHighWaterMark((Integer) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> WRITE_BUFFER_LOW_WATER_MARK) {
+        setWriteBufferLowWaterMark((Integer) value);
+    } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (option ==<span style="color: #000000;"> MESSAGE_SIZE_ESTIMATOR) {
+        setMessageSizeEstimator((MessageSizeEstimator) value);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>2、设置channel的attrs</p>
+<p>如果没有设置，则attrs为空，该属性在ServerBootstrap类中的定义如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> Map&lt;AttributeKey&lt;?&gt;, Object&gt; attrs = <span style="color: #0000ff;">new</span> LinkedHashMap&lt;AttributeKey&lt;?&gt;, Object&gt;();</code></pre>
+
+<p>3、设置handler到channel的pipeline上</p>
+<p>其中，这里的handler为：在博文（<a id="post_title_link_11459808" href="https://www.cnblogs.com/java-chen-hao/p/11459808.html">Netty源码分析 （二）----- ServerBootstrap</a>）中分析的通过<code>b.handler(new SimpleServerHandler())</code>所设置的SimpleServerHandler对象</p>
+<p>4、在pipeline上添加来一个ChannelInitializer对象，其中重写来initChannel方法。该方法通过p.addLast()向serverChannel的流水线处理器中加入了一个 ServerBootstrapAcceptor， <br />从名字上就可以看出来，这是一个接入器，专门接受新请求，把新的请求扔给某个事件循环器</p>
+<p><span style="color: #0000ff;">看到这里，我们发现其实init只是初始化了一些基本的配置和属性，以及在pipeline上加入了一个接入器，用来专门接受新连接，并没有启动服务.</span></p>
+<h3>group().register(channel)</h3>
+<p>回到 initAndRegister 方法中，继续看 config().group().register(channel) 这行代码，config 方法返回了 ServerBootstrapConfig，这个 ServerBootstrapConfig 调用了 group 方法，实际上就是 bossGroup。bossGroup 调用了 register 方法。</p>
+<p>前面的分析我们知道group为：NioEvenLoopGroup，其继承MultithreadEventLoopGroup，该类中的register方法如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture register(Channel channel) {
+    </span><span style="color: #0000ff;">return</span> next().register(channel);<span style="color: #008000;">//</span><span style="color: #008000;">调用了NioEvenLoop对象中的register方法,NioEventLoop extends SingleThreadEventLoop</span>
+}</code></pre>
+
+<p>next()方法的代码如下，其功能为选择下一个NioEventLoop对象。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> EventExecutor next() {
+    </span><span style="color: #0000ff;">return</span> chooser.next();<span style="color: #008000;">//</span><span style="color: #008000;">调用MultithreadEventExecutorGroup中的next方法</span>
+} </code></pre>
+
+<p>根据线程个数nThreads是否为2的幂次方来选择chooser，其中这两个chooser为： PowerOfTwoEventExecutorChooser、GenericEventExecutorChooser，这两个chooser功能都是一样，只是求余的方式不一样。</p>
+<p>next()方法返回的是一个NioEvenLoop对象</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> PowerOfTwoEventExecutorChooser <span style="color: #0000ff;">implements</span><span style="color: #000000;"> EventExecutorChooser {
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> EventExecutor next() {
+        </span><span style="color: #0000ff;">return</span><strong> children[childIndex.getAndIncrement() &amp; children.length - 1];</strong><span style="color: #008000;">//</span><span style="color: #008000;">利用2的N次方法的特点，使用&amp;求余更快。</span>
+<span style="color: #000000;">    }
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">class</span> GenericEventExecutorChooser <span style="color: #0000ff;">implements</span><span style="color: #000000;"> EventExecutorChooser {
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> EventExecutor next() {
+        </span><span style="color: #0000ff;">return</span> <strong>children[Math.abs(childIndex.getAndIncrement() %</strong><span style="color: #000000;"><strong> children.length)];</strong>
+    }
+}</span></code></pre>
+
+<p><span style="color: #0000ff;">结论：由于NioEventLoopGroup中维护着多个NioEventLoop，next方法回调用chooser策略找到下一个NioEventLoop，并执行该对象的register方法进行注册。</span></p>
+<p>由于NioEventLoop extends SingleThreadEventLoop，NioEventLoop没有重写该方法，因此看 SingleThreadEventLoop类中的register方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture register(Channel channel) {
+    </span><span style="color: #0000ff;">return</span> register(channel, <span style="color: #0000ff;">new</span> DefaultChannelPromise(channel, <span style="color: #0000ff;">this</span><span style="color: #000000;">));
+}
+
+@Override
+</span><span style="color: #0000ff;">public</span> ChannelFuture register(<span style="color: #0000ff;">final</span> Channel channel, <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise) {
+    </span><span style="color: #0000ff;">if</span> (channel == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("channel"<span style="color: #000000;">);
+    }
+    </span><span style="color: #0000ff;">if</span> (promise == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("promise"<span style="color: #000000;">);
+    }
+
+    <strong>channel.unsafe().register(</strong></span><strong><span style="color: #0000ff;">this</span><span style="color: #000000;">, promise);
+    </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+}</span></code></pre>
+
+<p>在本博文第1部分的NioServerSocketChannel实例化中设置来unsafe属性，具体是调用如下的方法来设置的，因此这里的<code>channel.unsafe()</code>就是NioMessageUnsafe实例。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> AbstractNioUnsafe newUnsafe() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> NioMessageUnsafe();
+}</span></code></pre>
+
+<p>channel.unsafe().register(this, promise)这行代码调用的是AbstractUnsafe类中的register方法，具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span> register(EventLoop eventLoop, <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise) {
+    </span><span style="color: #0000ff;">if</span> (eventLoop == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("eventLoop"<span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">判断该channel是否已经被注册到EventLoop中</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (isRegistered()) {
+        promise.setFailure(</span><span style="color: #0000ff;">new</span> IllegalStateException("registered to an event loop already"<span style="color: #000000;">));
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">isCompatible(eventLoop)) {
+        promise.setFailure(
+                </span><span style="color: #0000ff;">new</span> IllegalStateException("incompatible event loop type: " +<span style="color: #000000;"> eventLoop.getClass().getName()));
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">1 将eventLoop设置在NioServerSocketChannel上</span>
+    AbstractChannel.<span style="color: #0000ff;">this</span>.eventLoop =<span style="color: #000000;"> eventLoop;
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">判断当前线程是否为该EventLoop中拥有的线程，如果是，则直接注册，如果不是，则添加一个任务到该线程中</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (<strong>eventLoop.inEventLoop()</strong>) {
+       <strong> register0(promise);</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            eventLoop.execute(</span><span style="color: #0000ff;">new</span> OneTimeTask() { <span style="color: #008000;">//</span><span style="color: #008000;">重点</span>
+<span style="color: #000000;">                @Override
+                </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                    register0(promise);</span><span style="color: #008000;">//</span><span style="color: #008000;">分析</span>
+<span style="color: #000000;">                }
+            });
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+            logger.warn(
+                    </span>"Force-closing a channel whose registration task was not accepted by an event loop: {}"<span style="color: #000000;">,
+                    AbstractChannel.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">, t);
+            closeForcibly();
+            closeFuture.setClosed();
+            safeSetFailure(promise, t);
+        }
+    }
+}</span></code></pre>
+
+<p>上面的重点是register0(promise)方法。基本逻辑为：</p>
+<p>1、通过调用eventLoop.inEventLoop()方法判断当前线程是否为该EventLoop中拥有的线程，如果是，则直接注册，如果不是，说明该EventLoop在等待并没有执行权，则进行第二步。</p>
+<p><strong>AbstractEventExecutor.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> inEventLoop() {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> inEventLoop(<strong>Thread.currentThread()</strong>);
+}</span></code></pre>
+
+<p><strong>SingleThreadEventExecutor.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> inEventLoop(Thread thread) {
+    </span><span style="color: #0000ff;">return</span> thread == <span style="color: #0000ff;">this</span><span style="color: #000000;">.thread;
+} </span></code></pre>
+
+<p>2、既然该EventLoop中的线程此时没有执行权，但是我们可以提交一个任务到该线程中，等该EventLoop的线程有执行权的时候就自然而然的会执行此任务，而该任务负责调用register0方法，这样也就达到了调用register0方法的目的。</p>
+<p>下面看register0这个方法，具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> register0(ChannelPromise promise) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> check if the channel is still open as it could be closed in the mean time when the register
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> call was outside of the eventLoop</span>
+        <span style="color: #0000ff;">if</span> (!promise.setUncancellable() || !<span style="color: #000000;">ensureOpen(promise)) {
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        }
+       <strong> doRegister();</strong>
+        registered </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        safeSetSuccess(promise);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">执行完，控制台输出：channelRegistered</span>
+<strong><span style="color: #000000;">        pipeline.fireChannelRegistered();
+        </span></strong><span style="color: #0000ff;">if</span> (isActive()) { <span style="color: #008000;">//</span><span style="color: #008000;">分析</span>
+<span style="color: #000000;">            pipeline.fireChannelActive();
+        }
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Close the channel directly to avoid FD leak.</span>
+<span style="color: #000000;">        closeForcibly();
+        closeFuture.setClosed();
+        safeSetFailure(promise, t);
+    }
+}</span></code></pre>
+
+<p>在上面的代码中，是通过调用doRegister()方法完成NioServerSocketChannel的注册，该方法的具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doRegister() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    </span><span style="color: #0000ff;">boolean</span> selected = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (;;) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            <strong>selectionKey </strong></span><strong>= javaChannel().register(eventLoop().selector, 0, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+            </span></strong><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (CancelledKeyException e) {
+            </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">selected) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> Force the Selector to select now as the "canceled" SelectionKey may still be
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> cached and not removed because no Select.select(..) operation was called yet.</span>
+<span style="color: #000000;">                eventLoop().selectNow();
+                selected </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> We forced a select operation on the selector before but the SelectionKey is still cached
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> for whatever reason. JDK bug ?</span>
+                <span style="color: #0000ff;">throw</span><span style="color: #000000;"> e;
+            }
+        }
+    }
+} 
+
+</span><span style="color: #0000ff;">protected</span><span style="color: #000000;"> SelectableChannel javaChannel() {
+    </span><strong><span style="color: #0000ff;">return</span></strong><span style="color: #000000;"><strong> ch;</strong>
+} </span></code></pre>
+
+<p>在本博文的第1部分的NioServerSocketChannel的实例化分析中，我们知道这里的javaChannel()方法返回的ch为实例化NioServerSocketChannel时产生的一个SocketChannelImpl类的实例，并设置为非阻塞的，具体见本博文的第1部分。</p>
+<p><strong><span style="color: #0000ff;">selectionKey = javaChannel().register(eventLoop().selector, 0, this);就完成了ServerSocketChannel注册到Selector中。</span></strong></p>
+<p>回顾下，这里的eventLoop().selector是什么？答案是：KQueueSelectorImpl对象。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">NioEventLoop(NioEventLoopGroup parent, ThreadFactory threadFactory, SelectorProvider selectorProvider) {
+    </span><span style="color: #0000ff;">super</span>(parent, threadFactory, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span> (selectorProvider == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("selectorProvider"<span style="color: #000000;">);
+    }
+    provider </span>=<span style="color: #000000;"> selectorProvider;
+    selector </span>=<span style="color: #000000;"> openSelector();
+}
+
+</span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Selector openSelector() {
+    </span><span style="color: #0000ff;">final</span><span style="color: #000000;"> Selector selector;
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        selector </span>=<span style="color: #000000;"> provider.openSelector();
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException e) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ChannelException("failed to open a new selector"<span style="color: #000000;">, e);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...省略了一部分代码</span>
+    <span style="color: #0000ff;">return</span><span style="color: #000000;"> selector;
+} </span></code></pre>
+
+<p>ServerSocketChannel注册完之后，接着执行pipeline.fireChannelRegistered方法。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPipeline fireChannelRegistered() {
+    <strong>AbstractChannelHandlerContext.invokeChannelRegistered(</strong></span><strong><span style="color: #0000ff;">this</span><span style="color: #000000;">.head);
+    </span></strong><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>我们看到<strong>invokeChannelRegistered(</strong><strong>this.head)</strong>传的参数是head,这个head我们再下一篇文章中讲，继续往下看</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> invokeChannelRegistered(<span style="color: #0000ff;">final</span><span style="color: #000000;"> AbstractChannelHandlerContext next) {
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+       <strong> next.invokeChannelRegistered();</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeChannelRegistered();
+            }
+        });
+    }
+
+}</span></code></pre>
+
+<p>看<strong>next.invokeChannelRegistered();</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeChannelRegistered() {
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.invokeHandler()) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+           <strong> ((ChannelInboundHandler)</strong></span><strong><span style="color: #0000ff;">this</span>.handler()).channelRegistered(<span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>);</strong>
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable var2) {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.notifyHandlerException(var2);
+        }
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.fireChannelRegistered();
+    }
+
+}</span></code></pre>
+
+<p>接着看看this.handler()，实际上就是head的handler()</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>返回的是this，那接着看 head中的<strong>channelRegistered</strong><strong>(this</strong><strong>)</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> channelRegistered(ChannelHandlerContext ctx) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    DefaultChannelPipeline.</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.invokeHandlerAddedIfNeeded();
+    <strong>ctx.fireChannelRegistered();</strong>
+}</span></code></pre>
+
+<p>继续看<strong>ctx.fireChannelRegistered();</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandlerContext fireChannelRegistered() {
+    invokeChannelRegistered(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.findContextInbound());
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>我们看看<strong>this.findContextInbound()</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AbstractChannelHandlerContext findContextInbound() {
+    AbstractChannelHandlerContext ctx </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        <strong>ctx </strong></span><strong>=</strong><span style="color: #000000;"><strong> ctx.next;</strong>
+    } </span><span style="color: #0000ff;">while</span>(!<span style="color: #000000;">ctx.inbound);
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ctx;
+}</span></code></pre>
+
+<p>我们看到&nbsp;<strong>ctx </strong><strong>=</strong><strong> ctx.next; 实际上是从head开始找，找到第一个&nbsp;inbound 的hander</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> invokeChannelRegistered(<span style="color: #0000ff;">final</span><span style="color: #000000;"> AbstractChannelHandlerContext next) {
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+      <strong>  next.invokeChannelRegistered();</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeChannelRegistered();
+            }
+        });
+    }
+
+}</span></code></pre>
+
+<p><strong>最后执行</strong><strong>next.invokeChannelRegistered();</strong></p>
+<p>pipeline中维护了handler链表，还记得之前.handler(new SimpleServerHandler())初始化的handler在本博文的第1.2部分的分析中介绍了此handler被添加到此pipeline中了，通过遍历链表，执行InBound类型handler的channelRegistered方法</p>
+<p>因此执行到这里，我们的控制台就回输出：channelRegistered，这行信息。</p>
+<p>到这里，我们就将doBind方法final ChannelFuture regFuture = initAndRegister();给分析完了，得到的结论如下：</p>
+<p>1、通过反射产生了一个NioServerSocketChannle对象。</p>
+<p>2、完成了初始化</p>
+<p>3、将NioServerSocketChannel进行了注册。</p>
+<p>接下来我们分析doBind方法的剩余部分代码主要做了什么，</p>
+<p>源代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> ChannelFuture doBind(<span style="color: #0000ff;">final</span><span style="color: #000000;"> SocketAddress localAddress) {
+    </span><span style="color: #0000ff;">final</span> ChannelFuture regFuture = initAndRegister();<span style="color: #008000;">//</span><span style="color: #008000;">1</span>
+    <span style="color: #0000ff;">final</span> Channel channel = regFuture.channel();<span style="color: #008000;">//</span><span style="color: #008000;">2</span>
+    <span style="color: #0000ff;">if</span> (regFuture.cause() != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> regFuture;
+    }
+
+    </span><span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise;
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (regFuture.isDone()) {
+        promise </span>=<span style="color: #000000;"> channel.newPromise();
+        doBind0(regFuture, channel, localAddress, promise);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Registration future is almost always fulfilled already, but just in case it's not.</span>
+        promise = <span style="color: #0000ff;">new</span><span style="color: #000000;"> PendingRegistrationPromise(channel);
+        regFuture.addListener(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> ChannelFutureListener() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> operationComplete(ChannelFuture future) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+                doBind0(regFuture, channel, localAddress, promise);
+            }
+        });
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+} </span></code></pre>
+
+<h3 id="第二部分dobind0regfuture-channel-localaddress-promise">doBind0(regFuture, channel, localAddress, promise);</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> doBind0(
+        </span><span style="color: #0000ff;">final</span> ChannelFuture regFuture, <span style="color: #0000ff;">final</span><span style="color: #000000;"> Channel channel,
+        </span><span style="color: #0000ff;">final</span> SocketAddress localAddress, <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise) {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> the pipeline in its channelRegistered() implementation.</span>
+    channel.eventLoop().execute(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+        @Override
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (regFuture.isSuccess()) {
+                channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                promise.setFailure(regFuture.cause());
+            }
+        }
+    });
+}</span></code></pre>
+
+<p>该函数主要是提交了一个Runnable任务到NioEventLoop线程中来进行处理。，这里先看一下NioEventLoop类的execute方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> execute(Runnable task) {
+    </span><span style="color: #0000ff;">if</span> (task == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> NullPointerException("task"<span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">boolean</span> inEventLoop = inEventLoop();<span style="color: #008000;">//</span><span style="color: #008000;">判断当前线程是否为该NioEventLoop所关联的线程，如果是，则添加任务到任务队列中，如果不是，则先启动线程，然后添加任务到任务队列中去</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (inEventLoop) {
+        addTask(task);
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        startThread();
+        addTask(task);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果</span>
+        <span style="color: #0000ff;">if</span> (isShutdown() &amp;&amp;<span style="color: #000000;"> removeTask(task)) {
+            reject();
+        }
+    }
+
+    </span><span style="color: #0000ff;">if</span> (!addTaskWakesUp &amp;&amp;<span style="color: #000000;"> wakesUpForTask(task)) {
+        wakeup(inEventLoop);
+    }
+}</span></code></pre>
+
+<p>当提交的任务被线程执行后，则会执行channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE)这行代码，这行代码完成的功能为：实现channel与端口的绑定。</p>
+<p>具体如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">AbstractChannel.java    
+
+@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> pipeline.bind(localAddress, promise);
+}</span></code></pre>
+
+<p>在该方法中直接调用了pipeline的bind方法，这里的pipeline时DefaultChannelPipeline的实例。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">DefaultChannelPipeline.java 
+
+@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> tail.bind(localAddress, promise);
+}</span></code></pre>
+
+<p>在上面方法中直接调用了TailContext实例tail的bind方法，tail在下一篇博文中有详细的介绍。继续看tail实例的bind方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">AbstractChannelHandlerContext.java   
+
+@Override
+</span><span style="color: #0000ff;">public</span> ChannelFuture bind(<span style="color: #0000ff;">final</span> SocketAddress localAddress, <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">...省略有效性检查</span>
+
+    <span style="color: #0000ff;">final</span> AbstractChannelHandlerContext next = <strong>findContextOutbound();<span style="color: #008000;">//
+</span></strong>    EventExecutor executor =<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+       <strong> next.invokeBind(localAddress, promise);</strong>
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        safeExecute(executor, </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> OneTimeTask() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeBind(localAddress, promise);
+            }
+        }, promise, </span><span style="color: #0000ff;">null</span><span style="color: #000000;">);
+    }
+
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> promise;
+}</span></code></pre>
+
+<p>此上面bind函数中的这行代码：final AbstractChannelHandlerContext next = findContextOutbound();所完成的任务就是在pipeline所持有的以AbstractChannelHandlerContext为节点的双向链表中从尾节点tail开始向前寻找第一个outbound=true的handler节点。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span><span style="color: #000000;"> AbstractChannelHandlerContext findContextOutbound() {
+    AbstractChannelHandlerContext ctx </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">do</span><span style="color: #000000;"> {
+        ctx </span>=<span style="color: #000000;"> ctx.prev;
+    } </span><span style="color: #0000ff;">while</span> (!<span style="color: #000000;">ctx.outbound);
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ctx;
+}</span></code></pre>
+
+<p>在 DefaultChannelPipeline 的构造器中, 会实例化两个对象: head 和 tail, 并形成了双向链表的头和尾。 head 是 HeadContext 的实例, 它实现了 ChannelOutboundHandler 接口和ChannelInboundHandler 接口, 并且它的 outbound 字段为 true.而tail 是 TailContext 的实例，它实现了ChannelInboundHandler 接口，并且其outbound 字段为 false，inbound 字段为true。 基于此在如上的bind函数中调用了 findContextOutbound方法 找到的 AbstractChannelHandlerContext 对象其实就是 head.</p>
+<p>继续看，在pipelie的双向链表中找到第一个outbound=true的AbstractChannelHandlerContext节点head后，然后调用此节点的invokeConnect方法，该方法的代码如下:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeBind(SocketAddress localAddress, ChannelPromise promise) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ((ChannelOutboundHandler) handler()).bind(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">, localAddress, promise);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        notifyOutboundHandlerException(t, promise);
+    }
+}</span></code></pre>
+
+<p>HeadContext类中的handler()方法代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandler handler() {
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}</span></code></pre>
+
+<p>该方法返回的是其本身，这是因为HeadContext由于其继承AbstractChannelHandlerContext以及实现了ChannelHandler接口使其具有Context和Handler双重特性。</p>
+<p>继续看，看HeadContext类中的bind方法，代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> bind(
+        ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise)
+        </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    unsafe.bind(localAddress, promise);
+}</span></code></pre>
+
+<p>unsafe这个字段是在HeadContext构造函数中被初始化的，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">HeadContext(DefaultChannelPipeline pipeline) {
+    </span><span style="color: #0000ff;">super</span>(pipeline, <span style="color: #0000ff;">null</span>, HEAD_NAME, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">true</span><span style="color: #000000;">);
+    unsafe </span>=<span style="color: #000000;"> pipeline.channel().unsafe();
+}</span></code></pre>
+
+<p>而此构造函数中的pipeline.channel().unsafe()这行代码返回的就是在本博文前面研究NioServerSocketChannel这个类的构造函数中所初始化的一个实例，如下：</p>
+<src class="cnblogs_code">
+<pre><code>unsafe = newUnsafe();<span style="color: #008000;">//</span><span style="color: #008000;">newUnsafe()方法返回的是NioMessageUnsafe对象。  </span></code></pre>
+
+<p>接下来看NioMessageUnsafe类中的bind方法（准确来说：该方法在AbstractUnsafe中），该类bind具体方法代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span> bind(<span style="color: #0000ff;">final</span> SocketAddress localAddress, <span style="color: #0000ff;">final</span><span style="color: #000000;"> ChannelPromise promise) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">...省略了部分代码</span>
+    <span style="color: #0000ff;">boolean</span> wasActive =<span style="color: #000000;"> isActive();
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        <strong>doBind(localAddress);</strong></span><strong><span style="color: #008000;">//</span><span style="color: #008000;">核心代码</span></strong>
+    } <span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        safeSetFailure(promise, t);
+        closeIfClosed();
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+    }
+
+    </span><strong><span style="color: #0000ff;">if</span> (!wasActive &amp;&amp;<span style="color: #000000;"> isActive()) {
+        invokeLater(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> OneTimeTask() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span></strong><span style="color: #000000;"><strong> run() {
+                pipeline.fireChannelActive();
+            }
+        });
+    }</strong>
+
+    safeSetSuccess(promise);
+}</span></code></pre>
+
+<p>上面的核心代码就是：doBind(localAddress);需要注意的是，此doBind方法是在NioServerSocketChannel类中的doBind方法，不是其他类中的。</p>
+<p>NioServerSocketChannel类中的doBind方法代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> doBind(SocketAddress localAddress) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> Exception {
+    javaChannel().socket().bind(localAddress, config.getBacklog());
+}</span></code></pre>
+
+<p>上面方法中javaChannel()方法返回的是NioServerSocketChannel实例初始化时所产生的Java NIO ServerSocketChannel实例（更具体点为ServerSocketChannelImple实例）。 等价于语句serverSocketChannel.socket().bind(localAddress)完成了指定端口的绑定，这样就开始监听此端口。绑定端口成功后，是这里调用了我们自定义handler的channelActive方法，在绑定之前，isActive()方法返回false，绑定之后返回true。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isActive() {
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> javaChannel().socket().isBound();
+}</span></code></pre>
+
+<p>这样，就进入了如下的if条件的代码块中</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">if</span> (!wasActive &amp;&amp;<span style="color: #000000;"> isActive()) {
+    invokeLater(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> OneTimeTask() {
+        @Override
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+            pipeline.fireChannelActive();
+        }
+    });
+}    
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeLater(Runnable task) {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">省略了部分代码</span>
+<span style="color: #000000;">        eventLoop().execute(task);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (RejectedExecutionException e) {
+        logger.warn(</span>"Can't invoke task later as EventLoop rejected it"<span style="color: #000000;">, e);
+    }
+}</span></code></pre>
+
+<p>进而开始执行 pipeline.fireChannelActive();这行代码 ，这行代码的具体调用链如下所示：</p>
+<p><strong>DefaultChannelPipeline.java</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelPipeline fireChannelActive() {
+    head.fireChannelActive();
+
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (channel.config().isAutoRead()) {
+        channel.read();
+    }
+
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}
+
+@Override
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ChannelHandlerContext fireChannelActive() {
+    </span><span style="color: #0000ff;">final</span> AbstractChannelHandlerContext next =<span style="color: #000000;"> findContextInbound();
+    EventExecutor executor </span>=<span style="color: #000000;"> next.executor();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (executor.inEventLoop()) {
+        next.invokeChannelActive();
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> OneTimeTask() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                next.invokeChannelActive();
+            }
+        });
+    }
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span><span style="color: #000000;">;
+}
+
+</span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeChannelActive() {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        ((ChannelInboundHandler) handler()).channelActive(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable t) {
+        notifyHandlerException(t);
+    }
+}</span></code></pre>
+
+<h2 id="总结">总结</h2>
+<p>最后，我们来做下总结，netty启动一个服务所经过的流程<br />1.设置启动类参数，最重要的就是设置channel<br />2.创建server对应的channel，创建各大组件，包括ChannelConfig,ChannelId,ChannelPipeline,ChannelHandler,Unsafe等<br />3.init 初始化这个 NioServerSocketChannel，设置一些attr，option，以及设置子channel的attr，option，给server的channel添加新channel接入器，并触发addHandler事件</p>
+<p>4.config().group().register(channel) 通过 ServerBootstrap 的 bossGroup 根据group长度取模得到NioEventLoop ，将 NioServerSocketChannel 注册到&nbsp;NioEventLoop 中的&nbsp;selector 上，然后触发&nbsp;channelRegistered事件</p>
+<p>5.调用到jdk底层做端口绑定，并触发active事件</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

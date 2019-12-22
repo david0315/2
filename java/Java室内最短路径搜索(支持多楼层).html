@@ -1,0 +1,811 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java室内最短路径搜索(支持多楼层)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java室内最短路径搜索(支持多楼层)</center></div><div class='banquan'>原文出处:本文由博客园博主WhyYu提供。<br/>
+原文连接:https://www.cnblogs.com/GisNight/p/11704508.html</div><br>
+    <p><span style="font-size: 16px;">修改了上次的代码，现在支持室内的多楼层情况下的最短路径搜索，还是使用A*算法，把在GraphAdjList中VNode没有利用起来的data字段作为我们存储楼层属性的位置。</span></p>
+<p><span style="font-size: 16px;">实际上是我偷懒了，正常情况下VNode里应该再加一个int level属性，而data还是作为绑定用户想添加任意类型的数据的一个位置来使用，这样例如当用户想对任意节点添加String类型的描述时，声明GraphAdjList&lt;String&gt;即可，但现在我们的GraphAdjList只能声明为GraphAdjList&lt;Integer&gt;，因为我们把data作为楼层属性来使用，名存实亡的模板类hh。</span></p>
+<p><span style="font-size: 16px;">用户添加节点时使用GraphAdjList.insertVex(E v,int index,int x,int y)，v 楼层，index 节点的唯一序列号(从1开始，符合生活习惯)，x,y是点坐标，添加边的操作与上次不变。</span></p>
+<p><span style="font-size: 16px;">需要注意的是，在我们的A*代码中，f=g+h,启发函数h设置的可能不是很理想，我们仍旧沿用了x,y的曼哈顿距离，未考虑楼梯口位置和层数等因素的影响，如果遇到起点终点都在所属层的中心位置，楼梯电梯在每层的边缘，搜索方向会先往中心扩展，直到没有结果时，才会往边缘扩展，随后扩展到楼上或楼下，在这种情况下效率可能不佳，但仍旧能获得最短路径。简而言之，就是在我们现在设计的h下，起点会优先向终点在起点所属层的垂足点扩展。至于h的设计，可以去查阅一下相关文献。</span></p>
+<p><span style="font-size: 16px;">我们依旧使用TestContinuous作为我们的测试类，自己画了一个简单的数据案例&nbsp;，想要查询从一楼的节点4到三楼的节点14的最短路径。</span></p>
+<p><span style="font-size: 16px;"><img src="./images/Java室内最短路径搜索(支持多楼层)0.png" alt="" width="294" height="320" /></span></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">其中一二楼之间只有通道1-6，3-8，分别代价是3，4。二三楼之间只有通道10-11，代价是5。</span></p>
+<p><span style="font-size: 16px;">最后获得结果是4-5-1-6-10-11-13-14，花费总代价是33。</span></p>
+<p><span style="font-size: 16px;">话不多说仍旧上代码。</span></p>
+<h3><span style="font-size: 16px;">代码结构如下：</span></h3>
+<p><span style="font-size: 16px;"><img src="./images/Java室内最短路径搜索(支持多楼层)1.png" alt="" /></span></p>
+<h3>AStar:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Collections;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Comparator;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashMap;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Map;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Set;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> astar3D.GraphAdjList.ENode;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> astar3D.GraphAdjList.VNode;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+&nbsp;* 
+&nbsp;* </span><span style="color: #808080;">@author</span><span style="color: #008000;"> yh
+&nbsp;* </span><span style="color: #808080;">@version</span><span style="color: #008000;"> 3.0 
+&nbsp;* 
+&nbsp;</span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AStar <span style="color: #0000ff;">implements</span><span style="color: #000000;"> IMove {
+ 
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 打开的列表 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Map</span>&lt;String, Point&gt; openMap = <span style="color: #0000ff;">new</span> HashMap&lt;String, Point&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 关闭的列表 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Map</span>&lt;String, Point&gt; closeMap = <span style="color: #0000ff;">new</span> HashMap&lt;String, Point&gt;<span style="color: #000000;">(); 
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 障碍物 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Set</span>&lt;Point&gt;<span style="color: #000000;"> barrier;
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 起点 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Point startPoint;
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 终点 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Point endPoint;
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 当前使用节点 </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    Point currentPoint;
+    </span><span style="color: #008000;">/*</span><span style="color: #008000;"> 循环次数，为了防止目标不可到达 </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">int</span> num = 0<span style="color: #000000;">;   
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">存储的数据结构</span>
+    <span style="color: #0000ff;">public</span> GraphAdjList&lt;Integer&gt;<span style="color: #000000;"> graphadjlist;
+ 
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 初始化并开始计算最佳路径
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point1 用户输入的起始点
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point2 用户输入的终止点
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> barrier 无顺序的障碍列表
+     </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Override
+    </span><span style="color: #0000ff;">public</span> Point move(Point point1, Point point2, Set&lt;Point&gt;<span style="color: #000000;"> barrier) {
+       num </span>= 0<span style="color: #000000;">;
+       </span><span style="color: #0000ff;">this</span>.barrier =<span style="color: #000000;"> barrier;
+       </span><span style="color: #0000ff;">this</span>.startPoint =<span style="color: #000000;"> findNearPoint(point1);
+       </span><span style="color: #0000ff;">this</span>.endPoint =<span style="color: #000000;"> findNearPoint(point2);
+       
+       </span><span style="color: #008000;">//</span><span style="color: #008000;">预留位置，准备解决点在障碍物里的情况
+       </span><span style="color: #008000;">//</span><span style="color: #008000;">Point endPoint=new Point(x2,y2);
+       </span><span style="color: #008000;">//</span><span style="color: #008000;">this.endPoint = this.getNearPoint(endPoint,endPoint);</span>
+       
+       <span style="color: #0000ff;">this</span><span style="color: #000000;">.closeMap.put(startPoint.getKey(), startPoint);
+       </span><span style="color: #0000ff;">this</span>.currentPoint = <span style="color: #0000ff;">this</span><span style="color: #000000;">.startPoint;
+       </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.toOpen(startPoint);
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> endPoint;
+    }
+ 
+     </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 求两点间的估算代价， 启发函数一（曼哈顿距离）： (Math.abs(x1 - x2) + Math.abs(y1 - y2))
+&nbsp;&nbsp; &nbsp; * 启发函数二（平方的欧几里得距离）：((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 -y1))
+&nbsp;&nbsp; &nbsp; * 启发函数三（欧几里得距离）：(int) Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) *(y2 -y1))
+     * 启发函数四（对角线距离）：Math.max(Math.abs(x1 - x2), Math.abs(y1 -y2)) 
+     * 不用启发函数：0
+&nbsp;&nbsp; &nbsp; </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> getGuessLength(<span style="color: #0000ff;">int</span> x1, <span style="color: #0000ff;">int</span> y1, <span style="color: #0000ff;">int</span> x2, <span style="color: #0000ff;">int</span><span style="color: #000000;"> y2) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">return ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 -y1));</span>
+        <span style="color: #0000ff;">return</span> (Math.abs(x1 - x2) + Math.abs(y1 -<span style="color: #000000;"> y2)) ;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> return 0;</span>
+<span style="color: #000000;">        }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 对用户输入的点坐标，寻找旁边最近的出发点  
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point 用户输入的坐标点
+     * </span><span style="color: #808080;">@return</span><span style="color: #008000;">  最近的出发结点
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> Point findNearPoint(Point point){
+        List</span>&lt;Integer&gt; levelVertex =<span style="color: #000000;"> graphadjlist.getLevelVertex(point.level);      
+        </span><span style="color: #0000ff;">if</span>(levelVertex.size() &gt; 0<span style="color: #000000;">){
+            </span><span style="color: #0000ff;">int</span> index = levelVertex.get(0<span style="color: #000000;">);
+            </span><span style="color: #0000ff;">int</span> min =<span style="color: #000000;"> getGuessLength(point.x, point.y, graphadjlist.vexs[index].x, graphadjlist.vexs[index].y);  
+            </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> tempmin;
+            </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i = 1; i &lt; levelVertex.size(); i++<span style="color: #000000;">){          
+                tempmin </span>=<span style="color: #000000;"> getGuessLength(point.x, point.y, graphadjlist.vexs[levelVertex.get(i)].x, graphadjlist.vexs[levelVertex.get(i)].y);
+                </span><span style="color: #0000ff;">if</span>(tempmin &lt;<span style="color: #000000;"> min ){
+                    min </span>=<span style="color: #000000;"> tempmin;
+                    index </span>=<span style="color: #000000;"> levelVertex.get(i);
+                }
+            }
+            Point nearPoint </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Point( graphadjlist.vexs[index].x, graphadjlist.vexs[index].y, point.level, index);
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> nearPoint;
+        }
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> Point(point.x, point.y, 0, 0<span style="color: #000000;">);        
+    }
+     
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 把该节点相邻点加入计算
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> toOpen(Point point) {
+        Set</span>&lt;Integer&gt; adjPoint = <span style="color: #0000ff;">new</span> HashSet&lt;Integer&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">if</span>(graphadjlist.vexs[point.serial].firstadj == <span style="color: #0000ff;">null</span><span style="color: #000000;">){
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+        }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+            ENode current;
+            current </span>=<span style="color: #000000;"> graphadjlist.vexs[point.serial].firstadj;
+            </span><span style="color: #0000ff;">while</span>(current != <span style="color: #0000ff;">null</span><span style="color: #000000;">){
+                adjPoint.add(current.adjvex);
+                current </span>=<span style="color: #000000;"> current.nextadj;
+            }            
+        }
+        
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span><span style="color: #000000;"> serial : adjPoint) {
+            VNode</span>&lt;Integer&gt; currentNode =<span style="color: #000000;"> graphadjlist.vexs[serial];
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">暂时模板类GraphAdjList只支持int类型，受限于Point不是模板类，楼层变量类型为int(currentNode.data是int)</span>
+            <span style="color: #0000ff;">this</span>.addOpenPoint(<span style="color: #0000ff;">new</span><span style="color: #000000;"> Point(currentNode.x, currentNode.y, currentNode.data, serial), graphadjlist.getEdge(currentPoint.serial, serial));          
+      }      
+        num</span>++<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (num &lt;= 4000<span style="color: #000000;">) {
+           </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.toClose();
+        }
+     
+    }
+ 
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 把该节点相邻点加入关闭的列表
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> toClose() {
+       List</span>&lt;Point&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;Point&gt;<span style="color: #000000;">(openMap.values());
+       Collections.sort(list, </span><span style="color: #0000ff;">new</span> Comparator&lt;Point&gt;<span style="color: #000000;">() {
+          @Override
+          </span><span style="color: #008000;">//</span><span style="color: #008000;">按升序排序，之后取出第一个元素即可</span>
+          <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> compare(Point o1, Point o2) {
+             </span><span style="color: #0000ff;">if</span> (o1.fTotal &gt;<span style="color: #000000;"> o2.fTotal) {
+                </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+             } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (o1.fTotal &lt;<span style="color: #000000;"> o2.fTotal) {
+                </span><span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+             } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+             </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+             }
+          }
+       });
+       </span><span style="color: #0000ff;">if</span> (list.size() &gt; 0<span style="color: #000000;">) {
+          </span><span style="color: #0000ff;">this</span>.currentPoint = list.get(0<span style="color: #000000;">);
+          closeMap.put(</span><span style="color: #0000ff;">this</span>.currentPoint.getKey(), <span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint);
+          openMap.remove(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint.getKey());
+          </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">currentPoint.equals(endPoint)) {
+             </span><span style="color: #0000ff;">this</span>.toOpen(<span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint);
+          } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+             endPoint </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint;
+          }
+       }
+    }
+ 
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * A*核心处理函数
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point currentPoint连接的点
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> gCost 当前点到该点的消耗
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> addOpenPoint(Point point,<span style="color: #0000ff;">int</span><span style="color: #000000;"> gCost) {
+       </span><span style="color: #0000ff;">if</span> (point.x &lt; 0 || point.y &lt; 0<span style="color: #000000;">) {
+          </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+       }
+       String key </span>=<span style="color: #000000;"> point.getKey();
+       </span><span style="color: #0000ff;">if</span> (!barrier.contains(point) &amp;&amp; !point.equals(<span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint)) {
+          </span><span style="color: #0000ff;">int</span> hEstimate = <span style="color: #0000ff;">this</span>.getGuessLength(point.x, point.y, <span style="color: #0000ff;">this</span>.endPoint.x, <span style="color: #0000ff;">this</span><span style="color: #000000;">.endPoint.y);                       
+          </span><span style="color: #0000ff;">int</span> totalGCost = <span style="color: #0000ff;">this</span>.currentPoint.gCost +<span style="color: #000000;"> gCost;
+          </span><span style="color: #0000ff;">int</span> fTotal = totalGCost +<span style="color: #000000;"> hEstimate;         
+          </span><span style="color: #008000;">//</span><span style="color: #008000;">当前point没有加入到closeMap中，则放入openMap中，为toClose函数比较fTotal,并挑选出最佳点做准备</span>
+          <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">closeMap.containsKey(key)) {
+             point.hEstimate </span>=<span style="color: #000000;"> hEstimate;
+             point.gCost </span>=<span style="color: #000000;"> totalGCost;
+             point.fTotal </span>=<span style="color: #000000;"> fTotal;
+             Point oldPoint </span>=<span style="color: #000000;"> openMap.get(key);
+             </span><span style="color: #008000;">//</span><span style="color: #008000;">如果之前此点已经加入到openMap，看其是否需要更新为最小值</span>
+             <span style="color: #0000ff;">if</span> (oldPoint != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (oldPoint.gCost &gt;<span style="color: #000000;"> totalGCost) {
+                oldPoint.fTotal </span>=<span style="color: #000000;"> fTotal;               
+                oldPoint.gCost</span>=<span style="color: #000000;">totalGCost;
+                oldPoint.prev </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint;
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">当key一样时，后面put的会把前面的覆盖</span>
+<span style="color: #000000;">                openMap.put(key, oldPoint);
+                }   
+             } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                point.prev </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint;
+                openMap.put(key, point);
+             } 
+          } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+             Point oldPoint </span>=<span style="color: #000000;"> closeMap.get(key);
+             </span><span style="color: #0000ff;">if</span> (oldPoint != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> ((oldPoint.gCost + gCost) &lt; <span style="color: #0000ff;">this</span><span style="color: #000000;">.currentPoint.gCost) {
+                   </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.currentPoint.prev !=<span style="color: #000000;"> oldPoint) {
+                      </span><span style="color: #0000ff;">this</span>.currentPoint.fTotal = oldPoint.fTotal +<span style="color: #000000;"> gCost;
+                      </span><span style="color: #0000ff;">this</span>.currentPoint.gCost = oldPoint.gCost +<span style="color: #000000;"> gCost;
+                      </span><span style="color: #0000ff;">this</span>.currentPoint.prev =<span style="color: #000000;"> oldPoint;
+                   }
+                }
+             }
+          }
+       }
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">下面三个函数还没修改，暂时不用管
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">如果用户选择的点在障碍物内，则选出障碍物外距离endPoint最近的一点作为endPoint</span>
+    Map&lt;String, Point&gt;<span style="color: #000000;"> nearOutMap;
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Point getNearPoint(Point point,Point point2) {
+       </span><span style="color: #0000ff;">if</span>(<span style="color: #0000ff;">this</span><span style="color: #000000;">.barrier.contains(point)){
+          nearOutMap </span>= <span style="color: #0000ff;">new</span> HashMap&lt;String, Point&gt;<span style="color: #000000;">();
+          </span><span style="color: #0000ff;">this</span>.endPoint=<span style="color: #000000;">point;
+          </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.toNearPoint(point,point2);
+          List</span>&lt;Point&gt; nearList = <span style="color: #0000ff;">new</span> ArrayList&lt;Point&gt;<span style="color: #000000;">(nearOutMap.values());
+          Collections.sort(nearList, </span><span style="color: #0000ff;">new</span> Comparator&lt;Point&gt;<span style="color: #000000;">() {
+             @Override
+             </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> compare(Point o1, Point o2) {
+                </span><span style="color: #0000ff;">if</span> (o1.gCost &gt;<span style="color: #000000;"> o2.gCost) {
+                   </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+                } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (o1.gCost &lt;<span style="color: #000000;"> o2.gCost) {
+                   </span><span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+                } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                   </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+                }
+             }
+          });
+          </span><span style="color: #008000;">//</span><span style="color: #008000;">刚才使用了这两个变量，现在障碍物外的最邻近点已经找到，初始化准备A*</span>
+          <span style="color: #0000ff;">this</span>.openMap=<span style="color: #0000ff;">new</span> HashMap&lt;String,Point&gt;<span style="color: #000000;">();
+          </span><span style="color: #0000ff;">this</span>.closeMap=<span style="color: #0000ff;">new</span> HashMap&lt;String,Point&gt;<span style="color: #000000;">();
+          </span><span style="color: #0000ff;">if</span> (nearList.size() &gt; 0<span style="color: #000000;">) {
+             </span><span style="color: #0000ff;">return</span> nearList.get(0<span style="color: #000000;">);
+          }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+             </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> point;
+          }
+       }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> point;
+       }
+
+   }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> toNearPoint(Point point,Point point2) {
+       </span><span style="color: #0000ff;">int</span> x =<span style="color: #000000;"> point.x;
+       </span><span style="color: #0000ff;">int</span> y =<span style="color: #000000;"> point.y;
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x - 1<span style="color: #000000;">, y),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x + 1<span style="color: #000000;">, y),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x, y - 1<span style="color: #000000;">),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x, y + 1<span style="color: #000000;">),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x - 1, y - 1<span style="color: #000000;">),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x - 1, y + 1<span style="color: #000000;">),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x + 1, y - 1<span style="color: #000000;">),point2);
+       </span><span style="color: #0000ff;">this</span>.addNearOpenPoint(<span style="color: #0000ff;">new</span> Point(x + 1, y + 1<span style="color: #000000;">),point2);
+ 
+       </span><span style="color: #0000ff;">if</span>(<span style="color: #0000ff;">this</span>.nearOutMap.size()==0<span style="color: #000000;">){
+          List</span>&lt;Point&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;Point&gt;<span style="color: #000000;">(openMap.values());
+          </span><span style="color: #008000;">//</span><span style="color: #008000;">按照升序排序，最小的在list的最前面</span>
+          Collections.sort(list, <span style="color: #0000ff;">new</span> Comparator&lt;Point&gt;<span style="color: #000000;">() {
+             @Override
+             </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> compare(Point o1, Point o2) {
+                </span><span style="color: #0000ff;">int</span> l1 =<span style="color: #000000;"> o1.gCost;
+                </span><span style="color: #0000ff;">int</span> l2 =<span style="color: #000000;"> o2.gCost;
+                </span><span style="color: #0000ff;">if</span> (l1 &gt;<span style="color: #000000;"> l2) {
+                   </span><span style="color: #0000ff;">return</span> 1<span style="color: #000000;">;
+                } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (l1 &lt;<span style="color: #000000;"> l2) {
+                   </span><span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+                } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                   </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+                }
+             }
+          });
+          </span><span style="color: #0000ff;">if</span> (list.size() &gt; 0<span style="color: #000000;">) {
+             Point p </span>= list.get(0<span style="color: #000000;">);
+             </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.closeMap.put(p.getKey(), p);
+             </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.openMap.remove(p.getKey());
+             </span><span style="color: #0000ff;">this</span>.toNearPoint(list.get(0<span style="color: #000000;">),point2);
+          }
+       }
+    }
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addNearOpenPoint(Point point,Point point2) {
+       String key </span>=<span style="color: #000000;"> point.getKey();
+       </span><span style="color: #0000ff;">int</span> gCost = <span style="color: #0000ff;">this</span><span style="color: #000000;">.getGuessLength(point.x, point.y, point2.x,point2.y);
+       point.gCost </span>=<span style="color: #000000;"> gCost;
+       </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.barrier.contains(point)) {
+          </span><span style="color: #0000ff;">if</span> (!<span style="color: #0000ff;">this</span>.openMap.containsKey(key) &amp;&amp; !<span style="color: #0000ff;">this</span><span style="color: #000000;">.closeMap.containsKey(key)) {
+             </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.openMap.put(key, point);
+          }
+       } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+          </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.nearOutMap.put(key, point);
+       }
+
+    }
+    
+    </span><span style="color: #0000ff;">public</span> Map&lt;String, Point&gt;<span style="color: #000000;"> getOpenMap() {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> openMap;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setOpenMap(Map&lt;String, Point&gt;<span style="color: #000000;"> openMap) {
+       </span><span style="color: #0000ff;">this</span>.openMap =<span style="color: #000000;"> openMap;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Map&lt;String, Point&gt;<span style="color: #000000;"> getCloseMap() {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> closeMap;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setCloseMap(Map&lt;String, Point&gt;<span style="color: #000000;"> closeMap) {
+       </span><span style="color: #0000ff;">this</span>.closeMap =<span style="color: #000000;"> closeMap;
+    }
+
+    </span><span style="color: #0000ff;">public</span> Set&lt;Point&gt;<span style="color: #000000;"> getBarrier() {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> barrier;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setBarrier(Set&lt;Point&gt;<span style="color: #000000;"> barrier) {
+       </span><span style="color: #0000ff;">this</span>.barrier =<span style="color: #000000;"> barrier;
+    }
+
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Point getEndPoint() {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> endPoint;
+    }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setEndPoint(Point endPoint) {
+       </span><span style="color: #0000ff;">this</span>.endPoint =<span style="color: #000000;"> endPoint;
+    }
+
+     </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Point getStartPoint() {
+       </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> startPoint;
+     }
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setStartPoint(Point startPoint) {
+       </span><span style="color: #0000ff;">this</span>.startPoint =<span style="color: #000000;"> startPoint;
+    }
+
+}</span></code></pre>
+
+<h3>GraphAdjList:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.lang.reflect.Array;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> GraphAdjList&lt;E&gt; <span style="color: #0000ff;">implements</span> IGraph&lt;E&gt;<span style="color: #000000;"> {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 邻接表中表对应的链表的顶点</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ENode {
+        </span><span style="color: #0000ff;">int</span> adjvex; <span style="color: #008000;">//</span><span style="color: #008000;"> 邻接顶点序号</span>
+        <span style="color: #0000ff;">int</span> weight;<span style="color: #008000;">//</span><span style="color: #008000;"> 存储边或弧相关的信息，如权值</span>
+        ENode nextadj; <span style="color: #008000;">//</span><span style="color: #008000;"> 下一个邻接表结点</span>
+ 
+        <span style="color: #0000ff;">public</span> ENode(<span style="color: #0000ff;">int</span> adjvex, <span style="color: #0000ff;">int</span><span style="color: #000000;"> weight) {
+            </span><span style="color: #0000ff;">this</span>.adjvex =<span style="color: #000000;"> adjvex;
+            </span><span style="color: #0000ff;">this</span>.weight =<span style="color: #000000;"> weight;
+        }
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 邻接表中表的顶点</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> VNode&lt;E&gt;<span style="color: #000000;"> {
+        E data; </span><span style="color: #008000;">//</span><span style="color: #008000;"> 存储信息的字段，这里是楼层</span>
+        <span style="color: #0000ff;">int</span><span style="color: #000000;"> x;
+        </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> y;
+        ENode firstadj; </span><span style="color: #008000;">//</span> <span style="color: #008000;">//</span><span style="color: #008000;">邻接表的第1个结点</span>
+<span style="color: #000000;">    };
+ 
+    </span><span style="color: #0000ff;">public</span> VNode&lt;E&gt;[] vexs; <span style="color: #008000;">//</span><span style="color: #008000;"> 顶点数组</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> numOfVexs;<span style="color: #008000;">//</span><span style="color: #008000;"> 顶点的实际数量</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> maxNumOfVexs;<span style="color: #008000;">//</span><span style="color: #008000;"> 顶点的最大数量
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">private boolean[] visited;</span><span style="color: #008000;">//</span><span style="color: #008000;"> 判断顶点是否被访问过</span>
+<span style="color: #000000;"> 
+    @SuppressWarnings(</span>"unchecked"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span> GraphAdjList(<span style="color: #0000ff;">int</span><span style="color: #000000;"> maxNumOfVexs) {
+        </span><span style="color: #0000ff;">this</span>.maxNumOfVexs =<span style="color: #000000;"> maxNumOfVexs;
+        vexs </span>= (VNode&lt;E&gt;[]) Array.newInstance(VNode.<span style="color: #0000ff;">class</span><span style="color: #000000;">, maxNumOfVexs);
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到顶点的数目</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getNumOfVertex() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> numOfVexs;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">得到某一层楼的顶点数目</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getNumOfLevelVertex(E v){
+        </span><span style="color: #0000ff;">int</span> numOfLevelVexs = 0<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i = 1; i &lt; numOfVexs + 1; i++<span style="color: #000000;">){
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(vexs[i].data.equals(v)){
+                numOfLevelVexs</span>++<span style="color: #000000;">;
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> numOfLevelVexs;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">得到一层楼的顶点序列号列表</span>
+    <span style="color: #0000ff;">public</span> List&lt;Integer&gt;<span style="color: #000000;"> getLevelVertex(E v){
+        List</span>&lt;Integer&gt; levelVertex = <span style="color: #0000ff;">new</span> ArrayList&lt;Integer&gt;<span style="color: #000000;">();
+        </span><span style="color: #0000ff;">for</span>(<span style="color: #0000ff;">int</span> i = 1; i &lt; numOfVexs + 1; i++<span style="color: #000000;">){
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;">(vexs[i].data.equals(v)){
+                levelVertex.add(i);
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> levelVertex;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 获取指定位置节点的楼层</span>
+    <span style="color: #0000ff;">public</span> E getLevel(<span style="color: #0000ff;">int</span><span style="color: #000000;"> index) {
+        </span><span style="color: #0000ff;">if</span> (index &lt; 0 || index &gt;<span style="color: #000000;">  numOfVexs)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> vexs[index].data;
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 插入顶点,如果再次插入一个index一样的节点则覆盖</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> insertVex(E v,<span style="color: #0000ff;">int</span> index,<span style="color: #0000ff;">int</span> x,<span style="color: #0000ff;">int</span><span style="color: #000000;"> y) {
+        </span><span style="color: #0000ff;">if</span> (numOfVexs &gt;= maxNumOfVexs || index &gt; 1000<span style="color: #000000;">)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (vexs[index] == <span style="color: #0000ff;">null</span><span style="color: #000000;"> ){
+            numOfVexs</span>++<span style="color: #000000;">;            
+        }
+        VNode</span>&lt;E&gt; vex = <span style="color: #0000ff;">new</span> VNode&lt;E&gt;<span style="color: #000000;">();
+        vex.data </span>=<span style="color: #000000;"> v;
+        vex.x </span>=<span style="color: #000000;"> x;
+        vex.y </span>=<span style="color: #000000;"> y;
+        vexs[index] </span>=<span style="color: #000000;"> vex;
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 删除顶点</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> deleteVex(<span style="color: #0000ff;">int</span><span style="color: #000000;"> index) {        
+        </span><span style="color: #0000ff;">if</span> (index &gt; 0 &amp;&amp; index &lt; numOfVexs + 1<span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">删除vexs中的相关记录</span>
+            <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = index; i &lt; numOfVexs; i++<span style="color: #000000;">) {
+                vexs[i] </span>= vexs[i + 1<span style="color: #000000;">];
+            }
+            vexs[numOfVexs] </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+            numOfVexs</span>--<span style="color: #000000;">;
+            ENode current;
+            ENode previous;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">删除ENode中的</span>
+            <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 1; i &lt; numOfVexs + 1; i++<span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">if</span> (vexs[i].firstadj == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                    </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                </span><span style="color: #0000ff;">if</span> (vexs[i].firstadj.adjvex == index &amp;&amp; vexs[i].firstadj.nextadj == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    vexs[i].firstadj </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                    </span><span style="color: #0000ff;">continue</span><span style="color: #000000;">;
+                }
+                current </span>=<span style="color: #000000;"> vexs[i].firstadj;
+                </span><span style="color: #0000ff;">while</span> (current != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    previous </span>=<span style="color: #000000;"> current;
+                    current </span>=<span style="color: #000000;"> current.nextadj;
+                    </span><span style="color: #0000ff;">if</span> (current != <span style="color: #0000ff;">null</span> &amp;&amp; current.adjvex ==<span style="color: #000000;"> index) {
+                        previous.nextadj </span>=<span style="color: #000000;"> current.nextadj;
+                        </span><span style="color: #0000ff;">break</span><span style="color: #000000;">;
+                    }
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">对每一个ENode中的adjvex进行修改</span>
+            <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 1; i &lt; numOfVexs + 1; i++<span style="color: #000000;">) {
+                current </span>=<span style="color: #000000;"> vexs[i].firstadj;
+                </span><span style="color: #0000ff;">while</span> (current != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                    </span><span style="color: #0000ff;">if</span> (current.adjvex &gt;<span style="color: #000000;"> index)
+                        current.adjvex</span>--<span style="color: #000000;">;
+                    current </span>=<span style="color: #000000;"> current.nextadj;
+                }
+            }
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        }    
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 插入边</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> insertEdge(<span style="color: #0000ff;">int</span> v1, <span style="color: #0000ff;">int</span> v2, <span style="color: #0000ff;">int</span><span style="color: #000000;"> weight) {
+        </span><span style="color: #0000ff;">if</span> (v1 &lt; 0 || v2 &lt; 0 || v1 &gt; numOfVexs || v2 &gt;<span style="color: #000000;"> numOfVexs)
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayIndexOutOfBoundsException();
+        ENode vex1 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ENode(v2, weight);
+ 
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 索引为index1的顶点没有邻接顶点</span>
+        <span style="color: #0000ff;">if</span> (vexs[v1].firstadj == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            vexs[v1].firstadj </span>=<span style="color: #000000;"> vex1;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 索引为index1的顶点有邻接顶点</span>
+        <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            vex1.nextadj </span>=<span style="color: #000000;"> vexs[v1].firstadj;
+            vexs[v1].firstadj </span>=<span style="color: #000000;"> vex1;
+        }
+        ENode vex2 </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> ENode(v1, weight);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 索引为index2的顶点没有邻接顶点</span>
+        <span style="color: #0000ff;">if</span> (vexs[v2].firstadj == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            vexs[v2].firstadj </span>=<span style="color: #000000;"> vex2;
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 索引为index1的顶点有邻接顶点</span>
+        <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            vex2.nextadj </span>=<span style="color: #000000;"> vexs[v2].firstadj;
+            vexs[v2].firstadj </span>=<span style="color: #000000;"> vex2;
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 删除边</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span> deleteEdge(<span style="color: #0000ff;">int</span> v1, <span style="color: #0000ff;">int</span><span style="color: #000000;"> v2) {
+        </span><span style="color: #0000ff;">if</span> (v1 &lt; 0 || v2 &lt; 0 || v1 &gt; numOfVexs || v2 &gt;<span style="color: #000000;"> numOfVexs)
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayIndexOutOfBoundsException();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 删除索引为index1的顶点与索引为index2的顶点之间的边</span>
+        ENode current =<span style="color: #000000;"> vexs[v1].firstadj;
+        ENode previous </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">while</span> (current != <span style="color: #0000ff;">null</span> &amp;&amp; current.adjvex !=<span style="color: #000000;"> v2) {
+            previous </span>=<span style="color: #000000;"> current;
+            current </span>=<span style="color: #000000;"> current.nextadj;
+        }
+        </span><span style="color: #0000ff;">if</span> (current != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            previous.nextadj </span>=<span style="color: #000000;"> current.nextadj;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 删除索引为index2的顶点与索引为index1的顶点之间的边</span>
+        current =<span style="color: #000000;"> vexs[v2].firstadj;
+        </span><span style="color: #0000ff;">while</span> (current != <span style="color: #0000ff;">null</span> &amp;&amp; current.adjvex !=<span style="color: #000000;"> v1) {
+            previous </span>=<span style="color: #000000;"> current;
+            current </span>=<span style="color: #000000;"> current.nextadj;
+        }
+        </span><span style="color: #0000ff;">if</span> (current != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            previous.nextadj </span>=<span style="color: #000000;"> current.nextadj;
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+ 
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 得到边</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> getEdge(<span style="color: #0000ff;">int</span> v1, <span style="color: #0000ff;">int</span><span style="color: #000000;"> v2) {
+        </span><span style="color: #0000ff;">if</span> (v1 &lt; 0 || v2 &lt; 0 || v1 &gt; numOfVexs || v2 &gt;<span style="color: #000000;"> numOfVexs)
+            </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> ArrayIndexOutOfBoundsException();
+        ENode current </span>=<span style="color: #000000;"> vexs[v1].firstadj;
+        </span><span style="color: #0000ff;">while</span> (current != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (current.adjvex ==<span style="color: #000000;"> v2) {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> current.weight;
+            }
+            current </span>=<span style="color: #000000;"> current.nextadj;
+        }
+        </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+    }
+ 
+}</span></code></pre>
+
+<h3>IGraph:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span> IGraph&lt;E&gt;<span style="color: #000000;"> {
+     </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> getNumOfVertex();<span style="color: #008000;">//</span><span style="color: #008000;">获取顶点的个数</span>
+     <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> getNumOfLevelVertex(E v);<span style="color: #008000;">//</span><span style="color: #008000;">得到某一层楼的顶点数目</span>
+     <span style="color: #0000ff;">public</span> List&lt;Integer&gt; getLevelVertex(E v);<span style="color: #008000;">//</span><span style="color: #008000;">得到一层楼的顶点序列号列表</span>
+     <span style="color: #0000ff;">public</span> E getLevel(<span style="color: #0000ff;">int</span> index);<span style="color: #008000;">//</span><span style="color: #008000;">获取指定位置节点的楼层</span>
+     <span style="color: #0000ff;">boolean</span> insertVex(E v, <span style="color: #0000ff;">int</span> index, <span style="color: #0000ff;">int</span> x, <span style="color: #0000ff;">int</span> y);<span style="color: #008000;">//</span><span style="color: #008000;">插入顶点</span>
+     <span style="color: #0000ff;">boolean</span> deleteVex(<span style="color: #0000ff;">int</span> index);<span style="color: #008000;">//</span><span style="color: #008000;">删除顶点</span>
+     <span style="color: #0000ff;">boolean</span> insertEdge(<span style="color: #0000ff;">int</span> v1, <span style="color: #0000ff;">int</span> v2,<span style="color: #0000ff;">int</span> weight);<span style="color: #008000;">//</span><span style="color: #008000;">插入边</span>
+     <span style="color: #0000ff;">boolean</span> deleteEdge(<span style="color: #0000ff;">int</span> v1, <span style="color: #0000ff;">int</span> v2);<span style="color: #008000;">//</span><span style="color: #008000;">删除边</span>
+     <span style="color: #0000ff;">int</span> getEdge(<span style="color: #0000ff;">int</span> v1,<span style="color: #0000ff;">int</span> v2);<span style="color: #008000;">//</span><span style="color: #008000;">查找边</span>
+<span style="color: #000000;">
+}</span></code></pre>
+
+<h3>IMove:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Set;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> yh
+ * </span><span style="color: #808080;">@version</span><span style="color: #008000;"> 3.0 
+ *
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> IMove {
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 求点1到点2的合适路线
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point1  用户输入的起始点
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> point2 用户输入的终止点 
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> barrier 无顺序的障碍列表
+     * </span><span style="color: #808080;">@return</span>
+     <span style="color: #008000;">*/</span><span style="color: #000000;">
+    Point move(Point point1, Point point2, Set</span>&lt;Point&gt;<span style="color: #000000;"> barrier);
+    
+}</span></code></pre>
+
+<h3>Point:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Point {
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> x;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> y;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> gCost;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> hEstimate;
+    </span><span style="color: #0000ff;">int</span><span style="color: #000000;"> fTotal;
+    Point prev;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">点所在的楼层</span>
+    <span style="color: #0000ff;">int</span><span style="color: #000000;"> level;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">点的序列号</span>
+    <span style="color: #0000ff;">int</span><span style="color: #000000;"> serial;
+    
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getKey(){
+        </span><span style="color: #0000ff;">return</span> level + "_" + x + "_" +<span style="color: #000000;"> y;
+    }
+    </span><span style="color: #0000ff;">public</span> Point(<span style="color: #0000ff;">int</span> x, <span style="color: #0000ff;">int</span><span style="color: #000000;"> y) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.x =<span style="color: #000000;"> x;
+        </span><span style="color: #0000ff;">this</span>.y =<span style="color: #000000;"> y;
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> x
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> y
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> level 楼层
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> Point(<span style="color: #0000ff;">int</span> x, <span style="color: #0000ff;">int</span> y, <span style="color: #0000ff;">int</span><span style="color: #000000;"> level){
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.x =<span style="color: #000000;"> x;
+        </span><span style="color: #0000ff;">this</span>.y =<span style="color: #000000;"> y;
+        </span><span style="color: #0000ff;">this</span>.level =<span style="color: #000000;"> level;
+        
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 用户不是输入整数时，转换成整数再处理
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> x
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> y
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> level
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> Point(<span style="color: #0000ff;">double</span> x, <span style="color: #0000ff;">double</span> y, <span style="color: #0000ff;">int</span><span style="color: #000000;"> level){
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.x = (<span style="color: #0000ff;">int</span><span style="color: #000000;">) x;
+        </span><span style="color: #0000ff;">this</span>.y = (<span style="color: #0000ff;">int</span><span style="color: #000000;">) y;
+        </span><span style="color: #0000ff;">this</span>.level =<span style="color: #000000;"> level;
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> x
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> y
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> level 楼层
+     * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> serialNumber 点的序号(唯一值)
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> Point(<span style="color: #0000ff;">int</span> x, <span style="color: #0000ff;">int</span> y, <span style="color: #0000ff;">int</span> level,<span style="color: #0000ff;">int</span><span style="color: #000000;"> serialNumber) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.x =<span style="color: #000000;"> x;
+        </span><span style="color: #0000ff;">this</span>.y =<span style="color: #000000;"> y;        
+        </span><span style="color: #0000ff;">this</span>.level =<span style="color: #000000;"> level;
+        </span><span style="color: #0000ff;">this</span>.serial =<span style="color: #000000;"> serialNumber;
+    } 
+ 
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> hashCode() {
+        </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> prime = 31<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> result = 1<span style="color: #000000;">;
+        result </span>= prime * result +<span style="color: #000000;"> x;
+        result </span>= prime * result +<span style="color: #000000;"> y;
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+ 
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> equals(Object obj) {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span> ==<span style="color: #000000;"> obj)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (obj == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (getClass() !=<span style="color: #000000;"> obj.getClass())
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        Point other </span>=<span style="color: #000000;"> (Point) obj;
+        </span><span style="color: #0000ff;">if</span> (x !=<span style="color: #000000;"> other.x)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (y !=<span style="color: #000000;"> other.y)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (level !=<span style="color: #000000;"> other.level)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+ 
+}</span></code></pre>
+
+<h3>TestContinuous:</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">package</span><span style="color: #000000;"> astar3D;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.HashSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.Set;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.Test;
+
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestContinuous {
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> test2() {
+        GraphAdjList</span>&lt;Integer&gt; graphadjlist=<span style="color: #0000ff;">new</span> GraphAdjList&lt;Integer&gt;(1000<span style="color: #000000;">); 
+        graphadjlist.insertVex(</span>1, 1, 1, 1<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>1, 2, 2, 1<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>1, 3, 3, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>1, 4, 2, 3<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>1, 5, 1, 3<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>2, 6, 1, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>2, 7, 3, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>2, 8, 3, 4<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>2, 9, 1, 4<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>2, 10, 2, 3<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>3, 11, 2, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>3, 12, 1, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>3, 13, 3, 2<span style="color: #000000;">);
+        graphadjlist.insertVex(</span>3, 14, 2, 1<span style="color: #000000;">);
+            
+        graphadjlist.insertEdge(</span>1, 2, 10<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>1, 5, 3<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>2, 3, 15<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>2, 4, 7<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>2, 5, 13<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>3, 4, 8<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>4, 5, 8<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>1, 6, 3<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>3, 8, 4<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>6, 9, 6<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>9, 8, 4<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>8, 7, 5<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>7, 6, 2<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>6, 10, 3<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>9, 10, 15<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>7, 10, 1<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>10, 11, 5<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>11, 12, 5<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>12, 14, 8<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>11, 13, 9<span style="color: #000000;">);
+        graphadjlist.insertEdge(</span>13, 14, 2<span style="color: #000000;">);
+                
+        Set</span>&lt;Point&gt; barrier = <span style="color: #0000ff;">new</span> HashSet&lt;Point&gt;<span style="color: #000000;">();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">barrier.add(new Point(1, 3, 1));</span>
+<span style="color: #000000;">                
+        AStar aStar </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> AStar();
+        aStar.graphadjlist </span>=<span style="color: #000000;"> graphadjlist;
+        Point startPoint </span>= <span style="color: #0000ff;">new</span> Point(2.2, 3.1, 1<span style="color: #000000;">);
+        Point endPoint </span>= <span style="color: #0000ff;">new</span> Point(2, 1, 3<span style="color: #000000;">); 
+        endPoint </span>=<span style="color: #000000;"> aStar.move(startPoint, endPoint, barrier);    
+        
+        List</span>&lt;Point&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;Point&gt;<span style="color: #000000;">();
+        list </span>=<span style="color: #000000;"> TestContinuous.get(endPoint, list);
+        
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Point point : list) {
+            System.out.println(point.serial);
+        }
+        System.out.println(endPoint.fTotal);
+                
+    }
+        
+       </span><span style="color: #008000;">//</span><span style="color: #008000;">生成路径集合</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> List&lt;Point&gt; get(Point p, List&lt;Point&gt;<span style="color: #000000;"> list) {
+            </span><span style="color: #0000ff;">if</span> (p != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                list.add(p);
+            }
+            Point pp </span>=<span style="color: #000000;"> p.prev;
+            </span><span style="color: #0000ff;">if</span> (pp != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                TestContinuous.get(pp, list);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+            }
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> list;
+        }    
+                    
+}</span></code></pre>
+
+<p><span style="font-size: 16px;">如果想实现类似每个点都是(x,y,z)格式的最短三维路径搜索，可以对二维情况下代码进行修改(上次写的那篇)。</span></p>
+<p><span style="font-size: 16px;">贴出我们的主要参考：</span></p>
+<p>&nbsp;</p>
+<p><a href="https://blog.csdn.net/h348592532/article/details/44421753">https://blog.csdn.net/h348592532/article/details/44421753</a></p>
+<p>&nbsp;</p>
+<p><a href="https://blog.csdn.net/qq_38410730/article/details/79587747">https://blog.csdn.net/qq_38410730/article/details/79587747</a></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

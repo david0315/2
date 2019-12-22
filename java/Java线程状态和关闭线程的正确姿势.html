@@ -1,0 +1,188 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java线程状态和关闭线程的正确姿势' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java线程状态和关闭线程的正确姿势</center></div><div class='banquan'>原文出处:本文由博客园博主张小云的博客提供。<br/>
+原文连接:https://www.cnblogs.com/zhangweicheng/p/11695849.html</div><br>
+    <h1>1、线程状态及切换</h1>
+<p>　　Java中的线程有六种状态，使用线程Thread内的枚举类来实现，如下，我对每个状态都进行了一定的解释。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">　　public</span> <span style="color: #0000ff;">enum</span><span style="color: #000000;"> State {
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;"> 表示一个线程还没启用（即未调用start方法）</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        NEW,
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * JVM中执行的线程都是处于这个状态的，但是处于这个状态不一定在JVM中执行，
+         * 也就是说，只有这个状态有资格被JVM调度从而获得时间片执行。
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        RUNNABLE,
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 线程在等待获取锁资源从而进入阻塞状态，
+         * 在这个状态中，其一直监视锁的动态，随时准备抢占锁
+         * 若获得锁资源，重新进入RUNNABLE状态
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        BLOCKED,
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 当调用Object.wait、Thread.join或者LockSupport类的park方法的时候，线程进入此状态，
+         * 该状态若无其他线程主动唤醒，则无期限的等待。
+         * 唤醒的方法包括：Object.notify（唤醒随机一个）、Object.notifyAll（唤醒全部线程），
+         * 被唤醒的线程重新进入RUNNABLE状态
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        WAITING,
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 同WAITING状态，不过不同的是调用的方法加上了时间的限制，
+         * 例如：Object.wait(10)、Thread.sleep(10)、Thread.join(10)、LockSupport.parkNanos(10)、LockSupport.parkUntil(10)这些方法
+         * 唤醒的方法有两种：
+         *     1、时间过期。
+         *     2、其他线程调用了notify或者notifyAll
+         *  唤醒之后同样进入RUNNABLE状态
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        TIMED_WAITING,
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;"> 线程的终点（正常死亡或者被终止）</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+        TERMINATED;
+    }</span></code></pre>
+
+<p>&nbsp;　　除了NEW和TERMINATED之外，其他的状态都是可以相互转换的，其转换过程如下图所示</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="./images/Java线程状态和关闭线程的正确姿势0.png" alt="" width="691" height="402" /></p>
+<p>&nbsp;</p>
+<p>　　这里特别讲一下<strong>RUNNABLE</strong>状态，在这个状态中线程并不一定在执行程序，只有被JVM调度的线程才能获得执行的时间片，并且只有这个状态的线程才能够获得时间片，换句话说，<strong>被JVM调度并且获得时间片是只属于处于RUNNABLE状态线程的权利</strong>。为了便于理解，可以将RUNNABLE分成<strong>Runnable</strong>和<strong>Running</strong>两个状态（当然，你也可以换成其他的，这里我只是自己好理解），那么上面的线程转换图就转变成了下面这样（参考《Java并发编程的艺术》中的线程状态图）：</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="./images/Java线程状态和关闭线程的正确姿势1.png" alt="" width="830" height="499" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;　　关于线程状态转换的例子，可以通过下面的代码加深理解</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Test {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        Test test </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Test();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1.NEW状态</span>
+        Thread thread = <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3.进行test对象锁的争夺，若抢到锁则继续执行，否则进入BLOCKED状态监控该锁，重新获得后进入RUNNABLE </span>
+            <span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (test) {
+                </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 4.进入TIMED_WAITING状态，100ms后重新进入RUNNABLE状态争夺时间片 </span>
+                    Thread.sleep(100<span style="color: #000000;">);
+                    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 5.重新获得时间片之后，进入WAITING状态 </span>
+<span style="color: #000000;">                    test.wait();
+                } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 6.正常run()方法执行完毕后线程结束，进入TERMINATED </span>
+<span style="color: #000000;">        });
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2.调用start()方法，线程进入RUNNABLE状态</span>
+<span style="color: #000000;">        thread.start();
+    }<br />}<br /><br />注：代码执行的顺序为注释的序号</span></code></pre>
+
+<h1>2、正确的结束一个线程</h1>
+<p>　　在上面的例子中我们看到线程的<strong>run</strong>方法正常执行完毕之后线程就正常死亡进入TERMINATED状态了，那么如果我们有中途停止线程的需求，我们应该如何正确的结束一个线程呢？</p>
+<ol>
+<li><strong>使用interrupt()方法：</strong>在线程内部，其定义了一个变量来标识当前线程是否处于被打断状态，调用interrupt()方法则使这个状态变为<strong>true</strong>；换句话说，线程在阻塞状态的时候会检查标识状态，如果是true，则抛出换句话说，线程在阻塞状态的时候会检查标识状态，如果是true，则抛出InterruptedException，否则阻塞，所以不会打断非阻塞的线程，即对正在运行的线程此方法无效。我们采用这个方法加异常处理的方式来结束一个线程。
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">　　public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        Thread thread </span>= <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                Thread.sleep(</span>1<span style="color: #000000;">);
+            } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                e.printStackTrace();
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里的return是必须的，原因后面说明</span>
+                <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+            }
+            System.err.println(</span>"thread interrupt test..."<span style="color: #000000;">);
+        });
+        thread.start();
+        thread.interrupt();
+        System.out.println(</span>"main thread end..."<span style="color: #000000;">);
+    }<br /><br />// 结果图：异常后面的语句不会打印<br /><img src="./images/Java线程状态和关闭线程的正确姿势2.png" alt="" width="350" height="139" /><br /><br />　　这里关于<strong>线程中的打断标识变量（之后以interrupt称）</strong>需要说明的是，在特定的情况下其状态会被重置。<br />　　    1、线程内部在catch了异常了之后interrupt的状态会被重置为false。<br />       2、线程调用了Thread.interrupted()方法之后，interrupt的状态会被重置为false。如果需要判断线程是否中断的话可以使用对象方法isInterrupted()，此方法不会重置。<br />   所以在刚才的代码中需要加入return来结束线程，否则的话线程还是会继续往下执行，如下图<br /><img src="./images/Java线程状态和关闭线程的正确姿势3.png" alt="" width="444" height="192" /><br /><br />使用isInterrupted()实现：<br /></span></code></pre>
+<pre><code>public static void main(String[] args) throws InterruptedException {<br />    Thread thread = new Thread(() -&gt; {<br />        while (!Thread.currentThread().isInterrupted()) {<br />            int k = 0;<br />            while (k++ &lt; 10) {<br />                System.out.println("do something..." + k);<br />            }<br />        }<br />    System.err.println("thread end...");<br />    });<br />    thread.start();<br />    Thread.sleep(1);<br />    // 主线程流程执行完了，需要停止线程<br />    thread.interrupt();<br />}</code></pre>
+
+<p>&nbsp;　</p>
+</li>
+<li><strong>使用标识位来实现：</strong>定义一个变量标识线程是否终止，若终止了则退出run方法。跟上面isInterrupted()的实现一样，不过换成了<strong>volatile</strong>变量而已。
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Test {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">boolean</span> interrupted = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+        Thread thread </span>= <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">while</span> (!<span style="color: #000000;">interrupted) {
+                </span><span style="color: #0000ff;">int</span> k = 0<span style="color: #000000;">;
+                </span><span style="color: #0000ff;">while</span> (k++ &lt; 10<span style="color: #000000;">) {
+                    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (interrupted) {
+                        System.err.println(</span>"thread invoke end...."<span style="color: #000000;">);
+                        </span><span style="color: #0000ff;">return</span><span style="color: #000000;">;
+                    }
+                    System.out.println(</span>"do something..." +<span style="color: #000000;"> k);
+                }
+            }
+        System.err.println(</span>"thread end..."<span style="color: #000000;">);
+        });
+        thread.start();
+        Thread.sleep(</span>1<span style="color: #000000;">);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 主线程流程执行完了，需要停止线程</span>
+        interrupted = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+}<br />// 结果图<br /><img src="./images/Java线程状态和关闭线程的正确姿势4.png" alt="" width="312" height="294" /></span></code></pre>
+
+</li>
+</ol>
+<h1>3、stop()方法&mdash;&mdash;不正确的线程中断方法</h1>
+<p>　　&nbsp; 在线程提供的方法中还有一个方法可以强制关闭线程&mdash;&mdash;stop()。这个方法可以说是相当的霸道，给人一种&ldquo;我不管，我就是要你现在立刻死亡（指线程）&rdquo;的感觉，并且其还会释放线程所有的锁资源，这样可能会导致出现数据不一致从而出现线程不安全的情况，如下面例子。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Test {
+
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">volatile</span> <span style="color: #0000ff;">boolean</span> flag = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> state = 0<span style="color: #000000;">;
+
+        </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> main(String[] args) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> InterruptedException {
+            Test test </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> Test();
+            Thread thread </span>= <span style="color: #0000ff;">new</span> Thread(() -&gt;<span style="color: #000000;"> {
+                </span><span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (test) {
+                    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+                        test.state </span>= 1<span style="color: #000000;">;
+                        Thread.sleep(</span>100<span style="color: #000000;">);
+                        </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (flag) {
+                            test.state </span>= 2<span style="color: #000000;">;
+                        }
+                        System.err.println(</span>"thread execute finished..."<span style="color: #000000;">);
+                    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+            thread.start();
+            Thread.sleep(</span>1<span style="color: #000000;">);
+            thread.stop();
+            flag </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+            System.out.println(</span>"state状态：" +<span style="color: #000000;"> test.state);
+        }
+}<br />// 在这段代码中，进入线程时默认将state赋为1，接着过一段时间后如果触发了特定条件则把state赋为2，但是在特定条件触发之前，线程就被终止掉了，这个特定条件虽然符合但却没办法执行，从而导致数据的不一致。<br />// 结果图<br /><img src="./images/Java线程状态和关闭线程的正确姿势5.png" alt="" width="372" height="105" />　　</span></code></pre>
+
+<pre><code><em id="__mceDel"><span><br /></span></em><span style="font-size: 16px;">　　所以，我们应该采用上面两种正确的方式<strong>而不是stop()来中止线程</strong>。此外，stop()方法若在线程start()之前执行，那么在线程启动的时候就会立即死亡。</span></code></pre>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<blockquote>
+<p>若有不对之处，望各位不吝指教（反正免费，对吧）。</p>
+</blockquote>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

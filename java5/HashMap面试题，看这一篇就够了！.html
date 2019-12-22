@@ -1,0 +1,743 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修HashMap面试题，看这一篇就够了！' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>HashMap面试题，看这一篇就够了！</center></div><div class='banquan'>原文出处:本文由博客园博主天之痕苏的小院子提供。<br/>
+原文连接:https://www.cnblogs.com/tianzhihensu/p/11972780.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        <ul>
+        <li><a href="#序言">序言</a></li>
+        <li><a href="#一jdk7中的hashmap底层实现">一、JDK7中的HashMap底层实现</a><ul>
+        <li><a href="#基础知识">1.1 基础知识</a></li>
+        <li><a href="#put方法">1.2 put()方法</a><ul>
+        <li><a href="#特殊key值处理">1.2.1 特殊key值处理</a></li>
+        <li><a href="#扩容">1.2.2 扩容</a></li>
+        <li><a href="#如何计算bucket下标">1.2.3 如何计算bucket下标？</a></li>
+        <li><a href="#在目标bucket中遍历entry结点">1.2.4 在目标bucket中遍历Entry结点</a></li>
+        </ul></li>
+        <li><a href="#get方法">1.3 get()方法</a></li>
+        <li><a href="#map中的迭代器iterator">1.4 Map中的迭代器Iterator</a><ul>
+        <li><a href="#map遍历的几种方式">1.4.1 Map遍历的几种方式</a></li>
+        <li><a href="#iterator的实现原理">1.4.2 Iterator的实现原理</a></li>
+        </ul></li>
+        <li><a href="#fail-fast策略">1.5 fail-fast策略</a></li>
+        </ul></li>
+        <li><a href="#二jdk8中的hashmap底层实现">二、JDK8中的HashMap底层实现</a><ul>
+        <li><a href="#put操作">2.1 put()操作</a></li>
+        <li><a href="#扩容操作">2.2 扩容操作</a></li>
+        <li><a href="#get操作">2.3 get()操作</a></li>
+        </ul></li>
+        <li><a href="#三hashmaphashtable是什么关系">三、HashMap、HashTable是什么关系？</a><ul>
+        <li><a href="#共同点与异同点">3.1 共同点与异同点</a></li>
+        <li><a href="#hashmap的线程安全">3.2 HashMap的线程安全</a></li>
+        </ul></li>
+        <li><a href="#四hashmap线程不安全在哪">四、HashMap线程不安全在哪？</a><ul>
+        <li><a href="#数据覆盖问题">4.1 数据覆盖问题</a></li>
+        <li><a href="#扩容时导致死循环">4.2 扩容时导致死循环</a></li>
+        <li><a href="#小结">4.3 小结</a></li>
+        </ul></li>
+        <li><a href="#五如何规避hashmap的线程不安全">五、如何规避HashMap的线程不安全？</a><ul>
+        <li><a href="#将map转为包装类">5.1 将Map转为包装类</a></li>
+        <li><a href="#使用concurrenthashmap">5.2 使用ConcurrentHashMap</a></li>
+        </ul></li>
+        <li><a href="#reference">Reference</a></li>
+        </ul>
+    
+
+<blockquote>
+<p>更多2019年的技术文章，欢迎关注我的微信公众号：码不停蹄的小鼠松（微信号：busy_squirrel），也可扫下方二维码关注获取最新文章哦~<br />
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！0.png" width="20%" /></p></p>
+</blockquote>
+<p>文章目录：<br />
+@</p>
+<h1 id="序言">序言</h1>
+<p>在后端的日常开发工作中，<strong>集合</strong>是使用频率相当高的一个工具，而其中的<strong>HashMap</strong>，则更是我们用以处理业务逻辑的好帮手，同时<strong>HashMap</strong>的底层实现和原理，也成了面试题中的常客。</p>
+<p>以前曾有详细了解过<strong>HashMap</strong>的实现原理，看过源码（JDK7版本）。但随着jdk版本的飞速迭代（现在都到JDK13了，但新特性还从没用过。。），主流的jdk使用版本也终于从JDK7挪到了JDK8。</p>
+<p>由于JDK的向前兼容，在JDK8的使用过程中也没发现<strong>HashMap</strong>有什么特别之处，特性并无变化（依然线程不安全）。但最近的一次好奇心驱使，从IDE中点进去看了下<strong>HashMap</strong>的<strong><code>put()</code></strong>方法，有点儿懵逼，怎么跟我记忆中的不太一样？从JDK7到JDK8，<strong>HashMap</strong>也做了升级么？升级了什么哪些内容？</p>
+<p>借着这股好奇心，把JDK7和JDK8的源码都翻了翻，对两者的实现原理做一下对比，JDK版本都在半年左右一次的速度推陈出新，我们的认知当然也要跟上，不断学习，站在浪潮之巅，不然就要被这滚滚的信息泥石流给裹挟淹没了。</p>
+<p>先展示下Map家族的关系层级，有助于我们更好的理解后面的内容。</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！1.png" width="60%" /></p>
+<p><strong>HashMap</strong>的基本知识点介绍就不多啰嗦了，直奔主题，看JDK7和JDK8的功能实现吧。</p>
+<h1 id="一jdk7中的hashmap底层实现">一、JDK7中的HashMap底层实现</h1>
+<h2 id="基础知识">1.1 基础知识</h2>
+<p>不管是1.7，还是1.8，HashMap的实现框架都是<strong>哈希表 + 链表</strong>的组合方式。结构图如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！2.png" width="70%" /></p>
+<p>平常使用最多的就是<strong><code>put()</code></strong>、<strong><code>get()</code></strong>操作，想要了解底层实现，最直接的就是从<strong><code>put()/get()</code></strong>方法看起。不过在具体看源码前，我们先关注几个域变量，打打基础，如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！3.png" width="60%" /></p>
+<p>上图中，已对各个变量做了简单的解释。<br />
+再多说一下，最后一个变量<strong><code>modCount</code></strong>，记录了map新增/删除k-v对，或者内部结构做了调整的次数，其主要作用，是对Map的<strong><code>iterator()</code></strong>操作做一致性校验，如果在iterator操作的过程中，map的数值有修改，直接抛出<strong><code>ConcurrentModificationException</code></strong>异常。</p>
+<p>还需要说明的是，上面的域变量中存在一个等式：</p>
+<pre><code><code>threshold = table.length * loadFactor;</code></code></pre>
+<p>当执行<strong><code>put()</code></strong>操作放入一个新的值时，如果map中已经存在对应的key，则作替换即可，若不存在，则会首先判断<strong><code>size&gt;=threshold</code></strong>是否成立，这是决定哈希table是否扩容的重要因素。</p>
+<p>就使用层面来说，用的最多的莫过于<strong><code>put()</code></strong>方法、<strong><code>get()</code></strong>方法。想要详细了解运作原理，那就先从这两个方法看起吧，这两个方法弄明白了，也就基本能理清HashMap的实现原理了。</p>
+<h2 id="put方法">1.2 put()方法</h2>
+<p>当了解了以上的变量和用途后，接下来看下<strong><code>put()</code></strong>方法的具体实现：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！4.png" width="60%" /></p>
+<p>如上面的截图代码所示，整个put方法的处理过程，可拆分为四部分：</p>
+<ul>
+<li><strong>part1：特殊key值处理，key为null；</strong></li>
+<li><strong>part2：计算table中目标bucket的下标；</strong></li>
+<li><strong>part3：指定目标bucket，遍历Entry结点链表，若找到key相同的Entry结点，则做替换；</strong></li>
+<li><strong>part4：若未找到目标Entry结点，则新增一个Entry结点。</strong></li>
+</ul>
+<p>不知大家有没有发现，上面截图中的<strong><code>put()</code></strong>方法是有返回值的，场景区分如下：</p>
+<ul>
+<li>场景1：若执行put操作前，key已经存在，那么在执行put操作时，会使用本次的新value值来覆盖前一次的旧value值，返回的就是旧value值；</li>
+<li>场景2：若key不存在，则返回null值。</li>
+</ul>
+<p>下面对put方法的各部分做详细的拆解分析。</p>
+<h3 id="特殊key值处理">1.2.1 特殊key值处理</h3>
+<p>特殊key值，指的就是key为null。<br />
+先说结论：<br /><br />
+<strong>a)</strong> HashMap中，是允许key、value都为null的，且key为null只存一份，多次存储会将旧value值覆盖；<br /><br />
+<strong>b)</strong> key为null的存储位置，都统一放在下标为<strong>0</strong>的bucket，即：table[0]位置的链表；<br /><br />
+<strong>c)</strong> 如果是第一次对key=null做put操作，将会在table[0]的位置新增一个Entry结点，使用头插法做链表插入。</p>
+<p>上代码：</p>
+<pre><code><code>private V putForNullKey(V value) {
+    for (Entry&lt;K,V&gt; e = table[0]; e != null; e = e.next) {
+        if (e.key == null) {
+            V oldValue = e.value;
+            e.value = value;
+            e.recordAccess(this);
+            return oldValue;
+        }
+    }
+    modCount++;
+    addEntry(0, null, value, 0);
+    return null;
+}
+
+
+/**
+ * Adds a new entry with the specified key, value and hash code to
+ * the specified bucket.  It is the responsibility of this
+ * method to resize the table if appropriate.
+ *
+ * Subclass overrides this to alter the behavior of put method.
+ */
+void addEntry(int hash, K key, V value, int bucketIndex) {
+    if ((size &gt;= threshold) &amp;&amp; (null != table[bucketIndex])) {
+        resize(2 * table.length);
+        hash = (null != key) ? hash(key) : 0;
+        bucketIndex = indexFor(hash, table.length);
+    }
+
+
+    createEntry(hash, key, value, bucketIndex);
+}
+
+
+/**
+ * Like addEntry except that this version is used when creating entries
+ * as part of Map construction or &quot;pseudo-construction&quot; (cloning,
+ * deserialization).  This version needn&#39;t worry about resizing the table.
+ *
+ * Subclass overrides this to alter the behavior of HashMap(Map),
+ * clone, and readObject.
+ */
+void createEntry(int hash, K key, V value, int bucketIndex) {
+    Entry&lt;K,V&gt; e = table[bucketIndex];
+    table[bucketIndex] = new Entry&lt;&gt;(hash, key, value, e);
+    size++;
+}</code></code></pre>
+<p><strong><code>putForNullKey()</code></strong>方法中的代码较为简单：首先选择<strong>table[0]</strong>位置的链表，然后对链表做遍历操作，如果有结点的key为null，则将新value值替换掉旧value值，返回旧value值，如果未找到，则新增一个key为null的Entry结点。</p>
+<p>重点我们看下第二个方法<strong><code>addEntry()</code></strong>。<br />
+这是一个通用方法：</p>
+<blockquote>
+<p>给定hash、key、value、bucket下​标，新增一个Entry结点，另外还担负了扩容职责。如果哈希表中存放的k-v对数量超过了当前阈值(<strong>threshold = table.length * loadFactor</strong>)，且当前的bucket下标有链表存在，那么就做扩容处理（resize）。扩容后，重新计算hash，最终得到新的bucket下标，然后使用头插法新增结点。</p>
+</blockquote>
+<h3 id="扩容">1.2.2 扩容</h3>
+<p>上一节有提及，当k-v对的容量超出一定限度后，需要对哈希table做扩容操作。那么问题来了，怎么扩容的？<br />
+下面看下源代码：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！5.png" width="60%" /></p>
+<p>有两个核心点：<br />
+<strong><font color="red">a)</font></strong> 扩容后大小是扩容前的2倍；</p>
+<pre><code><code>oldCapacity=table.length;
+newCapacity = 2 * oldCapacity;</code></code></pre>
+<p><strong><font color="red">b)</font></strong> 数据搬迁，从旧table迁到扩容后的新table。<br />
+为避免碰撞过多，先决策是否需要对每个Entry链表结点重新hash，然后根据hash值计算得到bucket下标，然后使用头插法做结点迁移。</p>
+<h3 id="如何计算bucket下标">1.2.3 如何计算bucket下标？</h3>
+<h4 id="hash值的计算">① hash值的计算</h4>
+<p>首先得有key的hash值，就是一个整数，int类型，其计算方式使用了一种可尽量减少碰撞的算式（高位运算），具体原理不再展开，只要知道一点就行：使用key的hashCode作为算式的输入，得到了hash值。</p>
+<p>从以上知识点，我们可以得到一个<strong><font color="green">推论</font></strong>：<br><br />
+<strong><font color="red">对于两个对象，若其hashCode相同，那么两个对象的hash值就一定相同。</font></strong></p>
+<p>这里还牵涉到另外一个知识点。对于HashMap中key的类型，必须满足以下的条件：<br><br />
+<strong><font color="red">若两个对象逻辑相等，那么他们的hashCode一定相等，反之却不一定成立。</font></strong></p>
+<p>逻辑相等的含义就比较宽泛了，我们可以将逻辑的相等定义为两个对象的内存地址相同，也可以定义为对象的某个域值相等，自定义两个对象的逻辑相等，可通过重写<strong><code>Object</code></strong>类的<strong><code>equals()</code></strong>方法来实现。<br />
+比如<strong><code>String</code></strong>类，请看以下代码：</p>
+<pre><code><code>String str1 = &quot;abc&quot;;
+String str2 = new String(&quot;abc&quot;);
+System.out.println(str1 == str2);  // false，两个对象的内存地址并不同
+System.out.println(str1.equals(str2)); // true 两个对象的域值相同，都存储了 abc 这三个字符</code></code></pre>
+<p>对于上面代码中的<strong><code>str1</code></strong>、<strong><code>str2</code></strong>两个对象，虽然它们的内存地址不同，但根据<strong><code>String</code></strong>类中对<strong><code>Object</code></strong>类的<strong><code>equals()</code></strong>方法的重写(<strong>@override</strong>)，两个对象的域变量（即char数组）都存储了'a'、'b'、'c'三个字符，因此逻辑上是相等的。既然<strong><code>str1</code></strong>、<strong><code>str2</code></strong>两个对象逻辑上相等，那么一定有如下结果：</p>
+<pre><code><code>System.out.println(str1.hashCode() == str2.hashCode());
+
+
+---输出---
+true</code></code></pre>
+<p>从而我们就可以知道，在同一个HashMap对象中，会有如下结果：</p>
+<pre><code><code>String str1 = &quot;abc&quot;;
+String str2 = new String(&quot;abc&quot;);
+Map&lt;String, Integer&gt; testMap = new HashMap&lt;&gt;();
+testMap.put(str1, 12);
+testMap.put(str2, 13);
+
+
+String str3 = new StringBuilder(&quot;ab&quot;).append(&quot;c&quot;).toString();
+System.out.println(testMap.get(str3));
+
+
+---输出---
+13</code></code></pre>
+<p>另外，我们也可以反过来想一下。</p>
+<p>假设HashMap的key不满足上面提到的条件，即：两个对象相等的情况下，他们的hashCode可能不一致。那么，这会带来什么后果呢？以上面示例代码中的<strong><code>str1</code></strong>、<strong><code>str2</code></strong>为例，若它们的hashCode不相等，那么对应的hash也就可能不相等（<strong>注意</strong>：这里是<strong>可能不相等</strong>，也有可能相等），testMap做put操作时，<strong><code>str1</code></strong>、<strong><code>str2</code></strong>为就会被分配到不同的bucket上，导致的最直接后果就是会存储两份。间接的后果那就更多了，比如：使用<strong><code>str3</code></strong>对象执行<strong><code>testMap.get(str3)</code></strong>操作时，可能获取不到值，更进一步的后果就是这部分无法触达的对象无法回收，导致<strong>内存泄漏</strong>。</p>
+<p>因此，<strong><font color="red">再重新一遍</font></strong>，HashMap的key所对应的类型，一定要满足如下条件：<br><br />
+<strong><font color="red">若两个对象逻辑相等，那么他们的hashCode一定相等，反之却不一定成立。</font></strong></p>
+<h4 id="取模的逻辑">② 取模的逻辑</h4>
+<p>前面我们分析了hash值的计算，接下来就可以引出bucket下标的计算：</p>
+<pre><code><code>/**
+ * Returns index for hash code h.
+ */
+static int indexFor(int h, int length) {
+    return h &amp; (length-1);
+}</code></code></pre>
+<p>计算相当简洁：将table的容量与hash值做“<strong>与</strong>”运算，得到哈希table的bucket下标。</p>
+<h4 id="拓展">③ 拓展</h4>
+<p>这种通俗的不能再通俗的计算大家都能看懂，但为何要这样做呢？背后的思考是什么？在看到下面的解释前，大家可以先思考下~</p>
+<p>在文档开头，给出了HashMap类中的各个域变量。其中，哈希table的初始大小默认设置为16，为2的次幂数。后面在扩容时，都是以2的倍数来扩容。为什么非要将哈希table的大小控制为2的次幂数？</p>
+<p><strong><font color="green">原因1</font></strong>：降低发生碰撞的概率，使散列更均匀。根据key的hash值计算bucket的下标位置时，使用“与”运算公式：h &amp; (length-1)，当哈希表长度为2的次幂时，等同于使用表长度对hash值取模（不信大家可以自己演算一下），散列更均匀；<br><br />
+<strong><font color="green">原因2</font></strong>：表的长度为2的次幂，那么(length-1)的二进制最后一位一定是1，在对hash值做“与”运算时，最后一位就可能为1，也可能为0，换句话说，取模的结果既有偶数，又有奇数。设想若(length-1)为偶数，那么“与”运算后的值只能是0，奇数下标的bucket就永远散列不到，会浪费一半的空间。</p>
+<h3 id="在目标bucket中遍历entry结点">1.2.4 在目标bucket中遍历Entry结点</h3>
+<p>先把这部分代码拎出来：</p>
+<pre><code><code>...
+int i = indexFor(hash, table.length);
+for (Entry&lt;K,V&gt; e = table[i]; e != null; e = e.next) {
+    Object k;
+    if (e.hash == hash &amp;&amp; ((k = e.key) == key || key.equals(k))) {
+        V oldValue = e.value;
+        e.value = value;
+        e.recordAccess(this);
+        return oldValue;
+    }
+}
+...</code></code></pre>
+<p>通过hash值计算出下标，找到对应的目标bucket，然后对链表做遍历操作，逐个比较，如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！6.png" width="70%" /></p>
+<p>注意这里的查找条件：<strong><font color="red"><code>e.hash == hash &amp;&amp; ((k = e.key) == key || key.equals(k))</code></font></strong><br />
+结点的key与目标key的相等，要么内存地址相等，要么逻辑上相等，两者有一个满足即可。</p>
+<h2 id="get方法">1.3 get()方法</h2>
+<p>相比于<strong><code>put()</code></strong>方法，<strong><code>get()</code></strong>方法的实现就相对简单多了。主要分为两步，先是通过key的hash值计算目标bucket的下标，然后遍历对应bucket上的链表，逐个对比，得到结果。</p>
+<pre><code><code>public V get(Object key) {
+    if (key == null)
+        return getForNullKey();
+    Entry&lt;K,V&gt; entry = getEntry(key);
+
+
+    return null == entry ? null : entry.getValue();
+}
+
+
+/**
+ * Returns the entry associated with the specified key in the
+ * HashMap.  Returns null if the HashMap contains no mapping
+ * for the key.
+ */
+final Entry&lt;K,V&gt; getEntry(Object key) {
+    int hash = (key == null) ? 0 : hash(key);
+    for (Entry&lt;K,V&gt; e = table[indexFor(hash, table.length)];
+         e != null;
+         e = e.next) {
+        Object k;
+        if (e.hash == hash &amp;&amp;
+            ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+            return e;
+    }
+    return null;
+}</code></code></pre>
+<h2 id="map中的迭代器iterator">1.4 Map中的迭代器Iterator</h2>
+<h3 id="map遍历的几种方式">1.4.1 Map遍历的几种方式</h3>
+<p>先问个问题，你能想到几种遍历Map的方式？</p>
+<h4 id="方式1iterator迭代器">方式1：Iterator迭代器</h4>
+<pre><code><code>Iterator&lt;Entry&lt;String, Integer&gt;&gt; iterator = testMap.entrySet().iterator();
+while (iterator.hasNext()) {
+    Entry&lt;String, Integer&gt; next = iterator.next();
+    System.out.println(next.getKey() + &quot;:&quot; + next.getValue());
+}</code></code></pre>
+<p>逐个获取哈希table中的每个bucket中的每个Entry结点，后面会详细介绍。</p>
+<h4 id="方式2最常见的使用方式可同时得到keyvalue值">方式2：最常见的使用方式，可同时得到key、value值</h4>
+<pre><code><code>// 方式一
+for (Map.Entry&lt;String, Integer&gt; entry : testMap.entrySet()) {
+    System.out.println(entry.getKey() + &quot;:&quot; + entry.getValue());
+}</code></code></pre>
+<p>这种方式是一个语法糖，我们可通过反编译命令javap，或通过IDE来查下编译之后的语句：</p>
+<pre><code><code>Iterator var2 = testMap.entrySet().iterator();
+while(var2.hasNext()) {
+    Entry&lt;String, Integer&gt; entry = (Entry)var2.next();
+    System.out.println((String)entry.getKey() + &quot;:&quot; + entry.getValue());
+}</code></code></pre>
+<p>其底层还是使用的是Iterator功能。</p>
+<h4 id="方式3使用foreach方式jdk1.8才有">方式3：使用foreach方式（JDK1.8才有）</h4>
+<pre><code><code>testMap.forEach((key, value) -&gt; {
+    System.out.println(key + &quot;:&quot; + value);
+});</code></code></pre>
+<p>这是一种Lambda表达式。foreach也是一个语法糖，其内部是使用了<strong>方式二</strong>的处理方式，Map的foreach方法实现如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！7.png" width="65%" /></p>
+<h4 id="方式4通过key的set集合遍历">方式4：通过key的set集合遍历</h4>
+<pre><code><code>Iterator&lt;String&gt; keyIterator = testMap.keySet().iterator();
+while (keyIterator.hasNext()) {
+    String key = keyIterator.next();
+    System.out.println(key + &quot;:&quot; + testMap.get(key));
+}</code></code></pre>
+<p>这种也是Iterator的方式，不过是通过Set类的iterator方式。</p>
+<p>相比<strong>方式1</strong>，这种方式在获取<code>value</code>时，还需要再次通过<strong><code>testMap.get()</code></strong>的方式，性能相比<strong>方式1</strong>要降低很多。但两者有各自的使用场景，若在Map的遍历中仅使用<code>key</code>，则<strong>方式4</strong>较为适合，若需用到<code>value</code>，推荐使用<strong>方式1</strong>。</p>
+<p>从前面的<strong>方式1</strong>和<strong>方式2</strong>可知，方式4还有如下的变体（语法糖的方式）：</p>
+<pre><code><code>for (String key : testMap.keySet()) {
+    System.out.println(key + &quot;:&quot; + testMap.get(key));
+}</code></code></pre>
+<p>综合以上，在遍历Map时，从性能方面考虑，若需同时使用key和value，推荐使用<strong>方式1</strong>或<strong>方式2</strong>，若单纯只是使用key，推荐使用<strong>方式4</strong>。任何情况下都不推荐使用<strong>方式3</strong>，因为会新增二次查询（通过key再一次在Map中查找value）。</p>
+<p>另外，使用<strong>方式1</strong>时，还可以做remove操作，这个下面会讲到。</p>
+<h3 id="iterator的实现原理">1.4.2 Iterator的实现原理</h3>
+<p>先看一张类/接口的继承关系图：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！8.png" width="50%" /></p>
+<p>Iterator为一个顶层接口，只提供了三个基础方法声明：</p>
+<pre><code><code>public interface Iterator&lt;E&gt; {
+    
+  boolean hasNext();
+    
+    E next();
+    
+    default void remove() {
+        throw new UnsupportedOperationException(&quot;remove&quot;);
+    }
+}</code></code></pre>
+<p>这也是我们使用<strong><code>Iterator</code></strong>时绕不开的三个方法。<br />
+在HashMap中，首先是新增了一个内部抽象类<strong><code>HashIterator</code></strong>，如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！9.png" width="55%" /></p>
+<p>我们以Entry结点的遍历为例（map的key、value的Iterator遍历方式都类似）：</p>
+<pre><code><code>Iterator&lt;Entry&lt;String, Integer&gt;&gt; iterator = testMap.entrySet().iterator();
+while (iterator.hasNext()) {
+    Entry&lt;String, Integer&gt; next = iterator.next();
+    System.out.println(next.getKey() + &quot;:&quot; + next.getValue());
+}</code></code></pre>
+<p>首先，第一行代码，找到<strong><code>Iterator</code></strong>接口的具体实现类<strong><code>EntryIterator</code></strong>：</p>
+<pre><code><code>private final class EntryIterator extends HashIterator&lt;Map.Entry&lt;K,V&gt;&gt; {
+    public Map.Entry&lt;K,V&gt; next() {
+        return nextEntry();
+    }
+}</code></code></pre>
+<p>非常简洁有木有？？？就只有一个<strong><code>next()</code></strong>方法，其正是对<strong><code>Iterator</code></strong>接口的<code>next()</code>方法的实现。方法内部也只有一行，指向了父类的<strong><code>nextEntry()</code></strong>方法，即上面截图中的<strong>HashIterator</strong>类中的<code>nextEntry()</code>方法。</p>
+<p>HashMap中的Iterator实现原理也不过如此，就是这么朴实无华，是不是都想动手自己撸一个HashMap的实现了？嗯，你可以的！！！</p>
+<h2 id="fail-fast策略">1.5 fail-fast策略</h2>
+<p>和<strong>fail-fast</strong>经常一起出现的还有一个异常类<strong><code>ConcurrentModificationException</code></strong>，接下来我们聊下这两者是什么关系，以及为什么搞这么个策略出来。</p>
+<p>什么是<strong>fail-fast</strong>？我们可以称它为&quot;快速失效策略&quot;，下面是Wikipedia中的解释：</p>
+<blockquote>
+<p>In systems design, a fail-fast system is one which immediately reports at its interface any condition that is likely to indicate a failure. Fail-fast systems are usually designed to stop normal operation rather than attempt to continue a possibly flawed process.<br />
+Such designs often check the system's state at several points in an operation, so any failures can be detected early. The responsibility of a fail-fast module is detecting errors, then letting the next-highest level of the system handle them.</p>
+</blockquote>
+<p>大白话翻译过来，就是在系统设计中，当遇到可能会诱导失败的条件时立即上报错误，快速失效系统往往被设计在立即终止正常操作过程，而不是尝试去继续一个可能会存在错误的过程。<br><br />
+<strong>再简洁点说</strong>，就是尽可能早的发现问题，立即终止当前执行过程，由更高层级的系统来做处理。</p>
+<p>在HashMap中，我们前面提到的<strong><code>modCount</code></strong>域变量，就是用于实现hashMap中的<strong>fail-fast</strong>。出现这种情况，往往是在非同步的多线程并发操作。<br><br />
+在对Map的做迭代(Iterator)操作时，会将<strong><code>modCount</code></strong>域变量赋值给<strong><code>expectedModCount</code></strong>局部变量。在迭代过程中，用于做内容修改次数的一致性校验。若此时有其他线程或本线程的其他操作对此Map做了内容修改时，那么就会导致<strong>modCount</strong>和<strong>expectedModCount</strong>不一致，立即抛出异常<strong><code>ConcurrentModificationException</code></strong>。</p>
+<p>举个栗子：</p>
+<pre><code><code>public static void main(String[] args) {
+  Map&lt;String, Integer&gt; testMap = new HashMap&lt;&gt;();
+  testMap.put(&quot;s1&quot;, 11);
+  testMap.put(&quot;s2&quot;, 22);
+  testMap.put(&quot;s3&quot;, 33);
+
+
+  for (Map.Entry&lt;String, Integer&gt; entry : testMap.entrySet()) {
+      String key = entry.getKey();
+      if (&quot;s1&quot;.equals(key)) {
+          testMap.remove(key);
+      }
+  }
+}
+
+
+---- output ---
+Exception in thread &quot;main&quot; java.util.ConcurrentModificationException
+  at java.util.HashMap$HashIterator.nextNode(HashMap.java:1437)
+  at java.util.HashMap$EntryIterator.next(HashMap.java:1471)
+  at java.util.HashMap$EntryIterator.next(HashMap.java:1469)
+    ...</code></code></pre>
+<p>正确的删除Map元素的姿势：只有一个，Iteator的<strong><code>remove()</code></strong>方法。</p>
+<pre><code><code>// 方式三
+Iterator&lt;Entry&lt;String, Integer&gt;&gt; iterator = testMap.entrySet().iterator();
+while (iterator.hasNext()) {
+    Entry&lt;String, Integer&gt; next = iterator.next();
+    System.out.println(next.getKey() + &quot;:&quot; + next.getValue());
+    if (next.getKey().equals(&quot;s2&quot;)) {
+        iterator.remove();
+    }
+}</code></code></pre>
+<p>但也要注意一点，能安全删除，并不代表就是多线程安全的，在多线程并发执行时，若都执行上面的操作，因未设置为同步方法，也可能导致<strong><code>modCount</code></strong>与<strong><code>expectedModCount</code></strong>不一致，从而抛异常<strong><code>ConcurrentModificationException</code></strong>。<br />
+线程不安全的体现和规避方式，后续章节会详细提及。</p>
+<h1 id="二jdk8中的hashmap底层实现">二、JDK8中的HashMap底层实现</h1>
+<p>前面我们已经详细剖析了HashMap在JDK7中的实现，不知大家有没有发现其中可以优化的地方？比如哈希表中因为hash碰撞而产生的链表结构，如果数据量很大，那么产生碰撞的几率很增加，这带来的后果就是链表长度也一直在增加，对于查询来说，性能会越来越低。如何提升查询性能，成了JDK8中的HashMap要解决的问题。</p>
+<p>因此，相比于JDK7，HashMap在JDK8中做链表结构做了优化（但仍然线程不安全），在一定条件下将链表转为红黑树，提升查询效率。</p>
+<p>JDK8中的HashMap其底层存储结构如下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！10.png" width="60%" /></p>
+<p>相比于JDK7，JDK8中的HashMap会将较长的链表转为红黑树，这也是与JDK7的核心差异。下面先看下<strong><code>put()</code></strong>方法的实现。</p>
+<h2 id="put操作">2.1 put()操作</h2>
+<p>在进一步分析<strong><code>put()</code></strong>操作前，先说明一下：除了底层存储结构有调整，链表结点的定义也由<strong><code>Entry</code></strong>类转为了<strong><code>Node</code></strong>类，但内核没有变化，不影响理解。</p>
+<p>先上源代码：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！11.png" width="60%" /></p>
+<p>是不是很长很复杂？其实不难，只要记住上面的底层存储结构图，代码就很容易看懂。还是一样的存储套路，先根据key确定在哈希table中的下标，找到对应的bucket，遍历链表（或红黑树），做插入操作。在JDK7中，新增结点是使用<strong>头插法</strong>，但在JDK8中，在链表使用<strong>尾插法</strong>，将待新增结点追加到链表末尾。</p>
+<p>为方便理解，将上面的代码转为了下面的流程图：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！12.png" width="80%" /></p>
+<p><strong>步骤①</strong>：若哈希table为null，或长度为0，则做一次扩容操作；<br />
+<strong>步骤②</strong>：根据index找到目标bucket后，若当前bucket上没有结点，那么直接新增一个结点，赋值给该bucket；<br />
+<strong>步骤③</strong>：若当前bucket上有链表，且头结点就匹配，那么直接做替换即可；<br />
+<strong>步骤④</strong>：若当前bucket上的是树结构，则转为红黑树的插入操作；<br />
+<strong>步骤⑤</strong>：若步骤①、②、③、④都不成立，则对链表做遍历操作。<br />
+    a) 若链表中有结点匹配，则做value替换；<br />
+    b）若没有结点匹配，则在链表末尾追加。同时，执行以下操作：<br />
+       i) 若链表长度大于<code>TREEIFY_THRESHOLD</code>，则执行红黑树转换操作；<br />
+       ii) 若<strong>条件i)</strong> 不成立，则执行扩容resize()操作。<br />
+以上5步都执行完后，再看当前Map中存储的k-v对的数量是否超出了<strong><code>threshold</code></strong>，若超出，还需再次扩容。</p>
+<p>红黑树的转换操作如下：</p>
+<pre><code><code>/**
+ * Replaces all linked nodes in bin at index for given hash unless
+ * table is too small, in which case resizes instead.
+ */
+final void treeifyBin(Node&lt;K,V&gt;[] tab, int hash) {
+    int n, index; Node&lt;K,V&gt; e;
+    // 若表为空，或表长度小于MIN_TREEIFY_CAPACITY，也不做转换，直接做扩容处理。
+    if (tab == null || (n = tab.length) &lt; MIN_TREEIFY_CAPACITY)
+        resize();
+    else if ((e = tab[index = (n - 1) &amp; hash]) != null) {
+        TreeNode&lt;K,V&gt; hd = null, tl = null;
+        do {
+            TreeNode&lt;K,V&gt; p = replacementTreeNode(e, null);
+            if (tl == null)
+                hd = p;
+            else {
+                p.prev = tl;
+                tl.next = p;
+            }
+            tl = p;
+        } while ((e = e.next) != null);
+        if ((tab[index] = hd) != null)
+            hd.treeify(tab);
+    }
+}</code></code></pre>
+<h2 id="扩容操作">2.2 扩容操作</h2>
+<p>什么场景下会触发扩容？<br><br />
+<strong><font color="red">场景1</font></strong>：哈希table为null或长度为0；<br><br />
+<strong><font color="red">场景2</font></strong>：Map中存储的k-v对数量超过了阈值<strong><code>threshold</code></strong>；<br><br />
+<strong><font color="red">场景3</font></strong>：链表中的长度超过了<code>TREEIFY_THRESHOLD</code>，但表长度却小于<code>MIN_TREEIFY_CAPACITY</code>。</p>
+<p>一般的扩容分为2步，<strong>第1步</strong>是对哈希表长度的扩展（2倍），<strong>第2步</strong>是将旧table中的数据搬到新table上。<br><br />
+那么，在JDK8中，HashMap是如何扩容的呢？</p>
+<p>上源代码片段：</p>
+<pre><code><code>...
+// 前面已经做了第1步的长度拓展，我们主要分析第2步的操作：如何迁移数据
+table = newTab;
+if (oldTab != null) {
+    // 循环遍历哈希table的每个不为null的bucket
+    // 注意，这里是&quot;++j&quot;，略过了oldTab[0]的处理
+    for (int j = 0; j &lt; oldCap; ++j) {
+        Node&lt;K,V&gt; e;
+        if ((e = oldTab[j]) != null) {
+            oldTab[j] = null;
+            // 若只有一个结点，则原地存储
+            if (e.next == null)
+                newTab[e.hash &amp; (newCap - 1)] = e;
+            else if (e instanceof TreeNode)
+                ((TreeNode&lt;K,V&gt;)e).split(this, newTab, j, oldCap);
+            else { // preserve order
+                // &quot;lo&quot;前缀的代表要在原bucket上存储，&quot;hi&quot;前缀的代表要在新的bucket上存储
+                // loHead代表是链表的头结点，loTail代表链表的尾结点
+                Node&lt;K,V&gt; loHead = null, loTail = null;
+                Node&lt;K,V&gt; hiHead = null, hiTail = null;
+                Node&lt;K,V&gt; next;
+                do {
+                    next = e.next;
+                    // 以oldCap=8为例，
+                    //   0001 1000  e.hash=24
+                    // &amp; 0000 1000  oldCap=8
+                    // = 0000 1000  --&gt; 不为0，需要迁移
+                    // 这种规律可发现，[oldCap, (2*oldCap-1)]之间的数据，
+                    // 以及在此基础上加n*2*oldCap的数据，都需要做迁移，剩余的则不用迁移
+                    if ((e.hash &amp; oldCap) == 0) {
+                        // 这种是有序插入，即依次将原链表的结点追加到当前链表的末尾
+                        if (loTail == null)
+                            loHead = e;
+                        else
+                            loTail.next = e;
+                        loTail = e;
+                    }
+                    else {
+                        if (hiTail == null)
+                            hiHead = e;
+                        else
+                            hiTail.next = e;
+                        hiTail = e;
+                    }
+                } while ((e = next) != null);
+                if (loTail != null) {
+                    loTail.next = null;
+                    newTab[j] = loHead;
+                }
+                if (hiTail != null) {
+                    hiTail.next = null;
+                    // 需要搬迁的结点，新下标为从当前下标往前挪oldCap个距离。
+                    newTab[j + oldCap] = hiHead;
+                }
+            }
+        }
+    }
+}</code></code></pre>
+<h2 id="get操作">2.3 get()操作</h2>
+<p>了解了上面的put()操作，get()操作就比较简单了。</p>
+<pre><code><code>public V get(Object key) {
+    Node&lt;K,V&gt; e;
+    return (e = getNode(hash(key), key)) == null ? null : e.value;
+}
+
+
+final Node&lt;K,V&gt; getNode(int hash, Object key) {
+    Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; first, e; int n; K k;
+    if ((tab = table) != null &amp;&amp; (n = tab.length) &gt; 0 &amp;&amp;
+        (first = tab[(n - 1) &amp; hash]) != null) {
+        if (first.hash == hash &amp;&amp; // always check first node
+            ((k = first.key) == key || (key != null &amp;&amp; key.equals(k))))
+            return first;
+        if ((e = first.next) != null) {
+            if (first instanceof TreeNode)
+                return ((TreeNode&lt;K,V&gt;)first).getTreeNode(hash, key);
+            do {
+                if (e.hash == hash &amp;&amp;
+                    ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+                    return e;
+            } while ((e = e.next) != null);
+        }
+    }
+    return null;
+}</code></code></pre>
+<p>先根据key计算hash值，进一步计算得到哈希table的目标index，若此bucket上为红黑树，则再红黑树上查找，若不是红黑树，遍历链表。</p>
+<h1 id="三hashmaphashtable是什么关系">三、HashMap、HashTable是什么关系？</h1>
+<p>再把文章开头的这张图放出来，温习一下：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！13.png" width="55%" /></p>
+<h2 id="共同点与异同点">3.1 共同点与异同点</h2>
+<p><strong>共同点</strong>：</p>
+<ul>
+<li>底层都是使用哈希表 + 链表的实现方式。</li>
+</ul>
+<p><strong>区别</strong>：</p>
+<ul>
+<li>从层级结构上看，HashMap、HashTable有一个共用的<strong><code>Map</code></strong>接口。另外，HashTable还单独继承了一个抽象类<strong><code>Dictionary</code></strong>；</li>
+<li>HashTable诞生自JDK1.0，HashMap从JDK1.2之后才有；</li>
+<li>HashTable线程安全，HashMap线程不安全；</li>
+<li>初始值和扩容方式不同。HashTable的初始值为11，扩容为原大小的<code>2*d+1</code>。容量大小都采用奇数且为素数，且采用取模法，这种方式散列更均匀。但有个缺点就是对素数取模的性能较低（涉及到除法运算），而HashTable的长度都是2的次幂，设计就较为巧妙，前面章节也提到过，这种方式的取模都是直接做位运算，性能较好。</li>
+<li>HashMap的key、value都可为null，且value可多次为null，key多次为null时会覆盖。当HashTable的key、value都不可为null，否则直接NPE(NullPointException)。</li>
+</ul>
+<p><strong>示例：</strong></p>
+<pre><code><code>public static void main(String[] args) {
+  Map&lt;String, Integer&gt; testTable = new Hashtable&lt;&gt;();
+    testTable.put(null, 23);  // 抛NPE
+    testTable.put(&quot;s1&quot;, null); // 抛NPE
+}</code></code></pre>
+<p>看下<strong><code>put()</code></strong>方法的源码：</p>
+<pre><code><code>public synchronized V put(K key, V value) {
+    // Make sure the value is not null
+    if (value == null) {
+        throw new NullPointerException();
+    }
+
+
+    // Makes sure the key is not already in the hashtable.
+    Entry&lt;?,?&gt; tab[] = table;
+    int hash = key.hashCode();
+    int index = (hash &amp; 0x7FFFFFFF) % tab.length;
+    @SuppressWarnings(&quot;unchecked&quot;)
+    Entry&lt;K,V&gt; entry = (Entry&lt;K,V&gt;)tab[index];
+    for(; entry != null ; entry = entry.next) {
+        if ((entry.hash == hash) &amp;&amp; entry.key.equals(key)) {
+            V old = entry.value;
+            entry.value = value;
+            return old;
+        }
+    }
+
+
+    addEntry(hash, key, value, index);
+    return null;
+}</code></code></pre>
+<p>源码中不允许value为null，若为null则直接抛NPE。<br><br />
+对于key为null时，源码第9行：<code>int hash = key.hashCode();</code> 未做判空操作，也会外抛NPE。</p>
+<p>另外，我们现在看到的抽象类<code>Dictionary</code>，是一个已经废弃的类，源码注释中有如下说明：</p>
+<pre><code><code>&lt;strong&gt;NOTE: This class is obsolete.  New implementations should
+implement the Map interface, rather than extending this class.&lt;/strong&gt;</code></code></pre>
+<h2 id="hashmap的线程安全">3.2 HashMap的线程安全</h2>
+<p>能保证线程线程安全的方式有多个，比如添加<code>synchronized</code>关键字，或者使用<code>lock</code>机制。两者的差异不在此展开，后续会写有关线程安全的文章，到时再详细说明。而HashTable使用了前者，即<code>synchronized</code>关键字。</p>
+<p>put操作、get操作、remove操作、equals操作，都使用了<code>synchronized</code>关键字修饰。</p>
+<p>这么做是保证了HashTable对象的线程安全特性，但同样也带来了问题，突出问题就是效率低下。为何会说它效率低下呢？<br><br />
+因为按synchronized的特性，对于多线程共享的临界资源，同一时刻只能有一个线程在占用，其他线程必须原地等待，为方便理解，大家不妨想下计时用的沙漏，中间最细的瓶颈处阻挡了上方细沙的下落，同样的道理，当有大量线程要执行<code>get()</code>操作时，也存在此类问题，大量线程必须排队一个个处理。</p>
+<p>这时可能会有人说，既然<code>get()</code>方法只是获取数据，并没有修改Map的结构和数据，不加不就行了吗？不好意思，不加也不行，别的方法都加，就你不加，会有一种场景，那就是A线程在做put或remove操作时，B线程、C线程此时都可以同时执行get操作，可能哈希table已经被A线程改变了，也会带来问题，因此不加也不行。</p>
+<p>现在好了，HashMap线程不安全，HashTable虽然线程安全，但性能差，那怎么破？使用<code>ConcurrentHashMap</code>类吧，既线程安全，还操作高效，谁用谁说好。莫急，下面章节会详细解释<code>ConcurrentHashMap</code>类。</p>
+<h1 id="四hashmap线程不安全在哪">四、HashMap线程不安全在哪？</h1>
+<p>本章节主要探讨下HashMap的线程不安全会带来哪些方面的问题。</p>
+<h2 id="数据覆盖问题">4.1 数据覆盖问题</h2>
+<p>两个线程执行<code>put()</code>操作时，可能导致数据覆盖。JDK7版本和JDK8版本的都存在此问题，这里以JDK7为例。</p>
+<p>假设A、B两个线程同时执行<code>put()</code>操作，且两个key都指向同一个buekct，那么此时两个结点，都会做头插法。<br />
+先看这里的代码实现：</p>
+<pre><code><code>public V put(K key, V value) {
+    ...
+    addEntry(hash, key, value, i);
+}
+
+
+void addEntry(int hash, K key, V value, int bucketIndex) {
+    ...
+    createEntry(hash, key, value, bucketIndex);
+}
+
+
+void createEntry(int hash, K key, V value, int bucketIndex) {
+    Entry&lt;K,V&gt; e = table[bucketIndex];
+    table[bucketIndex] = new Entry&lt;&gt;(hash, key, value, e);
+    size++;
+}</code></code></pre>
+<p>看下最后的<code>createEntry()</code>方法，首先获取到了bucket上的头结点，然后再将新结点作为bucket的头部，并指向旧的头结点，完成一次头插法的操作。<br><br />
+当线程A和线程B都获取到了bucket的头结点后，若此时线程A的时间片用完，线程B将其新数据完成了头插法操作，此时轮到线程A操作，但这时线程A所据有的旧头结点已经过时了（并未包含线程B刚插入的新结点），线程A再做头插法操作，就会抹掉B刚刚新增的结点，导致数据丢失。</p>
+<p>其实不光是<code>put()</code>操作，删除操作、修改操作，同样都会有覆盖问题。</p>
+<h2 id="扩容时导致死循环">4.2 扩容时导致死循环</h2>
+<p>这是最常遇到的情况，也是面试经常被问及的考题。但说实话，这个多线程环境下导致的死循环问题，并不是那么容易解释清楚，因为这里已经深入到了扩容的细节。这里尽可能简单的描述死循环的产生过程。</p>
+<p>另外，只有JDK7及以前的版本会存在死循环现象，在JDK8中，resize()方式已经做了调整，使用两队链表，且都是使用的尾插法，及时多线程下，也顶多是从头结点再做一次尾插法，不会造成死循环。而JDK7能造成死循环，就是因为resize()时使用了头插法，将原本的顺序做了反转，才留下了死循环的机会。</p>
+<p>在进一步说明死循环的过程前，我们先看下JDK7中的扩容代码片段：</p>
+<pre><code><code>void transfer(Entry[] newTable, boolean rehash) {
+    int newCapacity = newTable.length;
+    for (Entry&lt;K,V&gt; e : table) {
+        while(null != e) {
+            Entry&lt;K,V&gt; next = e.next;
+            if (rehash) {
+                e.hash = null == e.key ? 0 : hash(e.key);
+            }
+            int i = indexFor(e.hash, newCapacity);
+            e.next = newTable[i];
+            newTable[i] = e;
+            e = next;
+        }
+    }
+}</code></code></pre>
+<p>其实就是简单的链表反转，再进一步简化的话，分为当前结点<code>e</code>，以及下一个结点<code>e.next</code>。我们以链表<code>a-&gt;b-&gt;c-&gt;null</code>为例，两个线程A和B，分别做扩容操作。</p>
+<p><strong>原表</strong>：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！14.png" width="50%" /></p>
+<p>线程A和B各自新增了一个新的哈希table，在线程A已做完扩容操作后，线程B才开始扩容。此时对于线程B来说，当前结点<code>e</code>指向a结点，下一个结点<code>e.next</code>仍然指向b结点（此时在线程A的链表中，已经是<code>c-&gt;b-&gt;a</code>的顺序）。按照头插法，哈希表的bucket指向a结点，此时a结点成为线程B中链表的头结点，如下图所示：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！15.png" width="80%" /></p>
+<p>a结点成为线程B中链表的头结点后，下一个结点<code>e.next</code>为b结点。既然下一个结点<code>e.next</code>不为null，那么当前结点<code>e</code>就变成了b结点，下一个结点<code>e.next</code>变为a结点。继续执行头插法，将b变为链表的头结点，同时next指针指向旧的头节点a，如下图：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！16.png" width="80%" /></p>
+<p>此时，下一个结点<code>e.next</code>为a节点，不为null，继续头插法。指针后移，那么当前结点<code>e</code>就成为了a结点，下一个结点为null。将a结点作为线程B链表中的头结点，并将next指针指向原来的旧头结点b，如下图所示：</p>
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！17.png" width="80%" /></p>
+<p>此时，已形成环链表。同时下一个结点<code>e.next</code>为null，流程结束。</p>
+<h2 id="小结">4.3 小结</h2>
+<p>多线程环境下使用HashMap，会引起各类问题，上面仅为不安全问题的两个典型示例，具体问题无法一一列举，但大体会分为以下三类：</p>
+<ul>
+<li>死循环</li>
+<li>数据重复</li>
+<li>数据丢失（覆盖）</li>
+</ul>
+<p>在JDK1.5之前，多线程环境往往使用HashTable，但在JDK1.5及以后的版本中，在并发包中引入了专门用于多线程环境的<strong><code>ConcurrentHashMap</code></strong>类，采用分段锁实现了线程安全，相比HashTable有更高的性能，推荐使用。</p>
+<h1 id="五如何规避hashmap的线程不安全">五、如何规避HashMap的线程不安全？</h1>
+<p>前面提到了HashMap在多线程环境下的各类不安全问题，那么有哪些方式可以转成线程安全的呢？</p>
+<h2 id="将map转为包装类">5.1 将Map转为包装类</h2>
+<p>如何转？使用<strong><font color="red"><code>Collections.SynchronizedMap()</code></font></strong>方法，示例代码：</p>
+<pre><code><code>Map&lt;String, Integer&gt; testMap = new HashMap&lt;&gt;();
+...
+// 转为线程安全的map
+Map&lt;String, Integer&gt; map = Collections.synchronizedMap(testMap);</code></code></pre>
+<p>其内部实现也很简单，等同于HashTable，只是对当前传入的map对象，新增对象锁（synchronized）：</p>
+<pre><code><code>// 源码来自Collections类
+
+
+private static class SynchronizedMap&lt;K,V&gt; implements Map&lt;K,V&gt;, Serializable {
+    private static final long serialVersionUID = 1978198479659022715L;
+
+
+    private final Map&lt;K,V&gt; m;     // Backing Map
+    final Object      mutex;        // Object on which to synchronize
+
+
+    SynchronizedMap(Map&lt;K,V&gt; m) {
+        this.m = Objects.requireNonNull(m);
+        mutex = this;
+    }
+
+
+    SynchronizedMap(Map&lt;K,V&gt; m, Object mutex) {
+        this.m = m;
+        this.mutex = mutex;
+    }
+
+
+    public int size() {
+        synchronized (mutex) {return m.size();}
+    }
+    public boolean isEmpty() {
+        synchronized (mutex) {return m.isEmpty();}
+    }
+    public boolean containsKey(Object key) {
+        synchronized (mutex) {return m.containsKey(key);}
+    }
+    public boolean containsValue(Object value) {
+        synchronized (mutex) {return m.containsValue(value);}
+    }
+    public V get(Object key) {
+        synchronized (mutex) {return m.get(key);}
+    }
+
+
+    public V put(K key, V value) {
+        synchronized (mutex) {return m.put(key, value);}
+    }
+    public V remove(Object key) {
+        synchronized (mutex) {return m.remove(key);}
+    }
+    public void putAll(Map&lt;? extends K, ? extends V&gt; map) {
+        synchronized (mutex) {m.putAll(map);}
+    }
+    public void clear() {
+        synchronized (mutex) {m.clear();}
+    }
+}</code></code></pre>
+<h2 id="使用concurrenthashmap">5.2 使用ConcurrentHashMap</h2>
+<p>既然<strong>HashMap</strong>类是线程不安全的，那就不妨找个线程安全的替代品——<strong><code>ConcurrentHashMap</code></strong>类。</p>
+<p>使用示例：</p>
+<pre><code><code>Map&lt;String, Integer&gt; susuMap = new ConcurrentHashMap&lt;&gt;();
+susuMap.put(&quot;susu1&quot;, 111);
+susuMap.put(&quot;susu2&quot;, 222);
+System.out.println(susuMap.get(&quot;susu1&quot;));</code></code></pre>
+<p>在使用习惯上完全兼容了HashMap的使用。</p>
+<p>JDK1.5版本引入，位于并发包<code>java.util.concurrent</code>下。</p>
+<p>在JDK7版本及以前，<strong><code>ConcurrentHashMap</code></strong>类使用了分段锁的技术（segment + Lock），但在jdk8中，也做了较大改动，使用回了synchronized修饰符。<br />
+具体差别，在以后的文章中再详细介绍。</p>
+<p>文章较长，希望能对在看的你有所帮助。</p>
+<blockquote>
+<p>更多2019年的技术文章，欢迎关注我的微信公众号：码不停蹄的小鼠松（微信号：busy_squirrel），也可扫下方二维码关注获取最新文章哦~<br />
+<p align="center"><img src="./images/HashMap面试题，看这一篇就够了！0.png" width="20%" /></p></p>
+</blockquote>
+<h1 id="reference">Reference</h1>
+<p>1、Java 8系列之重新认识HashMap: <a href="https://tech.meituan.com/2016/06/24/java-hashmap.html" class="uri">https://tech.meituan.com/2016/06/24/java-hashmap.html</a><br />
+2、fail-fast是个什么策略？：<a href="http://blog.chinaunix.net/uid-31507842-id-5820534.html" class="uri">http://blog.chinaunix.net/uid-31507842-id-5820534.html</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

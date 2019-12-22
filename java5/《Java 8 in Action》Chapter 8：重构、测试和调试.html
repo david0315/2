@@ -1,0 +1,411 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修《Java 8 in Action》Chapter 8：重构、测试和调试' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>《Java 8 in Action》Chapter 8：重构、测试和调试</center></div><div class='banquan'>原文出处:本文由博客园博主HelloDeveloper提供。<br/>
+原文连接:https://www.cnblogs.com/HelloDeveloper/p/11427908.html</div><br>
+    <blockquote>
+<p>我们会介绍几种方法，帮助你重构代码，以适配使用Lambda表达式，让你的代码具备更好的可读性和灵活性。除此之外，我们还会讨论目前比较流行的几种面向对象的设计模式，<br />
+包括策略模式、模板方法模式、观察者模式、责任链模式，以及工厂模式，在结合Lambda表达式之后变得更简洁的情况。最后，我们会介绍如何测试和调试使用Lambda表达式和Stream API的代码。</p>
+</blockquote>
+<h1 id="为改善可读性和灵活性重构代码">1. 为改善可读性和灵活性重构代码</h1>
+<h2 id="改善代码的可读性">1.1 改善代码的可读性</h2>
+<p>Java 8的新特性也可以帮助提升代码的可读性:</p>
+<ul>
+<li>使用Java 8，你可以减少冗长的代码，让代码更易于理解</li>
+<li>通过方法引用和Stream API，你的代码会变得更直观</li>
+</ul>
+<p>利用Lambda表达式、方法引用以及Stream改善程序代码的可读性:</p>
+<ul>
+<li>重构代码，用Lambda表达式取代匿名类</li>
+<li>用方法引用重构Lambda表达式</li>
+<li>用Stream API重构命令式的数据处理</li>
+</ul>
+<h2 id="从匿名内部类到lambda表达式的转换">1.2 从匿名内部类到Lambda表达式的转换</h2>
+<p>将实现单一抽象方法的匿名类转换为Lambda表达式</p>
+<pre><code><code>// 传统的方式，使用匿名类
+Runnable r1 = new Runnable(){
+    public void run(){
+        System.out.println(&quot;Hello&quot;);
+    }
+}
+// 新的方式，使用Lambda表达式
+Runnable r2 = () -&gt; System.out.println(&quot;Hello&quot;);</code></code></pre>
+<p>匿名 类和Lambda表达式中的this和super的含义是不同的。在匿名类中，this代表的是类自身，但是在Lambda中，它代表的是包含类。其次，匿名类可以屏蔽包含类的变量，而Lambda表达式不能(它们会导致编译错误)，如下面这段代码:</p>
+<pre><code><code>int a = 10;
+Runnable r1 = () -&gt; {
+    int a = 2;                    // 编译错误
+    System.out.println(a);
+};
+Runnable r2 = new Runnable() {
+    public void run() {
+        int a = 2;                // 正常
+        System.out.println(a);
+    }
+}</code></code></pre>
+<p>在涉及重􏰴的上下文里，将匿名类转换为Lambda表达式可能导致最终的代码更加晦涩。实际上，匿名类的类型是在初始化时确定的，而Lambda的类型取决于它的上下文。通过下面这个例子，我们可以了解问题是如何发生的。我们假设你用与Runnable同样的签名声明了一个函数接口，我们称之为Task:</p>
+<pre><code><code>interface Task{
+    public void execute();
+}
+public static void doSomething(Runnable r){ r.run(); }
+public static void doSomething(Task a){ a.execute(); }
+doSomething(new Task() {
+        public void execute() {
+            System.out.println(&quot;Danger danger!!&quot;);
+        }
+});
+// doSomething(Runnable) 和 doSomething(Task) 都匹配该类型
+doSomething(() -&gt; System.out.println(&quot;Danger danger!!&quot;));
+// 使用显式的类型转换来解决这种模棱两可的情况
+doSomething((Task)() -&gt; System.out.println(&quot;Danger danger!!&quot;));</code></code></pre>
+<p>目前大多数的集成开发环境，比如NetBeans和IntelliJ都支持这种重构，它们能自动地帮你检查，避免发生这些问题。</p>
+<h2 id="从lambda表达式到方法引用的转换">1.3 从Lambda表达式到方法引用的转换</h2>
+<pre><code><code>Map&lt;CaloricLevel, List&lt;Dish&gt;&gt; dishesByCaloricLevel =
+        menu.stream()
+            .collect(
+                groupingBy(dish -&gt; {
+                     if (dish.getCalories() &lt;= 400) return CaloricLevel.DIET;
+                    else if (dish.getCalories() &lt;= 700) return CaloricLevel.NORMAL;
+                    else return CaloricLevel.FAT;
+}));</code></code></pre>
+<p>将Lambda表达式的内容抽取到一个单独的方法中，将其作为参数传递给groupingBy方法。变换之后，代码变得更加简洁，程序的意图也更加清晰了。</p>
+<pre><code><code>Map&lt;CaloricLevel, List&lt;Dish&gt;&gt; dishesByCaloricLevel = menu.stream().collect(groupingBy(Dish::getCaloricLevel));</code></code></pre>
+<h2 id="从命令式的数据处理切换到stream">1.4 从命令式的数据处理切换到Stream</h2>
+<p>我们建议你将所有使用迭代器这种数据处理模式处理集合的代码都转换成Stream API的方式。为什么呢?<br />
+Stream API能更清晰地表达数据处理管道的意图。除此之外，通过短路和延迟载入以及利用第7章介绍的现代计算机的多核架构，我们可以对Stream进行优化。</p>
+<pre><code><code>// 命令式版本
+List&lt;String&gt; dishNames = new ArrayList&lt;&gt;();
+    for(Dish dish: menu){
+        if(dish.getCalories() &gt; 300){
+            dishNames.add(dish.getName());
+    }
+}
+// 使用Stream API
+menu.parallelStream()
+        .filter(d -&gt; d.getCalories() &gt; 300)
+        .map(Dish::getName)
+        .collect(toList());</code></code></pre>
+<h2 id="增加代码的灵活性">1.5 增加代码的灵活性</h2>
+<p>没有函数式接口就无法使用Lambda表达式，因此代码中需要引入函数式接口。引入函数式接口的两种通用模式：</p>
+<ul>
+<li>有条件的延迟执行</li>
+<li>环绕执行</li>
+</ul>
+<h2 id="使用lambda重构面向对象的设计模式">2. 使用Lambda重构面向对象的设计模式</h2>
+<p>使用Lambda表达式后，很多现存的略显臃肿的面向对象设计模式能够用更精简的方式实现了。这一节中，我们会针对五个设计模式展开讨论，它们分别是:</p>
+<ul>
+<li>策略模式</li>
+<li>模板方法</li>
+<li>观察者模式</li>
+<li>责任链模式</li>
+<li>工厂模式</li>
+</ul>
+<h2 id="策略模式">2.1 策略模式</h2>
+<p>策略模式代表了解决一类算法的通用解决方案，你可以在运行时选择使用哪种方案。策略模式包含三部分内容，如图所示。</p>
+<ul>
+<li>一个代表某个算法的接口(它是策略模式的接口)。</li>
+<li>一个或多个该接口的具体实现，它们代表了算法的多种实现(比如，实体类ConcreteStrategyA或者ConcreteStrategyB)。</li>
+<li>一个或多个使用策略对象的客户。</li>
+</ul>
+<p><img src="./images/《Java 8 in Action》Chapter 8：重构、测试和调试0.png" /></p>
+<pre><code><code>public interface ValidationStrategy {
+        boolean execute(String s);
+}
+public class IsAllLowerCase implements ValidationStrategy {
+    @Override
+    public boolean execute(String s) {
+        return s.matches(&quot;[a-z]+&quot;);
+    }
+}
+public class IsNumber implements ValidationStrategy {
+    @Override
+    public boolean execute(String s) {
+        return s.matches(&quot;\\d+&quot;);
+    }
+}
+public class Validator {
+    private final ValidationStrategy strategy;
+    public Validator(ValidationStrategy strategy) {
+        this.strategy = strategy;
+    }
+    public boolean validate(String s) {
+        return strategy.execute(s);
+    }
+}
+public class StrategyDemo {
+    public static void main(String[] args) {
+        Validator numericValidator = new Validator(new IsNumber());
+        boolean b1 = numericValidator.validate(&quot;aaaa&quot;);
+        Validator lowerCaseValidator = new Validator(new IsAllLowerCase());
+        boolean b2 = lowerCaseValidator.validate(&quot;bbbb&quot;);
+        System.out.println(b1 + &quot; &quot; + b2);
+        Validator numericValidator1 = new Validator((String s) -&gt; s.matches(&quot;[a-z]+&quot;));
+        boolean b11 = numericValidator1.validate(&quot;aaaa&quot;);
+        Validator lowerCaseValidator1 = new Validator((String s) -&gt; s.matches(&quot;\\d+&quot;));
+        boolean b21 = lowerCaseValidator.validate(&quot;bbbb&quot;);
+        System.out.println(b11 + &quot; &quot; + b21);
+    }
+}</code></code></pre>
+<h2 id="模板方法">2.2 模板方法</h2>
+<p>模板 方法模式在你“希望使用这个算法，但是需要对其中的某些行进行改进，才能达到希望的效果” 时是非常有用的。</p>
+<pre><code><code>public abstract class OnlineBanking {
+    public void processCustomer(int id) {
+        Customer c = DataUtil.getCustomerWithId(id);
+        makeCustomerHappy(c);
+    }
+    abstract void makeCustomerHappy(Customer c);
+}
+public class OnlineBankingLambda {
+    public void processCustomer(int id, Consumer&lt;Customer&gt; consumer) {
+        Customer c = DataUtil.getCustomerWithId(id);
+        consumer.accept(c);
+    }
+}
+public class TemplateMethod {
+    public static void main(String[] args) {
+        new OnlineBanking() {
+            @Override
+            void makeCustomerHappy(Customer c) {
+                System.out.println(c.getName() + &quot; happy!&quot;);
+            }
+        }.processCustomer(1);
+        new OnlineBankingLambda().processCustomer(1, (Customer c) -&gt; System.out.println(c.getName() + &quot; happy!&quot;));
+    }
+}</code></code></pre>
+<h2 id="观察者模式">2.3 观察者模式</h2>
+<p>观察者模式是一种比较常见的方案，某些事件发生时(比如状态转变)，如果一个对象(通常我们称之为主题)需要自动地通知其他多个对象(称为观察者)，就会采用该方案。<br />
+<img src="./images/《Java 8 in Action》Chapter 8：重构、测试和调试1.png" /></p>
+<pre><code><code>public interface Observer {
+    void notify(String tweet);
+}
+public class NYTime implements Observer {
+    @Override
+    public void notify(String tweet) {
+        if(tweet != null &amp;&amp; tweet.contains(&quot;money&quot;)){
+            System.out.println(&quot;Breaking news in NY! &quot; + tweet);
+        }
+    }
+}
+public class Guardian implements Observer {
+    @Override
+    public void notify(String tweet) {
+        if(tweet != null &amp;&amp; tweet.contains(&quot;queen&quot;)){
+            System.out.println(&quot;Yet another news in London... &quot; + tweet);
+        }
+    }
+}
+public class LeMonde implements Observer {
+    @Override
+    public void notify(String tweet) {
+        if(tweet != null &amp;&amp; tweet.contains(&quot;wine&quot;)){
+            System.out.println(&quot;Today cheese, wine and news! &quot; + tweet);
+        }
+    }
+}
+public interface Subject {
+    void registerObserver(Observer o);
+    void nofityObservers(String tweet);
+}
+public class Feed implements Subject {
+    private final List&lt;Observer&gt; observers = new ArrayList&lt;&gt;();
+    @Override
+    public void registerObserver(Observer o) {
+        this.observers.add(o);
+    }
+    @Override
+    public void nofityObservers(String tweet) {
+        observers.forEach(o -&gt; o.notify(tweet));
+    }
+}
+public class ObserverDemo {
+    public static void main(String[] args) {
+        Feed f = new Feed();
+        f.registerObserver(new NYTime());
+        f.registerObserver(new Guardian());
+        f.registerObserver(new LeMonde());
+        f.nofityObservers(&quot;The queen said her favourite book is Java 8 in Action!&quot;);
+        f.registerObserver((String tweet) -&gt; {
+            if (tweet != null &amp;&amp; tweet.contains(&quot;money&quot;)) {
+                System.out.println(&quot;Breaking news in NY! &quot; + tweet);
+            }
+        });
+        f.registerObserver((String tweet) -&gt; {
+            if (tweet != null &amp;&amp; tweet.contains(&quot;queen&quot;)) {
+                System.out.println(&quot;Yet another news in London... &quot; + tweet);
+            }
+        });
+    }
+}</code></code></pre>
+<h2 id="责任链模式">2.4 责任链模式</h2>
+<p>责任链模式是一种创建处理对象序列(比如操作序列)的通用方案。一个处理对象可能需要在完成一些工作之后，将结果传递给另一个对象，这个对象接着做一些工作，再转交给下一个处理对象，以此类推。<br />
+<img src="./images/《Java 8 in Action》Chapter 8：重构、测试和调试2.png" /></p>
+<pre><code><code>public abstract class ProcessingObject&lt;T&gt; {
+    protected ProcessingObject&lt;T&gt; successor;
+    public void setSuccessor(ProcessingObject&lt;T&gt; successor) {
+        this.successor = successor;
+    }
+    public T handle(T input) {
+        T r = handleWork(input);
+        if (successor != null) {
+            return successor.handle(r);
+        }
+        return r;
+    }
+    abstract protected T handleWork(T input);
+}
+public class HeaderTextProcessing extends ProcessingObject&lt;String&gt; {
+    @Override
+    protected String handleWork(String input) {
+        return &quot;From Raoul, Mario and Alan: &quot; + input;
+    }
+}
+public class SpellCheckerProcessing extends ProcessingObject&lt;String&gt; {
+    @Override
+    protected String handleWork(String input) {
+        return input.replaceAll(&quot;labda&quot;, &quot;lambda&quot;);
+    }
+}
+public class ChainOfResponsibilityDemo {
+    public static void main(String[] args) {
+        ProcessingObject&lt;String&gt; p1 = new HeaderTextProcessing();
+        ProcessingObject&lt;String&gt; p2 = new SpellCheckerProcessing();
+        p1.setSuccessor(p2);
+        String result = p1.handle(&quot;Aren&#39;t labdas really sexy?!!&quot;);
+        System.out.println(result);
+        UnaryOperator&lt;String&gt; headerProcessing = (String text) -&gt; &quot;From Raoul, Mario and Alan: &quot; + text;
+        UnaryOperator&lt;String&gt; spellCheckerProcessing = (String text) -&gt; text.replaceAll(&quot;labda&quot;, &quot;lambda&quot;);
+        Function&lt;String, String&gt; pipeline = headerProcessing.andThen(spellCheckerProcessing);
+        String result1 = pipeline.apply(&quot;Aren&#39;t labdas really sexy?!!&quot;);
+        System.out.println(result1);
+    }
+}</code></code></pre>
+<h2 id="工厂模式">2.5 工厂模式</h2>
+<p>使用工厂模式，你无需向客户暴露实例化的逻辑就能完成对象的创建。</p>
+<pre><code><code>public interface Product {}
+@Data
+public class Loan implements Product {}
+@Data
+public class Stock implements Product {}
+@Data
+public class Bond implements Product {}
+public class ProductFactory {
+    public static Product createProduct(String name) {
+        switch (name) {
+            case &quot;loan&quot;:
+                return new Loan();
+            case &quot;stock&quot;:
+                return new Stock();
+            case &quot;bond&quot;:
+                return new Bond();
+            default:
+                throw new RuntimeException(&quot;No such product &quot; + name);
+        }
+    }
+    public static void main(String[] args) {
+        Product p = ProductFactory.createProduct(&quot;loan&quot;);
+        System.out.println(p);
+    }
+}
+public class ProductFactoryLambda {
+    private final static Map&lt;String, Supplier&lt;Product&gt;&gt; map = new HashMap&lt;&gt;();
+    static {
+        map.put(&quot;loan&quot;, Loan::new);
+        map.put(&quot;stock&quot;, Stock::new);
+        map.put(&quot;bond&quot;, Bond::new);
+    }
+    public static Product createProduct(String name) {
+        Supplier&lt;Product&gt; p = map.get(name);
+        if (p != null) {
+            return p.get();
+        }
+        throw new IllegalArgumentException(&quot;No such product &quot; + name);
+    }
+    public static void main(String[] args) {
+        Product p = ProductFactoryLambda.createProduct(&quot;loan&quot;);
+        System.out.println(p);
+    }
+}</code></code></pre>
+<h1 id="测试lambda表达式">3. 测试Lambda表达式</h1>
+<p>略</p>
+<h1 id="调试lambda表达式">4. 调试Lambda表达式</h1>
+<h2 id="查看栈跟踪">4.1 查看栈跟踪</h2>
+<pre><code><code>public class Debugging{ 11 public static void main(String[] args) {
+        List&lt;Point&gt; points = Arrays.asList(new Point(12, 2), null);
+        points.stream().map(p -&gt; p.getX()).forEach(System.out::println); }
+}
+运行这段代码会产生下面的栈跟踪:
+Exception in thread &quot;main&quot; java.lang.NullPointerException
+at Debugging.lambda$main$0(Debugging.java:6)
+at Debugging$$Lambda$5/284720968.apply(Unknown Source)
+at java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline
+.java:193)
+at java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators
+.java:948)</code></code></pre>
+<p>我们需要特别注意，涉及Lambda表达式的栈􏱡􏴭可能非常难理解。这是Java编译器未来版本可以改进的一个方面。</p>
+<h2 id="使用日志调试">4.2 使用日志调试</h2>
+<p>peek的设计初衷就是在流的每个元素恢复运行之前，插入执行一个动作。但是它不像forEach那样恢复整个流的运行，而是在一个元素上完成操作之后，它只会将操作顺承到流水线中的下一个操作。图8-4解释了peek的操作流程。<br />
+<img src="./images/《Java 8 in Action》Chapter 8：重构、测试和调试3.png" /></p>
+<pre><code><code>List&lt;Integer&gt; result = numbers.stream()
+         .peek(x -&gt; System.out.println(&quot;from stream: &quot; + x))
+         .map(x -&gt; x + 17)
+         .peek(x -&gt; System.out.println(&quot;after map: &quot; + x))
+         .filter(x -&gt; x % 2 == 0)
+         .peek(x -&gt; System.out.println(&quot;after filter: &quot; + x))
+         .limit(3)
+         .peek(x -&gt; System.out.println(&quot;after limit: &quot; + x))
+         .collect(toList());
+输出结果：
+from stream: 2
+after map: 19
+from stream: 3
+after map: 20
+after filter: 20
+after limit: 20
+from stream: 4
+after map: 21
+from stream: 5
+after map: 22
+after filter: 22
+after limit: 22</code></code></pre>
+<h1 id="小结">5. 小结</h1>
+<ul>
+<li>Lambda表达式能提升代码的可读性和灵活性。</li>
+<li>如果你的代码中使用了匿名类，尽量用Lambda表达式替换它们，但是要注意二者间语义的微妙差别，比如关键字this，以及变量隐藏。</li>
+<li>Lambda表达式比起来，方法引用的可读性更好。</li>
+<li>尽量使用Stream API替换迭代式的集合处理。</li>
+<li>Lambda表达式有助于避免使用面向对象设计模式时容易出现的􏳂化的模板代码，典型的比如策略模式、模板方法、观察者模式、责任链模式，以及工厂模式。</li>
+<li>即使采用了Lambda表达式，也同样可以进行单元测试，但是通常你应该关注使用了Lambda表达式的方法的行为。</li>
+<li>尽量将复杂的Lambda表达式抽象到普通方法中。</li>
+<li>Lambda表达式会让栈跟踪的分析变得更为复杂。</li>
+<li>流提供的peek方法在分析Stream流水线时，能将中间变量的值输出到日志中，是非常有用的工具。</li>
+</ul>
+<h2 id="资源获取">资源获取</h2>
+<ul>
+<li>公众号回复 : Java8 即可获取《Java 8 in Action》中英文版!</li>
+</ul>
+<h2 id="tips">Tips</h2>
+<ul>
+<li>欢迎收藏和转发，感谢你的支持！(๑•̀ㅂ•́)و✧</li>
+<li>欢迎关注我的公众号：庄里程序猿，读书笔记教程资源第一时间获得！</li>
+</ul>
+<p><img src="./images/《Java 8 in Action》Chapter 8：重构、测试和调试4.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

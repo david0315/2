@@ -1,0 +1,304 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修基于Netty的IdleStateHandler实现Mqtt心跳' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>基于Netty的IdleStateHandler实现Mqtt心跳</center></div><div class='banquan'>原文出处:本文由博客园博主从此寂静无声提供。<br/>
+原文连接:https://www.cnblogs.com/jason1990/p/11600070.html</div><br>
+    <h1 id="基于netty的idlestatehandler实现mqtt心跳">基于Netty的IdleStateHandler实现Mqtt心跳</h1>
+<h2 id="idlestatehandler解析"><code>IdleStateHandler</code>解析</h2>
+<p>最近研究<code>jetlinks</code>编写的基于<code>Netty</code>的<code>mqtt-client</code>(<a href="https://github.com/jetlinks/netty-mqtt-client" class="uri">https://github.com/jetlinks/netty-mqtt-client</a>)，总结若干知识点.<br />
+<code>Netty</code>中，实现心跳机制较为简单，主要依赖于<code>IdleStateHandler</code>判断<code>channel</code>的读写超时.</p>
+<pre><code><code>    /**
+     * Creates a new instance firing {@link IdleStateEvent}s.
+     *
+     * @param readerIdleTimeSeconds
+     *        an {@link IdleStateEvent} whose state is {@link IdleState#READER_IDLE}
+     *        will be triggered when no read was performed for the specified
+     *        period of time.  Specify {@code 0} to disable.
+     * @param writerIdleTimeSeconds
+     *        an {@link IdleStateEvent} whose state is {@link IdleState#WRITER_IDLE}
+     *        will be triggered when no write was performed for the specified
+     *        period of time.  Specify {@code 0} to disable.
+     * @param allIdleTimeSeconds
+     *        an {@link IdleStateEvent} whose state is {@link IdleState#ALL_IDLE}
+     *        will be triggered when neither read nor write was performed for
+     *        the specified period of time.  Specify {@code 0} to disable.
+     */
+    public IdleStateHandler(
+            int readerIdleTimeSeconds,
+            int writerIdleTimeSeconds,
+            int allIdleTimeSeconds) {
+
+        this(readerIdleTimeSeconds, writerIdleTimeSeconds, allIdleTimeSeconds,
+             TimeUnit.SECONDS);
+    }</code></code></pre>
+<p>以上是<code>IdleStateHandler</code>的构造函数，主要依赖于三个参数<code>readerIdleTimeSeconds</code>,<code>writerIdleTimeSeconds</code>以及<code>allIdleTimeSeconds</code>.</p>
+<p>如果难于理解英文注释，可参考&lt;<浅析 Netty 实现心跳机制与断线重连>&gt;<a href="https://segmentfault.com/a/1190000006931568" class="uri">https://segmentfault.com/a/1190000006931568</a>一文中的解释:</p>
+<ul>
+<li>readerIdleTimeSeconds, 读超时. 即当在指定的时间间隔内没有从 Channel 读取到数据时, 会触发一个 READER_IDLE 的 IdleStateEvent 事件.</li>
+<li>writerIdleTimeSeconds, 写超时. 即当在指定的时间间隔内没有数据写入到 Channel 时, 会触发一个 WRITER_IDLE 的 IdleStateEvent 事件.</li>
+<li>allIdleTimeSeconds, 读/写超时. 即当在指定的时间间隔内没有读或写操作时, 会触发一个 ALL_IDLE 的 IdleStateEvent 事件.</li>
+</ul>
+<p>在<code>IdleStateHandler</code>中,分别通过如下函数实现对<code>channel</code>读写操作事件的跟踪:</p>
+<pre><code><code>    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        if (readerIdleTimeNanos &gt; 0 || allIdleTimeNanos &gt; 0) {
+            reading = true;
+            firstReaderIdleEvent = firstAllIdleEvent = true;
+        }
+        ctx.fireChannelRead(msg);
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        if ((readerIdleTimeNanos &gt; 0 || allIdleTimeNanos &gt; 0) &amp;&amp; reading) {
+            lastReadTime = ticksInNanos();
+            reading = false;
+        }
+        ctx.fireChannelReadComplete();
+    }
+
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        // Allow writing with void promise if handler is only configured for read timeout events.
+        if (writerIdleTimeNanos &gt; 0 || allIdleTimeNanos &gt; 0) {
+            ctx.write(msg, promise.unvoid()).addListener(writeListener);
+        } else {
+            ctx.write(msg, promise);
+        }
+    }
+
+    // Not create a new ChannelFutureListener per write operation to reduce GC pressure.
+    private final ChannelFutureListener writeListener = new ChannelFutureListener() {
+        @Override
+        public void operationComplete(ChannelFuture future) throws Exception {
+            lastWriteTime = ticksInNanos();
+            firstWriterIdleEvent = firstAllIdleEvent = true;
+        }
+    };</code></code></pre>
+<p>其中:</p>
+<ul>
+<li><code>channelRead</code>: 判断<code>channel</code>是否有数据可读取;</li>
+<li><code>channelReadComplete</code>: 判断<code>channel</code>是否有数据可读取;<br />
+</li>
+<li><code>write</code>: 判断<code>channel</code>是否有数据写(通过<code>writeListener</code>判断当前写操作是否执行成功).</li>
+</ul>
+<p><code>IdleStateHandler</code>在<code>channel</code>激活或注册时，会执行<code>initialize</code>函数，根据读写超时时间创建对应的定时任务.</p>
+<pre><code><code>    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        // Initialize early if channel is active already.
+        if (ctx.channel().isActive()) {
+            initialize(ctx);
+        }
+        super.channelRegistered(ctx);
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        // This method will be invoked only if this handler was added
+        // before channelActive() event is fired.  If a user adds this handler
+        // after the channelActive() event, initialize() will be called by beforeAdd().
+        initialize(ctx);
+        super.channelActive(ctx);
+    }
+
+        private void initialize(ChannelHandlerContext ctx) {
+        // Avoid the case where destroy() is called before scheduling timeouts.
+        // See: https://github.com/netty/netty/issues/143
+        switch (state) {
+        case 1:
+        case 2:
+            return;
+        }
+
+        state = 1;
+        initOutputChanged(ctx);
+
+        lastReadTime = lastWriteTime = ticksInNanos();
+        if (readerIdleTimeNanos &gt; 0) {
+            // 创建读超时判断定时任务
+            readerIdleTimeout = schedule(ctx, new ReaderIdleTimeoutTask(ctx),
+                    readerIdleTimeNanos, TimeUnit.NANOSECONDS);
+        }
+        if (writerIdleTimeNanos &gt; 0) {
+            // 创建写超时判断定时任务
+            writerIdleTimeout = schedule(ctx, new WriterIdleTimeoutTask(ctx),
+                    writerIdleTimeNanos, TimeUnit.NANOSECONDS);
+        }
+        if (allIdleTimeNanos &gt; 0) {
+            // 创建读写超时判断定时任务
+            allIdleTimeout = schedule(ctx, new AllIdleTimeoutTask(ctx),
+                    allIdleTimeNanos, TimeUnit.NANOSECONDS);
+        }
+    }</code></code></pre>
+<p>此处，我们将剖析<code>AllIdleTimeoutTask</code>任务.<br />
+此任务，会判断在超时时间段内，是否有读写操作:</p>
+<ul>
+<li>有读或者写操作,则重新创建定时任务，等待下次执行;</li>
+<li>没有读或者写操作，则创建<code>IdleStateEvent</code>对象，通过<code>ChannelHandlerContext</code>通知注册了用户事件触发器的<code>handler</code>(即<code>handler</code>重载了<code>userEventTriggered</code>函数).</li>
+</ul>
+<pre><code><code>  private final class AllIdleTimeoutTask extends AbstractIdleTask {
+
+        AllIdleTimeoutTask(ChannelHandlerContext ctx) {
+            super(ctx);
+        }
+
+        @Override
+        protected void run(ChannelHandlerContext ctx) {
+
+            long nextDelay = allIdleTimeNanos;
+            if (!reading) {
+                nextDelay -= ticksInNanos() - Math.max(lastReadTime, lastWriteTime);
+            }
+            if (nextDelay &lt;= 0) {
+                // Both reader and writer are idle - set a new timeout and
+                // notify the callback.
+                allIdleTimeout = schedule(ctx, this, allIdleTimeNanos, TimeUnit.NANOSECONDS);
+
+                boolean first = firstAllIdleEvent;
+                firstAllIdleEvent = false;
+
+                try {
+                    if (hasOutputChanged(ctx, first)) {
+                        return;
+                    }
+
+                    IdleStateEvent event = newIdleStateEvent(IdleState.ALL_IDLE, first);
+                    channelIdle(ctx, event);
+                } catch (Throwable t) {
+                    ctx.fireExceptionCaught(t);
+                }
+            } else {
+                // Either read or write occurred before the timeout - set a new
+                // timeout with shorter delay.
+                allIdleTimeout = schedule(ctx, this, nextDelay, TimeUnit.NANOSECONDS);
+            }
+        }
+    }</code></code></pre>
+<p>了解了<code>IdleStateHandler</code>,我们接下来学习如何编写<code>Mqtt</code>的心跳<code>handler</code>.</p>
+<h2 id="mqtt心跳handler"><code>Mqtt</code>心跳<code>handler</code></h2>
+<p>以下是<code>jetlinks</code>编写的<code>Mqtt</code>心跳<code>handler</code>代码，我们截取部分代码学习.</p>
+<pre><code><code>final class MqttPingHandler extends ChannelInboundHandlerAdapter {
+
+    private final int keepaliveSeconds;
+
+    private ScheduledFuture&lt;?&gt; pingRespTimeout;
+
+    MqttPingHandler(int keepaliveSeconds) {
+        this.keepaliveSeconds = keepaliveSeconds;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        if (!(msg instanceof MqttMessage)) {
+            ctx.fireChannelRead(msg);
+            return;
+        }
+        MqttMessage message = (MqttMessage) msg;
+        if (message.fixedHeader().messageType() == MqttMessageType.PINGREQ) {
+            this.handlePingReq(ctx.channel());
+        } else if (message.fixedHeader().messageType() == MqttMessageType.PINGRESP) {
+            this.handlePingResp();
+        } else {
+            ctx.fireChannelRead(ReferenceCountUtil.retain(msg));
+        }
+    }
+
+    /**
+     * IdleStateHandler，在连接处于idle状态超过设定时间后，会发送IdleStateEvent
+     * 接收到IdleStateEvent，当前类会发送心跳包至server，保持连接
+     *
+     * @param ctx 上下文
+     * @param evt 事件
+     * @throws Exception 异常
+     */
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        super.userEventTriggered(ctx, evt);
+
+        // 确认监听事件为IdleStateEvent，即发送心跳包至server
+        if (evt instanceof IdleStateEvent) {
+            IdleStateEvent event = (IdleStateEvent) evt;
+            if (event.state() == IdleState.WRITER_IDLE) {
+                this.sendPingReq(ctx.channel());
+            }
+        }
+    }
+
+    /**
+     * 发送心跳包至server端，并建立心跳超时断开连接任务
+     * 此处，先行创建心跳超时任务，后续再发送心跳包(避免收到心跳响应时，心跳超时任务未建立完成)
+     *
+     * @param channel 连接
+     */
+    private void sendPingReq(Channel channel) {
+
+        // 创建心跳超时，断开连接任务
+        if (this.pingRespTimeout == null) {
+            this.pingRespTimeout = channel.eventLoop().schedule(() -&gt; {
+                MqttFixedHeader disconnectHeader =
+                        new MqttFixedHeader(MqttMessageType.DISCONNECT, false, MqttQoS.AT_MOST_ONCE, false, 0);
+                channel.writeAndFlush(new MqttMessage(disconnectHeader)).addListener(ChannelFutureListener.CLOSE);
+                //TODO: what do when the connection is closed ?
+            }, this.keepaliveSeconds, TimeUnit.SECONDS);
+        }
+
+        // 创建心跳包，并发送至Mqtts Server
+        MqttFixedHeader pingHeader = new MqttFixedHeader(MqttMessageType.PINGREQ, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        channel.writeAndFlush(new MqttMessage(pingHeader));
+    }
+
+    /**
+     * 处理ping resp,取消ping超时任务(断开连接)
+     */
+    private void handlePingResp() {
+        if (this.pingRespTimeout != null &amp;&amp; !this.pingRespTimeout.isCancelled() &amp;&amp; !this.pingRespTimeout.isDone()) {
+            this.pingRespTimeout.cancel(true);
+            this.pingRespTimeout = null;
+        }
+    }
+}</code></code></pre>
+<p>函数解析：</p>
+<p>(1) 接收超时事件，发送心跳请求</p>
+<p><code>MqttPingHandler</code>中重载了<code>userEventTriggered</code>函数，用以接收<code>ChannelHandlerContext</code>传递的事件,代码中会判断事件是否为<code>IdleStateEvent</code>.<br />
+如果当前接收事件为<code>IdleStateEvent</code>,则说明当前<code>channel</code>在超时时间内未发生读写事件，则客户端发送<code>Mqtt</code>心跳请求.</p>
+<p>(2) 发送心跳请求，建立请求响应超时关闭连接任务</p>
+<p><code>sendPingReq</code>函数中(以下两步操作，顺序可任意安排):</p>
+<ul>
+<li>建立心跳请求响应超时判断任务，如果在一定时长内未接收到心跳响应，则会关闭连接;</li>
+<li>构建<code>Mqtt</code>心跳包，发送至远端服务器.</li>
+</ul>
+<p>(3) 取消心跳响应超时关闭连接任务</p>
+<p><code>channelRead</code>读取数据,判断是否是<code>Mqtt</code>的心跳响应包.<br />
+如果是，则执行<code>handlePingResp</code>函数，取消心跳响应超时关闭连接任务.</p>
+<h2 id="handler添加"><code>handler</code>添加</h2>
+<pre><code><code>    ch.pipeline().addLast(&quot;idleStateHandler&quot;,
+        new IdleStateHandler(keepAliveTimeSeconds, keepAliveTimeSeconds, 0));
+    ch.pipeline().addLast(&quot;mqttPingHandler&quot;,
+        new MqttPingHandler(MqttClientImpl.this.clientConfig.getKeepAliveTimeSeconds()));</code></code></pre>
+<p>只需要以上两句代码，就可以完成<code>Mqtt</code>心跳维持功能.</p>
+<blockquote>
+<p>PS:<br />
+如果您觉得我的文章对您有帮助，请关注我的微信公众号，谢谢!<br />
+<img src="./images/基于Netty的IdleStateHandler实现Mqtt心跳0.png" alt="程序员打怪之路" /></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

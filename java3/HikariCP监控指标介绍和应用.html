@@ -1,0 +1,75 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修HikariCP监控指标介绍和应用' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>HikariCP监控指标介绍和应用</center></div><div class='banquan'>原文出处:本文由博客园博主fireround提供。<br/>
+原文连接:https://www.cnblogs.com/fireround/p/11756087.html</div><br>
+    <h2 id="概述">概述</h2>
+<p>HikariCP提供了一些监控指标，他的监控指标都是基于MicroMeter提供出来的，然后支持Prometheus和Dropwizard。本次我们将讨论一下HikariCp的监控指标有哪些，为什么提供这些指标，以及咱们如何去做监控。</p>
+<h2 id="监控指标">监控指标</h2>
+<p>就像<code>com.zaxxer.hikari.metrics.PoolStats</code>提供的那样，几个重要的指标都存储在poolState中。</p>
+<ul>
+<li><p>totalConnections<br />
+总连接数，包括空闲的连接和使用中的连接。</p></li>
+<li><p>idleConnections 空闲连接数</p></li>
+<li><p>activeConnections<br />
+活跃连接数</p></li>
+</ul>
+<p>totalConnections = activeConnection + idleConnections</p>
+<ul>
+<li><p>pendingThreads<br />
+正在等待连接的线程数量。排查性能问题时，这个指标是一个重要的参考指标，如果正在等待连接的线程在相当一段时间内数量较多，可以考虑扩大数据库连接池的size。（即HikariCP的maxPoolSize）</p></li>
+<li><p>maxConnections<br />
+最大连接数，统计指标，统计到目前为止连接的最大数量。</p></li>
+<li><p>minConnections<br />
+最小连接数，统计指标，统计到目前为止连接的最小数量。</p></li>
+<li><p>usageTime<br />
+每个连接使用的时间，当连接被回收的时候会记录此指标：<code>com.zaxxer.hikari.pool.HikariPool#recycle</code></p></li>
+<li><p>acquireTime<br />
+获取每个连接需要等待时间，一个请求获取数据库连接后或者因为超时失败后，会记录此指标。</p></li>
+<li><p>connectionCreateTime<br />
+连接创建时间</p></li>
+</ul>
+<h2 id="如何监控">如何监控</h2>
+<p>这里拿我们比较熟悉的SpringBoot项目为例，同时使用prometheus和grafana，项目中加入promethues的依赖：</p>
+<pre><code><code>    implementation &#39;org.springframework.boot:spring-boot-starter-actuator&#39;
+    implementation &#39;io.micrometer:micrometer-registry-prometheus:1.3.0&#39;</code></code></pre>
+<p>同时在SpringBoot项目的application.properties配置文件中加入以下参数：</p>
+<pre><code><code>    management.endpoints.web.exposure.include=prometheus 暴露prometheus格式化的指标，这样可以被promethues服务器抓取</code></code></pre>
+<p>接下来我们需要启动一个prometheus的服务，<a href="https://prometheus.io/download/" class="uri">https://prometheus.io/download/</a> 然后更改下peometheus服务的默认配置再启动，追加配置如下：</p>
+<pre><code><code>  - job_name: &#39;prometheus-test&#39; # job名称
+    scrape_interval: 5s # 抓取时间间隔，这里每5s像数据源请求一次
+    metrics_path: &#39;/actuator/prometheus&#39;
+    static_configs:
+      - targets: [&#39;127.0.0.1:8080&#39;] # 这里是springBoot项目的地址</code></code></pre>
+<p>接着启动一个grafana的服务，<a href="https://grafana.com/get" class="uri">https://grafana.com/get</a> 启动后添加prometheus数据源，制作仪表盘等。</p>
+<p><img src="./images/HikariCP监控指标介绍和应用0.png" /></p>
+<h2 id="扩展知识">扩展知识</h2>
+<ul>
+<li><p>Micrometer<br />
+Vendor-neutral application metrics facade（与供应商无关的应用程序指标外观）。我们可以把它类比于日志框架中的slf4j。把promethues类比于logback。应用程序直接依赖Micrometer来暴露指标。Micrometer比较受欢迎，已经作为SpringBoot2.0内置的指标门面库。</p></li>
+<li><p>Dropwizard<br />
+一个Java框架，类似于SpringBoot，但国内使用较少。其中有提供metrics相关的功能。</p></li>
+<li><p>Prometheus<br />
+一个监控器的实现，基于pull模型，定时像prometheus数据源拉取指标信息。做分析、处理和展示。</p></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

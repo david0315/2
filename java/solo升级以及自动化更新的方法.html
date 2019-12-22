@@ -1,0 +1,130 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修solo升级以及自动化更新的方法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>solo升级以及自动化更新的方法</center></div><div class='banquan'>原文出处:本文由博客园博主vcjmhg提供。<br/>
+原文连接:https://www.cnblogs.com/goWithHappy/p/solo_update.html</div><br>
+    <p>使用solo过程总涉及到更新问题，所以就在这里把solo更新的方法总结一下。希望能给小伙伴们一些帮助。如何选择更新方法主要是跟你的部署方式有关，如果你是通过 <code>docker</code>方式进行部署，那么你可以还可以通过<code>docker</code>方式来进行更新，这也是官方比较推荐的部署方式。如果是通过<code>jar</code>包或者<code>war</code>包来进行部署，那么更新时同样需要通过该方式来进行。好了闲话少叙进入正题。</p>
+<h2 id="使用docker更新">使用docker更新</h2>
+<p><strong>第一步：</strong> 获取最新镜像：</p>
+<pre><code><code>docker pull b3log/solo:latest</code></code></pre>
+<p>执行结果如下：<br />
+<img src="./images/solo升级以及自动化更新的方法0.png" /><br />
+如果有新版本，该命令会自动拉取新镜像，也就是会上边下载的界面。自动更新镜像。<br />
+如果当前版本已是最新则会出现下边情况，此时也就不用更新。<br />
+<img src="./images/solo升级以及自动化更新的方法1.png" /></p>
+<p><strong>第二步:</strong> 删除原来的容器<br />
+第一步虽然获取了最新的镜像，但是我们当前部署的容器却是旧的，需要我们删除之后重新进行部署。<br />
+执行<code>docker ps</code>查看当前容器的运行情况<br />
+<img src="./images/solo升级以及自动化更新的方法2.png" /><br />
+此处我部署的solo的容器名称是<code>www_solo</code>,所以你在下边删除容器时要更改成自己的solo容器名称</p>
+<pre><code><code>docker stop www_solo
+docker rm www_solo</code></code></pre>
+<p>执行结果如下：<br />
+<img src="./images/solo升级以及自动化更新的方法3.png" /></p>
+<p><strong>第三步：</strong> 重新部署solo容器</p>
+<pre><code><code>docker run --detach --name solo --network=host \
+    --env RUNTIME_DB=&quot;MYSQL&quot; \
+    --env JDBC_USERNAME=&quot;root&quot; \
+    --env JDBC_PASSWORD=&quot;123456&quot; \
+    --env JDBC_DRIVER=&quot;com.mysql.cj.jdbc.Driver&quot; \
+    --env JDBC_URL=&quot;jdbc:mysql://127.0.0.1:3306/solo?useUnicode=yes&amp;characterEncoding=UTF-8&amp;useSSL=false&amp;serverTimezone=UTC&quot; \
+    b3log/solo --listen_port=8080 --server_scheme=http --server_host=localhost</code></code></pre>
+<ul>
+<li><code>--env JDBC_PASSWORD=&quot;123456&quot;</code>: 需要将<code>123456</code>更改成自己的mysql密码</li>
+<li><code>--server_host=localhost</code>: 需要将<code>localhost</code>更改成自己的域名</li>
+</ul>
+<p>执行结果如下：<br />
+<img src="./images/solo升级以及自动化更新的方法4.png" /><br />
+至此solo更新完成</p>
+<h2 id="通过jar包或者war包更新">通过jar包或者war包更新</h2>
+<p>此种方式一般都是通过源码来进行部署的，需要重新导入新的solo源码，配置相关信息，然后重新导出。具体的方法可以参考官方给的<a href="https://hacpai.com/article/1493822943172">文档</a>,此处不再详说。</p>
+<h2 id="通过脚本定期更新">通过脚本定期更新</h2>
+<p>首先，官方给了一个脚本用于更新或者重启，内容如下：</p>
+<pre><code><code>#!/bin/bash
+
+#
+# Solo docker 更新重启脚本
+#
+# 1. 请注意修改参数
+# 2. 可将该脚本加入 crontab，每日凌晨运行来实现自动更新
+#
+
+docker pull b3log/solo
+docker stop solo
+docker rm solo
+docker run --detach --name solo --network=host \
+    --env RUNTIME_DB=&quot;MYSQL&quot; \
+    --env JDBC_USERNAME=&quot;root&quot; \
+    --env JDBC_PASSWORD=&quot;123456&quot; \
+    --env JDBC_DRIVER=&quot;com.mysql.cj.jdbc.Driver&quot; \
+    --env JDBC_URL=&quot;jdbc:mysql://127.0.0.1:3306/solo?useUnicode=yes&amp;characterEncoding=UTF-8&amp;useSSL=false&amp;serverTimezone=UTC&quot; \
+    b3log/solo --listen_port=8080 --server_scheme=http --server_host=localhost</code></code></pre>
+<p>上述脚本说实话用于重启容器可以，但是用于定期更新脚本稍微有点不足，因为定期更新的脚本正常应该检查当前部署的版本是否是最新版本，如果不是才更新。而上边的脚本每次执行都会重新部署，显得开销优点大。下边我们对该脚本进行优化，使其更加合理。<br />
+因为docker没有命令直接来获取当前下载的镜像是否是最新版本，但是当我们通过<code>pull</code>一个镜像时我们会发现：如果当前本地镜像是最新镜像那么docker就不会从云端下载镜像，运行之后会出现如下结果：<br />
+<img src="./images/solo升级以及自动化更新的方法5.png" /><br />
+如果当前镜像不是新的会出现如下运行结果：<br />
+<img src="./images/solo升级以及自动化更新的方法6.png" /><br />
+因此我们可以借助<code>grep</code>，来实现一个更新脚本``</p>
+<pre><code><code>#!/bin/bash
+#
+# Solo docker 更新脚本
+#
+# 1. 请注意修改参数
+# 2. 可将该脚本加入 crontab，每日凌晨运行来实现自动更新
+#
+
+isUpdate=$(docker pull b3log/solo|grep &quot;Downloaded&quot;)
+
+#如果有新版本或者没有安装才会进行更新
+if [[ -z  $isUpdate ]] 
+then 
+    echo This is the latest version
+else
+    docker stop solo
+    docker rm solo
+    docker run --detach --name solo --network=host \
+    --env RUNTIME_DB=&quot;MYSQL&quot; \
+        --env JDBC_USERNAME=&quot;root&quot; \
+    --env JDBC_PASSWORD=&quot;123456&quot; \
+    --env JDBC_DRIVER=&quot;com.mysql.cj.jdbc.Driver&quot; \
+    --env JDBC_URL=&quot;jdbc:mysql://127.0.0.1:3306/solo?useUnicode=yes&amp;characterEncoding=UTF-8&amp;useSSL=false&amp;serverTimezone=UTC&quot; \
+        b3log/solo --listen_port=8080 --server_scheme=http --server_host=localhost
+fi
+</code></code></pre>
+<p><strong>使用方法：</strong></p>
+<pre><code><code>sudo ./docker-update.sh</code></code></pre>
+<p><strong>如果</strong>是最新版会出现如下运行结果：<br />
+<img src="./images/solo升级以及自动化更新的方法7.png" /><br />
+<strong>如果</strong>不是最新版会执行容器删除重启等命令，出现如下运行结果：<br />
+<img src="./images/solo升级以及自动化更新的方法8.png" /><br />
+关于这一点我也想官方发起了<code>Pull request</code>希望组织能接受吧。</p>
+<p>当然如果希望一劳永逸的解决该问题，我们可以通过<code>crontab</code>实现定时更新<br />
+<strong>首先</strong>将<code>docker-update.sh</code>文件放到<code>root</code>目录（当然其他目录）也可以下:<br />
+其次执行<code>crontab -e</code>进入编辑界面添加如下内容（每天早上1点整执行更新任务）：</p>
+<pre><code><code>0 1 * * * bash /root/docker-update.sh</code></code></pre>
+<p>通过<code>crontab -l</code>查看例行任务是否添加成功。<br />
+整个过程的执行结果如下图所示：<br />
+<img src="./images/solo升级以及自动化更新的方法9.png" /></p>
+<h2 id="后记">后记</h2>
+<p>当然可能个人水平有限，中间难免会出现一些错误，如若发现恳请指出，不胜赐教。如果大家有更好的更新方法或者上边有任何疑问都欢迎大家在留言区提出，谢谢！</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

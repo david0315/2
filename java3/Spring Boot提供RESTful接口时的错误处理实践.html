@@ -1,0 +1,168 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot提供RESTful接口时的错误处理实践' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot提供RESTful接口时的错误处理实践</center></div><div class='banquan'>原文出处:本文由博客园博主javaadu提供。<br/>
+原文连接:https://www.cnblogs.com/javaadu/p/11742545.html</div><br>
+    <blockquote>
+<p>本文首发于个人网站：http://www.javaadu.online/，如需转载，请注明出处</p>
+</blockquote>
+<p>使用Spring Boot开发微服务的过程中，我们会使用别人提供的接口，也会设计接口给别人使用，这时候微服务应用之间的协作就需要有一定的规范。</p>
+<ul>
+<li><p>基于rpc协议，我们一般有两种思路：（1）提供服务的应用统一将异常包起来，然后用错误码交互；（2）提供服务的应用将运行时异常抛出，抛出自定义的业务异常，服务的调用者通过异常catch来处理异常情况。</p></li>
+<li><p>基于HTTP协议，那么最流行的就是RESTful协议，服务提供方会自己处理所有异常，并且返回的结果中会跟HTTP的状态码相结合，这篇文章我们就用一个例子来说明RESTful接口的错误处理如何做。</p></li>
+</ul>
+<p>首先我们需要新建一个简单的Controller，代码如下：</p>
+<pre><code><code>@RestController
+class GreetingController {
+
+    @RequestMapping(&quot;/greet&quot;)
+    String sayHello(@RequestParam(&quot;name&quot;) String name) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException(&quot;The &#39;name&#39; parameter must not be null or empty&quot;);
+        }
+        return String.format(&quot;Hello %s!&quot;, name);
+    }
+}</code></code></pre>
+<p>通过http请求客户端——<a href="https://github.com/jkbrzt/httpie">httpie</a>发送HTTP请求，这个工具比curl的好处是：返回值信息有语法高亮、对返回的JSON字符串自动格式化。启动服务器，使用命令<code>http http://127.0.0.1:8080/greet?name=duqi</code>发起请求，结果如下：</p>
+<pre><code><code>HTTP/1.1 200 OK
+Content-Length: 11
+Content-Type: text/plain;charset=UTF-8
+Date: Sat, 05 Dec 2015 05:45:03 GMT
+Server: Apache-Coyote/1.1
+X-Application-Context: application</code></code></pre>
+<p>现在我们制造一个错误的请求，@RequestParam是获取URL中的参数，如果这个参数不提供则会出错。因此，我们发送一个命令<code>http http://127.0.0.1:8080</code>，看结果如何。</p>
+<pre><code><code>HTTP/1.1 400 Bad Request
+Connection: close
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 05 Dec 2015 05:54:06 GMT
+Server: Apache-Coyote/1.1
+Transfer-Encoding: chunked
+X-Application-Context: application
+
+{
+    &quot;error&quot;: &quot;Bad Request&quot;,
+    &quot;exception&quot;: &quot;org.springframework.web.bind.MissingServletRequestParameterException&quot;,
+    &quot;message&quot;: &quot;Required String parameter &#39;name&#39; is not present&quot;,
+    &quot;path&quot;: &quot;/greet&quot;,
+    &quot;status&quot;: 400,
+    &quot;timestamp&quot;: 1449294846060
+}</code></code></pre>
+<p>可以看到，由于没有提供name参数，服务器返回的状态码是400：错误的请求。在响应体中的内容依次如下：</p>
+<ul>
+<li>error : 错误信息；</li>
+<li>exception：异常的类型，MissingServletRequestParameterExeption，见名知意，说明是缺少了某个请求参数；</li>
+<li>message：对异常的说明</li>
+<li>path：显示请求的URL路径；</li>
+<li>status：表示返回的错误码</li>
+<li>timestamp：错误发生的时间戳，调用System.currentMills()</li>
+</ul>
+<p>如果我们给定name参数，却不给它赋值，又会如何？发送命令<code>http http:127.0.0.1:8080/greet?name</code>，则服务器的返回值如下：</p>
+<pre><code><code>HTTP/1.1 500 Internal Server Error
+Connection: close
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 05 Dec 2015 06:01:24 GMT
+Server: Apache-Coyote/1.1
+Transfer-Encoding: chunked
+X-Application-Context: application
+
+{
+    &quot;error&quot;: &quot;Internal Server Error&quot;,
+    &quot;exception&quot;: &quot;java.lang.IllegalArgumentException&quot;,
+    &quot;message&quot;: &quot;The &#39;name&#39; parameter must not be null or empty&quot;,
+    &quot;path&quot;: &quot;/greet&quot;,
+    &quot;status&quot;: 500,
+    &quot;timestamp&quot;: 1449295284160
+}</code></code></pre>
+<p>对比上面，可以看出，这次返回的错误码是500，表示服务器内部错误；返回的异常类型是java.lang.IllegalArgumentException，表示参数不合法。服务器内部错误表示服务器抛出了异常缺没有处理，我们更愿意API返回400，告诉调用者自己哪里做错了。如何实现呢？利用@ExceptionHandler注解即可。</p>
+<p>在GreetingController控制器中加入如下处理函数，用于捕获这个控制器的异常。</p>
+<pre><code><code>@ExceptionHandler
+void handleIllegalArgumentException(IllegalArgumentException e, 
+                        HttpServletResponse response) throws IOException {    
+      response.sendError(HttpStatus.BAD_REQUEST.value());
+}</code></code></pre>
+<p>再次发送命令<code>http http:127.0.0.1:8080/greet?name</code>,则返回下面的结果：</p>
+<pre><code><code>HTTP/1.1 400 Bad Request
+Connection: close
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 05 Dec 2015 06:08:50 GMT
+Server: Apache-Coyote/1.1
+Transfer-Encoding: chunked
+X-Application-Context: application
+
+{
+    &quot;error&quot;: &quot;Bad Request&quot;,
+    &quot;exception&quot;: &quot;java.lang.IllegalArgumentException&quot;,
+    &quot;message&quot;: &quot;The &#39;name&#39; parameter must not be null or empty&quot;,
+    &quot;path&quot;: &quot;/greet&quot;,
+    &quot;status&quot;: 400,
+    &quot;timestamp&quot;: 1449295729978
+}</code></code></pre>
+<p>说明我们在服务器端捕获了IllegalArgumentException这个异常，并设置response的返回码为400。如果你想对多个异常都进行一样的处理，则上述异常处理代码可以修改为下面这样（给@ExceptionHandler传入参数）：</p>
+<pre><code><code>@ExceptionHandler({IllegalArgumentException.class, NullPointerException.class})
+void handleIllegalArgumentException(HttpServletResponse response) throws IOException {
+    response.sendError(HttpStatus.BAD_REQUEST.value());
+}</code></code></pre>
+<p>现在这个异常处理代码是加在当前的这个控制器中，因此它只处理属于这个控制器的响应，如果我们新建一个类，并用注解@ControllerAdvice修饰，并在这个类中定义上述的异常处理代码，则它会负责处理所有的请求。</p>
+<p>Spring Boot 1.2.0以后，还支持在response修改对应的message，只要将对应的message信息传入sendError函数即可，例如：</p>
+<pre><code><code>@ExceptionHandler({IllegalArgumentException.class, NullPointerException.class})
+void handleIllegalArgumentException(HttpServletResponse response) throws IOException {
+    response.sendError(HttpStatus.BAD_REQUEST.value(), 
+         &quot;Please try again and with a non empty string as &#39;name&#39;&quot;);
+}</code></code></pre>
+<p>再次执行同样的命令，会收到下列反馈：</p>
+<pre><code><code>HTTP/1.1 400 Bad Request
+Connection: close
+Content-Type: application/json;charset=UTF-8
+Date: Sat, 05 Dec 2015 06:21:05 GMT
+Server: Apache-Coyote/1.1
+Transfer-Encoding: chunked
+X-Application-Context: application
+
+{
+    &quot;error&quot;: &quot;Bad Request&quot;,
+    &quot;exception&quot;: &quot;java.lang.IllegalArgumentException&quot;,
+    &quot;message&quot;: &quot;Please try again and with a non empty string as &#39;name&#39;&quot;,
+    &quot;path&quot;: &quot;/greet&quot;,
+    &quot;status&quot;: 400,
+    &quot;timestamp&quot;: 1449296465060
+}</code></code></pre>
+<p>如果希望验证请求的参数，可以使用JSR-303 Bean Validation API，并参考<a href="http://docs.spring.io/spring-framework/docs/4.1.x/spring-framework-reference/html/validation.html#validation-beanvalidation">Spring Validation</a>。在spring.io上还有一个验证表单输入的例子<a href="https://spring.io/guides/gs/validating-form-input/">Validating Form Input</a>。</p>
+<h2 id="参考资料">参考资料</h2>
+<ol>
+<li><a href="http://www.jingwentian.com/t-517">模拟GET/POST请求的工具</a></li>
+<li><a href="http://www.jayway.com/2014/10/19/spring-boot-error-responses/">Spring Boot Error Response</a></li>
+</ol>
+<h2 id="spring-boot-1.x系列">Spring Boot 1.x系列</h2>
+<ol>
+<li><a href="http://www.javaadu.online/?p=487">Spring Boot的自动配置、Command-line-Runner</a></li>
+<li><a href="http://www.javaadu.online/?p=495">了解Spring Boot的自动配置</a></li>
+<li><a href="http://www.javaadu.online/?p=499">Spring Boot的@PropertySource注解在整合Redis中的使用</a></li>
+<li><a href="http://www.javaadu.online/?p=515">Spring Boot项目中如何定制HTTP消息转换器</a></li>
+<li><a href="http://www.javaadu.online/?p=518">Spring Boot整合Mongodb提供Restful接口</a></li>
+<li><a href="http://www.javaadu.online/?p=521">Spring中bean的scope</a></li>
+<li><a href="http://www.javaadu.online/?p=526">Spring Boot项目中使用事件派发器模式</a></li>
+</ol>
+<hr />
+<p>本号专注于后端技术、JVM问题排查和优化、Java面试题、个人成长和自我管理等主题，为读者提供一线开发者的工作和成长经验，期待你能在这里有所收获。<br />
+<img src="./images/Spring Boot提供RESTful接口时的错误处理实践0.png" alt="javaadu" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

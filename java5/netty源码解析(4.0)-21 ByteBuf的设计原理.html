@@ -1,0 +1,231 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修netty源码解析(4.0)-21 ByteBuf的设计原理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>netty源码解析(4.0)-21 ByteBuf的设计原理</center></div><div class='banquan'>原文出处:本文由博客园博主自带buff提供。<br/>
+原文连接:https://www.cnblogs.com/brandonli/p/11534491.html</div><br>
+    <p>    io.netty.buffer包中是netty ByteBuf的实现。ByteBuf是一个二进制缓冲区的抽象接口，它的功能有:</p>
+<ul>
+<li>可以随机访问、顺序访问。</li>
+<li>支持基本数据类型(byte, short, int, long, float, double)的序列化和反序列化。</li>
+<li>不限制底层原始的数据类型，可以是byte[], NIO Buffer, String, IO Stream, 直接内（C语言中可以表示为指向一块内置起始地址的指针void*, 内存的长度), 等等。</li>
+</ul>
+<h1 id="bytebuf">为什么需要ByteBuf</h1>
+<p>    缓冲区的使用范围非常广泛：I/O操作，序列化/反序列化，编码转换，压缩/解压，加/解密等所有需要使用byte[]的场景。
+    有些场景需要需要能够快速地创建和销毁缓冲区，如：高并发的服务器，处理请求、返回响应的时时候需要大量且高频地创建，销毁缓冲区。
+    有些场景不能确定需要多大的缓冲区，如: 从数据流中分离出一条消息，消息的长度不确定，只知道最大长度。假如消息的最大长度是64KB，而消息的平均长度只有4KB,  如果每次创建64KB的缓冲区就太浪费了。如果缓冲区能够在需要的时候自动且高效地增减容量，就完美了。
+    在所有的场景中都涉及到频繁的数据copy，这要求缓冲区数据copy的性能要尽量高。如果有可能，尽量减少数据copy。
+    ByteBuf就是为解决以上问题而设计的。</p>
+<h1 id="section">核心概念</h1>
+<p>如下所示</p>
+<pre><code><code>|  discardable bytes | readable bytes |  writable bytes  |
+0                readerIndex       writerIndex       capacity
+</code></code></pre>
+<ul>
+<li>capacity: 缓冲区的容量。</li>
+<li>readerIndex: 当前读的位置。可以使用readerIndex()和readerIndex(int)方法获取、设置readerIndex值。每次调用readXXX方法都会导致readerIndex向writerIndex移动，直到等于writerIndex为止。</li>
+<li>writerIndex: 写的当前位置。可以使用writerIndex()和writerIndex(int)方法获取、设置writeIndex的值。每次调用writeXXX方法都会导致writeIndex向capacity移动，直到等于capacity为止。</li>
+<li>discardable bytes: 可丢弃的数据。0--readerIndex之间的数据, 长度是readerIndex - 0，调用discardReadBytes会丢弃这部分数据，把readerIndex--writerIndex之间的数据移动到ByteBuf的开始位置(0), ByteBuf会变成如下所示的样子:</li>
+</ul>
+<pre><code><code>       |   readable bytes  |  writable bytes  |
+readerIndex(0)       writerIndex           capacity
+</code></code></pre>
+<ul>
+<li>readable bytes: 可读数据。 readerIndex--writerIndex之间的数据，长度是writerInex - readerIndex。可以调用readableBytes()方法得到它的长度。</li>
+<li>writeable bytes: 可写的空间。长度是capacity - writerIndex。也可以认为它是ByteBuf的剩余空间。</li>
+</ul>
+<h2 id="section-1">核心能力</h2>
+<p>对二进制数据的读写是ByteBuf的核心能力。它提供两种读写方式:</p>
+<ul>
+<li>随机读写: getXXX(int), setXXX(int, ...)。不会对readerIndex和writerIndex产生影响，范围是(0,capacity]。</li>
+<li>顺序读写: readXXX, 增加readerIndex的值，范围是(readerIndex, writerIndex]。 writeXXX，增加writerIndex值，范围是(writerIndex, capacity]。</li>
+</ul>
+<p>ByteBuf为了方便使用，提供了一些基本数据类型(unsigned表示无符号类型)的读写支持:</p>
+<table>
+<thead>
+<tr>
+<th>数据类型</th>
+<th>长度(Byte)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>byte, unsignedByte</td>
+<td>1</td>
+</tr>
+<tr>
+<td>short, unsignedShort</td>
+<td>2</td>
+</tr>
+<tr>
+<td>char</td>
+<td>2</td>
+</tr>
+<tr>
+<td>medium, unsignedMedium</td>
+<td>3</td>
+</tr>
+<tr>
+<td>int, unsignedInt</td>
+<td>4</td>
+</tr>
+<tr>
+<td>long</td>
+<td>8</td>
+</tr>
+<tr>
+<td>float</td>
+<td>4</td>
+</tr>
+<tr>
+<td>double</td>
+<td>8</td>
+</tr>
+</tbody>
+</table>
+<p>对这些基本数据类型的读写涉及到了字节须的问题，ByteBuf支持两种字节序，使用java.nio.ByteOrder中的定义，默认的字节序是BIG_ENDIAN, 这个也是网络字节序。</p>
+<p>此外还提供了对byte[]类型及可以当成byte[]使用的数据类型的支持,  方法名都是：getBytes，setBytes, readBytes, writeBytes。</p>
+<ul>
+<li>byte[]</li>
+<li>ByteBuf</li>
+<li>ByteBuffer</li>
+<li>GatheringByteChannel</li>
+<li>InputStread, OutputStream</li>
+</ul>
+<h1 id="section-2">内存管理</h1>
+<p>内存管理分为两个部分：内存分配，内存释放。
+ByteBufAllocator是内存分配的接口，它有两个具体实现:UnpooledByteBufAllocator， PooledByteBufAllocator。
+UnpooledByteBufAllocator是JVM内存分配接口的简单封装。
+PooledByteBufAllocator在JVM内存分配的基础上实现了一套独立的内存分配算法。
+内存释放的关键是如何判定对象死亡，ByteBuf继承了ReferenceCounted接口，使用引用计数的方式判定对象死亡。</p>
+<p>PooledByteBufAllocator中高效的内存管理算法是ByteBuf的性能基础，理解了它的算法是理解ByteBuf的关键。</p>
+<h1 id="section-3">体系结构</h1>
+<src class="mermaid">graph TD;
+B[ByteBuf]-->AB[AbstractByteBuf];
+B-->SB[SwappedByteBuf];
+B-->WB[WrappedByteBuf];
+AB[AbstractByteBuf]-->ARCB[AbstractReferenceCountedByteBuf];
+ARCB-->CB[CompositeByteBuf&lt;br>FixedCompositeByteBuf];
+ARCB-->PB[PooledByteBuf&lt;T>];
+ARCB-->UBB[UnpooledDirectByteBuf&lt;br>UnpooledHeapByteBuf&lt;br>UnpooledUnsafeDirectByteBuf&lt;br>UnpooledUnsafeHeapByteBuf&lt;br>UnpooledUnsafeNoCleanerDirectByteBuf];
+ARCB-->ROBB[ReadOnlyByteBufferBuf];
+PB[PooledByteBuf&lt;T>]-->PDB[PooledDirectByteBuf];
+PB-->PUDB[PooledUnsafeDirectByteBuf];
+PB-->PHB[PooledHeapByteBuf];
+PHB-->PUHB[PooledUnsafeHeapByteBuf];
+
+<p>上图是ByteBuf体系结构中主要的类和接口。主要分为三大类:</p>
+<ul>
+<li>AbstractReferenceCountedByteBuf及其子类。这个类别是是ByteBuf中最重要的部分，它分为4个小类别:</li>
+</ul>
+<blockquote>
+<p>CompositeByteBuf, FixedCompositeByteBuf: 把不同的ByteBuf组合成一个ByteBuf。
+PooledByteBuf：实现了自定义内存管理算法的。
+UnpooledXXXX:  直接使用JVM内存管理能力。
+ReadOnlyByteBufferBuf: 只读的。</p>
+</blockquote>
+<ul>
+<li>SwappedByteBuf: 用来转换ByteBuf的字节序。</li>
+<li>WrappedByteBuf: 用来包装另一个ByteBuf。</li>
+</ul>
+<h1 id="section-4">工具</h1>
+<p>有两个工具类帮助开发者使用ByteBuf:</p>
+<ul>
+<li>ByteBufUtil: 这个类中创建好了默认的ByteBufAllocator，可以直接拿来用。还有一些操作ByteBuf常用的方法。</li>
+<li>Unpooled: 这个类是针对UnpooledXXXByteBuf的工具。</li>
+</ul>
+<h1 id="section-5">用法</h1>
+<h2 id="bytebufallocator">创建ByteBufAllocator</h2>
+<p>    使用ByteBufUtil.DEFAULT_ALLOCATOR得到ByteBufAllocator实例。这个实例可能是UnpooledByteBufAllocator，也可能是PooledByteBufAllocator类型，这取决于io.netty.allocator.type属性的设置。默认是unpooled，UnpooledByteBufAllocator类型。如果想要PooledByteBufAllocator类型，把这个属性的值设置成pooled：
+    java -Dio.netty.allocator.type=pooled，或者System.setProperty(&quot;io.netty.allocator.type&quot;, &quot;pooled&quot;)
+    </p>
+<h2 id="bytebuf-1">创建ByteBuf</h2>
+<p>    netty不建议直接创建创建ByteBuf实例，推荐使用ByteBufAllocator创建ByteBuf实例，或者使用Unpooled静态方法。
+    ByteBufAllocator有7种方法用于创建ByteBuf实例：</p>
+<table>
+<thead>
+<tr>
+<th>方法名</th>
+<th>特性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>buffer</td>
+<td>使用可能是JVM堆内存或直接内存，取决于具体的实现</td>
+</tr>
+<tr>
+<td>ioBuffer</td>
+<td>如果可以的话优先使用直接内存</td>
+</tr>
+<tr>
+<td>heapBuffer</td>
+<td>使用堆内存</td>
+</tr>
+<tr>
+<td>directBuffer</td>
+<td>使用直接内存</td>
+</tr>
+<tr>
+<td>CompositeByteBuf</td>
+<td>使用可能是JVM堆内存或直接内存，取决于具体的实现</td>
+</tr>
+<tr>
+<td>compositeHeapBuffer</td>
+<td>使用堆内存</td>
+</tr>
+<tr>
+<td>compositeDirectBuffer</td>
+<td>使用堆内存</td>
+</tr>
+</tbody>
+</table>
+<p>Unpooled创建ByteBuf实例的方法有2两种:</p>
+<table>
+<thead>
+<tr>
+<th>方法名</th>
+<th>特性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>buffer</td>
+<td>使用堆内存</td>
+</tr>
+<tr>
+<td>directBuffer</td>
+<td>使用直接内存</td>
+</tr>
+</tbody>
+</table>
+<h2 id="bytebuf-2">包装成ByteBuf</h2>
+<p>Unpooled提供了一系列的wrappedBuffer方法，把一些数据类型包装成一个ByteBuf, 这些数据类型有:</p>
+<ul>
+<li>byte[]。</li>
+<li>ByteBuffer。</li>
+<li>另一个的ByteBuf中的可读数据。</li>
+</ul>
+<p>wrappedBuffer方法还可以把byte[].., ByteBuffer.., ByteBuf..包装成一个CompositeByteBuf。</p>
+<h2 id="section-6">数据读写</h2>
+<p>数据读写是ByteBuf的基本功能，前面已经讲过，相关方法是: getXXX, readXXX, setXXX, writeXXX。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

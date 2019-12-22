@@ -1,0 +1,157 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修缓存内功心法：缓存基础整理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>缓存内功心法：缓存基础整理</center></div><div class='banquan'>原文出处:本文由博客园博主Java博客手留余香提供。<br/>
+原文连接:https://www.cnblogs.com/yuxiang1/p/11437196.html</div><br>
+    <h2>缓存雪崩</h2>
+<p>缓存雪崩是由于原有缓存失效(过期)，新缓存未到期间。所有请求都去查询数据库，而对数据库CPU和内存造成巨大压力，严重的会造成数据库宕机。从而形成一系列连锁反应，造成整个系统崩溃。</p>
+<p>解决方法：</p>
+<ol>
+<li>
+<p>一般并发量不是特别多的时候，使用最多的解决方案是加锁排队。</p>
+</li>
+<li>
+<p>给每一个缓存数据增加相应的缓存标记，记录缓存的是否失效，如果缓存标记失效，则更新数据缓存。</p>
+<ul>
+<li>缓存标记：记录缓存数据是否过期，如果过期会触发通知另外的线程在后台去更新实际key的缓存。</li>
+<li>缓存数据：它的过期时间比缓存标记的时间延长1倍，例：标记缓存时间30分钟，数据缓存设置为60分钟。 这样，当缓存标记key过期后，实际缓存还能把旧数据返回给调用端，直到另外的线程在后台更新完成后，才会返回新缓存。</li>
+</ul>
+</li>
+</ol>
+<p>加锁排队方案伪代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">伪代码</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">object</span><span style="color: #000000;"> GetProductListNew() {
+    </span><span style="color: #0000ff;">int</span> cacheTime = <span style="color: #800080;">30</span><span style="color: #000000;">;
+    String cacheKey </span>= <span style="color: #800000;">"</span><span style="color: #800000;">product_list</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+    String lockKey </span>=<span style="color: #000000;"> cacheKey;
+
+    String cacheValue </span>= CacheHelper.<span style="color: #0000ff;">get</span><span style="color: #000000;">(cacheKey);
+    </span><span style="color: #0000ff;">if</span> (cacheValue != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        synchronized(lockKey) {
+            cacheValue </span>= CacheHelper.<span style="color: #0000ff;">get</span><span style="color: #000000;">(cacheKey);
+            </span><span style="color: #0000ff;">if</span> (cacheValue != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">这里一般是sql查询数据</span>
+                cacheValue =<span style="color: #000000;"> GetProductListFromDB();
+                CacheHelper.Add(cacheKey, cacheValue, cacheTime);
+            }
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>缓存标记方案伪代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">伪代码</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">object</span><span style="color: #000000;"> GetProductListNew() {
+    </span><span style="color: #0000ff;">int</span> cacheTime = <span style="color: #800080;">30</span><span style="color: #000000;">;
+    String cacheKey </span>= <span style="color: #800000;">"</span><span style="color: #800000;">product_list</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">缓存标记</span>
+    String cacheSign = cacheKey + <span style="color: #800000;">"</span><span style="color: #800000;">_sign</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+
+    String sign </span>=<span style="color: #000000;"> CacheHelper.Get(cacheSign);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">获取缓存值</span>
+    String cacheValue =<span style="color: #000000;"> CacheHelper.Get(cacheKey);
+    </span><span style="color: #0000ff;">if</span> (sign != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span> cacheValue; <span style="color: #008000;">//</span><span style="color: #008000;">未过期，直接返回</span>
+    } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        CacheHelper.Add(cacheSign, </span><span style="color: #800000;">"</span><span style="color: #800000;">1</span><span style="color: #800000;">"</span><span style="color: #000000;">, cacheTime);
+        ThreadPool.QueueUserWorkItem((arg) </span>-&gt;<span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">这里一般是 sql查询数据</span>
+            cacheValue =<span style="color: #000000;"> GetProductListFromDB();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">日期设缓存时间的2倍，用于脏读</span>
+            CacheHelper.Add(cacheKey, cacheValue, cacheTime * <span style="color: #800080;">2</span><span style="color: #000000;">);
+        });
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<h2 id="h2_2">缓存穿透</h2>
+<p>缓存穿透是指用户查询数据，在数据库没有，自然在缓存中也不会有。这样就导致用户查询的时候，在缓存中找不到，每次都要去数据库再查询一遍，然后返回空（相当于进行了两次无用的查询）。这样请求就绕过缓存直接查数据库，这也是经常提的缓存命中率问题。</p>
+<p>解决方案：</p>
+<ol>
+<li>布隆过滤器，将所有可能存在的数据哈希到一个足够大的bitmap中，一个一定不存在的数据会被这个bitmap拦截掉，从而避免了对底层存储系统的查询压力。</li>
+<li>如果一个查询返回的数据为空（不管是数据不存在，还是系统故障），我们仍然把这个空结果进行缓存，但它的过期时间会很短，最长不超过五分钟。通过这个直接设置的默认值存放到缓存，这样第二次到缓冲中获取就有值了，而不会继续访问数据库，这种办法最简单粗暴！</li>
+</ol>
+<p>方案二伪代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">伪代码</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">object</span><span style="color: #000000;"> GetProductListNew() {
+    </span><span style="color: #0000ff;">int</span> cacheTime = <span style="color: #800080;">30</span><span style="color: #000000;">;
+    String cacheKey </span>= <span style="color: #800000;">"</span><span style="color: #800000;">product_list</span><span style="color: #800000;">"</span><span style="color: #000000;">;
+
+    String cacheValue </span>=<span style="color: #000000;"> CacheHelper.Get(cacheKey);
+    </span><span style="color: #0000ff;">if</span> (cacheValue != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    }
+
+    cacheValue </span>=<span style="color: #000000;"> CacheHelper.Get(cacheKey);
+    </span><span style="color: #0000ff;">if</span> (cacheValue != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">数据库查询不到，为空</span>
+        cacheValue =<span style="color: #000000;"> GetProductListFromDB();
+        </span><span style="color: #0000ff;">if</span> (cacheValue == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果发现为空，设置个默认值，也缓存起来</span>
+            cacheValue = <span style="color: #0000ff;">string</span><span style="color: #000000;">.Empty;
+        }
+        CacheHelper.Add(cacheKey, cacheValue, cacheTime);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheValue;
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<h2 id="h2_3">缓存预热</h2>
+<p>缓存预热这个应该是一个比较常见的概念，相信很多小伙伴都应该可以很容易的理解，缓存预热就是系统上线后，将相关的缓存数据直接加载到缓存系统。这样就可以避免在用户请求的时候，先查询数据库，然后再将数据缓存的问题！用户直接查询事先被预热的缓存数据！</p>
+<p>解决思路：</p>
+<ol>
+<li>直接写个缓存刷新页面，上线时手工操作下；</li>
+<li>数据量不大，可以在项目启动的时候自动进行加载；</li>
+<li>定时刷新缓存；</li>
+</ol>
+<h2 id="h2_4">缓存更新</h2>
+<p>除了缓存服务器自带的缓存失效策略之外，我们还可以根据具体的业务需求进行自定义的缓存淘汰，常见的策略有两种：</p>
+<ol>
+<li>定时去清理过期的缓存。</li>
+<li>当有用户请求过来时，再判断这个请求所用到的缓存是否过期，过期的话就去底层系统得到新数据并更新缓存。</li>
+</ol>
+<h2 id="h2_5">缓存降级</h2>
+<p>当访问量剧增、服务出现问题（如响应时间慢或不响应）或非核心服务影响到核心流程的性能时，仍然需要保证服务还是可用的，即使是有损服务。系统可以根据一些关键数据进行自动降级，也可以配置开关实现人工降级。</p>
+<p>降级的最终目的是保证核心服务可用，即使是有损的。而且有些服务是无法降级的。</p>
+<p>在进行降级之前要对系统进行梳理，看看系统是不是可以丢卒保帅；从而梳理出哪些必须誓死保护，哪些可降级；比如可以参考日志级别设置预案：</p>
+<p>（1）一般：比如有些服务偶尔因为网络抖动或者服务正在上线而超时，可以自动降级；</p>
+<p>（2）警告：有些服务在一段时间内成功率有波动（如在95~100%之间），可以自动降级或人工降级，并发送告警；</p>
+<p>（3）错误：比如可用率低于90%，或者数据库连接池被打爆了，或者访问量突然猛增到系统能承受的最大阀值，此时可以根据情况自动降级或者人工降级；</p>
+<p>（4）严重错误：比如因为特殊原因数据错误了，此时需要紧急人工降级。</p>
+<h2>------------------------<strong>推荐阅读</strong>------------------------</h2>
+<h3 class="postTitle"><a id="cb_post_title_url" class="postTitle2" title="2019年JVM最新面试题，必须收藏它" href="https://www.cnblogs.com/yuxiang1/p/11394938.html">2019年JVM最新面试题，必须收藏它</a></h3>
+<h3 class="postTitle"><a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/yuxiang1/p/11389989.html">最全面的阿里多线程面试题，你能回答几个？</a></h3>
+<h3 class="postTitle"><a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/yuxiang1/p/11384456.html">Java面试题：Java中的集合及其继承关系</a></h3>
+<h3 class="postTitle"><a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/yuxiang1/p/11378042.html">花了近十年的时间，整理出史上最全面Java面试题</a></h3>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

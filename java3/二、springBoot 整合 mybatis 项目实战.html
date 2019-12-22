@@ -1,0 +1,261 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修二、springBoot 整合 mybatis 项目实战' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>二、springBoot 整合 mybatis 项目实战</center></div><div class='banquan'>原文出处:本文由博客园博主quellanan提供。<br/>
+原文连接:https://www.cnblogs.com/quellanan/p/11552942.html</div><br>
+    <h1 id="前言">前言</h1>
+<p>上一篇文章开始了我们的springboot序篇，我们配置了mysql数据库，但是我们sql语句直接写在controller中并且使用的是jdbcTemplate。项目中肯定不会这样使用，上篇文章也说了，会结合mybatis 或者JPA 使用。我们这篇文章就来结合 mybatis 来使用吧，至于为什么选mybatis 而不是JPA ，这个看个人洗好吧。然后这篇文章会附带一讲一下今天为项目新增的配置。主要是为了保持项目和文章的一致性。</p>
+<p>先贴出我们今天项目的结构吧，和昨天贴出来的差不多，在那基础上添加了一些东西，整个框架的模型算是成型了。<br />
+<img src="./images/二、springBoot 整合 mybatis 项目实战0.png" alt="file" /></p>
+<h1 id="引入mybatis依赖">引入mybatis依赖</h1>
+<p>一般改动都是从pom.xml 开始的，我们在昨天基础上的pom.xml 文件中加上mybatis 依赖,版本自己选吧。</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.mybatis.spring.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;mybatis-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;2.0.0&lt;/version&gt;
+ &lt;/dependency&gt;</code></code></pre>
+<h1 id="entry层">Entry层</h1>
+<p>昨天我们创建了一个user表 并插入了一条数据，我们就先用这张表吧，所以我们在entry 包中创建一个UserEntry 的实体类.<br />
+代码如下：</p>
+<pre><code><code>@Getter
+@Setter
+public class UserEntry {
+    private int id;
+    private String userName;
+    private String password;
+    private String email;
+    private String roleCode;
+    private String roleName;
+    private String gmtCreate;
+    private String gmtUpdate;
+    private String nickname;
+    private String userCreate;
+}</code></code></pre>
+<p>可以看到这里用的注解和@Getter 和@Setter。这里就是避免代码中写入过多的get和 set 方法，使得代码变得更加简洁。</p>
+<h1 id="dao-层">Dao 层</h1>
+<p>Dao是用来处理数据的，这里我们引入了mybatis ,可以使用注解，也可以创建xml 文件，将sql 语句写在xml 文件中。我们这里就采用注解的方式吧，毕竟我们springboot项目，不想再出现xml配置文件了(后期也说不定哈哈)。</p>
+<p>在dao包下创建一个userMapper 接口。代码如下：</p>
+<pre><code><code>
+@Mapper
+public interface UserMapper {
+
+    @Select(&quot;select id,username as userName,password,email,role_code as roleCode,gmt_create as gmtCreate,gmt_update as gmtUpdate,nickname as nickName,user_create as userCreate from sys_user&quot;)
+    List&lt;UserEntry&gt; findUserList();
+
+    @Insert({&quot;insert into sys_user(username,password,email) values(&#39;${user.userName}&#39;,&#39;${user.password}&#39;,&#39;${user.email}&#39;)&quot;})
+    int add(@Param(&quot;user&quot;) UserEntry user);
+
+    @Delete(&quot;delete from sys_user where id = #{id}&quot;)
+    int delete(int id);
+
+}</code></code></pre>
+<p>我们这里就先写一个查询、删除和插入的方法吧。可以看到，在接口上引入@Mapper 注解，然后就可以直接使用@Select 和@Insert 等注解啦，直接把注解sql 语句写在这里面就可以了。</p>
+<h1 id="service-层">Service 层</h1>
+<p>service层我们一般都以一个接口和一个实现接口的具体类。</p>
+<h2 id="service-接口">service 接口</h2>
+<p>代码如下：</p>
+<pre><code><code>
+public interface UserService {
+
+    List&lt;UserEntry&gt; findUserList();
+
+    int addUser(String userName,String password,String email);
+
+    int deleteUser(int id);
+}</code></code></pre>
+<h2 id="serviceimpl-具体实现类">serviceImpl 具体实现类。</h2>
+<p>在service 包的impl 包创建 UserServiceImpl 类。代码如下：</p>
+<pre><code><code>
+@Service
+public class UserServiceImpl implements UserService {
+
+
+    @Autowired
+    protected UserMapper userMapper;
+
+    @Override
+    public List&lt;UserEntry&gt; findUserList() {
+        return userMapper.findUserList();
+    }
+
+    @Override
+    public int addUser(String userName, String password, String email) {
+        UserEntry user=new UserEntry();
+        user.setUserName(userName);
+        user.setPassword(password);
+        user.setEmail(email);
+        return userMapper.add(user);
+    }
+
+    @Override
+    public int deleteUser(int id) {
+        return userMapper.delete(id);
+    }
+}
+</code></code></pre>
+<h1 id="controller-层">controller 层</h1>
+<p>我们在controller 包下的userinfo 包下创建UserController 类。代码如下：</p>
+<pre><code><code>
+@Slf4j
+@RestController
+@RequestMapping(&quot;/user&quot;)
+public class UserController {
+
+    @Autowired
+    private UserService userService;
+
+    @RequestMapping(value = &quot;/list&quot;,method = RequestMethod.GET)
+    public List&lt;UserEntry&gt; findUserList(){
+        return userService.findUserList();
+    }
+
+    @RequestMapping(value = &quot;/add&quot;,method = RequestMethod.GET)
+    public String addUser(@RequestParam(value = &quot;userName&quot;)String uaserName,@RequestParam(value = &quot;password&quot;)String password,@RequestParam(value = &quot;email&quot;)String email){
+        int falg=userService.addUser(uaserName,password,email);
+        if(falg&gt;0){
+            return &quot;success&quot;;
+        }
+        return &quot;error&quot;;
+    }
+
+    @RequestMapping(value = &quot;/delete&quot;,method = RequestMethod.GET)
+    public String deleteUser(@RequestParam(value = &quot;id&quot;)int id){
+        if(userService.deleteUser(id)&gt;0){
+            return &quot;success&quot;;
+        }
+        return &quot;error&quot;;
+    }
+}</code></code></pre>
+<h1 id="测试">测试</h1>
+<p>好了，万事具备，来测试吧。我们启动项目后，在浏览器输入</p>
+<pre><code><code>添加一个用户
+http://localhost:9090/zlflovemm/user/add?userName=qaz&amp;password=123456&amp;email=123@qq.com</code></code></pre>
+<p><img src="./images/二、springBoot 整合 mybatis 项目实战1.png" alt="file" /></p>
+<pre><code><code>查询所有用户
+http://localhost:9090/zlflovemm/user/list</code></code></pre>
+<p><img src="./images/二、springBoot 整合 mybatis 项目实战2.png" alt="file" /></p>
+<pre><code><code>删除一个用户
+http://localhost:9090/zlflovemm/user/delete?id=19</code></code></pre>
+<p><img src="./images/二、springBoot 整合 mybatis 项目实战3.png" alt="file" /></p>
+<p>都没有问题啦，说明基本的增删改查整合 mybatis 都是可行的。</p>
+<h1 id="配置多环境文件">配置多环境文件</h1>
+<p>好了，大头讲完了，我们现在来讲讲项目今天进行了哪些配置。首先我们来看下我们项目中多了好几个配置文件。<br />
+<img src="./images/二、springBoot 整合 mybatis 项目实战4.png" alt="file" /><br />
+分别对应的是开发环境，测试环境，生产环境。毕竟我们在实际开发过程中，这三个环境都是经常有用到的，总会有数据库连接改来改去的问题。这里直接配置多份，想用哪个用那个就可以了。避免反复改容易出错的问题。<br />
+我这里就暂时把连接mysql 的链接放到不同环境了。<br />
+先在application.properties中加入</p>
+<pre><code><code>spring.profiles.active=dev
+表示用的是开发环境，就会读取application-dev.yml 文件中的配置。</code></code></pre>
+<p>application-dev.xml文件内容如下，另外两个文件也差不多，就不贴出来了。<br />
+<img src="./images/二、springBoot 整合 mybatis 项目实战5.png" alt="file" /></p>
+<h1 id="配置日志">配置日志</h1>
+<p>项目中怎么能缺乏日志文件呢，我这里用的springboot 自带的日志框架logback 也很方便。我们先在application.properties 中加入</p>
+<pre><code><code>#日志配置
+logging.level.org.springframework.web=info
+logging.config=classpath:logback.xml
+debug=true</code></code></pre>
+<p>然后在 application.properties 同目录下创建一个 logback.xml.内容如下：</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;configuration debug=&quot;false&quot;&gt;
+
+    &lt;!--定义日志文件的存储地址 勿在 LogBack 的配置中使用相对路径--&gt;
+    &lt;property name=&quot;LOG_HOME&quot; value=&quot;./logs&quot; /&gt;
+    &lt;property name=&quot;INFO_FILE&quot; value=&quot;zlflovemm_log&quot; /&gt;
+    &lt;property name=&quot;ERROR_FILE&quot; value=&quot;zlflovemm_error&quot; /&gt;
+
+    &lt;!--控制台日志， 控制台输出 --&gt;
+    &lt;appender name=&quot;STDOUT&quot; class=&quot;ch.qos.logback.core.ConsoleAppender&quot;&gt;
+        &lt;encoder class=&quot;ch.qos.logback.classic.encoder.PatternLayoutEncoder&quot;&gt;
+            &lt;!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度,%msg：日志消息，%n是换行符--&gt;
+            &lt;pattern&gt;%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n&lt;/pattern&gt;
+        &lt;/encoder&gt;
+    &lt;/appender&gt;
+
+    &lt;!-- 文件保存日志的相关配置，同步 --&gt;
+    &lt;appender name=&quot;FILE&quot;  class=&quot;ch.qos.logback.core.rolling.RollingFileAppender&quot;&gt;
+        &lt;Prudent&gt;true&lt;/Prudent&gt;
+        &lt;rollingPolicy class=&quot;ch.qos.logback.core.rolling.TimeBasedRollingPolicy&quot;&gt;
+            &lt;!--日志文件输出的文件名--&gt;
+            &lt;FileNamePattern&gt;
+                ${LOG_HOME}/${INFO_FILE}-%d{yyyy-MM-dd}.log
+            &lt;/FileNamePattern&gt;
+            &lt;!--日志文件保留天数--&gt;
+            &lt;MaxHistory&gt;30&lt;/MaxHistory&gt;
+        &lt;/rollingPolicy&gt;
+        &lt;encoder class=&quot;ch.qos.logback.classic.encoder.PatternLayoutEncoder&quot;&gt;
+            &lt;!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符--&gt;
+            &lt;pattern&gt;%d{yyyy-MM-dd HH:mm:ss.SSS}[%t][%thread] %-5level %logger{36} - %msg%n&lt;/pattern&gt;
+        &lt;/encoder&gt;
+        &lt;!--日志文件最大的大小--&gt;
+        &lt;triggeringPolicy class=&quot;ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy&quot;&gt;
+            &lt;MaxFileSize&gt;10MB&lt;/MaxFileSize&gt;
+        &lt;/triggeringPolicy&gt;
+    &lt;/appender&gt;
+
+    &lt;!-- 文件保存日志的相关配置，同步 --&gt;
+    &lt;appender name=&quot;ERROR&quot;  class=&quot;ch.qos.logback.core.rolling.RollingFileAppender&quot;&gt;
+        &lt;filter class=&quot;ch.qos.logback.classic.filter.ThresholdFilter&quot;&gt;
+            &lt;level&gt;ERROR&lt;/level&gt;
+        &lt;/filter&gt;
+        &lt;Prudent&gt;true&lt;/Prudent&gt;
+        &lt;rollingPolicy class=&quot;ch.qos.logback.core.rolling.TimeBasedRollingPolicy&quot;&gt;
+            &lt;!--日志文件输出的文件名--&gt;
+            &lt;FileNamePattern&gt;
+                ${LOG_HOME}/${ERROR_FILE}-%d{yyyy-MM-dd}.log
+            &lt;/FileNamePattern&gt;
+            &lt;!--日志文件保留天数--&gt;
+            &lt;MaxHistory&gt;30&lt;/MaxHistory&gt;
+        &lt;/rollingPolicy&gt;
+        &lt;encoder class=&quot;ch.qos.logback.classic.encoder.PatternLayoutEncoder&quot;&gt;
+            &lt;!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符--&gt;
+            &lt;pattern&gt;%d{yyyy-MM-dd HH:mm:ss.SSS}[%t][%thread] %-5level %logger{36} - %msg%n&lt;/pattern&gt;
+        &lt;/encoder&gt;
+        &lt;!--日志文件最大的大小--&gt;
+        &lt;triggeringPolicy class=&quot;ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy&quot;&gt;
+            &lt;MaxFileSize&gt;10MB&lt;/MaxFileSize&gt;
+        &lt;/triggeringPolicy&gt;
+    &lt;/appender&gt;
+
+    &lt;!-- 日志输出级别 --&gt;
+    &lt;root level=&quot;INFO&quot;&gt;
+        &lt;appender-ref ref=&quot;STDOUT&quot; /&gt;
+        &lt;appender-ref ref=&quot;FILE&quot;/&gt;
+        &lt;appender-ref ref=&quot;ERROR&quot; level=&quot;error&quot; /&gt;
+    &lt;/root&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p>这样项目日志就配置好了，至于日志的具体配置，修改logback.xml 里面参数就可以了。和log4g差不多。</p>
+<h1 id="配置banner">配置banner</h1>
+<p>最后既然是一个项目，当然得有点标志性的东西，比如logo。springboot 给我们留下了一个彩蛋就是banner。我们可以在项目启动的时候，显示我们独一无二的logo .<br />
+在application.properties 同目录下创建 banner.txt<br />
+<img src="./images/二、springBoot 整合 mybatis 项目实战6.png" alt="file" /><br />
+艺术字大家在网上自行搜索，这里就不推荐啦哈哈。这样我们在项目启动的时候就会加载我们的logo. 算是给广大的我们一点福利吧。</p>
+<h1 id="番外">番外</h1>
+<p>今晚总算是写完了，本来会早点的，但是不知道怎么就弄这么晚了。<br />
+今天项目的代码也同步到github 上啦。<br />
+github地址：https://github.com/QuellanAn/zlflovemm</p>
+<p>后续加油♡</p>
+<p>欢迎大家关注个人公众号 &quot;程序员爱酸奶&quot;</p>
+<p>分享各种学习资料，包含java，linux，大数据等。资料包含视频文档以及源码，同时分享本人及投递的优质技术博文。</p>
+<p>如果大家喜欢记得关注和分享哟❤<br />
+<img src="./images/二、springBoot 整合 mybatis 项目实战7.png" alt="file" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

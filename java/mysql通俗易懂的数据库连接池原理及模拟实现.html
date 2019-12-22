@@ -1,0 +1,113 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修mysql通俗易懂的数据库连接池原理及模拟实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>mysql通俗易懂的数据库连接池原理及模拟实现</center></div><div class='banquan'>原文出处:本文由博客园博主冰湖一角提供。<br/>
+原文连接:https://www.cnblogs.com/bingyimeiling/p/11953078.html</div><br>
+    <p><span style="font-size: 16px;"><strong>什么是数据库连接池？</strong></span></p>
+<p><span style="font-size: 16px;">当系统使用JDBC技术访问数据库时会创建一个connection对象，而该对象的创建过程是非常消耗资源的，并且创建对象的时间也特别长，假设系统一天有1万次的访问量，那么一天就会有1万个connection对象被创建，这极大的浪费数据库的资源，而且可能造成数据库服务器内存溢出，宕机。</span></p>
+<p><span style="font-size: 16px;">为了解决以上问题，就引入了数据库连接池，它主要用来分配、管理、释放数据库的连接。系统启动的时候，数据库连接池首先会创建若干个（该数量可配置）connection对象，并将这些对象放入池中，当系统需要connection对象时，</span><br /><span style="font-size: 16px;">数据库连接池会从池中分配一个事先创建好的connection对象给系统，当系统使用完毕或超时后，数据库连接池会将该connection对象重新放入池中。</span><br /><span style="font-size: 16px;">这样就减少了创建connection对象所耗费的资源和时间，可以提高数据库操作的性能。</span></p>
+<p><strong><span style="font-size: 16px;">下图为数据库连接池原理图：</span></strong></p>
+<p><span style="font-size: 16px;"><img src="./images/mysql通俗易懂的数据库连接池原理及模拟实现0.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br /><strong><span style="font-size: 16px;">模拟编写一个数据库连接池</span></strong></p>
+<p><span style="font-size: 16px;">因为要用到数据库，所以需要将之前编写的JDBC相关的代码和jar包拷贝过来，创建一个SimpleConnectionPool类，里面需要实现下面三个功能：</span></p>
+<p><span style="font-size: 16px;">1. 初始化一个数据库连接池，并向里面添加10个数据库连接；</span><br /><span style="font-size: 16px;">2. 从连接池中获取连接；</span><br /><span style="font-size: 16px;">3. 当程序用完连接后，需要将该连接重新放入连接池中。</span></p>
+<p><span style="font-size: 16px;">需要注意：数据库连接池要保证线程安全！</span></p>
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 1. 初始化一个数据库连接池，并向里面添加10个数据库连接；
+ * 2. 从连接池中获取连接；
+ * 3. 当程序用完连接后，需要将该连接重新放入连接池中。
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SimpleConnectionPool {
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">创建一个存放连接的池子，注意要保证线程安全
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">因为要频繁的对数据库连接池取出和存放操作，所以使用LinkedList池子</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> LinkedList&lt;Connection&gt; pool = (LinkedList&lt;Connection&gt;) Collections.synchronizedList(<span style="color: #0000ff;">new</span> LinkedList&lt;Connection&gt;<span style="color: #000000;">());
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">在类加载后向数据库连接池中存放10个数据库连接</span>
+    <span style="color: #0000ff;">static</span><span style="color: #000000;"> {
+
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; 10; i++<span style="color: #000000;">) {
+                Connection con </span>=<span style="color: #000000;"> DBUtil.getConnection();
+                pool.add(con);
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (SQLException e) {
+            e.printStackTrace();
+        }
+
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">从连接池中获取连接</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span><span style="color: #000000;"> Connection getConnectionFromPool(){
+        Connection con </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">判断池子中是否还有连接对象</span>
+        <span style="color: #0000ff;">if</span>(pool.size()&gt;0<span style="color: #000000;">){
+            con </span>=<span style="color: #000000;"> pool.removeFirst();
+        }</span><span style="color: #0000ff;">else</span><span style="color: #000000;">{
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">此时说明数据库连接池中没有可用的连接了</span>
+            <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> RuntimeException("服务器忙，请稍后再试"<span style="color: #000000;">);
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> con;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">当程序用完连接后，需要将该连接重新放入连接池中</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> release(Connection con){
+        pool.addLast(con);
+    }
+
+}</span></code></pre>
+
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> DBUtil {
+    
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String driverClass="com.mysql.jdbc.Driver"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String url="jdbc:mysql://127.0.0.1:3306/map?useUnicode=true&amp;amp;characterEncoding=utf-8"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String userName="root"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> String password="root"<span style="color: #000000;">;
+    
+    </span><span style="color: #0000ff;">static</span><span style="color: #000000;">{
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">加载驱动</span>
+<span style="color: #000000;">            Class.forName(driverClass);
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassNotFoundException e) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated catch block</span>
+<span style="color: #000000;">            e.printStackTrace();
+        }
+    }
+    
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> Connection getConnection() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> SQLException{
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> DriverManager.getConnection(url, userName, password);
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><strong>欢迎关注微信公众号【Java典籍】，收看更多Java技术干货！</strong></p>
+<p><strong>　&nbsp;<strong>▼微信扫一扫下图&darr;&darr;&darr;二维码关注</strong></strong></p>
+<p>　<img src="./images/mysql通俗易懂的数据库连接池原理及模拟实现1.png" alt="" width="166" height="166" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

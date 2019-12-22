@@ -1,0 +1,122 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修工作中遇到的99%SQL优化，这里都能给你解决方案(三)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>工作中遇到的99%SQL优化，这里都能给你解决方案(三)</center></div><div class='banquan'>原文出处:本文由博客园博主小强的进阶之路提供。<br/>
+原文连接:https://www.cnblogs.com/xiaoqiang-code/p/11495376.html</div><br>
+    <pre><code><code>-- 示例表
+CREATE TABLE `employees` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(24) NOT NULL DEFAULT &#39;&#39; COMMENT &#39;姓名&#39;,
+  `age` int(20) NOT NULL DEFAULT &#39;0&#39; COMMENT &#39;年龄&#39;,
+  `position` varchar(20) NOT NULL DEFAULT &#39;&#39; COMMENT &#39;职位&#39;,
+  `hire_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT &#39;入职时间&#39;,
+  PRIMARY KEY (`id`),
+  KEY `idx_name_age_position` (`name`,`age`,`position`) USING BTREE,
+  KEY `idx_age` (`age`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=136326 DEFAULT CHARSET=utf8 COMMENT=&#39;员工表&#39;
+
+--创建100000条记录
+drop procedure if EXISTS insert_emp;
+delimiter ;;
+create procedure insert_emp()
+BEGIN
+    declare i int;
+    set i=1;
+    while(i &lt; 100000)DO
+        INSERT INTO employees(name,age,position) values(CONCAT(&#39;xiaoqiang&#39;,i),i,&#39;coder&#39;);
+        SET i=i+1;
+    end WHILE;
+end;;
+delimiter ;
+call insert_emp();</code></code></pre>
+<h4 id="根据自增且连续的主键排序的分页查询">根据自增且连续的主键排序的分页查询</h4>
+<pre><code><code>select * from employees LIMIT 9999 ,5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)0.png" /><br />
+<img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)1.png" /><br />
+表示从表employees 中取出从10000行开始的5行记录。看似只查询5条记录，实际这条SQL是先读取10005条记录，然后抛弃前10000条记录，然后读到后面5条想要的数据。没有添加单独的order by，表示通过主键排序。<br />
+因此要查询一张大表比较靠后的数据，执行效率是非常低的。<br />
+因为主键是自增且连续的，所以可以改写成按照主键查询从第10001开始的五行数据，如下：</p>
+<pre><code><code>select * from  employees WHERE id &gt; 9999 limit 5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)2.png" /><br />
+<img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)3.png" /><br />
+可以看到两个sql的执行计划，显然改写后的sql走了索引，而且扫描的行数大大减少，执行效率会更高。但是，这条改写的sql在很多场景下并不实用，因为表中可能某些记录被删除后，主键空缺，导致结果不一致。<br />
+先删除一条记录，然后测试下原来sql和优化后的sql：</p>
+<pre><code><code>select * from employees LIMIT 9999 ,5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)4.png" /></p>
+<pre><code><code> select * from employees where id&gt; 9999 limit 5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)5.png" /><br />
+两条sql的结果不一样，因此，如果主键不连续，不能使用上面描述的方法。<br />
+另外由于原来sql是order by非主键字段，按照上面的方法改写sql的结果不一致。所以这种改写得满足以下两个条件：</p>
+<ul>
+<li>主键自增且连续</li>
+<li><p>结果是按照主键排序的</p>
+<h4 id="根据非主键字段排序的分页查询">根据非主键字段排序的分页查询</h4></li>
+</ul>
+<pre><code><code>select * from employees order by name limit 9000, 5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)6.png" /></p>
+<pre><code><code> explain select * from employees order by name limit 9000, 5;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)7.png" /></p>
+<p>key字段对应的值为null，发现并没有使用name字段的索引。因为扫描整个索引并查找到没有索引的行，可能要便利多个索引树，其成本比扫描全表的成本更高，索引优化器放弃使用索引。<br />
+优化的关键是：让排序时返回的字段尽可能的少，所以可以让排序和分页操作先查出主键，然后根据主键查到对应的记录。<br />
+改下如下：</p>
+<pre><code><code>select * from employees as e inner join(select id from employees order by name limit 9000,5) as ed on e.id=ed.id;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)8.png" /><br />
+可以看到结果与原来的sql结果是一致的，执行时间减少了一般以上，再对比下执行计划：<br />
+<img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)9.png" /><br />
+原来的sql使用的是filesort排序，而优化后的sql使用的是索引排序。</p>
+<h4 id="in和exists优化">in和exists优化</h4>
+<p>原则：小表驱动大表，即小表的数据集驱动大表的数据集<br />
+in：当B表的数据集小于A表的数据集时，in由于exists</p>
+<pre><code><code>select * from A where id in(select id from B)
+等价于
+ for(select id from B){
+     select * from A where A.id=B.id
+ }</code></code></pre>
+<p>exists:当A表的数据集小于B表的数据集时，exitsts优于in<br />
+当著查询A的数据，放到子查询B中做条件验证，根据验证结果（true或false）来决定著查询的数据是否保留。</p>
+<pre><code><code>select * from A  exists(select 1 from B where A.id=B.id)
+
+等价于
+for(select * from A){
+    select * from B where A.id=B.id
+}</code></code></pre>
+<h4 id="count查询优化">count(*)查询优化</h4>
+<pre><code><code>explain select count(1) from employees;
+explain select count(id) from employees;
+explain select count(name) from employees;
+explain select count(*) from employees;</code></code></pre>
+<p><img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)10.png" /><br />
+四个sql的执行计划几乎一样的，count(name)使用的是联合索引， 主要区别根据某个字段做count操作不会统计字段为null的值的数据行。<br />
+除了count(name)的其他count操作，都是用的辅助索引而不是主键索引， 因为二级索引存储数据更少，检索性能更高。</p>
+<blockquote>
+<p>还没关注我的公众号？</p>
+</blockquote>
+<ul>
+<li>扫文末二维码关注公众号【小强的进阶之路】可领取如下:</li>
+<li>学习资料： 1T视频教程：涵盖Javaweb前后端教学视频、机器学习/人工智能教学视频、Linux系统教程视频、雅思考试视频教程；</li>
+<li>100多本书：包含C/C++、Java、Python三门编程语言的经典必看图书、LeetCode题解大全；</li>
+<li>软件工具：几乎包括你在编程道路上的可能会用到的大部分软件；</li>
+<li>项目源码：20个JavaWeb项目源码。<br />
+<img src="./images/工作中遇到的99%SQL优化，这里都能给你解决方案(三)11.png" alt="小强的进阶之路二维码" /></li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

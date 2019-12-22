@@ -1,0 +1,238 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）</center></div><div class='banquan'>原文出处:本文由博客园博主探歌提供。<br/>
+原文连接:https://www.cnblogs.com/lgg20/p/11793051.html</div><br>
+    <h2><span style="font-size: 16px;">什么是API网关：</span></h2>
+<p><span style="font-size: 16px;">在微服务架构中，通常会有多个服务提供者。设想一个电商系统，可能会有商品、订单、支付、用户等多个类型的服务，而每个类型的服务数量也会随着整个系统体量的增大也会随之增长和变更。作为UI端，在展示页面时可能需要从多个微服务中聚合数据，而且服务的划分位置结构可能会有所改变。<strong>网关就可以对外暴露聚合API，屏蔽内部微服务的微小变动，保持整个系统的稳定性。</strong></span></p>
+<p><span style="font-size: 16px;"><strong>Zuul是Spring Cloud全家桶中的微服务API网关。</strong></span></p>
+<p><span style="font-size: 16px;"><strong>主要功能是对请求的路由和过滤。</strong></span></p>
+<p><span style="font-size: 16px;"><strong>1.整体资源不够的情况下，需要关掉一些服务，待稳定了，再重启。2.校验token的情况。</strong></span></p>
+<p><span style="font-size: 16px;">所有从设备或网站来的请求都会经过Zuul到达后端的Netflix应用程序。作为一个边界性质的应用程序，Zuul提供了动态路由、监控、弹性负载和安全功能。Zuul底层利用各种filter实现如下功能：</span></p>
+<ul>
+<li><span style="font-size: 16px;">认证和安全&nbsp; &nbsp;识别每个需要认证的资源，拒绝不符合要求的请求。</span></li>
+<li><span style="font-size: 16px;">性能监测&nbsp; &nbsp; 在服务边界追踪并统计数据，提供精确的生产视图。</span></li>
+<li><span style="font-size: 16px;">动态路由&nbsp; &nbsp; 根据需要将请求动态路由到后端集群。</span></li>
+<li><span style="font-size: 16px;">压力测试&nbsp; &nbsp; 逐渐增加对集群的流量以了解其性能。</span></li>
+<li><span style="font-size: 16px;">负载卸载&nbsp; &nbsp; 预先为每种类型的请求分配容量，当请求超过容量时自动丢弃。</span></li>
+<li><span style="font-size: 16px;">静态资源处理&nbsp; &nbsp;直接在边界返回某些响应。</span></li>
+</ul>
+<p><span style="font-size: 16px;">在Spring Cloud微服务系统中，一种常见的负载均衡方式是，客户端的请求首先经过负载均衡（Ngnix），再到达服务网关（zuul集群），然后再到具体的服务。服务统一注册到高可用的服务注册中心集群（eureka, consul），服务的所有的配置文件由配置服务管理，配置服务的配置文件放在git仓库，方便开发人员随时改配置。</span><br /><span style="font-size: 16px;">&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;</span></p>
+<p><span style="font-size: 16px;"><strong>二、动态路由</strong></span></p>
+<p><span style="font-size: 16px;"><strong><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）0.png" alt="" /></strong></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;"><strong>&nbsp;pom.xml:</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-web<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.boot<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-boot-starter-test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>test<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">scope</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-eureka<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework.cloud<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-cloud-starter-zuul<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependencies</span><span style="color: #0000ff;">&gt;</span></span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>application.properties:</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;">spring.application.name=service-<span style="color: #000000;">zuul
+server.port</span>=8061<span style="color: #000000;">
+## 注册服务中心的配置
+eureka.client.service</span>-url.defaultZone=http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8001/eureka/</span>
+#zuul.routes.&lt;route&gt;<span style="color: #000000;">.path配置拦截请求的路径
+#zuul.routes.</span>&lt;route&gt;<span style="color: #000000;">.serviceId配置拦截之后路由到的指定的eureka服务
+#这里除了能结合eureka服务，指定serviceId使用，还可以指定为一个url地址，比如zuul.routes.hello</span>-service.path=http:<span style="color: #008000;">//</span><span style="color: #008000;">localhost:8011</span>
+zuul.routes.user-service.path=/user-service<span style="color: #008000;">/**</span><span style="color: #008000;">
+zuul.routes.user-service.serviceId=USER-SERVICE
+# 注释上面，改成user-service.url直接访问百度
+#zuul.routes.user-service.url=</span><span style="color: #008000; text-decoration: underline;">http://pay.weixin.qq.com/partner/public/home</span><span style="color: #008000;">
+#zuul.routes.user-service.url=</span><span style="color: #008000; text-decoration: underline;">http://localhost</span><span style="color: #008000;">:8011</span></span></code></pre>
+
+<p><span style="font-size: 16px;">zuul.routes.&lt;route&gt;.path与zuul.routes.&lt;route&gt;.serviceId分别配置zuul拦截请求的路径，以及拦截之后路由到的指定的eureka服务</span></p>
+<p><span style="font-size: 16px;">这里除了能结合eureka服务，指定serviceId使用，还可以指定为一个url地址，比如zuul.routes.hello-service.path=http://localhost:8011</span></p>
+<p><span style="font-size: 16px;"><strong>application.yml:</strong></span></p>
+<p>&nbsp;</p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #000000;">##timeout config
+hystrix:
+  command:
+    </span><span style="color: #0000ff;">default</span><span style="color: #000000;">:
+      execution:
+        timeout:
+          enabled: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+        isolation:
+          thread:
+            timeoutInMilliseconds: </span>60000<span style="color: #000000;">
+ribbon:
+  ReadTimeout: </span>60000<span style="color: #000000;">
+  ConnectTimeout: </span>60000<span style="color: #000000;">
+  MaxAutoRetries: </span>0<span style="color: #000000;">
+  MaxAutoRetriesNextServer: </span>1<span style="color: #000000;">
+  eureka:
+    enabled: </span><span style="color: #0000ff;">true</span><span style="color: #000000;">
+
+zuul:
+  max:
+    host:
+      connections: </span>500<span style="color: #000000;">
+  host:
+    socket</span>-timeout-millis: 60000<span style="color: #000000;">
+    connect</span>-timeout-millis: 60000</span></code></pre>
+
+<p><span style="font-size: 16px;"><strong>启动类 Application.java:</strong></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.SpringApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.boot.autoconfigure.SpringBootApplication;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.cloud.netflix.zuul.EnableZuulProxy;
+
+@SpringBootApplication
+@EnableZuulProxy
+@EnableEurekaClient
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> ServiceZuulApplication {
+
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        SpringApplication.run(ServiceZuulApplication.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">, args);
+    }
+}</span></span></code></pre>
+
+<p><span style="font-size: 16px;">这里使用@EnableZuulProxy表示开启zuul网关。</span></p>
+<p><span style="font-size: 16px;">@EnableEurekaClient为了结合eureka，调用注册在eureka中的服务，所以zuul这里也是作为eureka的客户端。当然这里也可以使用@EnableDiscoveryClient，可以发现@EnableEurekaClient注解实现包含了@EnableDiscoveryClient，这里只用来调用eureka服务的话，两个都可以使用，如果要使用其他的，比如consul，那就只能用@EnableDiscoveryClient了。</span></p>
+<p><span style="font-size: 16px;"><strong>测试:</strong></span></p>
+<p><span style="font-size: 16px;">启动eureka:8001, hello-service:8011,8012，zuul-service:8061</span></p>
+<p><span style="font-size: 16px;">我们访问：<code>http://localhost:8061/user-service/hello?name=zuul</code></span></p>
+<p><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）1.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">表示路由成功。而且重复访问还可以发现默认使用了ribbon负载均衡。</span></p>
+<p><span style="font-size: 16px;">接下来我们改成：</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000; font-size: 16px;">zuul.routes.user-service.path=/user-service/**
+zuul.routes.user-service.url=http://localhost:8011</span></code></pre>
+
+<p><span style="font-size: 16px;">同样的，访问：<code>http://localhost:8061/hello-service/hello?name=zuul</code></span></p>
+<p><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）2.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">当然如果我们把连接改成百度网址，那么就直接跳转到百度去了。&nbsp;&nbsp;</span></p>
+<p><span style="font-size: 16px;">既然在SpringCloud生态体系使用zuul，那么最好结合eureka ribbon使用。</span></p>
+<p><span style="font-size: 16px;"><strong>三、网关过滤--(登录，权限校验)</strong></span><br /><span style="font-size: 16px;">如果在整个体系中，每个微服务都自己去管理用户状态，那显然是不可取的，所以一般都是放在服务网关中的。那么我们就需要在服务网关中统一处理用户登录状态，是否放行用户请求。</span></p>
+<p><span style="font-size: 16px;">这里我们来实现zuul网关过滤器，实现每个接口获取参数中的access_token， 判断是否合法，合法则放行，不合法则拦截并提示错误。</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="font-size: 16px;"><span style="color: #0000ff;">package</span><span style="color: #000000;"> cn.demo.filter;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.netflix.zuul.ZuulFilter;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.netflix.zuul.context.RequestContext;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.apache.commons.lang.StringUtils;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.slf4j.Logger;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.slf4j.LoggerFactory;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Component;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> javax.servlet.http.HttpServletRequest;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 服务请求过滤器
+ </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+@Component
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AccessFilter <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ZuulFilter {
+
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> Logger log = LoggerFactory.getLogger(AccessFilter.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">路由之前</span>
+<span style="color: #000000;">    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String filterType() {
+        </span><span style="color: #0000ff;">return</span> "pre"<span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">过滤的顺序</span>
+<span style="color: #000000;">    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> filterOrder() {
+        </span><span style="color: #0000ff;">return</span> 0<span style="color: #000000;">;
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">这里可以写逻辑判断，是否要过滤，本文true,永远过滤</span>
+<span style="color: #000000;">    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> shouldFilter() {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object run() {
+        RequestContext requestContext </span>=<span style="color: #000000;"> RequestContext.getCurrentContext();
+        HttpServletRequest request </span>=<span style="color: #000000;"> requestContext.getRequest();
+
+        log.info(</span>"{} &gt;&gt;&gt; {}"<span style="color: #000000;">, request.getMethod(), request.getRequestURL().toString());
+
+        String access_token </span>= request.getParameter("access_token"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">if</span>(StringUtils.isBlank(access_token) || !"test"<span style="color: #000000;">.equals(access_token)){
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> zuul过滤该请求</span>
+            requestContext.setSendZuulResponse(<span style="color: #0000ff;">false</span>);<span style="color: #008000;">//</span><span style="color: #008000;">表示不继续转发该请求。</span>
+            requestContext.setResponseStatusCode(401);<span style="color: #008000;">//</span><span style="color: #008000;">返回的状态码，这里为401</span>
+            requestContext.setResponseBody("token invide无效");<span style="color: #008000;">//</span><span style="color: #008000;">返回的内容，可以指定为一串json</span>
+            log.info("the request {} is fail, the token is invide无效"<span style="color: #000000;">, request.getRequestURL().toString());
+        } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            log.info(</span>"the request {} is ok"<span style="color: #000000;">, request.getRequestURL().toString());
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></span></code></pre>
+
+<p><span style="font-size: 16px;">filterType：返回一个字符串代表过滤器的类型，在zuul中定义了四种不同生命周期的过滤器类型，具体如下：</span></p>
+<p><span style="font-size: 16px;">pre：路由之前</span><br /><span style="font-size: 16px;">routing：路由之时</span><br /><span style="font-size: 16px;">post： 路由之后</span><br /><span style="font-size: 16px;">error：发送错误调用</span><br /><span style="font-size: 16px;">filterOrder：过滤的顺序</span></p>
+<p><span style="font-size: 16px;">shouldFilter：这里可以写逻辑判断，是否要过滤，本文true,永远过滤。</span></p>
+<p><span style="font-size: 16px;">run：过滤器的具体逻辑。可用很复杂，包括查sql，nosql去判断该请求到底有没有权限访问。</span></p>
+<p><span style="font-size: 16px;">上面指定filterType：pre表示在路由之前拦截请求，shouldFilter始终为true，表示永远过滤，并执行run方法。</span></p>
+<p><span style="font-size: 16px;">requestContext.setSendZuulResponse(false);表示不继续转发该请求。</span><br /><span style="font-size: 16px;">requestContext.setResponseStatusCode(401);返回的状态码，这里为401</span><br /><span style="font-size: 16px;">requestContext.setResponseBody("token is invalid");返回的内容，可以指定为一串json</span></p>
+<p><span style="font-size: 16px;">测试</span><br /><span style="font-size: 16px;">重新启动 zuul-service:8061</span></p>
+<p><span style="font-size: 16px;">访问：http://localhost:8061/hello-service/hello?name=zuul</span></p>
+<p><span style="font-size: 16px;">浏览器返回401</span><br /><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）3.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">&nbsp;console 控制台日志输出：</span></p>
+<p><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）4.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">&nbsp;接下来我们访问：<code>http://localhost:8061/hello-service/hello?name=zuul&amp;access_token=test</code></span></p>
+<p><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）5.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">&nbsp;表示校验过滤，放行请求。</span></p>
+<h4><span style="font-size: 16px;">四、请求生命周期</span></h4>
+<p><span style="font-size: 16px;">从图中，我们可以看到，当外部HTTP请求到达API网关服务的时候，首先它会进入第一个阶段pre，在这里它会被pre类型的过滤器进行处理，该类型的过滤器主要目的是在进行请求路由之前做一些前置加工，比如请求的校验等。在完成了pre类型的过滤器处理之后，请求进入第二个阶段routing，也就是之前说的路由请求转发阶段，请求将会被routing类型过滤器处理，这里的具体处理内容就是将外部请求转发到具体服务实例上去的过程，当服务实例将请求结果都返回之后，routing阶段完成，请求进入第三个阶段post，此时请求将会被post类型的过滤器进行处理，这些过滤器在处理的时候不仅可以获取到请求信息，还能获取到服务实例的返回信息，所以在post类型的过滤器中，我们可以对处理结果进行一些加工或转换等内容。另外，还有一个特殊的阶段error，该阶段只有在上述三个阶段中发生异常的时候才会触发，但是它的最后流向还是post类型的过滤器，因为它需要通过post过滤器将最终结果返回给请求客户端</span></p>
+<p><span style="font-size: 16px;"><img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）6.png" alt="" /></span></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><span style="font-size: 16px;">&nbsp;<img src="./images/SpringCloud（六）：服务网关zuul-API网关（服务降级和过滤）7.png" alt="" /></span></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

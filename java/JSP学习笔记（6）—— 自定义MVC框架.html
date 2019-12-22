@@ -1,0 +1,418 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JSP学习笔记（6）—— 自定义MVC框架' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JSP学习笔记（6）—— 自定义MVC框架</center></div><div class='banquan'>原文出处:本文由博客园博主Stars-one提供。<br/>
+原文连接:https://www.cnblogs.com/kexing/p/11523433.html</div><br>
+    <p>仿照SpringMVC，实现一个轻量级MVC框架，知识涉及到了反射机制、注解的使用和一些第三方工具包的使用</p>
+<h2 id="思路">思路</h2>
+<p>主要的总体流程如下图所示</p>
+<p><img src="./images/JSP学习笔记（6）—— 自定义MVC框架0.png" /></p>
+<p>和之前一样，我们定义了一个DispatchServlet，用于拦截请求（这里一般拦截.do结尾的url请求)；</p>
+<p>之后，DispatchServlet会根据url，找到Controller中对应的方法并执行，返回一个结果。</p>
+<p>我们根据返回的结果，来DispatchServlet执行不同的操作（请求转发、页面重定向、返回json数据）</p>
+<p><strong>看完这里，总体的思路应该很明确了，问题来了：</strong></p>
+<ol>
+<li>如何实现让DispatchServlet根据url去找到对应的方法？</li>
+<li>如何根据返回的结果，让DispatchServlet执行不同的操作？</li>
+</ol>
+<p><strong>对于第一个问题，我们可以使用注解来实现</strong></p>
+<ol>
+<li>定义一个<code>Controller</code>注解，用来标记Controller类</li>
+<li>定义一个<code>RequestMapping</code>注解，用来标记url匹配的方法</li>
+</ol>
+<p><strong>对于第二个问题，我们可以设置这样的一套规则：</strong></p>
+<ol>
+<li>返回的结果是String，且以<code>redirect:</code>开头，则表明DispatchServlet要执行页面重定向操作</li>
+<li>返回的结果是String，不以<code>redirect:</code>开头，则表明DispatchServlet要执行请求转发操作</li>
+<li>返回的结果是一个bean类，则自动将其转为json数据</li>
+</ol>
+<p>一般我们会让doGet方法也调用doPost方法，所以我们只需要重写Servlet中的doPost方法</p>
+<p>由上面的思路，我们可以得到细化的流程图（也就是doPost方法中的流程）</p>
+<p><img src="./images/JSP学习笔记（6）—— 自定义MVC框架1.png" /></p>
+<h2 id="关键点实现">关键点实现</h2>
+<h3 id="处理请求url">处理请求url</h3>
+<pre><code><code>//获得url地址
+String servletPath = req.getServletPath();
+String requestUrl = StringUtils.substringBefore(servletPath,&quot;.do&quot;);</code></code></pre>
+<h3 id="使用注解找到对应的方法">使用注解找到对应的方法</h3>
+<p>之前有说过，我们定义了两个注解，一个是Controller和RequestMapping</p>
+<p>标记一个类和方法</p>
+<pre><code><code>@Controller
+public class UserController{
+    @RequestMapping(&quot;/user/login&quot;)
+    public String login(HttpServletRequest request){
+        return &quot;login.jsp&quot;;
+    }
+    ...
+}</code></code></pre>
+<p>之后我们就可以使用<code>Lang3</code>开源库去查找类中是否有<code>Controller</code>标记，然后再去寻找是否被RequestMapping标记的方法，并把<strong>RequestMapping注解上的标记的url、Controller全类名和方法名</strong>存起来</p>
+<p>这里我是用来一个类<code>ClassMapping</code>来存放全类名和方法名，之后，使用url作为key，<code>ClassMapping</code>对象作为value，存入一个HashMap中</p>
+<p>这里虽然也可以放在doPost方法中，但是会造成资源的浪费，因为doPost方法可能会被执行多次。所以，更好的做法是，可以放在Servlet的初始化方法<code>init()</code>里面,这样，只会执行一次。</p>
+<p>我封装了一个配置类<code>Configuration</code>，专门用来查找url及其对应的方法</p>
+<p><strong>判断类是否包含有Controller注解</strong></p>
+<pre><code><code>controllerClass.isAnnotationPresent(Controller.class)</code></code></pre>
+<p><strong>获得类中包含有RequestMapping注解的方法列表</strong></p>
+<pre><code><code>Method[] methods = MethodUtils.getMethodsWithAnnotation(controllerClass, RequestMapping.class, true, true);</code></code></pre>
+<p>更多代码请看下面的代码部分<strong>Configuration类</strong></p>
+<h3 id="传参以及反射调用方法">传参以及反射调用方法</h3>
+<p>先获得方法的参数列表类型，之后，把对象转入到Object数组中，反射调用方法</p>
+<p>避免错误，之前还需有个判空操作和是否包含有key，下面的贴出的代码就省略了</p>
+<pre><code><code>ClassMapping classMapping = classMappingMap.get(requestUrl);
+Class&lt;?&gt; controllerClass = classMapping.getControllerClass();
+Method method = classMapping.getMethod();
+
+//获得方法的参数类型列表，之后根据此类型列表，对request传来的参数进行处理
+Class&lt;?&gt;[] parameterTypes = method.getParameterTypes();
+//存放着之后需要传入到方法的参数值
+Object[] paramValues = new Object[parameterTypes.length];
+
+//对request传来的参数进行处理，将参数传给controller中的对应的方法，调用该方法
+try {
+    //实例化controller类
+    Object o = controllerClass.newInstance();
+
+    for (int i = 0; i &lt; parameterTypes.length; i++) {
+        //这里我们只考虑了四种情况，所以Controller种的方法参数类型也只有四种
+        if (ClassUtils.isAssignable(parameterTypes[i], HttpServletRequest.class)) {
+            paramValues[i] = req;
+        } else if (ClassUtils.isAssignable(parameterTypes[i], HttpServletResponse.class)) {
+            paramValues[i] = resp;
+        } else if (ClassUtils.isAssignable(parameterTypes[i], HttpSession.class)) {
+            paramValues[i] = req.getSession(true);
+        } else {
+            //转为JavaBean
+            if (parameterTypes[i] != null) {
+                //获得request传来的参数值,转为javabean
+                Map&lt;String, String[]&gt; parameterMap = req.getParameterMap();
+
+                //实例化这个JavaBean类型
+                Object bean = parameterTypes[i].newInstance();
+                //把数值快速转为bean
+                BeanUtils.populate(bean, parameterMap);
+                paramValues[i] =bean;
+            }
+        }
+    }
+
+    //调用方法，获得返回值，根据返回值，执行页面跳转或者是返回json数据等操作
+    Object returnValue = MethodUtils.invokeMethod(o, true,method.getName(), paramValues);</code></code></pre>
+<h3 id="根据返回结果执行不同操作">根据返回结果执行不同操作</h3>
+<p>这里使用Google的gson框架，用于把实体类或者是List转为json数据</p>
+<pre><code><code>if (returnValue instanceof String) {
+    String value = (String) returnValue;
+
+    if (value.startsWith(&quot;redirect:&quot;)) {
+        //重定向
+        resp.sendRedirect(req.getContextPath()+ StringUtils.substringAfter(value,&quot;redirect:&quot;));
+    } else {
+        //请求转发
+        req.getRequestDispatcher(value).forward(req,resp);
+    }
+} else {
+    //返回一个对象
+    if (returnValue != null) {
+        //转为json，ajax操作
+        String json = new Gson().toJson(o);
+        resp.getWriter().print(json);
+    }</code></code></pre>
+<h2 id="使用注意点">使用注意点</h2>
+<p>不要忘了配置Servlet，和之前的Servlet一样，可以使用配置web.xml或者是注解方式进行配置</p>
+<p>在方法RequestMapping上的注解上的需要有&quot;/开头&quot;，网页的请求url不需要&quot;/&quot;开头，但是需要.do结尾</p>
+<p>由于我们只实现了四种类型的封装，所以Controller类中里面的方法参数只能是四种类型，<strong>request、response、session、一个JavaBean类</strong></p>
+<h2 id="代码">代码</h2>
+<h3 id="dispatchservlet">DispatchServlet</h3>
+<pre><code><code>package mvc;
+
+import com.google.gson.Gson;
+import org.apache.commons.beanutils.BeanUtils;
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.reflect.MethodUtils;
+import org.apache.log4j.Logger;
+
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Map;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+/**
+ * @author StarsOne
+ * @date Create in  2019/8/9 0009 10:11
+ * @description
+ */
+public class DispatcherServlet extends HttpServlet {
+    private Map&lt;String, ClassMapping&gt; classMappingMap =null;
+    private Logger logger = Logger.getLogger(DispatcherServlet.class);
+    @Override
+    public void init(ServletConfig config) throws ServletException {
+        super.init(config);
+        //在servlet的初始化获得map数据
+        classMappingMap = new Configuration().config();
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        doPost(req, resp);
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+        //获得url地址
+        String servletPath = req.getServletPath();
+        String requestUrl = StringUtils.substringBefore(servletPath,&quot;.do&quot;);
+        //根据url地址去和map中的匹配，找到对应的controller类以及方法，之后反射传参调用
+
+        if (classMappingMap != null &amp;&amp; classMappingMap.containsKey(requestUrl)) {
+            ClassMapping classMapping = classMappingMap.get(requestUrl);
+            Class&lt;?&gt; controllerClass = classMapping.getControllerClass();
+            Method method = classMapping.getMethod();
+
+            //获得方法的参数类型列表，之后根据此类型列表，对request传来的参数进行处理
+            Class&lt;?&gt;[] parameterTypes = method.getParameterTypes();
+            //存放着之后需要传入到方法的参数值
+            Object[] paramValues = new Object[parameterTypes.length];
+
+            //对request传来的参数进行处理，将参数传给controller中的对应的方法，调用该方法
+            try {
+                //实例化controller类
+                Object o = controllerClass.newInstance();
+
+                for (int i = 0; i &lt; parameterTypes.length; i++) {
+
+                    if (ClassUtils.isAssignable(parameterTypes[i], HttpServletRequest.class)) {
+                        paramValues[i] = req;
+                    } else if (ClassUtils.isAssignable(parameterTypes[i], HttpServletResponse.class)) {
+                        paramValues[i] = resp;
+                    } else if (ClassUtils.isAssignable(parameterTypes[i], HttpSession.class)) {
+                        paramValues[i] = req.getSession(true);
+                    } else {
+                        //转为JavaBean
+                        if (parameterTypes[i] != null) {
+                            //获得request传来的参数值,转为javabean
+                            Map&lt;String, String[]&gt; parameterMap = req.getParameterMap();
+
+                            //实例化这个JavaBean类型
+                            Object bean = parameterTypes[i].newInstance();
+                            //把数值快速转为bean
+                            BeanUtils.populate(bean, parameterMap);
+                            paramValues[i] =bean;
+                        }
+                    }
+                }
+
+                //调用方法，获得返回值，根据返回值，执行页面跳转或者是返回json数据等操作
+                Object returnValue = MethodUtils.invokeMethod(o, true,method.getName(), paramValues);
+
+                if (returnValue instanceof String) {
+                    String value = (String) returnValue;
+
+                    if (value.startsWith(&quot;redirect:&quot;)) {
+                        //重定向
+                        resp.sendRedirect(req.getContextPath()+ StringUtils.substringAfter(value,&quot;redirect:&quot;));
+                    } else {
+                        //请求转发
+                        req.getRequestDispatcher(value).forward(req,resp);
+                    }
+                } else {
+                    //返回一个对象
+                    if (returnValue != null) {
+                        //转为json，ajax操作
+                        String json = new Gson().toJson(o);
+                        resp.getWriter().print(json);
+                    }
+                }
+            } catch (InstantiationException e) {
+                logger.error(&quot;实例化Controller对象错误！&quot;);
+            } catch (IllegalAccessException e) {
+                logger.error(&quot;非法访问方法！&quot;);
+            } catch (InvocationTargetException e) {
+                logger.error(&quot;invocation target exception&quot;);
+            } catch (NoSuchMethodException e) {
+                logger.error(&quot;调用的方法不存在！&quot;);
+            }
+
+        } else {
+            throw new RuntimeException(&quot;url不存在&quot; + requestUrl);
+        }
+    }
+}
+</code></code></pre>
+<h3 id="classmapping">ClassMapping</h3>
+<p>用来存放全类名和方法名</p>
+<pre><code><code>package mvc;
+
+import java.lang.reflect.Method;
+
+/**
+ * 类Class和对应的方法Method
+ * @author StarsOne
+ * @date Create in  2019/8/8 0008 22:13
+ * @description
+ */
+public class ClassMapping {
+    private Class&lt;?&gt; controllerClass;
+    private Method method;
+
+    public ClassMapping(Class&lt;?&gt; controllerClass, Method method) {
+        this.controllerClass = controllerClass;
+        this.method = method;
+    }
+
+    public Class&lt;?&gt; getControllerClass() {
+        return controllerClass;
+    }
+
+    public void setControllerClass(Class&lt;?&gt; controllerClass) {
+        this.controllerClass = controllerClass;
+    }
+
+    public Method getMethod() {
+        return method;
+    }
+
+    public void setMethod(Method method) {
+        this.method = method;
+    }
+
+    @Override
+    public String toString() {
+        return controllerClass.getName() + &quot;.&quot; + method.getName();
+    }
+}
+</code></code></pre>
+<h3 id="configuration">Configuration</h3>
+<pre><code><code>package mvc;
+
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.reflect.MethodUtils;
+import org.apache.log4j.Logger;
+
+import java.io.File;
+import java.lang.reflect.Method;
+import java.net.URISyntaxException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.ResourceBundle;
+
+import mvc.Annotation.Controller;
+import mvc.Annotation.RequestMapping;
+
+/**
+ * @author StarsOne
+ * @date Create in  2019/8/8 0008 22:11
+ * @description
+ */
+public class Configuration {
+    Logger logger = Logger.getLogger(Configuration.class);
+
+    private String getControllerPackage() {
+        return ResourceBundle.getBundle(&quot;package&quot;).getString(&quot;packagePath&quot;);
+    }
+    public Map&lt;String, ClassMapping&gt; config() {
+        Map&lt;String, ClassMapping&gt; classMappingMap = Collections.synchronizedMap(new HashMap&lt;&gt;());
+
+        try {
+            //根据资源文件中定义的包名，找到控制器的文件夹,得到类名
+            File file = new File(getClass().getResource(&quot;/&quot;).toURI());
+            String controllerPackage = getControllerPackage();
+            String controllerFullPath = file.getPath() + File.separator +controllerPackage.replaceAll(&quot;\\.&quot;,File.separator);
+            //controller类所在的文件夹
+            file = new File(controllerFullPath);
+            //过滤文件，只找class文件
+            String[] classNames = file.list((dir, name) -&gt; name.endsWith(&quot;.class&quot;));
+
+            for (String className : classNames) {
+                //拼接全类名
+                String controllerFullName = controllerPackage + &quot;.&quot; + StringUtils.substringBefore(className,&quot;.class&quot;);
+
+                Class controllerClass = ClassUtils.getClass(controllerFullName);
+                //类是否有controller注解
+                if (controllerClass.isAnnotationPresent(Controller.class)) {
+                    //找到controller类中标明RequestMapping注解的所有方法
+                    Method[] methods = MethodUtils.getMethodsWithAnnotation(controllerClass, RequestMapping.class, true, true);
+
+                    for (Method method : methods) {
+                        //获得注解上的路径
+                        String path = method.getAnnotation(RequestMapping.class).value();
+                        //路径为key，保存
+                        classMappingMap.put(path,new ClassMapping(controllerClass,method));
+                    }
+                }
+            }
+
+        } catch (URISyntaxException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return classMappingMap;
+    }
+
+    public static void main(String[] args) {
+        new Configuration().config();
+    }
+}
+</code></code></pre>
+<h3 id="注解">注解</h3>
+<h4 id="controller">Controller</h4>
+<pre><code><code>package mvc.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * @author stars-one at 2019-08-09 08:50
+ */
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Controller {
+    String value() default &quot;&quot;;
+}
+</code></code></pre>
+<h4 id="requestmapping">RequestMapping</h4>
+<pre><code><code>package mvc.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * @author stars-one at 2019-08-09 08:50
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequestMapping {
+    String value() default &quot;&quot;;
+}</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

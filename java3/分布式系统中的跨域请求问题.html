@@ -1,0 +1,253 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修分布式系统中的跨域请求问题' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>分布式系统中的跨域请求问题</center></div><div class='banquan'>原文出处:本文由博客园博主Carlos_Ouyang提供。<br/>
+原文连接:https://www.cnblogs.com/carlosouyang/p/11434962.html</div><br>
+    <h1 id="跨域请求">1 跨域请求</h1>
+<p>在构建分布式系统时，将门户系统（负责前端页面展示的控制器）和获取数据的系统（从数据库获取资料）分开。在开发过程中，会遇到跨域请求问题。</p>
+<p><img src="./images/分布式系统中的跨域请求问题0.png" alt="image" /></p>
+<h2 id="什么是跨域请求">什么是跨域请求</h2>
+<p>跨域是指一个域下的文档或脚本试图去请求另一个域下的资源，这里跨域是广义的。</p>
+<ol>
+<li>资源跳转： A链接、重定向、表单提交</li>
+<li>资源嵌入： <code>&lt;link&gt;</code>、<code>&lt;script&gt;</code>、<code>&lt;img&gt;</code>、<code>&lt;frame&gt;</code> 等 dom 标签，还有样式中background:url()、@font-face()等文件外链</li>
+<li>脚本请求： js 发起的 ajax 请求、dom 和 js 对象的跨域操作等</li>
+</ol>
+<p>其实我们通常所说的跨域是狭义的，是由浏览器同源策略限制的一类请求场景。主要特征有两种：</p>
+<ol>
+<li><p>域名不相同，即两个不同的应用</p>
+<blockquote>
+<p><img src="./images/分布式系统中的跨域请求问题1.png" alt="image" /></p>
+</blockquote></li>
+<li><p>域名相同，但是端口不同，即同一个应用中的不同子系统</p>
+<blockquote>
+<p><img src="./images/分布式系统中的跨域请求问题2.png" alt="image" /></p>
+</blockquote></li>
+</ol>
+<h2 id="解决方式">解决方式</h2>
+<p>想要从数据系统的接口中获得数据，我常用的有两种方式：</p>
+<ul>
+<li>若使用前端 ajax 获取数据，常用的解决方式是使用 jsonp 实现跨域请求</li>
+<li>若从后台程序中获取数据，使用 HttpClient</li>
+</ul>
+<h1 id="jsonp">2 jsonp</h1>
+<p>通常为了减轻 web 服务器的负载，我们把js、css，img 等静态资源分离到另一台独立域名的服务器上，在 html 页面中再通过相应的标签从不同域名下加载静态资源，这种行为被浏览器允许。基于此原理，我们可以把需要的数据封装成一段 js 代码。</p>
+<h2 id="实现方式">实现方式</h2>
+<p><strong>jsonp 只能使用 get 请求</strong>，前台请求时，指定回调函数名，后台系统将数据封装成 js 代码，将数据放到参数里面：</p>
+<pre><code><code>callBack(数据)</code></code></pre>
+<p>前台 javascript 里准备好对应的回调函数操作数据，或在 ajax 中用 success 的 function 去接受参数，并操作数据。示例如下：</p>
+<pre><code><code>/*
+8081 端口的服务器有一静态资源  test.json，现在需要从 8080 的服务器去获得并显示到页面上。这里将数据修改，封装成 js：
+callback({&quot;data&quot;:&quot;helloworld&quot;, &quot;status&quot;:&quot;200&quot;})
+*/
+$.ajax({
+                url: &quot;http://localhost:8081/test.json&quot;,
+                type: &quot;GET&quot;,
+                dataType: &quot;jsonp&quot;,   //jsonp请求
+                jsonp: &quot;callbackFunction&quot;,   //请求参数名
+                jsonpCallback: &quot;callback&quot;,  //回调函数名称，也可以直接用 success 接受参数
+                /*success: function (data) {
+                    $(&#39;#text&#39;).val(JSON.stringify(data));
+                }*/
+})
+function callback(data) {
+            $(&#39;#text&#39;).val(JSON.stringify(data));
+}</code></code></pre>
+<h1 id="httpclient">3 HttpClient</h1>
+<p>HttpClient 是 Apache Jakarta Common 下的子项目，用来提供高效的、最新的、功能丰富的支持 HTTP 协议的客户端编程工具包，并且它支持 HTTP 协议最新的版本和建议。实现了所有 HTTP 的方法（GET,POST,PUT,HEAD 等）。在 java 代码中，可以通过它发送 Http 请求，通常用来实现远程接口调用。</p>
+<p>maven 中需要的依赖：</p>
+<pre class="xml"><code>&lt;dependency&gt;
+        &lt;groupId&gt;org.apache.httpcomponents&lt;/groupId&gt;
+        &lt;artifactId&gt;httpclient&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h2 id="示例">示例</h2>
+<pre class="java"><code>//无参数 get 请求
+@Test
+public void doGet() {
+    //创建 HttpClient 对象
+    CloseableHttpClient httpClient = HttpClients.createDefault();
+    //创建 Get 请求
+    HttpGet httpGet = new HttpGet(&quot;http://www.baidu.com/&quot;);
+    CloseableHttpResponse response = null;
+    try {
+        //执行请求
+        response = httpClient.execute(httpGet);
+        //输出请求状态
+        System.out.println(response.getStatusLine());
+        //判断请求状态并输出响应内容
+        if (response.getStatusLine().getStatusCode() == 200){
+            //使用工具将响应实体字符串化
+            String content = EntityUtils.toString(response.getEntity());
+            System.out.println(&quot;content:\n&quot; + content);
+        }
+    } catch (ClientProtocolException e) {
+        e.printStackTrace();
+    } catch (IOException e) {
+        e.printStackTrace();
+    } finally {
+        if (null != response) {
+            try {
+                response.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                if (null != httpClient) {
+                    try {
+                        httpClient.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+}
+
+//get请求带参数
+@Test
+public void doGetWithParam() {
+    CloseableHttpClient httpClient = HttpClients.createDefault();
+    CloseableHttpResponse response = null;
+
+    try {
+        //定义请求的参数，使用 URIBuilder 工具创建
+        URI uri = new URIBuilder(&quot;http://www.baidu.com/s&quot;).setParameter(&quot;wd&quot;, &quot;你好世界&quot;).build();
+        System.out.println(&quot;URI: &quot; + uri);
+        //创建请求对象
+        HttpGet httpGet = new HttpGet(uri);
+        //execute
+        response = httpClient.execute(httpGet);
+        //判断响应状态
+        if (response.getStatusLine().getStatusCode() == 200) {
+            System.out.println(EntityUtils.toString(response.getEntity()));
+        }
+
+    } catch (IOException e) {
+        e.printStackTrace();
+    } catch (URISyntaxException e) {
+        e.printStackTrace();
+    } finally {
+        if (null != response) {
+            try {
+                response.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                if (null != httpClient) {
+                    try {
+                        httpClient.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+}
+
+//POST 请求
+@Test
+public void post() {
+    //创建 HttpClient 对象
+    //CloseableHttpClient httpClient = HttpClientBuilder.create().setRedirectStrategy(new LaxRedirectStrategy()).build();
+    CloseableHttpClient httpClient = HttpClients.createDefault();
+    //创建 post 请求
+    HttpPost httpPost = new HttpPost(&quot;http://localhost:8080/item/536563&quot;);
+
+    CloseableHttpResponse response = null;
+
+    try {
+        //执行请求
+        response = httpClient.execute(httpPost);
+        System.out.println(response.getStatusLine());
+        if (response.getStatusLine().getStatusCode() == 200) {
+            System.out.println(EntityUtils.toString(response.getEntity()));
+        }
+    } catch (ClientProtocolException e) {
+        e.printStackTrace();
+    } catch (IOException e) {
+        e.printStackTrace();
+    } finally {
+        if (null != response) {
+            try {
+                response.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                if (null != httpClient) {
+                    try {
+                        httpClient.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+}
+
+//执行 post 请求带参数
+@Test
+public void postWithParam() throws IOException {
+    CloseableHttpClient httpClient = HttpClients.createDefault();
+    HttpPost httpPost = new HttpPost(&quot;http://localhost:8080/item/cat/list&quot;);
+    //可以设置多个参数
+    ArrayList&lt;NameValuePair&gt; parameters = new ArrayList&lt;&gt;();
+    parameters.add(new BasicNameValuePair(&quot;id&quot;, &quot;2&quot;));
+    //将参数集合封装成请求实体
+    UrlEncodedFormEntity entity = new UrlEncodedFormEntity(parameters);
+    //将请求实体放入请求中
+    httpPost.setEntity(entity);
+    //执行请求
+    CloseableHttpResponse response = httpClient.execute(httpPost);
+
+    //输出结果
+    System.out.println(response.getStatusLine());
+    if (response.getStatusLine().getStatusCode() == 200) {
+        System.out.println(EntityUtils.toString(response.getEntity()));
+    }
+    //关闭资源
+    if (null != response) {
+        try {
+            response.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (null != httpClient) {
+                try {
+                    httpClient.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}</code></code></pre>
+<h2 id="常见问题和解决方案">常见问题和解决方案</h2>
+<h3 id="请求参数乱码">请求参数乱码</h3>
+<p>设置请求的编码格式：</p>
+<pre class="java"><code>obj.addHeader(&quot;Content-Type&quot;,&quot;application/x-www-form-urlencoded; charset=UTF-8&quot;);</code></code></pre>
+<h3 id="响应http1.1-403-forbidden">响应HTTP/1.1 403 Forbidden</h3>
+<p>网站设置了反爬虫机制，禁止非法访问，可以通过伪装成浏览器解决。</p>
+<pre class="java"><code>obj.addHeader(&quot;User-Agent&quot;,&quot; Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537. 36 (KHTML, like Gecko) Chrome/31.0.1650.63&quot;)</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

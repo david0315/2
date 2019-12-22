@@ -1,0 +1,88 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Security登录验证流程源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Security登录验证流程源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主字母哥博客提供。<br/>
+原文连接:https://www.cnblogs.com/zimug/p/11880050.html</div><br>
+    <h2 id="一登录认证基于过滤器链">一、登录认证基于过滤器链</h2>
+<p>Spring Security的登录验证流程核心就是过滤器链。当一个请求到达时按照过滤器链的顺序依次进行处理，通过所有过滤器链的验证，就可以访问API接口了。</p>
+<p><img src="./images/Spring Security登录验证流程源码解析0.png" alt="file" /></p>
+<p>SpringSecurity提供了多种登录认证的方式，由多种Filter过滤器来实现，比如：</p>
+<ul>
+<li>BasicAuthenticationFilter实现的是HttpBasic模式的登录认证</li>
+<li>UsernamePasswordAuthenticationFilter实现用户名密码的登录认证</li>
+<li>RememberMeAuthenticationFilter实现登录认证的“记住我”的功能</li>
+<li>SmsCodeAuthenticationFilter实现短信验证码登录认证</li>
+<li>SocialAuthenticationFilter实现社交媒体方式登录认证的处理</li>
+<li>Oauth2AuthenticationProcessingFilter和Oauth2ClientAuthenticationProcessingFilter实现Oauth2的鉴权方式</li>
+</ul>
+<p>根据我们不同的需求实现及配置，不同的Filter会被加载到应用中。</p>
+<h2 id="二结合源码讲解登录验证流程">二、结合源码讲解登录验证流程</h2>
+<p>我们就以用户名、密码登录方式为例讲解一下Spring Security的登录认证流程。</p>
+<p><img src="./images/Spring Security登录验证流程源码解析1.png" alt="file" /></p>
+<h3 id="usernamepasswordauthenticationfilter">2.1 UsernamePasswordAuthenticationFilter</h3>
+<p>该过滤器封装用户基本信息（用户名、密码），定义登录表单数据接收相关的信息。如：</p>
+<ul>
+<li>默认的表单用户名密码input框name是username、password</li>
+<li>默认的处理登录请求路径是/login、使用POST方法</li>
+</ul>
+<p><img src="./images/Spring Security登录验证流程源码解析2.png" alt="file" /><br />
+<img src="./images/Spring Security登录验证流程源码解析3.png" alt="file" /></p>
+<h3 id="abstractauthenticationprocessingfilter的dofilter方法的验证过程">2.2 AbstractAuthenticationProcessingFilter的doFilter方法的验证过程</h3>
+<p>UsernamePasswordAuthenticationFilter继承自抽象类AbstractAuthenticationProcessingFilter，该抽象类定义了验证成功与验证失败的处理方法。<br />
+<img src="./images/Spring Security登录验证流程源码解析4.png" alt="file" /></p>
+<h3 id="验证成功之后的handler和验证失败之后的handler">2.3 验证成功之后的Handler和验证失败之后的handler</h3>
+<p><img src="./images/Spring Security登录验证流程源码解析5.png" alt="file" /></p>
+<p>也就是说当我们需要自定义验证成功或失败的处理方法时，要去实现AuthenticationSuccessHandler或AuthenticationfailureHandler接口</p>
+<p><img src="./images/Spring Security登录验证流程源码解析6.png" alt="file" /></p>
+<h2 id="三登录验证内部细节">三、登录验证内部细节</h2>
+<h3 id="多种认证方式的管理-providermanager">3.1多种认证方式的管理 ProviderManager</h3>
+<p>ProviderManager用继承于AuthenticationManager是登录验证的核心类。ProviderManager保管了多个AuthenticationProvider，用于不同类型的登录验证。比如：</p>
+<ul>
+<li>RememberMeAuthenticationProvider定义了“记住我”功能的登录验证逻辑</li>
+<li>DaoAuthenticationProvider加载数据库用户信息，进行用户密码的登录验证</li>
+</ul>
+<pre><code><code>public class ProviderManager implements AuthenticationManager, MessageSourceAware, InitializingBean {
+    ……
+    private List&lt;AuthenticationProvider&gt; providers;
+    ……</code></code></pre>
+<p>下文是ProviderManager的核心源码，遍历不同登录验证的AuthenticationProvider，只有当这种方式被支持的时候，才执行具体的登录验证逻辑。<br />
+<img src="./images/Spring Security登录验证流程源码解析7.png" alt="file" /></p>
+<h3 id="登录认证接口-authenticationprovider">3.2 登录认证接口 AuthenticationProvider</h3>
+<pre><code><code>public interface AuthenticationProvider {
+    Authentication authenticate(Authentication var1) throws AuthenticationException;
+
+    boolean supports(Class&lt;?&gt; var1);
+}</code></code></pre>
+<p>AuthenticationProvider的实现类定义了具体的登录验证逻辑</p>
+<p><img src="./images/Spring Security登录验证流程源码解析8.png" alt="file" /></p>
+<h3 id="数据库加载用户信息-daoauthenticationprovider">3.3 数据库加载用户信息 DaoAuthenticationProvider</h3>
+<pre><code><code>public class DaoAuthenticationProvider extends AbstractUserDetailsAuthenticationProvider {</code></code></pre>
+<p>从数据库获取用户信息源码</p>
+<p><img src="./images/Spring Security登录验证流程源码解析9.png" alt="file" /></p>
+<p>所以当我们需要加载用户信息进行登录验证的时候，我们需要实现<code>UserDetailsService</code>接口，重写<code>loadUserByUsername</code>方法，参数是用户输入的用户名。返回值是<code>UserDetails</code>。</p>
+<h2 id="期待您的关注">期待您的关注</h2>
+<ul>
+<li>博主最近新写了一本书：<a href="http://springboot.zimug.com">《手摸手教您学习SpringBoot系列-16章97节》</a></li>
+<li>本文转载注明出处（必须带连接，不能只转文字）：<a href="http://www.zimug.com">字母哥博客</a>。</li>
+</ul>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

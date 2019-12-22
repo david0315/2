@@ -1,0 +1,329 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Eureka应用注册与集群数据同步源码解析' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Eureka应用注册与集群数据同步源码解析</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11716916.html</div><br>
+    <p>在之前的<a href="https://mp.weixin.qq.com/s/-G_eXhlOqFagSdSxcrrQPQ">EurekaClient自动装配及启动流程解析</a>一文中我们提到过，在构造<code>DiscoveryClient</code>类时，会把自身注册到服务端，本文就来分析一下这个注册流程</p>
+<h5 id="客户端发起注册">客户端发起注册</h5>
+<pre><code><code>    boolean register() throws Throwable {
+        logger.info(PREFIX + &quot;{}: registering service...&quot;, appPathIdentifier);
+        EurekaHttpResponse&lt;Void&gt; httpResponse;
+        try {
+            httpResponse = eurekaTransport.registrationClient.register(instanceInfo);
+        } catch (Exception e) {
+            logger.warn(PREFIX + &quot;{} - registration failed {}&quot;, appPathIdentifier, e.getMessage(), e);
+            throw e;
+        }
+        if (logger.isInfoEnabled()) {
+            logger.info(PREFIX + &quot;{} - registration status: {}&quot;, appPathIdentifier, httpResponse.getStatusCode());
+        }
+        return httpResponse.getStatusCode() == 204;
+    }</code></code></pre>
+<p>这个方法中包含的<code>registrationClient</code>和<code>instanceInfo</code>两个对象在之前的文章中都已经单独拿出来了：<a href="https://mp.weixin.qq.com/s/X_6bCBeG9htAou4XIVdz6Q">Eureka中重要的对象</a></p>
+<h5 id="服务端接受注册">服务端接受注册</h5>
+<p>服务端接受注册的Controller在<code>ApplicationResource</code>类中，这里需要注意的是普通客户端注册时其中参数<code>isReplication</code>为false，这个参数就是控制集群是否同步的表示</p>
+<pre><code><code>    @POST
+    @Consumes({&quot;application/json&quot;, &quot;application/xml&quot;})
+    public Response addInstance(InstanceInfo info,
+                                @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication) {
+        logger.debug(&quot;Registering instance {} (replication={})&quot;, info.getId(), isReplication);
+        // 一系列的参数校验
+        if (isBlank(info.getId())) {
+            return Response.status(400).entity(&quot;Missing instanceId&quot;).build();
+        } else if (isBlank(info.getHostName())) {
+            return Response.status(400).entity(&quot;Missing hostname&quot;).build();
+        } else if (isBlank(info.getIPAddr())) {
+            return Response.status(400).entity(&quot;Missing ip address&quot;).build();
+        } else if (isBlank(info.getAppName())) {
+            return Response.status(400).entity(&quot;Missing appName&quot;).build();
+        } else if (!appName.equals(info.getAppName())) {
+            return Response.status(400).entity(&quot;Mismatched appName, expecting &quot; + appName + &quot; but was &quot; + info.getAppName()).build();
+        } else if (info.getDataCenterInfo() == null) {
+            return Response.status(400).entity(&quot;Missing dataCenterInfo&quot;).build();
+        } else if (info.getDataCenterInfo().getName() == null) {
+            return Response.status(400).entity(&quot;Missing dataCenterInfo Name&quot;).build();
+        }
+
+        // AWS的一些东西，不用细看
+        DataCenterInfo dataCenterInfo = info.getDataCenterInfo();
+        if (dataCenterInfo instanceof UniqueIdentifier) {
+            String dataCenterInfoId = ((UniqueIdentifier) dataCenterInfo).getId();
+            if (isBlank(dataCenterInfoId)) {
+                boolean experimental = &quot;true&quot;.equalsIgnoreCase(serverConfig.getExperimental(&quot;registration.validation.dataCenterInfoId&quot;));
+                if (experimental) {
+                    String entity = &quot;DataCenterInfo of type &quot; + dataCenterInfo.getClass() + &quot; must contain a valid id&quot;;
+                    return Response.status(400).entity(entity).build();
+                } else if (dataCenterInfo instanceof AmazonInfo) {
+                    AmazonInfo amazonInfo = (AmazonInfo) dataCenterInfo;
+                    String effectiveId = amazonInfo.get(AmazonInfo.MetaDataKey.instanceId);
+                    if (effectiveId == null) {
+                        amazonInfo.getMetadata().put(AmazonInfo.MetaDataKey.instanceId.getName(), info.getId());
+                    }
+                } else {
+                    logger.warn(&quot;Registering DataCenterInfo of type {} without an appropriate id&quot;, dataCenterInfo.getClass());
+                }
+            }
+        }
+    //注册
+        registry.register(info, &quot;true&quot;.equals(isReplication));
+        return Response.status(204).build();  // 204 to be backwards compatible
+    }
+</code></code></pre>
+<p>接着往下看注册的处理逻辑</p>
+<pre><code><code> public void register(final InstanceInfo info, final boolean isReplication) {
+   // 租约过期时间
+        int leaseDuration = Lease.DEFAULT_DURATION_IN_SECS;
+        if (info.getLeaseInfo() != null &amp;&amp; info.getLeaseInfo().getDurationInSecs() &gt; 0) {
+            leaseDuration = info.getLeaseInfo().getDurationInSecs();
+        }
+   // 注册
+        super.register(info, leaseDuration, isReplication);
+   //集群复制
+        replicateToPeers(Action.Register, info.getAppName(), info.getId(), info, null, isReplication);
+    }
+</code></code></pre>
+<p><code>Lease</code>租约这个类之前也分析过了，不再展开了</p>
+<h6 id="服务端保存注册信息">服务端保存注册信息</h6>
+<pre><code><code>
+public void register(InstanceInfo registrant, int leaseDuration, boolean isReplication) {
+        try {
+          //获取锁
+            read.lock();
+          //获取该实例的注册信息
+            Map&lt;String, Lease&lt;InstanceInfo&gt;&gt; gMap = registry.get(registrant.getAppName());
+            REGISTER.increment(isReplication);
+            if (gMap == null) {
+                final ConcurrentHashMap&lt;String, Lease&lt;InstanceInfo&gt;&gt; gNewMap = new ConcurrentHashMap&lt;String, Lease&lt;InstanceInfo&gt;&gt;();
+              //如果不存在则添加  
+              gMap = registry.putIfAbsent(registrant.getAppName(), gNewMap);
+                if (gMap == null) {
+                    gMap = gNewMap;
+                }
+            }
+            Lease&lt;InstanceInfo&gt; existingLease = gMap.get(registrant.getId());
+            // 当存在这个应用的注册信息时
+            if (existingLease != null &amp;&amp; (existingLease.getHolder() != null)) {
+                Long existingLastDirtyTimestamp = existingLease.getHolder().getLastDirtyTimestamp();
+                Long registrationLastDirtyTimestamp = registrant.getLastDirtyTimestamp();
+                logger.debug(&quot;Existing lease found (existing={}, provided={}&quot;, existingLastDirtyTimestamp, registrationLastDirtyTimestamp);
+
+                //使用注册时间长的一方的应用信息
+                if (existingLastDirtyTimestamp &gt; registrationLastDirtyTimestamp) {
+                    logger.warn(&quot;There is an existing lease and the existing lease&#39;s dirty timestamp {} is greater&quot; +
+                            &quot; than the one that is being registered {}&quot;, existingLastDirtyTimestamp, registrationLastDirtyTimestamp);
+                    logger.warn(&quot;Using the existing instanceInfo instead of the new instanceInfo as the registrant&quot;);
+                    registrant = existingLease.getHolder();
+                }
+            } else {
+
+                synchronized (lock) {
+                    if (this.expectedNumberOfRenewsPerMin &gt; 0) {
+                        this.expectedNumberOfRenewsPerMin = this.expectedNumberOfRenewsPerMin + 2;
+                        this.numberOfRenewsPerMinThreshold =
+                                (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
+                    }
+                }
+                logger.debug(&quot;No previous lease information found; it is new registration&quot;);
+            }
+          //创建租约
+            Lease&lt;InstanceInfo&gt; lease = new Lease&lt;InstanceInfo&gt;(registrant, leaseDuration);
+          //如果存在租约则更新开始时间
+            if (existingLease != null) {
+                lease.setServiceUpTimestamp(existingLease.getServiceUpTimestamp());
+            }
+            gMap.put(registrant.getId(), lease);
+            synchronized (recentRegisteredQueue) {
+              //添加到最近注册队列
+                recentRegisteredQueue.add(new Pair&lt;Long, String&gt;(
+                        System.currentTimeMillis(),
+                        registrant.getAppName() + &quot;(&quot; + registrant.getId() + &quot;)&quot;));
+            }
+            if (!InstanceStatus.UNKNOWN.equals(registrant.getOverriddenStatus())) {
+                logger.debug(&quot;Found overridden status {} for instance {}. Checking to see if needs to be add to the &quot;
+                                + &quot;overrides&quot;, registrant.getOverriddenStatus(), registrant.getId());
+                if (!overriddenInstanceStatusMap.containsKey(registrant.getId())) {
+                    logger.info(&quot;Not found overridden id {} and hence adding it&quot;, registrant.getId());
+                    overriddenInstanceStatusMap.put(registrant.getId(), registrant.getOverriddenStatus());
+                }
+            }
+            InstanceStatus overriddenStatusFromMap = overriddenInstanceStatusMap.get(registrant.getId());
+            if (overriddenStatusFromMap != null) {
+                logger.info(&quot;Storing overridden status {} from map&quot;, overriddenStatusFromMap);
+                registrant.setOverriddenStatus(overriddenStatusFromMap);
+            }
+
+           // 获得应用实例最终状态
+            InstanceStatus overriddenInstanceStatus = getOverriddenInstanceStatus(registrant, existingLease, isReplication);
+            registrant.setStatusWithoutDirty(overriddenInstanceStatus);
+
+            if (InstanceStatus.UP.equals(registrant.getStatus())) {
+                lease.serviceUp();
+            }
+            registrant.setActionType(ActionType.ADDED);
+            recentlyChangedQueue.add(new RecentlyChangedItem(lease));
+            registrant.setLastUpdatedTimestamp();
+            invalidateCache(registrant.getAppName(), registrant.getVIPAddress(), registrant.getSecureVipAddress());
+            logger.info(&quot;Registered instance {}/{} with status {} (replication={})&quot;,
+                    registrant.getAppName(), registrant.getId(), registrant.getStatus(), isReplication);
+        } finally {
+            read.unlock();
+        }
+    }</code></code></pre>
+<ol>
+<li>实例信息是由一个map对象保存的，在这个map中，key是应用的appName，value是另外一个map，在这个map中key是应用的id，而value则是应用的租约信息，map对象如下：</li>
+</ol>
+<pre><code><code>private final ConcurrentHashMap&lt;String, Map&lt;String, Lease&lt;InstanceInfo&gt;&gt;&gt; 
+registry        = new ConcurrentHashMap&lt;String, Map&lt;String, Lease&lt;InstanceInfo&gt;&gt;&gt;();</code></code></pre>
+<ol>
+<li>大体流程为，先查看是否存在该appName的注册信息，如不存在则创建。</li>
+<li>接着查看是否存在该id的注册信息，如果存在判断客户端的最后修改时间，记录最后修改的实例，如果不存在则设置自我保护模式的几个参数</li>
+<li>根据实例创建对应的租约信息，然后添加到map对象中</li>
+<li>添加到最近注册队列</li>
+<li>添加到应用实例覆盖状态映射</li>
+<li>设置应用实例最终状态，添加最近租约变更队列，设置缓存等</li>
+</ol>
+<h6 id="集群数据同步">集群数据同步</h6>
+<p>当<code>isReplication</code>属性为true的时候，就会牵扯到集群信息同步了</p>
+<pre><code><code>private void replicateToPeers(Action action, String appName, String id,
+                                  InstanceInfo info ,
+                                  InstanceStatus newStatus , boolean isReplication) {
+        Stopwatch tracer = action.getTimer().start();
+        try {
+            if (isReplication) {
+                numberOfReplicationsLastMin.increment();
+            }
+            if (peerEurekaNodes == Collections.EMPTY_LIST || isReplication) {
+                return;
+            }
+
+            for (final PeerEurekaNode node : peerEurekaNodes.getPeerEurekaNodes()) {
+                if (peerEurekaNodes.isThisMyUrl(node.getServiceUrl())) {
+                    continue;
+                }
+                replicateInstanceActionsToPeers(action, appName, id, info, newStatus, node);
+            }
+        } finally {
+            tracer.stop();
+        }
+    }</code></code></pre>
+<p>关于<code>PeerEurekaNode</code>在之前的文章也提到了，保存了集群节点信息，这里可以看到是循环所有的集群节点，然后排除本身的信息之后调用了<code>replicateInstanceActionsToPeers</code>方法</p>
+<pre><code><code>private void replicateInstanceActionsToPeers(Action action, String appName,
+                                                 String id, InstanceInfo info, InstanceStatus newStatus,
+                                                 PeerEurekaNode node) {
+        try {
+            InstanceInfo infoFromRegistry = null;
+            CurrentRequestVersion.set(Version.V2);
+            switch (action) {
+                case Cancel:
+                    node.cancel(appName, id);
+                    break;
+                case Heartbeat:
+                    InstanceStatus overriddenStatus = overriddenInstanceStatusMap.get(id);
+                    infoFromRegistry = getInstanceByAppAndId(appName, id, false);
+                    node.heartbeat(appName, id, infoFromRegistry, overriddenStatus, false);
+                    break;
+                case Register:
+                    node.register(info);
+                    break;
+                case StatusUpdate:
+                    infoFromRegistry = getInstanceByAppAndId(appName, id, false);
+                    node.statusUpdate(appName, id, newStatus, infoFromRegistry);
+                    break;
+                case DeleteStatusOverride:
+                    infoFromRegistry = getInstanceByAppAndId(appName, id, false);
+                    node.deleteStatusOverride(appName, id, infoFromRegistry);
+                    break;
+            }
+        } catch (Throwable t) {
+            logger.error(&quot;Cannot replicate information to {} for action {}&quot;, node.getServiceUrl(), action.name(), t);
+        }
+    }</code></code></pre>
+<p>这里重点关注Register分支</p>
+<pre><code><code>public void register(final InstanceInfo info) throws Exception {
+        long expiryTime = System.currentTimeMillis() + getLeaseRenewalOf(info);
+        batchingDispatcher.process(
+                taskId(&quot;register&quot;, info),
+                new InstanceReplicationTask(targetHost, Action.Register, info, null, true) {
+                    public EurekaHttpResponse&lt;Void&gt; execute() {
+                        return replicationClient.register(info);
+                    }
+                },
+                expiryTime
+        );
+    }</code></code></pre>
+<p>在不关心Eureka自有的调度处理相关的前提下，核心代码是<code>replicationClient.register(info)</code>，也就是说，如果当客户端注册时指定需要同步集群信息时，Eureka会把这个客户端再注册到它所在的集群其它的节点上</p>
+<h5 id="服务端发起集群数据同步">服务端发起集群数据同步</h5>
+<p>在之前得<a href="https://mp.weixin.qq.com/s/6R1tWi5W_B6FiVpkIonnaw">EurekaServer自动装配及启动流程解析</a>一文中，我们提到过在初始化服务端的时候会从EurekaServer集群中同步数据，也就是下面这段代码：</p>
+<pre><code><code>public class EurekaServerBootstrap {   
+    protected void initEurekaServerContext() throws Exception {
+  //xxxx
+    
+                EurekaServerContextHolder.initialize(this.serverContext);
+    
+                log.info(&quot;Initialized server context&quot;);
+    
+                // 从其他 Eureka-Server 拉取注册信息
+                int registryCount = this.registry.syncUp();
+                this.registry.openForTraffic(this.applicationInfoManager, registryCount);
+    
+                // Register all monitoring statistics.
+                EurekaMonitors.registerAllStats();
+        }</code></code></pre>
+<p>数据同步的代码在<code>syncUp</code>中</p>
+<pre><code><code> public int syncUp() {
+        int count = 0;
+
+        for (int i = 0; ((i &lt; serverConfig.getRegistrySyncRetries()) &amp;&amp; (count == 0)); i++) {
+            if (i &gt; 0) {
+              //未读取到注册信息则开始等待
+                try {
+                    Thread.sleep(serverConfig.getRegistrySyncRetryWaitMs());
+                } catch (InterruptedException e) {
+                    logger.warn(&quot;Interrupted during registry transfer..&quot;);
+                    break;
+                }
+            }
+           // 获取注册信息
+            Applications apps = eurekaClient.getApplications();
+            for (Application app : apps.getRegisteredApplications()) {
+                for (InstanceInfo instance : app.getInstances()) {
+                    try {
+                      //判断是否可以注册，这里基于AWS环境的判断，如果不是AWS环境直接返回true，故不需要关心这个问题
+                        if (isRegisterable(instance)) {
+                          //注册
+                            register(instance, instance.getLeaseInfo().getDurationInSecs(), true);
+                            count++;
+                        }
+                    } catch (Throwable t) {
+                        logger.error(&quot;During DS init copy&quot;, t);
+                    }
+                }
+            }
+        }
+        return count;
+    }</code></code></pre>
+<p>这里的处理流程就是当前EurekaServer获取到客户端的注册信息之后，就会再次调用上边咱们提到的服务端Controller调用的<code>register</code>方法，当然这次调用时<code>isReplication</code>参数就变为true了</p>
+<blockquote>
+<p>本文由博客一文多发平台 <a href="https://openwrite.cn?from=article_bottom">OpenWrite</a> 发布！</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

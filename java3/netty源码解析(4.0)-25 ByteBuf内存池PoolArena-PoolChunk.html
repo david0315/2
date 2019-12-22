@@ -1,0 +1,349 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修netty源码解析(4.0)-25 ByteBuf内存池PoolArena-PoolChunk' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>netty源码解析(4.0)-25 ByteBuf内存池PoolArena-PoolChunk</center></div><div class='banquan'>原文出处:本文由博客园博主自带buff提供。<br/>
+原文连接:https://www.cnblogs.com/brandonli/p/11625304.html</div><br>
+    <p>　　PoolArena实现了用于高效分配和释放内存，并尽可能减少内存碎片的内存池，这个内存管理实现使用PageRun/PoolSubpage算法。分析代码之前，先熟悉一些重要的概念:</p>
+<ul>
+<li>page: 页，一个页是可分配的最小的内存块单元，页的大小:pageSize = 1 &lt;&lt; n (n &lt;= 12)。</li>
+<li>chunk: 块，块是多个页的集合。chunkSize是块中所有page的pageSize之和。</li>
+<li>Tiny: &lt;512B的内存块。</li>
+<li>Small: &gt;=512B, &lt;pageSize的内存块。</li>
+<li>Normal: &gt;=pageSize, &lt;=chunkSize的内存块。</li>
+<li>Huge: &gt;chunkSize的内存块。</li>
+</ul>
+<p>　　PoolArena维护了一个PoolChunkList组成的双向链表，每个PoolChunkList内部维护了一个PoolChunk双向链表。分配内存时，PoolArena通过在PoolChunkList找到一个合适的PoolChunk，然后从PoolChunk中分配一块内存。</p>
+<p>&nbsp;</p>
+<h2>关键属性</h2>
+<p>　　pageSize: page的大小。必须满足 pageSize = 1 &lt;&lt; n (n&gt;=12)。</p>
+<p>　　maxOrder: 完全平衡二叉树的高度。</p>
+<p>　　chunkSize: chunk的大小。chunkSize = pageSize&nbsp; * (1 &lt;&lt; maxOrder)。</p>
+<p>　　memory: chunk的内存，大小必须&gt;=chunkSize。</p>
+<p>　　offset: chunk内存在memory中的起始位置。 memory大小必须&gt;=offet+chunkSize。</p>
+<p>&nbsp;</p>
+<h2>page管理</h2>
+<p>　　chunk以完全平衡二叉树的数据结构管理page, 这颗树的节点以堆的方式保存在数组中, 如果这棵树的高度maxOrder=4, 它的结构如下图所示:</p>
+<p>&nbsp;<img src="./images/netty源码解析(4.0)-25 ByteBuf内存池PoolArena-PoolChunk0.png" alt="" width="872" height="234" /></p>
+<p>　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　图-1</p>
+<p>　　节点名字格式是d-i, d是节点在树中的深度，i是节点在数组中的索引。</p>
+<p>　　<strong>它有如下一些性质:</strong></p>
+<ol>
+<li>任意一个节点i, i的取值范围是:&nbsp; [1, 1 &lt;&lt; (maxOrder + 1) )。i == 1节点是根节点。　　</li>
+<li>如果节点i在区间[1 &lt;&lt; maxOrder，1 &lt;&lt; (maxOrder +1) ), 那么这些节点都是叶节点。</li>
+<li>除叶节点以外的节点i, i &lt;&lt; 1是它的左子节点，(i &lt;&lt; 1) + 1 是它的右子节点。除根节点以外的节点i,&nbsp; i &gt;&gt; 1是它的父节点, i ^ 1是它的另外一个兄弟节点。</li>
+<li>对于一个节点i, 它树中的深度d&nbsp;= log2(i) (d是整数)。 d相同的节点位于树中的同一层上，他们包含相同的页节点数，有相同的最大可分配内存。</li>
+<li>任意节点i, 深度为d,&nbsp; 如果把同一层的节点放在一个单独的数组中，那么节点i在这个数据组中的偏移量doffset=i ^ (1 &lt;&lt; d)。</li>
+<li>任意节点i, 深度为d, 它包含的页节点的数量是1 &lt;&lt; (maxOrder - d),&nbsp; 内存大小是(1 &lt;&lt; (maxOrder - d)) * pageSize。</li>
+<li>已知深度d, [1 &lt;&lt; d,&nbsp; 1 &lt;&lt; (d + 1) )区间内的所有节点的深度都是d。</li>
+<li>任意节点i, 深度d，在memory中的起始位置偏移量是offset +&nbsp; （1 ^ (1 &lt;&lt; d)&nbsp; * (1 &lt;&lt; (maxOrder - d)) * pageSize。</li>
+</ol>
+<p>　　请记住这些性质。PoolChunk的代码很简洁，可是如果不熟悉这些性质，这些简洁的代码也会难以理解。</p>
+<p>&nbsp;</p>
+<h2>完全平衡二叉树的初始化</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     PoolChunk(PoolArena&lt;T&gt; arena, T memory, <span style="color: #0000ff;">int</span> pageSize, <span style="color: #0000ff;">int</span> maxOrder, <span style="color: #0000ff;">int</span> pageShifts, <span style="color: #0000ff;">int</span> chunkSize, <span style="color: #0000ff;">int</span><span style="color: #000000;"> offset) {
+</span><span style="color: #008080;"> 2</span>         unpooled = <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">this</span>.arena =<span style="color: #000000;"> arena;
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">this</span>.memory =<span style="color: #000000;"> memory;
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">this</span>.pageSize =<span style="color: #000000;"> pageSize;
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">this</span>.pageShifts =<span style="color: #000000;"> pageShifts;
+</span><span style="color: #008080;"> 7</span>         <span style="color: #0000ff;">this</span>.maxOrder =<span style="color: #000000;"> maxOrder;
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">this</span>.chunkSize =<span style="color: #000000;"> chunkSize;
+</span><span style="color: #008080;"> 9</span>         <span style="color: #0000ff;">this</span>.offset =<span style="color: #000000;"> offset;
+</span><span style="color: #008080;">10</span>         unusable = (<span style="color: #0000ff;">byte</span>) (maxOrder + 1<span style="color: #000000;">);
+</span><span style="color: #008080;">11</span>         log2ChunkSize =<span style="color: #000000;"> log2(chunkSize);
+</span><span style="color: #008080;">12</span>         subpageOverflowMask = ~(pageSize - 1<span style="color: #000000;">);
+</span><span style="color: #008080;">13</span>         freeBytes =<span style="color: #000000;"> chunkSize;
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>         <span style="color: #0000ff;">assert</span> maxOrder &lt; 30 : "maxOrder should be &lt; 30, but is: " +<span style="color: #000000;"> maxOrder;
+</span><span style="color: #008080;">16</span>         maxSubpageAllocs = 1 &lt;&lt;<span style="color: #000000;"> maxOrder;
+</span><span style="color: #008080;">17</span> 
+<span style="color: #008080;">18</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> Generate the memory map.</span>
+<span style="color: #008080;">19</span>         memoryMap = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span>[maxSubpageAllocs &lt;&lt; 1<span style="color: #000000;">];
+</span><span style="color: #008080;">20</span>         depthMap = <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span><span style="color: #000000;">[memoryMap.length];
+</span><span style="color: #008080;">21</span>         <span style="color: #0000ff;">int</span> memoryMapIndex = 1<span style="color: #000000;">;
+</span><span style="color: #008080;">22</span>         <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> d = 0; d &lt;= maxOrder; ++ d) { <span style="color: #008000;">//</span><span style="color: #008000;"> move down the tree one level at a time</span>
+<span style="color: #008080;">23</span>             <span style="color: #0000ff;">int</span> depth = 1 &lt;&lt;<span style="color: #000000;"> d;
+</span><span style="color: #008080;">24</span>             <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> p = 0; p &lt; depth; ++<span style="color: #000000;"> p) {
+</span><span style="color: #008080;">25</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> in each level traverse left to right and set value to the depth of subtree</span>
+<span style="color: #008080;">26</span>                 memoryMap[memoryMapIndex] = (<span style="color: #0000ff;">byte</span><span style="color: #000000;">) d;
+</span><span style="color: #008080;">27</span>                 depthMap[memoryMapIndex] = (<span style="color: #0000ff;">byte</span><span style="color: #000000;">) d;
+</span><span style="color: #008080;">28</span>                 memoryMapIndex ++<span style="color: #000000;">;
+</span><span style="color: #008080;">29</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">30</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">31</span> 
+<span style="color: #008080;">32</span>         subpages =<span style="color: #000000;"> newSubpageArray(maxSubpageAllocs);
+</span><span style="color: #008080;">33</span>     }</code></pre>
+
+<p>　　在构造方法中，19-30行初始化了两棵完全一样的完全平衡二叉树(形如图-1): memoryMap, depthMap。这两个map都是以数组的方式保存二叉树，数组的长度都是maxSubpageAllocs &lt;&lt; 1,&nbsp; 由于maxSubpageAllocs = 1 &lt;&lt; maxOrder, 因此长度还可以表示为 1 &lt;&lt; (maxOrder + 1)。 map数组的0项保留，[1,&nbsp; 1 &lt;&lt; maxOrder)区间中的每个项是二叉树的一个节点，每个项的值是节点在树中的深度。</p>
+<p>　　depthMap用来记录每个节点在树中的深度，初始化之后，值不会发生变化。已知一个节点在数组中的索引id, 可以使用这个id查找节点在树中的深度: depthMap[id]。</p>
+<p>　　memoryMap用来记录树中节点被分配出去的情况，每个项的值会随着节点分配情况变化而变化。已知一个节点在数组中的索引id，memoryMap[id]的值会有三中情况:</p>
+<ol>
+<li>memoryMap[id] == depth[id]:&nbsp; 所有子节点都没被分配出去。</li>
+<li>memoryMap[id] &gt; depth[id]: 至少有一个子节点被分配出去了,&nbsp; 还有可以分配的子节点。</li>
+<li>memoryMap[id] == maxOrder + 1: 这个节点以及完全被分配出去了，没有可分配的子节点了。</li>
+</ol>
+<p>&nbsp;</p>
+<h2>从二叉树中分配一个内存大小合适的节点</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>     <span style="color: #0000ff;">long</span> allocate(<span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">if</span> ((normCapacity &amp; subpageOverflowMask) != 0) { <span style="color: #008000;">//</span><span style="color: #008000;"> &gt;= pageSize</span>
+<span style="color: #008080;">3</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> allocateRun(normCapacity);
+</span><span style="color: #008080;">4</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">5</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> allocateSubpage(normCapacity);
+</span><span style="color: #008080;">6</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">7</span>     }</code></pre>
+
+<p>　　这个方法是分配内存节点的入口方法，参数normCapacity必须满足normCapacity = 1 &lt;&lt; n。第2行判断normCapacity和pageSize的大小关系，在前面的构造方法中，subpageOverflowMask = ~(pageSize - 1), 如果pageSize=2048,&nbsp; subpageOverflowMask的0-11位是0， 12-31位是1，它的二进制值是: 1111111111111111111100000000000,&nbsp; (normCapacity &amp; subpageOverflowMask) != 0表示，normCapacity的12-31位中至少有一位是1，此时它&gt;=pageSize, 反之比pageSize小。</p>
+<p>　　如果normCapacity &gt;= pageSize, 调用allocateRun分配一个深度d &lt; maxOrder的节点。</p>
+<p>　　如果normaCapacity &lt; pageSize, 调用allocateSubpage分配一个d == maxOrder的叶叶节点, 即一个page。</p>
+<p>　　PoolChunk分配内存的最小单元是一个page，不能分配比一个page更小的内存了。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;">1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span> allocateRun(<span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;">2</span>         <span style="color: #0000ff;">int</span> d = maxOrder - (log2(normCapacity) -<span style="color: #000000;"> pageShifts);
+</span><span style="color: #008080;">3</span>         <span style="color: #0000ff;">int</span> id =<span style="color: #000000;"> allocateNode(d);
+</span><span style="color: #008080;">4</span>         <span style="color: #0000ff;">if</span> (id &lt; 0<span style="color: #000000;">) {
+</span><span style="color: #008080;">5</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+</span><span style="color: #008080;">6</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">7</span>         freeBytes -=<span style="color: #000000;"> runLength(id);
+</span><span style="color: #008080;">8</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+</span><span style="color: #008080;">9</span>     }</code></pre>
+
+<p>　　第2行，计算normCapacity大小的内存在二叉树的最大深度d, 只有深度&lt;=d的节点才有可以分配到&gt;=normCapacity的内存。normCapacity可以表示为normCapacity = 2<sup>k</sup>,&nbsp; log2(normCapacity)就是已知normCapacity求解k。pageShifts可表示为pageSize = 2<sup>pageShifts</sup>,&nbsp; pageShifts = log2(pageSize)。 normCapacity在二叉树上的反向深度 rd = log2(mormCapacity) - pageShifts,&nbsp; 这个表达式比较难以理解，这样会更加直观一些:</p>
+<p>　　pageCount =&nbsp;normCapacity &gt;&gt; log2(pageSize)</p>
+<p>　　rd = log2(pageCount)&nbsp;<sup><br /></sup></p>
+<p>　　pageCount是normCapacity需要的page数量。 反向深度的含义是，d=0对应二叉树的最大深度maxOrder,&nbsp; d=1对应maxOrder -1，依次类推。因此maxOrder - rd会得到最大深度d，d &lt;= maxOrder。</p>
+<p>　　第3行，如果能够根据d找到一个合适的节点，就会把这个节点记录为已经使用的状态，然后返回这个节点的索引id, id的取值区间是[0, 1 &lt;&lt; maxOrder)。</p>
+<p>　　第7行，重新计算剩余内存数。</p>
+<p>　　rungLength方法用于计算节点id的内存长度:</p>
+<src class="cnblogs_code">
+<pre><code>    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> runLength(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> represents the size in #bytes supported by node 'id' in the tree</span>
+        <span style="color: #0000ff;">return</span> 1 &lt;&lt; log2ChunkSize -<span style="color: #000000;"> depth(id);
+    }</span></code></pre>
+
+<p>　　log2ChunkSize=log2(chunkSize)在构造方法中初始化。 有性质(6)可以得到节点id的长度 length = (1 &lt;&lt; maxOrder - depth(id)) * pageSize，它和代码中表达式是等价的，推导过程如下:</p>
+<p>　　已知:&nbsp;</p>
+<p>　　　　log2ChunkSize = log2(chunkSize)</p>
+<p>　　　　chunkSize = (1 &lt;&lt; maxOrder) * pageSize</p>
+<p>　　　　pageSize = 2<sup>k</sup> = 1 &lt;&lt; k</p>
+<p>　　=&gt; chunkSize = (1 &lt;&lt; maxOrder) * 2<sup>k</sup>&nbsp;</p>
+<p>　　　　　　　　 = 2<sup>maxOrder</sup> * 2<sup>k<br /></sup></p>
+<p>　　　　　　　　 = 2<sup>maxOrder + k</sup></p>
+<p>　　=&gt; log2ChunkSize = log2(chunkSize) </p>
+<p>　　　　　　　　　　&nbsp; = log2(2<sup>maxOrder + k</sup>)</p>
+<p>　　　　　　　　　　&nbsp; = maxOrder + k　</p>
+<p>　　=&gt; log2ChunkSize - depth(id) = maxOrder + k - depth(id)</p>
+<p>　　=&gt; 1 &lt;&lt; log2ChunkSize - depth(id) = 1 &lt;&lt; maxOrder + k - depth(id)</p>
+<p>　　　　　　　　　　　　　　　　　　 = (1 &lt;&lt; maxOrder - depth(id)) * (1 &lt;&lt; k)</p>
+<p>　　　　　　　　　　　　　　　　　　 = (1 &lt;&lt; maxOrder - depth(id)) * pageSize</p>
+<p>　　</p>
+<p>　　如果需要的内存&gt;=pageSize, 就会调用allocateNode方法，这个方法的作用是从二叉树中分配一个节点，返回值id是这个节点的索引。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span> allocateNode(<span style="color: #0000ff;">int</span><span style="color: #000000;"> d) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> id = 1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">int</span> initial = - (1 &lt;&lt; d); <span style="color: #008000;">//</span><span style="color: #008000;"> has last d bits = 0 and rest all = 1</span>
+<span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">byte</span> val =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">if</span> (val &gt; d) { <span style="color: #008000;">//</span><span style="color: #008000;"> unusable</span>
+<span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">return</span> -1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">while</span> (val &lt; d || (id &amp; initial) == 0) { <span style="color: #008000;">//</span><span style="color: #008000;"> id &amp; initial == 1 &lt;&lt; d for all ids at depth d, for &lt; d it is 0</span>
+<span style="color: #008080;"> 9</span>             id &lt;&lt;= 1<span style="color: #000000;">;
+</span><span style="color: #008080;">10</span>             val =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">if</span> (val &gt;<span style="color: #000000;"> d) {
+</span><span style="color: #008080;">12</span>                 id ^= 1<span style="color: #000000;">;
+</span><span style="color: #008080;">13</span>                 val =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span>         <span style="color: #0000ff;">byte</span> value =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;">17</span>         <span style="color: #0000ff;">assert</span> value == d &amp;&amp; (id &amp; initial) == 1 &lt;&lt; d : String.format("val = %d, id &amp; initial = %d, d = %d"<span style="color: #000000;">,
+</span><span style="color: #008080;">18</span>                 value, id &amp;<span style="color: #000000;"> initial, d);
+</span><span style="color: #008080;">19</span>         setValue(id, unusable); <span style="color: #008000;">//</span><span style="color: #008000;"> mark as unusable</span>
+<span style="color: #008080;">20</span> <span style="color: #000000;">        updateParentsAlloc(id);
+</span><span style="color: #008080;">21</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+</span><span style="color: #008080;">22</span>     }</code></pre>
+
+<p>　　allocateNode方法的功能是从memoryMap树中深度[1, d]的节点中找出一个没有被分配出去的节点，然后把这个节点记录为已分配的状态。寻找顺序是自上而下，从左到到右。</p>
+<p>　　第2行，从第一个节点开始，这个节点是二叉树的根节点。</p>
+<p>　　第3行，计算一个32位initial，它的[0, d)位都是0，[d, 31]位都是1。</p>
+<p>　　第4-6行，检查是否可以分配一个深度&lt;=d节点， 如果不能分配内存失败，返回-1。 val == maxOrder + 1时表示这个节点的内存已经被分配完了，val在[0, maxOrder]区间内时，表示可以分配一个深度在[val, maxOder]区间内的节点。所以在第5行检查到val&gt;d时表示不能分配到内存了。</p>
+<p>　　8-15行，能够运行到第8行，说明在这个chunk中，二叉树中一定至少有一个节点满足深度等于d, 且没有任何子节点被分配出去的节点。循环，满足 val &lt; d或(id &amp; initial) == 0会增加一个深度继续寻找。也就是说如果满足val == d 且 (id &amp; initial) == 1时，表示找到了符合调条件的节点了。第9行，增加一个深度。 第10，11行检查左节点。 12,13行检查右节点。</p>
+<p>　　19行, 把选中的节点id, 设置成unusable(maxOrder+1)状态。</p>
+<p>　　20行，更新所有父节点的值。</p>
+<p>&nbsp;　　这个方法展示了已知memoryMap中索引为id的值val = memoryMap[id],&nbsp; 找到一个深度为d的空闲节点的算法。前面已经讲过val值的三种情况，其中第2中情况的时候，表示只有节点id下面只能找到深度&gt;=val的空闲节点，索引d&lt;val情况下，无法找到满足深度等于d的空闲节点。影响memoryMapy[id]值的算法在updateParentsAlloc中实现:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> updateParentsAlloc(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">while</span> (id &gt; 1<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 3</span>             <span style="color: #0000ff;">int</span> parentId = id &gt;&gt;&gt; 1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">byte</span> val1 =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">byte</span> val2 = value(id ^ 1<span style="color: #000000;">);
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">byte</span> val = val1 &lt; val2 ?<span style="color: #000000;"> val1 : val2;
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">            setValue(parentId, val);
+</span><span style="color: #008080;"> 8</span>             id =<span style="color: #000000;"> parentId;
+</span><span style="color: #008080;"> 9</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">10</span>     }</code></pre>
+
+<p>　　3行，得到id的父节点。</p>
+<p>　　4-6行，取memoryMap中，取节点id和它的兄弟节点的值中交小的一个，如果相等的话就随意取一个。</p>
+<p>　　7行，把上一步中的取值设置到父节点上。</p>
+<p>　　8，2行，深度减1，重复这个过程直到根节点为止。</p>
+<p>&nbsp;</p>
+<h2>分配一个小于pageSize的子页subpage</h2>
+<p>　　当需要分配的内存小于pageSize时，仍然会分配一个page，因为PoolChunk能分配的最小内存单元是一个page。这时候只需分配一个也节点就可以了。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span> allocateSubpage(<span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> Obtain the head of the PoolSubPage pool that is owned by the PoolArena and synchronize on it.
+</span><span style="color: #008080;"> 3</span>         <span style="color: #008000;">//</span><span style="color: #008000;"> This is need as we may add it back and so alter the linked-list structure.</span>
+<span style="color: #008080;"> 4</span>         PoolSubpage&lt;T&gt; head =<span style="color: #000000;"> arena.findSubpagePoolHead(normCapacity);
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (head) {
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">int</span> d = maxOrder; <span style="color: #008000;">//</span><span style="color: #008000;"> subpages are only be allocated from pages i.e., leaves</span>
+<span style="color: #008080;"> 7</span>             <span style="color: #0000ff;">int</span> id =<span style="color: #000000;"> allocateNode(d);
+</span><span style="color: #008080;"> 8</span>             <span style="color: #0000ff;">if</span> (id &lt; 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 9</span>                 <span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">11</span> 
+<span style="color: #008080;">12</span>             <span style="color: #0000ff;">final</span> PoolSubpage&lt;T&gt;[] subpages = <span style="color: #0000ff;">this</span><span style="color: #000000;">.subpages;
+</span><span style="color: #008080;">13</span>             <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> pageSize = <span style="color: #0000ff;">this</span><span style="color: #000000;">.pageSize;
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>             freeBytes -=<span style="color: #000000;"> pageSize;
+</span><span style="color: #008080;">16</span> 
+<span style="color: #008080;">17</span>             <span style="color: #0000ff;">int</span> subpageIdx =<span style="color: #000000;"> subpageIdx(id);
+</span><span style="color: #008080;">18</span>             PoolSubpage&lt;T&gt; subpage =<span style="color: #000000;"> subpages[subpageIdx];
+</span><span style="color: #008080;">19</span>             <span style="color: #0000ff;">if</span> (subpage == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;">20</span>                 subpage = <span style="color: #0000ff;">new</span> PoolSubpage&lt;T&gt;(head, <span style="color: #0000ff;">this</span><span style="color: #000000;">, id, runOffset(id), pageSize, normCapacity);
+</span><span style="color: #008080;">21</span>                 subpages[subpageIdx] =<span style="color: #000000;"> subpage;
+</span><span style="color: #008080;">22</span>             } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">23</span> <span style="color: #000000;">                subpage.init(head, normCapacity);
+</span><span style="color: #008080;">24</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">25</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> subpage.allocate();
+</span><span style="color: #008080;">26</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">27</span>     }</code></pre>
+
+<p>　　6-10行，分配一个深度d=maxOrder的叶节点。</p>
+<p>　　17,18行，从subpages取出一个PoolSubpage缓存。subpages在构造方法中初始化，subpages = new PoolSubpage[maxSubpageAllocs], maxSubpageAllocs = 1 &lt;&lt; maxOrder。subpages的长度就是chunk中的page数量。</p>
+<p>　　19-24行，如果缓存中没有，创建一个新的。如果有直接初始PoolSubpage。</p>
+<p>　　25行，分配一个子页。</p>
+<p>　　关于PoolSubpage子页面管理的功能，后面会详细分析，这里只涉及和PoolChunk相关的内容。</p>
+<p>&nbsp;</p>
+<h2>释放内存</h2>
+<p>　　分配内存成功后会返回一个long型的handle，64位的handle被分为两部分，[0, 32)位是二叉树中的节点索引，可以使用memoryMapIdx(handle)方法取出。[32, 64)位是PoolSubpage中子页面的索引，可以使用bitMapIdx(handler)方法取出。释放一个handle时，可能需要同时释放二叉树中的节点和PoolSubpage中子页面，free(int handle)方法实现了这个内存释放过程:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">void</span> free(<span style="color: #0000ff;">long</span><span style="color: #000000;"> handle) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> memoryMapIdx =<span style="color: #000000;"> memoryMapIdx(handle);
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">int</span> bitmapIdx =<span style="color: #000000;"> bitmapIdx(handle);
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">if</span> (bitmapIdx != 0) { <span style="color: #008000;">//</span><span style="color: #008000;"> free a subpage</span>
+<span style="color: #008080;"> 6</span>             PoolSubpage&lt;T&gt; subpage =<span style="color: #000000;"> subpages[subpageIdx(memoryMapIdx)];
+</span><span style="color: #008080;"> 7</span>             <span style="color: #0000ff;">assert</span> subpage != <span style="color: #0000ff;">null</span> &amp;&amp;<span style="color: #000000;"> subpage.doNotDestroy;
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> Obtain the head of the PoolSubPage pool that is owned by the PoolArena and synchronize on it.
+</span><span style="color: #008080;">10</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> This is need as we may add it back and so alter the linked-list structure.</span>
+<span style="color: #008080;">11</span>             PoolSubpage&lt;T&gt; head =<span style="color: #000000;"> arena.findSubpagePoolHead(subpage.elemSize);
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">synchronized</span><span style="color: #000000;"> (head) {
+</span><span style="color: #008080;">13</span>                 <span style="color: #0000ff;">if</span> (subpage.free(head, bitmapIdx &amp; 0x3FFFFFFF<span style="color: #000000;">)) {
+</span><span style="color: #008080;">14</span>                     <span style="color: #0000ff;">return</span><span style="color: #000000;">;
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">                }
+</span><span style="color: #008080;">16</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">18</span>         freeBytes +=<span style="color: #000000;"> runLength(memoryMapIdx);
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">        setValue(memoryMapIdx, depth(memoryMapIdx));
+</span><span style="color: #008080;">20</span> <span style="color: #000000;">        updateParentsFree(memoryMapIdx);
+</span><span style="color: #008080;">21</span>     }</code></pre>
+
+<p>　　2,3行，分别取出二叉树的节点id和PoolSubpage中子页的id。</p>
+<p>　　5-17行，释放PoolSubpage子页。子页内存被释放之后，subpages数组中仍然保存着PoolSubpages对象。13行只有subpage中所有的子页都释放完了才会释放subpage持有的page。</p>
+<p>　　18-20行，释放二叉树中的节点。调用setValue把被释放的节点memoryMap值设置成它原本的深度depth(memoryMapIdx)。 调用updateParentsFree, 修改memoryMap记录，这个方法实现了updateParentsAlloc的逆过程。</p>
+<p>　　updateParentsFree释放二叉树节点的关键，如果一个节点被释放，它的父节点在memoryMap值可能会发生变化。这个方法的实现如下:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> updateParentsFree(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> logChild = depth(id) + 1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">while</span> (id &gt; 1<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">int</span> parentId = id &gt;&gt;&gt; 1<span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">byte</span> val1 =<span style="color: #000000;"> value(id);
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">byte</span> val2 = value(id ^ 1<span style="color: #000000;">);
+</span><span style="color: #008080;"> 7</span>             logChild -= 1; <span style="color: #008000;">//</span><span style="color: #008000;"> in first iteration equals log, subsequently reduce 1 from logChild as we traverse up</span>
+<span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">if</span> (val1 == logChild &amp;&amp; val2 ==<span style="color: #000000;"> logChild) {
+</span><span style="color: #008080;">10</span>                 setValue(parentId, (<span style="color: #0000ff;">byte</span>) (logChild - 1<span style="color: #000000;">));
+</span><span style="color: #008080;">11</span>             } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">12</span>                 <span style="color: #0000ff;">byte</span> val = val1 &lt; val2 ?<span style="color: #000000;"> val1 : val2;
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">                setValue(parentId, val);
+</span><span style="color: #008080;">14</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">15</span> 
+<span style="color: #008080;">16</span>             id =<span style="color: #000000;"> parentId;
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">18</span>     }</code></pre>
+
+<p>　　第2行，计算节点id的子节点深度logChild。</p>
+<p>　　第3行，确保id不是根节点。</p>
+<p>　　第4行，得到父节点id。</p>
+<p>　　第5，6行，得到节点id及其兄弟节点memoryMap值: val1, val2。</p>
+<p>　　第7行，把logChild变成id的深度。</p>
+<p>　　第9,10行, 如果id及其兄弟节点的指定都是depth(id)，表示这两个节都已经完全释放，把父节点的指定还原成depth(parentId) == logChild -1 。</p>
+<p>　　第12,13行，如果id及其兄弟节点至少有一个没有完全释放，把较小的值设置到父节点上。</p>
+<p>　　第16行，深度上移，继续上面的过程。</p>
+<p>　　</p>
+<h2>使用分配的内存初始化PooledByteBuf</h2>
+<p>　　使用allocate分配内存得到一个handle之后，需要调用PooledByteBuf的init方法使用handle对应的内存初始化。初始化的关键是计算出handle对应的内存在memory中的偏移量和长度。前面讲的lenthRun可以计算出内存的长度，剩下的就是计算内存偏移量方法runOffset。PoolChunk的initBuf方法用来初始化一个PooledByteBuf对象:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">void</span> initBuf(PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">long</span> handle, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> memoryMapIdx =<span style="color: #000000;"> memoryMapIdx(handle);
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">int</span> bitmapIdx =<span style="color: #000000;"> bitmapIdx(handle);
+</span><span style="color: #008080;"> 4</span>         <span style="color: #0000ff;">if</span> (bitmapIdx == 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">byte</span> val =<span style="color: #000000;"> value(memoryMapIdx);
+</span><span style="color: #008080;"> 6</span>             <span style="color: #0000ff;">assert</span> val ==<span style="color: #000000;"> unusable : String.valueOf(val);
+</span><span style="color: #008080;"> 7</span>             buf.init(<span style="color: #0000ff;">this</span>, handle, runOffset(memoryMapIdx) +<span style="color: #000000;"> offset, reqCapacity, runLength(memoryMapIdx),
+</span><span style="color: #008080;"> 8</span> <span style="color: #000000;">                     arena.parent.threadCache());
+</span><span style="color: #008080;"> 9</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">10</span> <span style="color: #000000;">            initBufWithSubpage(buf, handle, bitmapIdx, reqCapacity);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">12</span>     }</code></pre>
+
+<p>　　第2,3行，在分析free代码中解释过。</p>
+<p>　　第4-8行，表示这块内存是二叉树中的一个节点，直接使用init方法初始化。runOffset的算法是 (memoryMapIdx ^ 1 &lt;&lt; depth(memoryMapIdx)) * runLength(memoryMapIdx), 根据性质(5)可知，memoryMapIdx ^ depth(memoryMapIdx) 是节点memoryMepIdx在深度为depth(memoryMapIdx)层上的偏移量doffset,&nbsp; 即这一层前面还有doffset个节点，根据性质(4)可知每个节点的内存大小是runLength(memoryMapIdx)，所以doffset * runLength(memoryMapIdx)是节点memoryMapIdx在chunk内存上的偏移量。最后还要再加上一个offset，它是chuk在memory上的偏移量。</p>
+<p>　　第10行，表示这块内存是一个subpage，使用initBufWithSubpage初始化。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">void</span> initBufWithSubpage(PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">long</span> handle, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;"> 2</span> <span style="color: #000000;">        initBufWithSubpage(buf, handle, bitmapIdx(handle), reqCapacity);
+</span><span style="color: #008080;"> 3</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 4</span> 
+<span style="color: #008080;"> 5</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span> initBufWithSubpage(PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">long</span> handle, <span style="color: #0000ff;">int</span> bitmapIdx, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">assert</span> bitmapIdx != 0<span style="color: #000000;">;
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span>         <span style="color: #0000ff;">int</span> memoryMapIdx =<span style="color: #000000;"> memoryMapIdx(handle);
+</span><span style="color: #008080;"> 9</span> 
+<span style="color: #008080;">10</span>         PoolSubpage&lt;T&gt; subpage =<span style="color: #000000;"> subpages[subpageIdx(memoryMapIdx)];
+</span><span style="color: #008080;">11</span>         <span style="color: #0000ff;">assert</span><span style="color: #000000;"> subpage.doNotDestroy;
+</span><span style="color: #008080;">12</span>         <span style="color: #0000ff;">assert</span> reqCapacity &lt;=<span style="color: #000000;"> subpage.elemSize;
+</span><span style="color: #008080;">13</span> 
+<span style="color: #008080;">14</span> <span style="color: #000000;">        buf.init(
+</span><span style="color: #008080;">15</span>             <span style="color: #0000ff;">this</span><span style="color: #000000;">, handle,
+</span><span style="color: #008080;">16</span>             runOffset(memoryMapIdx) + (bitmapIdx &amp; 0x3FFFFFFF) * subpage.elemSize +<span style="color: #000000;"> offset,
+</span><span style="color: #008080;">17</span> <span style="color: #000000;">                reqCapacity, subpage.elemSize, arena.parent.threadCache());
+</span><span style="color: #008080;">18</span>     }</code></pre>
+
+<p>　　关键部分在第二个重载方法。的第14-17行。这个计算内存偏移量的算法是runOffst(memoryMapIdx) + offset + (bitmapIdx &amp; 0x3FFFFFFF) * subpage.elemSize，它可以拆分成两部分:</p>
+<p>　　memoryMapIdx表示的page在内存中的偏移量pageOffset = runOffset(memoryMapIdx) + offset</p>
+<p>　　子页面subpage在page中的偏移量: subpOffset =&nbsp;(bitmapIdx &amp; 0x3FFFFFFF) * subpage.elemSize</p>
+<p>　　其中subpOffset是个陌生的东西，会在后面PoolSubpage相关章节详细分析。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

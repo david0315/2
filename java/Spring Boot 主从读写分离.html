@@ -1,0 +1,157 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot 主从读写分离' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot 主从读写分离</center></div><div class='banquan'>原文出处:本文由博客园博主浮云Cloud提供。<br/>
+原文连接:https://www.cnblogs.com/cloudfloating/p/11536531.html</div><br>
+    <p>自己封装了一个读写分离的 Starter，可以配置任意多个数据源，使用 Hikari 连接池（暂不支持其他连接池）。</p>
+<p>GitHub：<a href="https://github.com/imcloudfloating/rw-separate-spring-boot-starter">rw-separate-spring-boot-starter</a></p>
+<p>代码已上传到 Maven 中央仓库，可以直接使用：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;top.cloudli&lt;/groupId&gt;
+    &lt;artifactId&gt;rw-separate-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p><strong>首先需要排除默认的 <code>DataSourceAutoConfiguration</code> </strong>：</p>
+<pre class="java"><code>@SpringBootApplication(exclude = {DataSourceAutoConfiguration.class})
+public class FooApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FooApplication.class, args);
+    }
+
+}</code></code></pre>
+<h2 id="hikaricp-配置">HikariCP 配置</h2>
+<p>hikari 的配置没有变化，与 Spring Boot 默认的配置方式一样：</p>
+<pre class="yaml"><code>spring:
+  datasource:
+    hikari:
+      minimum-idle: 50
+      maximum-pool-size: 500
+      connection-test-query: &quot;SELECT 1&quot;
+      ...</code></code></pre>
+<h2 id="application.yml">application.yml</h2>
+<pre class="yaml"><code>spring:
+  separated-datasource:
+    # 主库数据源
+    masters:
+      - {
+        dataSourceName: master_1,
+        driverClassName: com.mysql.cj.jdbc.Driver,
+        url: jdbc:mysql://10.0.0.100:3306/test,
+        username: root,
+        password: root
+      }
+
+    # 从库数据源
+    slaves:
+      - {
+        dataSourceName: slave_1,
+        driverClassName: com.mysql.cj.jdbc.Driver,
+        url: jdbc:mysql://10.0.0.101:3306/test,
+        username: reader,
+        password: reader
+      }
+      - {
+        dataSourceName: slave_2,
+        driverClassName: com.mysql.cj.jdbc.Driver,
+        url: jdbc:mysql://10.0.0.102:3306/test,
+        username: reader,
+        password: reader
+      }</code></code></pre>
+<ul>
+<li><code>dataSourceName</code> 为数据源的名称，请避免名称重复（如果不需要显式地指定数据源，可以不设置）。</li>
+<li>当设置多个数据源时，默认使用轮询的方式来切换数据源。</li>
+</ul>
+<h2 id="mybatis-数据源配置">MyBatis 数据源配置</h2>
+<p>自动装配的数据源为 <code>routingDataSource</code>。</p>
+<pre class="java"><code>@Configuration
+@EnableTransactionManagement
+public class MyBatisConfig {
+
+    // 注入 routingDataSource
+    @Resource(name = &quot;routingDataSource&quot;)
+    private DataSource dataSource;
+
+    @Bean
+    public SqlSessionFactory sqlSessionFactory() throws Exception {
+        SqlSessionFactoryBean sqlSessionFactoryBean = new SqlSessionFactoryBean();
+
+        sqlSessionFactoryBean.setDataSource(dataSource);
+        sqlSessionFactoryBean.setMapperLocations(new PathMatchingResourcePatternResolver()
+                .getResources(&quot;classpath:mybatis/mapper/*.xml&quot;));
+
+        return sqlSessionFactoryBean.getObject();
+    }
+
+    @Bean
+    public PlatformTransactionManager platformTransactionManager() {
+        return new DataSourceTransactionManager(dataSource);
+    }
+}</code></code></pre>
+<p>也可以这样（Bean 的名称必须为 routingDataSource）：</p>
+<pre class="java"><code>private final DataSource routingDataSource;
+
+public MyBatisConfig(DataSource routingDataSource) {
+    this.routingDataSource = routingDataSource;
+}</code></code></pre>
+<h2 id="使用注解实现读写分离">使用注解实现读写分离</h2>
+<pre class="java"><code>@Service
+public class FooService {
+
+    @Resource
+    FooMapper fooMapper;
+    
+    /**
+     * 使用读库
+     */
+    @Read
+    public List&lt;Item&gt; getFoo() {
+        return fooMapper.getAll();
+    }
+
+    /**
+     * 使用写库
+     */
+    @Write
+    public int addFoo(Foo foo) {
+        return fooMapper.add(foo);
+    }
+}</code></code></pre>
+<p>可以使用参数显式地指定数据源（需要在 <code>application.yml</code> 中指定 <code>dataSourceName</code>）:</p>
+<pre class="java"><code>@Service
+public class FooService {
+
+    /**
+     * 显式地指定数据源为 master_1
+     */
+    @Write(&quot;master_1&quot;)
+    public int addFoo(Foo foo) {
+        return fooMapper.add(foo);
+    }
+
+}</code></code></pre>
+<p><strong>显式地指定数据源时，<code>@Write</code> 只能指定 masters 中的数据源，<code>@Read</code> 只能指定 slaves 中的数据源</strong>。</p>
+<blockquote>
+<p>不要在 DAO 层使用读写分离，无法支持事务。</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

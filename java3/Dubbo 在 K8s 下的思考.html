@@ -1,0 +1,296 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Dubbo 在 K8s 下的思考' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Dubbo 在 K8s 下的思考</center></div><div class='banquan'>原文出处:本文由博客园博主茶轴的青春提供。<br/>
+原文连接:https://www.cnblogs.com/lfs2640666960/p/11756241.html</div><br>
+    <h3><strong>序言</strong></h3>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>Dubbo 在 2011 开源之后，一直是国内最受欢迎的 RPC 框架，之后 Spring Boot 和 Spring Cloud 的面世，助推了微服务的火热程度。计算机的世界变化很快，自从容器和 K8s 登上舞台之后，给原有的 RPC 领域带来了很大的挑战。这个文章主要讲述&nbsp;RPC 领域遇到的问题，以及&nbsp;RPC怎么去拥抱 K8s 怀抱的一些思考。<br /><br /></p>
+<h1><strong>K8s介绍</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p> Kubernetes 是一个开源的，用于管理云平台中多个主机上的容器化的应用， Kubernetes 的目标是让部署容器化的应用简单并且高效, Kubernetes 提供了应用部署，规划，更新，维护的一种机制。Kubernetes 简称 K8s。<br /><img src="./images/Dubbo 在 K8s 下的思考0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br />在 Kubernetes 中，最小的管理元素不是一个个独立的容器，而是 Pod 。pod 的生命周期需要注意以下几点：</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>容器和应用可能随时被杀死</li>
+<li>Pod Ip 和主机名可能变化 (除非使用 StatefulSet 进行定制)</li>
+<li>写到本地的磁盘的文件可能消失，如果想不失效，需要用存储卷</li>
+
+</ul>
+<h5>&nbsp;</h5>
+<h5><strong>应用，容器，Pod 的关系</strong></h5>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>应用部署在容器中，一般情况下一个应用只部署在一个容器中</li>
+<li>一个 Pod 下可以包含一个或多个容器，一般情况下一个 Pod 只建议部署一个容器。下列场景除外：</li>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>side car</li>
+<li>一个容器的运行以来与本地另外一个容器。如一个容器下应用负责下载数据，另外一个容器下应用向外提供服务</li>
+
+</ul>
+
+</ul>
+<h5><strong>&nbsp;</strong></h5>
+<h5><strong>Service</strong></h5>
+<p dir="ltr">&nbsp;</p>
+<p>
+如果一些 Pods 提供了一些功能供其它的 Pod 使用，在 Kubernete 集群中是如何实现让这些前台能够持续的追踪到这些后台的？答案是：Service 。<br />Kubernete Service 是一个定义了一组 Pod 的策略的抽象，这些被服务标记的Pod一般都是通过 label Selector 决定的。Service 抽象了对 Pod 的访问。<br />默认的 Service ，通过一个集群 Ip 获取 A Record 。但是有时需要返回所有满足条件的 Pod ip 列表，这时候可以直接使用 Headless Services 。<br />参考：<em>https://kubernetes.io/</em>推荐书籍：<em>kubernetes in action</em></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h1><strong>&nbsp;RPC 介绍和分析</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>
+随着微服务的普及，应用之间的通信有了足够多的成熟方案。Dubbo 在 2011 年开源之后，被大量的中小型公司采用；在 Spring Boot 推出之后，Spring逐渐焕发出第二春，随即 Spring Cloud 面世，逐渐占领市场，在中国市场中，和 Dubbo 分庭抗争；gRPC 是 Google 推出的基于 Http2 的端到端的通信工具，逐渐地在k8s市场上占据统治地位，如 etcd，Istio 等都采用 gRPC 作为通信工具；Service Mesh 从开始概念上就火热，现在逐渐走向成熟，Istio + Envoy (其他 sidecar )逐渐开始走上舞台。</p>
+<h5><strong>应用开发者视角</strong></h5>
+<p><strong>&nbsp;</strong></p>
+<p>
+从功能层面来说，对开发者有感知的功能有：服务实现，服务暴露(注解或配置)，服务调用(注解或配置)，服务治理等。<br />从选型角度会关注以下几点：易用性(开发易用性和开箱即用)，性能，功能，扩展性等。</p>
+<h5><strong>框架开发者视角</strong></h5>
+<p>&nbsp;</p>
+<p>
+关键流程：服务暴露，服务注册，服务发现，服务调用，服务治理。<br />关键知识点：序列化，网络通信，服务路由，负载均衡，服务限流，熔断，降级等服务治理。</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2><strong>主流技术实现</strong></h2>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<h4><strong>Dubbo / HSF</strong></h4>
+<p><img src="./images/Dubbo 在 K8s 下的思考1.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br />Dubbo 提供了面向接口的远程方法调用。应用开发者定义接口，编写服务并暴露；<br />Client 端通过接口进行调用。<br />Dubbo 注册服务的维度是接口维度，每个接口会在注册中心写入一条数据。<br />Dubbo 支持条件路由，脚本路由，Tag 路由等。这些路由规则都是强依赖于 IP 地址。<br />备注：Dubbo 和 HSF 的大部分机制都是相似的，所以下面都以 Dubbo 作为方案进行讨论。</p>
+<h4><strong>SpringCloud</strong></h4>
+<p>&nbsp;</p>
+<p>
+Spring Cloud 通过 Rest 形式进行网络调用。应用开发者可以自己编写暴露 Rest 服务，如 springmvc 。<br />Spring Cloud 里的服务注册是应用维度( Eureka )，Client 端和 Server 端通过约定的方式进行通信。<br />Spring Cloud 提供了一套标准 API ，而其中 Netflix 是其中的佼佼者，对这套 API 进行了实现，对大部分开发者来说，可以回直接依赖和使用 Netflix ，所以可以说是 Netflix 提供成了 Spring Cloud 的核心。但是作为商业公司对开源投入往往会多变，如 Eureka 已经体制维护。</p>
+<h4><strong>gRPC</strong></h4>
+<p><strong>&nbsp;</strong></p>
+<p>
+gRPC 是一个基于 HTTP/2 协议设计的 RPC 框架，它采用了 Protobuf 作为 IDL 。gRPC 作为端到端的通信方案，可以解决现在的多语言问题。<br />gRPC 本身不提供服务注册，服务治理的功能。但现在可以看到 gRpc 有趋势往这方面扩展的野心。</p>
+<h4><strong>K8s</strong></h4>
+<p><strong>&nbsp;</strong></p>
+<p>
+K8s体系里暂时没有公允的通信框架，一般推荐 gRPC 作为 RPC 框架。<br />K8s 体系下，默认情况下， Pod 的 Ip 是变化的，所以 Pod 和 Pod 之间需要通信的话，有几种方式:</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>Service+DNS：新建一个 Service ，可以通过标签选择到一组 pod 列表，这个 service 对应一个不变的集群 Ip ；Client 端通过 DNS 方式或者直接访问集群 Ip 。这个集群 Ip ，约等于实现了负载均衡 ( iptable 方式)。</li>
+<li>headless service：headless service 和上面的 service 的区别是，它不提供集群 Ip ，通过主机名的形式获取一组 Ip 列表，Client 端自己决定访问哪个pod。</li>
+
+</ul>
+<h4>&nbsp;</h4>
+<h4><strong>Istio + Envoy</strong></h4>
+<p>&nbsp;</p>
+<p><img src="./images/Dubbo 在 K8s 下的思考2.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>
+Istio 的控制层会向 K8s 的 Api server 请求并监听 pod 信息，service 信息等信息。这样 Istio 中就有了完整的 K8s 集群中的 Pod，service 等的完整信息。如果K8s 集群中有信息变更，istio 中也可以得到通知并更新对应的信息。<br />Envoy 作为 Proxy 一个最常见的实现，以 Envoy 作为例子简单介绍。Envoy 通过查询文件或管理服务器来动态发现资源。对应的发现服务及其相应的 Api 被称作 xDS 。协议内容包括 LDS，RDS，CDS 等等。<br /><strong>参考资料：</strong>Service Mesh 介绍：<em>https://www.infoq.cn/article/pattern-service-mesh</em><em><br /></em>Istio 路由规则：<em>https://istio.io/docs/tasks/traffic-management/request-routing/</em><br />备注：上述知识是通过查阅资料( Istio 官网)，以及和集团 Service Mesh 同学沟通获得。如有问题，欢迎指正。<br /><br /></p>
+<h3><strong>小结</strong></h3>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p><img src="./images/Dubbo 在 K8s 下的思考3.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>
+<strong>遇到的问题和挑战</strong></p>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<h3><strong>Spring Cloud 和 Dubbo 的共生</strong></h3>
+<p><strong>&nbsp;</strong></p>
+<p>
+基础理论可以参考：<em>https://yq.aliyun.com/articles/585461</em><br />Dubbo 默认是基于 TCP 通信，Spring Cloud 大部分基于 Rest 请求。在阿里云实施商业化过程中，发现大量公司需要 Spring Cloud 应用和 Dubbo 进行通信，社区主要依靠 Dubbo 上增加一层网关来解决。<br />是否有方案进行统一服务注册发现，以及服务调用呢？</p>
+<h3><strong>Dubbo 在 K8s 场景下的挑战</strong></h3>
+<p dir="ltr">&nbsp;</p>
+<p>
+K8s 下 pod 的 IP 是变化的 (默认)，Dubbo 的服务治理高度依赖 IP 。<br />K8s 的服务注册通过 Pod 定义完成，服务发现其实是寻找 Pod 的过程。Pod 和应用有一定的对应关系，和 Dubbo 里的接口维度的服务注册发现模型不是很匹配。</p>
+<h3><strong>Dubbo</strong><strong> 在&nbsp;Service Mesh 场景</strong><strong>下的生存空间</strong></h3>
+<p>&nbsp;</p>
+<p>
+Dubbo 需要进行支持裁剪，Dubbo 的大部分功能都可以交由 sidecar ( proxy )来完成。<br />如果公司已经在部署了 RPC 框架，这时候如果需要实施&nbsp;Service Mesh ，有什么好的过渡方案吗？</p>
+<p>&nbsp;</p>
+<h1><strong>问题梳理</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<h3><strong>服务定义</strong></h3>
+<p>&nbsp;</p>
+<p>
+服务怎么定义呢？需要从应用开发者角度看待怎么定义服务。<br />服务在功能维度对应某一功能，如查询已买订单详情。在 Dubbo 中，对应某个接口下的方法；在 Spring Cloud 和 gRPC 对应一个 http 请求。如果从面向函数编程角度，一个服务就是一个 function 。在 Java 语言中，class 是一切编程的基础，所以将某些服务按照一定的维度进行聚合，放到某个接口中，就成了一个接口包含了很多的服务。<br />从 Dubbo 角度来解释下：Dubbo 是面向接口编程的远程通信，所以 Dubbo 是面向服务集的编程，你如果想调用某个服务，必须通过接口的方式引入，然后调用接口中的某个服务。Dubbo Ops 中提供的服务查询功能，其实不是查询单个服务，而是通过查询接口(服务集)之后获得具体的方法(服务)。<br />而在 Spring Cloud 的世界里，服务提供方会将自己的应用信息( Ip+port )注册成应用下的一个实例，服务消费方和服务提供方按照约定的形式进行 Rest 请求。每个请求对应的也是一个服务。</p>
+<h6><strong>和 K8s 里的 service 的区别</strong></h6>
+<h6>&nbsp;</h6>
+<p>
+K8s 里的 service 其实是对应到一组 pod+port 列表，和 DNS 联系紧密；用通俗易懂的方式表达：维护了 pod 集合的关系映射。和上面讲的服务是属于不同场景下的两个概念。<br />按照这个方式定义服务，服务治理的粒度其实也是按照服务粒度，可以针对每个服务设置超时时间，设置路由规则等等。但是服务注册的粒度和服务有什么关系呢？</p>
+<h3><strong>服务注册粒度</strong></h3>
+<p>&nbsp;</p>
+<p>
+一个应用下包含了很多接口，一个接口下包含了很多服务( Dubbo )；或者一个应用包含了很多的服务( Spring Cloud )。分析下应用维度注册和接口维度注册的优缺点。会有一篇独立的文章来阐述应用维度注册的方案。</p>
+<h5><strong>接口维度注册</strong></h5>
+<p>&nbsp;</p>
+<p>
+优点：</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>服务查询按照接口维度查询非常方便，实现难度低</li>
+<li>应用拆分或者合并的时候， Client 端(消费者)无需关心，做到了让用户无感</li>
+
+</ul>
+<p>
+<br />缺点：</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>和 K8s 等主流平台的模型对应关系不匹配</li>
+<li>注册的数据量非常大，有一定的性能风险</li>
+
+</ul>
+<h5>&nbsp;</h5>
+<h5><strong>应用维度</strong></h5>
+<p>
+优点：</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>和 K8s，Spring Cloud 等模型对应关系一致</li>
+<li>性能上可以得到很大缓解</li>
+
+</ul>
+<p>
+<br />缺点：</p>
+<ul class="list-paddingleft-2" data-mark="*">
+<li>应用拆分或者合并的时候，Client 端需要感知 (如果想做到不感知,需要框架开发者维护一份接口和应用映射关系的存储)</li>
+<li>如果想对用户保持 Dubbo 原有的接口维度的查询，需要较多的工作量来保证。</li>
+<li>对用户透明度有所减少，需要在 OPS 上提供其他一些工具。如供应用开发者可以查看具体某个 Ip 是否提供了某个服务等等。</li>
+
+</ul>
+<h1>&nbsp;</h1>
+<p>&nbsp;</p>
+<h1><strong>Dubbo 和 Spring Cloud</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>
+目标：Dubbo 和 Spring Cloud 的服务发现进行统一；Dubbo 和 Spring Cloud 可以互相调用。</p>
+<h3><strong>服务发现统一</strong></h3>
+<p>&nbsp;</p>
+<p>
+Dubbo 改造成应用维度的服务注册。（具体不展开，后面文章说明）</p>
+<h3><strong>打通调用</strong></h3>
+<p>&nbsp;</p>
+<p>
+Dubbo 实现中，支持将以 Rest 协议进行暴露，并且让 Spring Cloud 识别。@桃谷</p>
+<p>&nbsp;</p>
+<h1><strong>Dubbo + K8s</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>
+在 K8s 已经阐述过，下面的内容也是假设一个应用部署在一个容器里，一个容器部署在一个 pod 里。<br />接下来方案的讨论，互相之间其实是有关联的，如服务治理可能会影响到服务注册发现，服务查询也不能依赖于服务注册的内容。整个设计的过程是不断优化的过程。下面所说的内容，以 Dubbo 来举例说明。</p>
+<h3><strong>服务治理</strong></h3>
+<p><strong>&nbsp;</strong></p>
+<p>
+Dubbo 原有体系里的服务治理是强依赖于 IP ，当配置了一套服务治理规则的时候，最后都是基于一个或多个 Ip 地址。<br />到 K8s 体系下之后，要考虑的是 Pod 的 Ip 不是固定的。所以当前的路由规则不能满足条件，而且会产生很多规则垃圾数据。K8s 体系下，通过 service 查找 Pod ，是基于 label selector ；通过 deployment 管理 Pod ，其实也是基于 Pod label selector 。所以 pod label selector 是在 k8s 习题中比较通用的解决方案。<br />以路由规则为例，需要支持一种新的路由规则：label 路由。通过一定条件匹配之后，将结果定位到以 label selector 查询到的 Pod 列表里，而非原来的 ip 列表。<br />要支持 label 路由，client 端需要获取到 client 端自己的 Pod label 信息，还需要获取到 server pod 列表中每个 Pod 的 label 信息。</p>
+<h5><strong>应用获取当前Pod的信息方式</strong></h5>
+<p><strong>&nbsp;</strong></p>
+<ol class="list-paddingleft-2" start="">
+<li>Pod 定义环境变量，应用获取Dubbo 提供对环境变量读取的支持，Pod 中需要按照 Dubbo 定义的环境变量设置具体的 pod 信息。</li>
+<li>通过 Downward Api 传递 Pod 信息Dubbo 需要提供对 Downward 的目录读取，Pod 中需要定制 downward 的对应配置。</li>
+<li>通过 Api server 获取数据最强大的方式，但是应用需要强依赖于 Api server 。</li>
+
+</ol>
+<h5>&nbsp;</h5>
+<h5><strong>应用获取其他 Pod 的信息方式</strong></h5>
+<p><strong>&nbsp;</strong></p>
+<ol class="list-paddingleft-2" start="">
+<li>通过调用其他 Pod 的服务获取依赖于应用能获取自身的 Pod 信息，同时将自身的 Pod 信息暴露成服务( rest 或 dubbo 协议)client 端通过调用对用的 Pod 获取到对应 Pod 的完整信息。</li>
+<li>通过 Api server 获取数据很强大，但增加了对 Api server 的依赖。</li>
+
+</ol>
+<p>&nbsp;</p>
+<h3><strong>服务注册和发现</strong></h3>
+<p><strong>&nbsp;</strong></p>
+<p>
+K8s 体系下，RPC 服务发现有几种方式:</p>
+<ul class="list-paddingleft-2" data-mark="-">
+<li>注册机制：将 Ip 写入注册中心，用心跳保持连接；当心跳停止，从注册中心删除。</li>
+<li>利用 Service+DNS ：新建一个 Service ，可以通过标签选择到一组 pod 列表，这个 service 对应一个不变的集群 ip ；Client 端通过 DNS 方式或者直接访问集群 Ip 。这个集群 Ip ，约等于实现了负载均衡 ( iptable 方式)。</li>
+<li>利用 headless service(DNS) ：headless service 和上面的 service 的区别是，它不提供集群 Ip ，通过主机名的形式获取一组 Ip 列表，Client 端自己决定访问哪个 pod 。</li>
+<li>api server ：Client 端直接请求 api server ，获取到 pod 的列表， Client 自己决定访问 pod 的逻辑。同时获取的时候增加 watch ，api server 会将 pod 的变化信息同步 Client 。</li>
+
+</ul>
+<p>
+<br />通过拿到 Server 端的 Ip 或者 host ，Client 端就可以发起&nbsp; http 或者其他协议的请求。<br />下面介绍符合 Dubbo 的可行方案：</p>
+<h4><strong>1. Dubbo + Zookeeper pod cluster (HSF+CS cluster)</strong></h4>
+<p>&nbsp;</p>
+<p>
+这是最简单的方式，Dubbo 本身不需要做任何改造。<br />带来的问题是增加了 Zookeeper 的维护，同时这个方案很不云原生，和 K8s 的体系没有任何关系。</p>
+<h5><strong>脑暴</strong></h5>
+<p>
+上面方案是将 ZooKeeper 作为注册中心，那么是否可以将 K8s 里 service 作为注册中心呢？Dubbo 里每个接口去建立一个 service ，每个应用实例启动过程中去更新 Endpoint 信息，建立 Service-&gt; Endpoint-&gt; ip 列表的关系。<br />这种方案中 K8s service 的定义被改造了，而且定义了过多的 service ，service 的维护管理是个难题。</p>
+<h5><strong>基于 K8s 的场景</strong></h5>
+<p>
+在传统的 RPC 领域，服务分成服务注册和服务发现。在k8s领域pod和应用是一对一的关系，K8s 本身就提供了pod 查找的能力，所以一定程度上服务注册其实可以不存在，而只需要服务发现。但是这个其实需要一个前提：</p>
+<blockquote>Dubbo需要将服务注册发现的粒度改造成应用维度。在运维层面，将app=xxx (应用名)写入到pod的label中。</blockquote>
+<p><strong>&nbsp;</strong></p>
+<h4><strong>2. Dubbo + K8s DNS</strong></h4>
+<p><strong>&nbsp;</strong></p>
+<p>
+如果 K8s service 提供了cluster ip ，那么 Dubbo 只负责调用该集群 Ip ，路由和负载均衡的逻辑则交给了 K8s 的 proxy 来完成。此方案削减了 Dubbo 的核心能力。<br />接下来讨论 headless service 提供的能力。<br />通过请求 &lt;service&gt;.&lt;ns&gt;.svc.&lt;zone&gt;. &nbsp;IN A &nbsp;的方式发起请求获取 Ip 列表，但是需要轮询方式不断获取更新的 Ip 列表。<br />参考：<em>https://github.com/kubernetes/dns/blob/master/docs/specification.md#24---records-for-a-headless-service</em><br />服务治理相关的功能，需要在上述服务治理部分中独立支持。</p>
+<h4><strong>3. Dubbo + Api Server</strong></h4>
+<p><img src="./images/Dubbo 在 K8s 下的思考4.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br />Pod 的容器中部署的 Dubbo 应用，服务注册流程可以直接删除，服务发现功能通过和 Api Server 进行交互，获取 Pod 和 service 信息，同时 watch pod 和service 的变更。通过这种方式之后，服务治理相关的信息也可以通过 Api Server 直接获取。<br /><br /></p>
+<h4><strong>4. Dubbo + Istio + Envoy</strong></h4>
+<p>&nbsp;</p>
+<p>
+Dubbo 可以直接使用指定 ip+端口 的方式调用同一个 pod 下 Envoy &nbsp;(也可能是同一个node的Envoy)。Dubbo 将路由规则，负载均衡，熔断等功能交给Istio和 Envoy 。Envoy 需要支持 Dubbo 协议的转发。<br />所以 Dubbo 需要完成两个事情：本地 IP 直连(现有功能)， 多余功能裁剪(暂未实现)。</p>
+<h4><strong>5. Dubbo + Istio</strong></h4>
+<p><strong>&nbsp;<img src="./images/Dubbo 在 K8s 下的思考5.png" alt="" /></strong></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>Dubbo 应用不再依赖 Envoy 作为 sidecar ，而是直接和 Istio 进行交互，把 Istio 作为注册中心，作为服务治理的配置中心。<br /><br />Dubbo 需要提供类似的 xDS 协议，在pilot将service的instance转换成dubbo的协议格式。<br /><br />Dubbo 还需要去适配 istio 的一些功能，如健康检查，安全相关的逻辑。具体实现可以参考 Envoy 的实现。<br /><strong>6. Dubbo和Istio在k8s体系下共存</strong><br /><br />这个可选择的方案较多，我提供两种思路，供大家思考：<br /><br />所有的服务注册通过k8s的机制完成，所有的服务发现通过 Headless service 完成。sidecar 在创建过程中，需要对原有的 K8s service 进行 update 。<br /><br />Nacos 作为 Dubbo 的注册中心，并且需要将 K8s 中的数据进行部分中转。Dubbo 应用，将服务注册以应用维度注册到 Nacos ，Istio Pilot 需要识别 Nacos 数据；Istio 的运行机制基本不变，需要将 K8s service instance 的数据写入到 nacos ，供 Dubbo 调用。<br /><br /><strong>7. 云上和云下环境共存 &amp; 云上多集群环境</strong><br /><br />Istio 提供了跨集群和云上云下的解决方案， kubeFed 作为 K8s 的跨集群解决方案也能起到一定作用。<br /><br />这个课题的复杂度更加高，心中有了一些答案，期望大家通过上文也有一定的思考。</p>
+<p>&nbsp;</p>
+<h3><strong>服务查询</strong></h3>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>
+抛出三种方式，供大家思考。</p>
+<h4><strong>Dubbo 原有方式</strong></h4>
+<p>&nbsp;</p>
+<p> Dubbo 原有的服务查询是针对接口的查询，每个接口会有版本号和组别。接口名+版本号+组别确定唯一的服务集合，这个服务集下有对应的服务提供者和服务消费者(接口级依赖)，服务提供者是一组 ip+port 列表，服务消费者也是一组 ip+port 列表。<br /><img src="./images/Dubbo 在 K8s 下的思考6.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>
+当做了改造成应用级别的服务注册或者直接使用 K8s 自带的 Pod 发现机制的话，需要做一些改造，这部分改造，和前面提到的一样，放到其他文章里单独说明。</p>
+<h4><strong>只支持应用查询</strong></h4>
+<p>&nbsp;</p>
+<p>
+和 Spring Cloud 类似，支持应用维度的查询。查询到具体应用之后，应用详情下包含了 ip+port 列表，每个 ip+port 其实就是一个应用的实例。点击开每个应用实例，可以查看每个应用的详细信息，详细信息包含了该实例提供了哪些服务。</p>
+<h4><strong>接口+应用查询均衡</strong></h4>
+<p>&nbsp;</p>
+<p>
+在原来只支持应用查询的基础上，增加一步：支持查询某个接口对应的应用列表，而大部分接口只属于一个应用。<br />再点击应用列表下具体的应用之后，会跳到应用详情。<br /><br /></p>
+<h1><strong>总结</strong></h1>
+<hr />
+<p dir="ltr">&nbsp;</p>
+<p>
+上述讨论的是开源的方案，所以相对历史包袱比较少。对一些大公司想从原有的 RPC 方案切换到云原生的支持，需要考虑更多兼容性和性能，需要付出更大的代价。<br />云原生的趋势已经势不可挡，在 RPC 领域究竟哪种方案最终能够胜出，现在还言之过早。我相信 Service Mesh 和传统的 RPC &nbsp;(Dubbo/ gRPC)&nbsp; 都会有自己的一席之地，一切让时间给我们答案吧。<br /><strong>作者简介：</strong>曹胜利，Apache Dubbo PMC，关注 RPC 领域。在阿里内部负责 Dubbo 开源和 ClassLoader 隔离器 Pandora Boot 。</p>
+<p>原文链接：<a href="https://mp.weixin.qq.com/s/3e2jgHUKFQXpu-pTltRcZw" rel="nofollow,noindex" target="_blank">https://mp.weixin.qq.com/s/3e2jgHUKFQXpu-pTltRcZw</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

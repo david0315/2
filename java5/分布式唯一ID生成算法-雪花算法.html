@@ -1,0 +1,139 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修分布式唯一ID生成算法-雪花算法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>分布式唯一ID生成算法-雪花算法</center></div><div class='banquan'>原文出处:本文由博客园博主young码农提供。<br/>
+原文连接:https://www.cnblogs.com/haly/p/11470473.html</div><br>
+    <p>在我们的工作中，数据库某些表的字段会用到唯一的，趋势递增的订单编号，我们将介绍两种方法，一种是传统的采用随机数生成的方式，另外一种是采用当前比较流行的&ldquo;分布式唯一ID生成算法-雪花算法&rdquo;来实现。</p>
+<p>&nbsp;</p>
+<p><strong><span style="background-color: #33cccc;">一、时间戳随机数生成唯一ID</span></strong></p>
+<p>我们写一个for循环，用RandomUtil.generateOrderCode()生成1000个唯一ID，执行结果我们会发现出现重复的ID。</p>
+<src class="cnblogs_Highlighter">
+<pre><code>/**
+ * 随机数生成util
+ **/
+public class RandomUtil {
+    private static final SimpleDateFormat dateFormatOne=new SimpleDateFormat("yyyyMMddHHmmssSS");
+ 
+    private static final ThreadLocalRandom random=ThreadLocalRandom.current();
+    //生成订单编号-方式一
+    public static String generateOrderCode(){
+        //TODO:时间戳+N为随机数流水号
+        return dateFormatOne.format(DateTime.now().toDate()) + generateNumber(4);
+    }
+ 
+    //N为随机数流水号
+    public static String generateNumber(final int num){
+        StringBuffer sb=new StringBuffer();
+        for (int i=1;i&lt;=num;i++){
+            sb.append(random.nextInt(9));
+        }
+        return sb.toString();
+    }
+}
+</code></pre>
+
+<p>鉴于此种&ldquo;基于随机数生成&rdquo;的方式在高并发的场景下并不符合我们的要求，接下来，我们将介绍另外一种比较流行的、典型的方式，即&ldquo;分布式唯一ID生成算法-雪花算法&rdquo;来实现。</p>
+<p>对于&ldquo;雪花算法&rdquo;的介绍，各位小伙伴可以参考Github上的这一链接，我觉得讲得还是挺清晰的：<a href="https://github.com/souyunku/SnowFlake" target="_blank">https://github.com/souyunku/SnowFlake</a>，详细的Debug在这里就不赘述了，下面截取了部分概述：</p>
+<p>&nbsp;</p>
+<p><span style="background-color: #33cccc;"><strong>二、分布式唯一ID生成算法-雪花算法</strong></span></p>
+<p>我们写一个for循环，用SNOW_FLAKE.nextId() 生成1000个唯一ID，发现不会出现重复的。</p>
+<src class="cnblogs_Highlighter">
+<pre><code> /** * 雪花算法<br />*/
+public class SnowFlake {
+    //起始的时间戳
+    private final static long START_STAMP = 1480166465631L;
+ 
+    //每一部分占用的位数
+    private final static long SEQUENCE_BIT = 12; //序列号占用的位数
+    private final static long MACHINE_BIT = 5;   //机器标识占用的位数
+    private final static long DATA_CENTER_BIT = 5;//数据中心占用的位数
+ 
+    //每一部分的最大值
+    private final static long MAX_DATA_CENTER_NUM = -1L ^ (-1L &lt;&lt; DATA_CENTER_BIT);
+    private final static long MAX_MACHINE_NUM = -1L ^ (-1L &lt;&lt; MACHINE_BIT);
+    private final static long MAX_SEQUENCE = -1L ^ (-1L &lt;&lt; SEQUENCE_BIT);
+ 
+    //每一部分向左的位移
+    private final static long MACHINE_LEFT = SEQUENCE_BIT;
+    private final static long DATA_CENTER_LEFT = SEQUENCE_BIT + MACHINE_BIT;
+    private final static long TIMESTAMP_LEFT = DATA_CENTER_LEFT + DATA_CENTER_BIT;
+ 
+    private long dataCenterId;  //数据中心
+    private long machineId;     //机器标识
+    private long sequence = 0L; //序列号
+    private long lastStamp = -1L;//上一次时间戳
+ 
+    public SnowFlake(long dataCenterId, long machineId) {
+        if (dataCenterId &gt; MAX_DATA_CENTER_NUM || dataCenterId &lt; 0) {
+            throw new IllegalArgumentException("dataCenterId can't be greater than MAX_DATA_CENTER_NUM or less than 0");
+        }
+        if (machineId &gt; MAX_MACHINE_NUM || machineId &lt; 0) {
+            throw new IllegalArgumentException("machineId can't be greater than MAX_MACHINE_NUM or less than 0");
+        }
+        this.dataCenterId = dataCenterId;
+        this.machineId = machineId;
+    }
+ 
+    //产生下一个ID
+    public synchronized long nextId() {
+        long currStamp = getNewStamp();
+        if (currStamp &lt; lastStamp) {
+            throw new RuntimeException("Clock moved backwards.  Refusing to generate id");
+        }
+ 
+        if (currStamp == lastStamp) {
+            //相同毫秒内，序列号自增
+            sequence = (sequence + 1) &amp; MAX_SEQUENCE;
+            //同一毫秒的序列数已经达到最大
+            if (sequence == 0L) {
+                currStamp = getNextMill();
+            }
+        } else {
+            //不同毫秒内，序列号置为0
+            sequence = 0L;
+        }
+ 
+        lastStamp = currStamp;
+ 
+        return (currStamp - START_STAMP) &lt;&lt; TIMESTAMP_LEFT //时间戳部分
+                | dataCenterId &lt;&lt; DATA_CENTER_LEFT       //数据中心部分
+                | machineId &lt;&lt; MACHINE_LEFT             //机器标识部分
+                | sequence;                             //序列号部分
+    }
+ 
+    private long getNextMill() {
+        long mill = getNewStamp();
+        while (mill &lt;= lastStamp) {
+            mill = getNewStamp();
+        }
+        return mill;
+    }
+ 
+    private long getNewStamp() {
+        return System.currentTimeMillis();
+    }
+}
+</code></pre>
+
+<p><em id="__mceDel"><strong>综上，我们在高并发大量生成唯一ID时，避免生成重复ID，需要用第二种雪花算法生成。</strong></em></p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

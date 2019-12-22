@@ -1,0 +1,214 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Mybatis中的缓存管理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Mybatis中的缓存管理</center></div><div class='banquan'>原文出处:本文由博客园博主betteryi提供。<br/>
+原文连接:https://www.cnblogs.com/thegarden/p/11792974.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        <ul>
+        <li><a href="#mybatis中的缓存管理">Mybatis中的缓存管理</a></li>
+        <li><a href="#查询缓存工作原理">查询缓存工作原理：<br></a></li>
+        <li><a href="#配置缓存">配置缓存：</a><ul>
+        <li><a href="#默认配置">默认配置：</a></li>
+        <li><a href="#使用二级缓存">使用二级缓存：</a></li>
+        <li><a href="#刷新缓存过程">刷新缓存过程：</a></li>
+        </ul></li>
+        <li><a href="#配置ehcache">配置EHcache</a></li>
+        <li><a href="#产生脏数据">产生脏数据</a></li>
+        <li><a href="#使用原则">使用原则：</a></li>
+        </ul>
+    
+
+<h2 id="mybatis中的缓存管理">Mybatis中的缓存管理</h2>
+<h2 id="查询缓存工作原理">查询缓存工作原理：<br></h2>
+<p>查询语句 &lt;---&gt; 缓存 &lt;----&gt; DB<br></p>
+<p>缓存内容：</p>
+<p>Mybatis中存放的是查询的内容；</p>
+<p>缓存对比：</p>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: center;">类别</th>
+<th style="text-align: center;">作用范围</th>
+<th style="text-align: center;">生命周期</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">一级缓存</td>
+<td style="text-align: center;">namespace</td>
+<td style="text-align: center;">和sqlsession的生存周期相同</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">二级缓存</td>
+<td style="text-align: center;">namespace</td>
+<td style="text-align: center;">和整个应用的生命周期相同</td>
+</tr>
+</tbody>
+</table>
+<p>一级缓存：默认是开启的，无开关关闭；</p>
+<p>二级缓存：默认是开启的，需要手动关闭，二级缓存可以外置第三方的产品。</p>
+<h2 id="配置缓存">配置缓存：</h2>
+<h3 id="默认配置">默认配置：</h3>
+<ul>
+<li><p>一级缓存默认是开启的，无需配置，也不能关闭；</p></li>
+<li><p>二级缓存也是默认开启状态的，如果想要关闭的话在“全局配置文件”中配置；全局关闭之后后面的配置也就不起作用了；</p></li>
+</ul>
+<pre><code><code>&lt;configuration&gt;
+    &lt;!--二级缓存的全局开关--&gt;
+    &lt;settings&gt;
+        &lt;setting name=&quot;cacheEnabled&quot; value=&quot;false&quot;/&gt;
+    &lt;/settings&gt;
+&lt;/configuration&gt;</code></code></pre>
+<p>局部关闭设置：</p>
+<pre><code><code>&lt;!--在查询语句里添加设置：useCache=&quot;false&quot;--&gt;
+&lt;select id=&quot;selectStudentById2&quot; resultType=&quot;Student&quot; useCache=&quot;false&quot;&gt;
+    select id,name,age,score from student where id=#{xx}
+&lt;/select&gt;</code></code></pre>
+<h4 id="开启内置二级缓存">开启内置二级缓存：</h4>
+<ol>
+<li><p>在mapper文件中添加并配置<catch/>标签:</p>
+<pre><code><code>&lt;cache size=&quot;512&quot; eviction=&quot;LRU&quot; flushInterval=&quot;100000&quot;/&gt;</code></code></pre>
+<ul>
+<li><p>flushInterval：刷新间隔；单位是ms;</p></li>
+<li><p>eviction：收回缓存的策略；LRU为默认值，移除最长时间不被使用的对象；</p></li>
+<li><p>size:可以存储集合或者对象的引用数目；</p></li>
+<li><p>readOnly：设置只读，默认值为false;</p></li>
+</ul>
+<p><strong>为什么配置在mapper文件中</strong>：由于Mybatis的二级缓存是和命名空间绑定的（作用范围），所以二级缓存需要配置在Mapper.xml 映射文件中或者在接口文件中（注解形式配置）；</p></li>
+<li><p>操作的实体类实现Serializable接口。</p></li>
+</ol>
+<h3 id="使用二级缓存">使用二级缓存：</h3>
+<h4 id="证明二级缓存demo">证明二级缓存Demo</h4>
+<pre class="java"><code>public void Test01() throws IOException {
+    SqlSession session = MyBatisUtil.getSqlSession();
+    studentDao = session.getMapper(IStudentDao.class);
+    //第一次查询
+    Student student = studentDao.selectStudentById(2);
+    System.out.println(&quot;第一次查询：&quot;+student);
+    //关闭一级缓存
+    session.close();
+
+    SqlSession session2 = MyBatisUtil.getSqlSession();
+    studentDao = session2.getMapper(IStudentDao.class);
+    //第二次查询
+    Student student2 = studentDao.selectStudentById(2);
+    System.out.println(&quot;第二次查询：&quot;+student2);
+    //关闭一级缓存
+    session2.close();
+
+    SqlSession session3 = MyBatisUtil.getSqlSession();
+    studentDao = session3.getMapper(IStudentDao.class);
+    //第三次查询
+    Student student3 = studentDao.selectStudentById(2);
+    System.out.println(&quot;第三次查询：&quot;+student3);
+    //关闭一级缓存
+    session3.close();
+}</code></code></pre>
+<p>输出日志文件：</p>
+<p><code>[DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.0 [DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.0 [DEBUG] ==&gt;  Preparing: select id,name,age,score from student where id=?  [DEBUG] ==&gt; Parameters: 2(Integer) [DEBUG] &lt;==      Total: 1 第一次查询：Student{id=2, name='李四', age=18, score=90.0} [DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.5 第二次查询：Student{id=2, name='李四', age=18, score=90.0} [DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.6666666666666666 第三次查询：Student{id=2, name='李四', age=18, score=90.0}</code></p>
+<p>可以看到第一次查询访问DB，关闭了sqlsession之后一级缓存已经无效，但是第二次和第三次查询都成功命中了缓存；<br></p>
+<p><strong>过程</strong>：在一级缓存的sqlsession关闭之后，sqlsession就会把数据保存到二级缓存中，在这之后二级缓存就有了缓存数据；</p>
+<h4 id="刷新缓存demo">刷新缓存Demo：</h4>
+<pre class="java"><code>public void Test02() throws IOException {
+    SqlSession session = MyBatisUtil.getSqlSession();
+    studentDao = session.getMapper(IStudentDao.class);
+    //第一次查询
+    Student student = studentDao.selectStudentById(2);
+    System.out.println(&quot;第一次查询：&quot;+student);
+    //关闭一级缓存
+    session.close();
+
+    SqlSession session2 = MyBatisUtil.getSqlSession();
+    studentDao = session2.getMapper(IStudentDao.class);
+    //执行增删改操作
+    studentDao.insertStudent(new Student(&quot;小吕&quot;,21,96));
+
+    //第二次查询
+    Student student2 = studentDao.selectStudentById(2);
+    System.out.println(&quot;第二次查询：&quot;+student2);
+    //关闭一级缓存
+    session2.close();
+}</code></code></pre>
+<p>日志文件：</p>
+<p><code>[DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.0 [DEBUG] ==&gt;  Preparing: select id,name,age,score from student where id=?  [DEBUG] ==&gt; Parameters: 2(Integer) [DEBUG] &lt;==      Total: 1 第一次查询：Student{id=2, name='李四', age=18, score=90.0} [DEBUG] ==&gt;  Preparing: insert into student (name,age,score) value (?,?,?)  [DEBUG] ==&gt; Parameters: 小吕(String), 21(Integer), 96.0(Double) [DEBUG] &lt;==    Updates: 1 [DEBUG] Cache Hit Ratio [com.abc.dao.IStudentDao]: 0.5 [DEBUG] ==&gt;  Preparing: select id,name,age,score from student where id=?  [DEBUG] ==&gt; Parameters: 2(Integer) [DEBUG] &lt;==      Total: 1 第二次查询：Student{id=2, name='李四', age=18, score=90.0}</code></p>
+<p>第一次查询之后关闭sqlsession并进行了插入操作，然后再次查询时候依然访问DB，因为缓存被刷新了；</p>
+<h3 id="刷新缓存过程">刷新缓存过程：</h3>
+<h4 id="mybatis缓存底部实现">Mybatis缓存底部实现：</h4>
+<p>一级缓存和二级缓存的底层都是通过<strong>map</strong>来实现的</p>
+<ul>
+<li>对应<strong>key</strong> : HashCode + statementId + SQL语句（对象的哈希值+mapper文件中执行SQL语句的标签的id+SQL语句）</li>
+<li>对应<strong>value</strong> : 查询结果本身</li>
+</ul>
+<h4 id="缓存刷新">缓存刷新</h4>
+<ul>
+<li><p>增删改操作会刷新一级缓存和二级缓存：刷新缓存实际上是将缓存中所有的Entry对象的value置为null。并未删除整个Entry对象，key仍保留；所以当发生刷新之后再次查询会显示本次命中缓存，但是却到DB中查询；</p></li>
+<li><p>增删改默认影响二级缓存的，但也可以让其不影响：只需要在对应增删改的statement中添加flushCache=&quot;false&quot;</p>
+<pre><code><code>&lt;insert id=&quot;insertStudent&quot; flushCache=&quot;false&quot;&gt;
+    insert into student (name,age,score) value (#{name},#{age},#{score})
+&lt;/insert&gt;</code></code></pre></li>
+</ul>
+<p>所以综上，有两种情况是直接到DB中执行真正的查询：</p>
+<ol>
+<li>Map中根本不存在要查找的Entry，即没有要查找的key</li>
+<li>Map中存在要查找的key，但是它的value值为null</li>
+</ol>
+<h2 id="配置ehcache">配置EHcache</h2>
+<p>EHcache是外置的二级缓存，Mybatis官方也提供了EHcache的缓存：<a href="https://github.com/mybatis/ehcache-cache" class="uri">https://github.com/mybatis/ehcache-cache</a>&gt;</p>
+<h4 id="配置">配置：</h4>
+<ol>
+<li>首先导入两个jar:EHcache核心jar包，Mybatis和EHcache整合jar</li>
+</ol>
+<pre><code><code>&lt;!-- https://mvnrepository.com/artifact/org.ehcache/ehcache --&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;org.ehcache&lt;/groupId&gt;
+  &lt;artifactId&gt;ehcache&lt;/artifactId&gt;
+  &lt;version&gt;3.8.0&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!-- https://mvnrepository.com/artifact/org.mybatis/mybatis-ehcache --&gt;
+&lt;dependency&gt;
+  &lt;groupId&gt;org.mybatis&lt;/groupId&gt;
+  &lt;artifactId&gt;mybatis-ehcache&lt;/artifactId&gt;
+  &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<ol>
+<li><p>在映射文件中添加：</p>
+<pre><code><code>&lt;cache type=&quot;org.mybatis.caches.ehcache.EhcacheCache&quot;&gt;
+    &lt;property name=&quot;maxElementsInMemory&quot; value=&quot;1000&quot;/&gt;
+&lt;/cache&gt;</code></code></pre>
+<p>其中<property>中可以添加属性和它对应的值；</p></li>
+</ol>
+<h2 id="产生脏数据">产生脏数据</h2>
+<p><strong>脏数据产生</strong>：在关系型数据库中，经常使用多表联合查询，需要关联多个数据表才能得到查询结果，查询结果会被放在一个namespace的缓存中；涉及到其他表的增删改通常不在一个映射文件中，当其他的表的信息变更的时候，在当前的namespace缓存中查到的信息还是没有改变之前的数据。</p>
+<p><strong>避免脏数据的出现</strong>：这时需要用到参照缓存。当某几个表可以作为一个业务整体时，通常是让几个会关联的ER 表同时使用同一个二级缓存；当参照缓存更改之后就会重新到ＤＢ中查询；</p>
+<pre><code><code>&lt;mapper namespace= &quot;UserMapper&quot; &gt;
+    &lt;cache-ref namespace= &quot;RoleMapper&quot; /&gt;
+&lt;/mapper&gt;</code></code></pre>
+<h2 id="使用原则">使用原则：</h2>
+<ol>
+<li><p>不能出现多个namespace操作一张表的情况。</p>
+<p>原因：二级缓存的作用范围只是单个namespace。</p></li>
+<li><p>使用单表查询为主，尽量避免关联数据被改变；<br>对于关联查询的数据表不要出现增删改等操作，容易出现脏数据。</p></li>
+<li><p>查询操作较多，增删改较少的应用；</p></li>
+</ol>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

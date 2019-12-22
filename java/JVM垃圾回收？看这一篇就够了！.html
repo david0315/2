@@ -1,0 +1,298 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修JVM垃圾回收？看这一篇就够了！' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>JVM垃圾回收？看这一篇就够了！</center></div><div class='banquan'>原文出处:本文由博客园博主秃桔子提供。<br/>
+原文连接:https://www.cnblogs.com/godoforange/p/11552865.html</div><br>
+    <h1 id="深入理解jvm垃圾回收机制">深入理解JVM垃圾回收机制</h1>
+<h2 id="垃圾回收需要解决的问题及解决的办法总览">1、垃圾回收需要解决的问题及解决的办法总览</h2>
+<ul>
+<li>1、如何判定对象为垃圾对象
+<ul>
+<li>引用计数法</li>
+<li>可达性分析法</li>
+</ul></li>
+<li>2、如何回收
+<ul>
+<li>回收策略
+<ul>
+<li>标记-清除算法</li>
+<li>复制算法</li>
+<li>标记-整理算法</li>
+<li>分带收集算法</li>
+</ul></li>
+<li>垃圾回收器
+<ul>
+<li>serial</li>
+<li>parnew</li>
+<li>Cms</li>
+<li>G1</li>
+</ul></li>
+</ul></li>
+<li>3、何时回收</li>
+</ul>
+<hr />
+<p>下面就是如何判定对象为垃圾对象<br />
+***</p>
+<h2 id="引用计数法">2、引用计数法</h2>
+<p>在对象中添加一个引用计数器，当有地方引用这个对象的时候，引用技术器得值就+1，当引用失效的时候，计数器得值就-1<br />
+算法缺点:当某个引用被收集时，下个引用并不会清0，因此不被回收造成内存泄露。</p>
+<p>下面我们运行实例代码来看，JVM在循环引用时，是否能被收集(如果回收了就说明垃圾回收器用的不是引用计数法)。</p>
+<p>如果想打印日志信息，请填入如下参数。</p>
+<pre><code><code>-verbose:gc -XX:+PrintGCDetails </code></code></pre>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！0.png" /></p>
+<p>其中我们需要将每个对象的所占内存扩大，因此我们声明一个大点的空间。</p>
+<p>测试实验代码如下：</p>
+<pre><code><code>public class A {
+    private Object instance;
+    public A() {
+        byte[] m = new byte[20*1024*1024];
+    }
+    public static void main(String[] args) {
+        A a1 = new A();
+        A a2 = new A();
+        a1.instance=a2;
+        a2.instance=a1;
+        
+        a1=null;
+        a2=null;
+        System.gc();
+        //parallel 默认采用的垃圾回收器
+    }
+}
+</code></code></pre>
+<p>运行结果如下所示:</p>
+<blockquote>
+<p>[GC (System.gc()) [PSYoungGen: 22446K-&gt;648K(37888K)] 42926K-&gt;21136K(123904K), 0.0011193 secs] [Times: user=0.00 sys=0.00, real=0.00 secs]<br />
+[Full GC (System.gc()) [PSYoungGen: 648K-&gt;0K(37888K)] [ParOldGen: 20488K-&gt;519K(86016K)] 21136K-&gt;519K(123904K), [Metaspace: 2632K-&gt;2632K(1056768K)], 0.0074751 secs] [Times: user=0.02 sys=0.00, real=0.01 secs]<br />
+Heap<br />
+PSYoungGen total 37888K, used 328K [0x00000000d6000000, 0x00000000d8a00000, 0x0000000100000000)<br />
+eden space 32768K, 1% used [0x00000000d6000000,0x00000000d6052030,0x00000000d8000000)<br />
+from space 5120K, 0% used [0x00000000d8000000,0x00000000d8000000,0x00000000d8500000)<br />
+to space 5120K, 0% used [0x00000000d8500000,0x00000000d8500000,0x00000000d8a00000)<br />
+ParOldGen total 86016K, used 519K [0x0000000082000000, 0x0000000087400000, 0x00000000d6000000)<br />
+object space 86016K, 0% used [0x0000000082000000,0x0000000082081fd8,0x0000000087400000)<br />
+Metaspace used 2638K, capacity 4486K, committed 4864K, reserved 1056768K<br />
+class space used 281K, capacity 386K, committed 512K, reserved 1048576K</p>
+</blockquote>
+<p>这里我们会看到 22446K-&gt;648J这里，我们的对象被回收了，这就说明我们JVM采用的垃圾回收算法并不是引用计数法。</p>
+<hr />
+<h2 id="可达性分析法">3、可达性分析法</h2>
+<p>算法如名，可达性分析法就是从GCroot结点开始，看能否找到对象。</p>
+<p>GCroot结点开始向下搜索，路径称为引用链，当对象没有任何一条引用链链接的时候，就认为这个对象是垃圾，并进行回收。</p>
+<p>那么什么是GCroot呢(虚拟机在哪查找GCroot)。</p>
+<ul>
+<li>虚拟机栈(局部变量表)</li>
+<li>方法区的类属性所引用的对象。</li>
+<li>方法区中常量所引用的对象。</li>
+<li>本地方法栈中引用的对象。</li>
+</ul>
+<p>目前主流JVM采用的垃圾判定算法就是可达性分析法。</p>
+<hr />
+<p>至此垃圾判定算法结束</p>
+<p>垃圾回收算法开始</p>
+<hr />
+<h2 id="标记-清除算法">4、标记-清除算法</h2>
+<p>存在的问题:</p>
+<ul>
+<li>效率问题。</li>
+<li>内存小块过多。<br />
+如图所示：黄色的就是被标记清除的。清除后会发现有很多多余的小块。</li>
+</ul>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！1.png" /></p>
+<hr />
+<h2 id="复制算法">5、复制算法</h2>
+<p>下面是java内存常规划分</p>
+<ul>
+<li>(线程共有)堆内存 方法区</li>
+<li>(栈内存 本地方法栈) 程序计数器</li>
+</ul>
+<p>下面是堆内存的划分</p>
+<ul>
+<li>新生代
+<ul>
+<li>Eden 伊甸园</li>
+<li>Survivor 存活区</li>
+<li>Tenured Gen 养老区</li>
+</ul></li>
+<li>老年代</li>
+</ul>
+<p>下面就是过程：</p>
+<p>被标记的黑色就是需要回收的<br />
+<img src="./images/JVM垃圾回收？看这一篇就够了！2.png" /></p>
+<p>将白色区域复制下面，然后清空上面的</p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！3.png" /><br />
+<img src="./images/JVM垃圾回收？看这一篇就够了！4.png" /></p>
+<p>这样就完成了内存的连续分配，但是引来一个问题。<br />
+每次只能使用一半的内存。是不是有点少。。</p>
+<p>为了解决这个问题，我们对内存就进行了划分。<br />
+我们对内存分为了三块区域。<br />
+<img src="./images/JVM垃圾回收？看这一篇就够了！5.png" /></p>
+<table>
+<thead>
+<tr class="header">
+<th>内存区域</th>
+<th>所占百分比</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Eden</td>
+<td>80%</td>
+</tr>
+<tr class="even">
+<td>survivor</td>
+<td>10%</td>
+</tr>
+<tr class="odd">
+<td>Tenured Gen</td>
+<td>一点点</td>
+</tr>
+</tbody>
+</table>
+<p>复制算法，我们需要将上面的思路，将Eden中需要回收的对象放到Survivor，然后清除。<br />
+也就是俩个Survivor中进行复制与清除。</p>
+<p>这里我们即提高了效率，又减少了内存分配。</p>
+<p>如果Survivor不够放，那就扔到老年代里，或者其他方法，反正有内存担保。</p>
+<hr />
+<h2 id="标记-整理算法">6、标记-整理算法</h2>
+<p>复制算法主要针对新生代内存收集方法。<br />
+标记-整理算法主要针对的是老年代内存收集方法。</p>
+<p>主要步骤：标记-整理-清除</p>
+<p>如下图所示<br />
+<img src="./images/JVM垃圾回收？看这一篇就够了！6.png" /></p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！7.png" /></p>
+<p>然后将右面的进行删除计科达到回收效果。</p>
+<h2 id="分代收集算法">7、分代收集算法</h2>
+<p>分代收集算法是根据内存的分代选择不同的算法。<br />
+对于新生代，一般选择复制算法。<br />
+对于老年代，一般选择标记-整理-清除算法。</p>
+<p>显而易见，这是上面俩种算法的优点糅合在一起的应用。</p>
+<hr />
+<p>至此我们总结了所有垃圾回收算法。<br />
+下面就是各种出名的垃圾收集器</p>
+<hr />
+<h2 id="serial收集器">8、Serial收集器</h2>
+<p>特点：</p>
+<ul>
+<li>出现的最早的，发展最悠久的垃圾收集器。</li>
+<li>单线程垃圾收集器。</li>
+<li>主要针对新生代内存进行收集</li>
+</ul>
+<p>运行机制如下所示</p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！8.png" /></p>
+<p>缺点：慢</p>
+<p>用处：在客户端上运行还是比较有效。没有线程的开销，所以在客户端还是比较好用的。</p>
+<hr />
+<h2 id="parnew收集器">9、ParNew收集器</h2>
+<p>特点：</p>
+<ul>
+<li>由单线程变成了多线程垃圾收集器。</li>
+<li>如果要用CMS进行收集的话，最好采用ParNew收集器。</li>
+</ul>
+<p>实现原理都是复制算法。</p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！9.png" /></p>
+<p>缺点：</p>
+<ul>
+<li>性能较慢</li>
+</ul>
+<hr />
+<h2 id="parallel-scavenge-收集器">10、Parallel Scavenge 收集器</h2>
+<p>主用算法：复制算法(新生代收集器)</p>
+<p>吞吐量 = （执行用户代码消耗的时间）/（执行用户代码的时间）+ 垃圾回收时所占用的时间</p>
+<p>优点：吞吐量优化（CPU用于运行用户代码的时间与CPU消耗的总时间的比值）</p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！10.png" /></p>
+<p>关于控制吞吐量的参数如下</p>
+<pre><code><code>-XX:MaxGCPauseMills #垃圾收集器的停顿时间
+-XX:GCTimeRatio #吞吐量大小
+</code></code></pre>
+<p>当停顿时间过小时，内存对应变小，回收的频率增大。因此第一个参数需要设置的合理才比较好。<br />
+第二个参数值越大，吞吐量越大，默认是99，（垃圾回收时间最多只能占到1%）</p>
+<p>总的来说：客户端可用，服务端最好不用。</p>
+<hr />
+<h2 id="cms收集器concurrent-mark-sweep">11、CMS收集器（Concurrent Mark Sweep）</h2>
+<p>采用算法:标记清除算法。</p>
+<ul>
+<li>工作过程：
+<ul>
+<li>初始标记</li>
+<li>并发标记</li>
+<li>重新标记</li>
+<li>并发清理</li>
+</ul></li>
+<li>优点：
+<ul>
+<li>并发收集</li>
+<li>低停顿</li>
+</ul></li>
+<li>缺点：
+<ul>
+<li>占用大量的CPU资源</li>
+<li>无法处理浮动垃圾</li>
+<li>出现ConcurrentMode Failure</li>
+<li>空间碎片</li>
+</ul></li>
+</ul>
+<p>CMS是一个并发的收集器。</p>
+<p>目标是：减少延迟，增加响应速度<br />
+执行效果如下所示：</p>
+<p><img src="./images/JVM垃圾回收？看这一篇就够了！11.png" /></p>
+<ul>
+<li>初始标记
+<ul>
+<li>可达性分析法</li>
+</ul></li>
+<li>重新标记
+<ul>
+<li>为了修正并发期间，因对象重新运作而修正</li>
+</ul></li>
+<li>并发清理
+<ul>
+<li>直接清除了</li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="g1收集器面向服务端">12、G1收集器（面向服务端）</h2>
+<p>最牛的垃圾收集器。</p>
+<ul>
+<li>历史<br />
+-2004年Sun发表了第一篇G1的论文，到2006年左右，在JDK6内集成进去了。JDK7才放出来。</li>
+<li>优势
+<ul>
+<li>集中了前面所有收集器的优点</li>
+<li>G1能充分利用了多核的并行特点，能缩短停顿时间。</li>
+<li>分代收集（分成各种Region）</li>
+<li>空间整合（类似于标记清理算法）</li>
+<li>可预测的停顿（）。</li>
+</ul></li>
+<li>步骤
+<ul>
+<li>初始标记</li>
+<li>并发标记</li>
+<li>最终标记</li>
+<li>筛选回收</li>
+</ul></li>
+</ul>
+<hr />
+<h2 id="小结">13、小结：</h2>
+<p>至此我们就已经掌握了大部分GC的知识。这可不是一个小工程，希望要好好吸收知识。。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

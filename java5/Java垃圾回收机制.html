@@ -1,0 +1,339 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java垃圾回收机制' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java垃圾回收机制</center></div><div class='banquan'>原文出处:本文由博客园博主CodingDiary提供。<br/>
+原文连接:https://www.cnblogs.com/coding-diary/p/11722306.html</div><br>
+    <src class="markdown-here-wrapper" data-md-url="https://i.cnblogs.com/EditPosts.aspx?opt=1">
+<p style="margin: 0px 0px 1.2em !important;">Java 内存运行时区域中的程序计数器、虚拟机栈、本地方法栈随线程而生灭，栈中的栈帧随着方法的进入和退出而有条不紊地执行着出栈和入栈操作。每一个栈帧中分配多少内存基本上是在类结构确定下来时就已知的（尽管在运行期会由 JIT 编译器进行一些优化），因此这几个区域的内存分配和回收都具备确定性，不需要过多考虑回收的问题，因为方法结束或者线程结束时，内存自然就跟随着回收了。</p>
+<p style="margin: 0px 0px 1.2em !important;">而 Java 堆不一样，一个接口中的多个实现类需要的内存可能不一样，一个方法中的多个分支需要的内存也可能不一样，我们只有在程序处于运行期间时才能知道会创建哪些对象，这部分内存的分配和回收都是动态的，垃圾收集器所关注的是这部分内存。</p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">自动垃圾收集</h3>
+<p style="margin: 0px 0px 1.2em !important;">自动垃圾收集是查看堆内存，识别正在使用那些对象，那些对象未被删除，删除未被使用对象的过程。使用中对象或引用的对象意味着程序的某些部分任然维护指向该对象的指针。程序的任何部分都不再引用未使用的对象或未引用的对象，则可以回收未引用对象的内存。在C语言中，内存的分配和释放是手动的过程，在Java语言中内存的分配和回收是由垃圾收集器自动处理的。</p>
+<p style="margin: 0px 0px 1.2em !important;">而在自动垃圾收集中如何确定那些内存需要被回收，通常来说第一步就是标记，利用引用计数，可达性分析等来标记那些内存正在使用，那些内存不在使用。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制0.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">引用计数法</h3>
+<p style="margin: 0px 0px 1.2em !important;">引用计数法主要是通过给对象中添加一个引用计数器，每当一个地方引用它时，计数器的值就加1，当引用失效时，计数器的值就减1，当计数器的值为0时，对象就是不可能被使用的，可以对其进行垃圾回收。引用计数法的实现简单，效率也比较高，但是它很难解决对象之间循环引用的问题。</p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">可达性分析算法</h3>
+<p style="margin: 0px 0px 1.2em !important;">可达性分析算法，也称为根搜索算法，这个算法的基本思路就是通过一系列的名为&ldquo;GC Roots&rdquo;的对象为起始点，从这些节点开始向下搜索，搜索所走过的路径称为引用链，当一个对象到&ldquo;GC Roots&rdquo;没有任何引用链相连，则证明对象是不可用的，可以对其进行垃圾回收。</p>
+<p style="margin: 0px 0px 1.2em !important;">简单来说，将对象及其引用关系看作一个图，选定活动的对象作为&ldquo;GC Roots&rdquo;，然后跟踪引用链条，如果一个对象和&rdquo;GC Roots&ldquo;之间不可达，也就是不存在引用，即可认为是可回收对象。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制1.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">引用类型和可达性级别</h3>
+<p style="margin: 0px 0px 1.2em !important;"><strong>引用类型</strong>：</p>
+<ul style="margin: 1.2em 0px; padding-left: 2em;">
+<li style="margin: 0.5em 0px;">强引用（Strong Reference）：最常见的普通引用，只要还有强引用指向一个对象，就不会回收</li>
+<li style="margin: 0.5em 0px;">软引用（Soft Reference）：JVM认为内存不足阿时候，才会去试图回收软引用指向的对象（缓存场景）</li>
+<li style="margin: 0.5em 0px;">弱引用（Weak Reference）：虽然是引用，但随时有可能被回收掉</li>
+<li style="margin: 0.5em 0px;">虚引用（Phantom Reference）：不能通过它访问对象，提供对象被finalize以后，执行指定逻辑的机制。</li>
+</ul>
+<p style="margin: 0px 0px 1.2em !important;"><strong>可达性级别</strong>：</p>
+<ul style="margin: 1.2em 0px; padding-left: 2em;">
+<li style="margin: 0.5em 0px;">强可达（Strongly Reachable）：一个对象可以有一个或多个线程可以不通过各种引用访问到的情况</li>
+<li style="margin: 0.5em 0px;">软可达（Softly Reachable）：只能通过软引用才能访问到的状态</li>
+<li style="margin: 0.5em 0px;">弱引用（Weakly Reachable）：只能通过弱引用访问时的状态，当弱引用被清除的时候，就符合销毁条件</li>
+<li style="margin: 0.5em 0px;">幻像可达（Phantom Reachable）：不存在其他引用，并且finalize过了，只有幻像引用指向这个对象</li>
+<li style="margin: 0.5em 0px;">不可达（Unreachable）：意味着对象可以被清除了</li>
+</ul>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">垃圾收集算法</h3>
+<p style="margin: 0px 0px 1.2em !important;">目前主流广泛使用的垃圾收集算法，主要有标记-清除算法（Mark-Sweep），复制算法（Coping）以及标记-整理算法（Mark-Compact）。</p>
+<p style="margin: 0px 0px 1.2em !important;"><strong>标记-清除算法</strong>：首先识别出所有要回收的对象，然后进行清除。标记，清除的过程效率有限，存在内存碎片化的问题，不适合特别大的堆。其他收集算法基本都是基于标记-清除的思路进行改进。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制2.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;"><strong>复制算法</strong>：划分两块同等大小的区域，收集时将活着的对象复制到另一块区域。复制过程中将对象顺序放置，就可以避免内存碎片化。但是复制加上预留内存有一定的浪费</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制3.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;"><strong>标记-整理算法</strong>：类似于标记-清除，但为避免内存碎片化，它会在清理过程中将对象移动，以确保移动后的对象占用连续的内存</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制4.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">分代收集</h3>
+<p style="margin: 0px 0px 1.2em !important;">根据对象的存活周期，将内存划分为几个区域，不同区域采用合适的垃圾收集算法。目前主流的JVM一般将堆内存分为新生代和老年代（大小比列为1：2），而新生代又被分为了eden、from survivor、to survivor（大小比列为8:1:1）。在新生代中，每次垃圾收集时都发现有大量对象死去，只有少量存活，那么就可以选用复制算法，只需付出少量对象的复制成本就可以完成收集。在老年代中，对象存活率高，就可以使用标记-清除，标记-整理算法。</p>
+<p style="margin: 0px 0px 1.2em !important;">新生代几乎是所有JAVA对象出生的地方，JAVA对象申请的内存和存放都是在这个地方，JVM每次只会使用新生代中的eden和其中一块survivor来为对象服务，所以无论什么时候，都会有一块survivor空间空闲。当对象经过一次minor gc后仍然存活，并且能够被另外一块survivor所容纳，则使用复制算法将这些仍然存活的对象复制到另外一块survior区域中，然后清理掉eden和之前使用的survivor区域，并将这些存活的对象年龄+1，以后对象在survivor中每熬过一次minor gc则年龄增加1，当年龄达到某个值时（默认15，通过设置参数-XX:MaxTenuringThreshold来设置），这些对象就会进入老年代。当然，对于一些较大的对象可以直接进入老年代，可以根据-XX:+PretenureSizeThreshold设置大对象进入老年代的阈值。</p>
+<p style="margin: 0px 0px 1.2em !important;">新生代采用复制算法：</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制5.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;">老年代使用标记-整理算法：</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制6.png" alt="img" /></p>
+<h3 id="-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.3em;">垃圾收集器</h3>
+<p style="margin: 0px 0px 1.2em !important;">垃圾收集算法只是内存回收的理论方法，垃圾收集器才是内存回收的具体实现。Java虚拟机规范中对垃圾收集器的实现没有具体的规定，不同厂商，不同版本的垃圾收集器可能会差别很大。目前常见的垃圾收集器主要有Serial收集器，ParNew收集器，Parallel Scavenge收集器，Serial Old收集器，Parallel Old收集器，CMS收集器，G1收集器。这些垃圾收集器各有优劣，一般都是组合在一起使用，下图展示了在新生代和老年代可用的垃圾收集器组合：</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制7.png" alt="img" /></p>
+<h4 id="serial-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">Serial收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">Serial收集器是一个串行收集器，使用单个线程来执行所有垃圾收集工作，适合单处理器机器，GC在工作的时候将暂停其他所有的工作线程，即&rdquo;Stop The World&ldquo;。Serial收集器是一个新生代的单线程收集器，它使用复制算法，是虚拟机在client模式下的默认新生代收集器，可以通过设置参数-XX:+UseSerialGC来使用。</p>
+<h4 id="parnew-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">ParNew收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">ParNew收集器可以理解为串行收集器的多线程版本，其整体算法和Serial比较相似，除了使用多线程进行垃圾回收，其他的基本和Serial收集器一样。ParNew收集器是虚拟机在server模式下的默认新生代收集器，可以通过设置参数-XX:+UseParNewGC来使用。默认情况下它开启的线程数和CPU数量相同，也可以通过设置参数-XX:ParallelGCThreads来配置垃圾收集的线程数。</p>
+<h4 id="parallel-scavenge-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">Parallel Scavenge收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">Parallel Scavenge收集器也是一个新生代的并行垃圾收集器，使用的也是复制算法。Parallel Scavenge收集器的目标是达到一个可控制的吞吐量。吞吐量就是CPU运行用户代码的时间与CPU消耗的总时间的比值，即吞吐量=运行用户代码时间/（运行用户代码时间+垃圾收集时间）。Parallel Scavenge收集器提供-XX:MaxGCPauseMillis来控制最大垃圾收集停顿时间和-XX:GCTimeRatio来直接设置吞吐量的大小。</p>
+<h4 id="serial-old-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">Serial Old收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">Serial Old收集器是Serial收集器的在老年代使用的版本，它采用了标记-整理算法，可以通过设置参数-XX:+UseSerialOldGC来使用。</p>
+<h4 id="parallel-old-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">Parallel Old收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">Parallel Old收集器是Parallel Scavenge收集器的老年代版本，使用多线程和标记-整理算法，可以通过设置参数-XX:+UseParallelOldGC来使用。</p>
+<h4 id="cms-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">CMS收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">CMS收集器是一个并发收集器，CMS即Concurrent Mark Swap，主要用于老年代，使用标记-清除算法，可以通过设置参数-XX:+UseConcMarkSweepGC来使用。CMS收集器可以并行的执行用户程序和垃圾回收，这样就可以减少回收的停顿时间。CMS收集器设计的主要目的就是为了减少回收停顿时间，目前很多的Java应用都集中在互联网网站或B/S系统服务端，这类应用尤其重视服务的响应速度，希望系统停顿时间最短，CMS收集器非常符合这类应用的要求。当然，CMS收集器也有自己的缺点，它会占用更多的CPU资源，并和用户线程争抢，同时由于采用标记－清除算法，存在着内存碎片化的问题，长时间运行等情况下可能发full gc导致恶劣的停顿。</p>
+<p style="margin: 0px 0px 1.2em !important;">CMS收集器垃圾收集的整个过程有4个步骤，初始标记，并发标记，重写标记以及并发清除。其中初始标记和重写标记任然需要&rdquo;Stop The World&rdquo;，但是速度很快，整个过程中耗时的操作在并发标记和并发清除阶段，在这个过程中，收集器线程都可以和用户线程一起工作。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制8.png" alt="img" /></p>
+<h4 id="g1-" style="margin: 1.3em 0px 1em; padding: 0px; font-weight: bold; font-size: 1.2em;">G1收集器</h4>
+<p style="margin: 0px 0px 1.2em !important;">G1（Garage First）收集器是当前垃圾收集器技术最前沿的成果，在JDK7中开始使用（可以通过配置-XX:+UseG1GC使用），从JDK9开始G1已经成为JVM默认的垃圾收集器。G1垃圾收集器也是以关注延迟为目标、服务器端应用的垃圾收集器，其目标就是取代CMS垃圾收集器。</p>
+<p style="margin: 0px 0px 1.2em !important;">G1采用了分区(Region)的思路，将整个堆空间分成若干个大小相等的内存区域，每次分配对象空间将逐段地使用内存，这样最大的好处就是化整为零，避免全内存扫描，只需要按照区域来进行扫描即可。启动时可以通过参数-XX:G1HeapRegionSize=n可指定分区大小(1MB~32MB，且必须是2的幂)，默认将整堆划分为2048个分区。在堆的使用上，整个内存分区不存在物理上的年轻代和老年代的区别，也不需要完全独立的 Survivor to space 堆做复制准备。G1 只有逻辑上的分代概念，或者说每个分区都可能随 G1 的运行在不同代之间前后切换。</p>
+<p style="margin: 0px 0px 1.2em !important;">G1收集器整体采用标记-整理算法，局部是通过是通过复制算法，不会产生内存碎片，能充分利用多 CPU、多核环境硬件优势，尽量缩短&rdquo;Stop The World&rdquo;的时间</p>
+<p style="margin: 0px 0px 1.2em !important;">下图左侧为G1收集器的内存划分概图，红色为新生代（没有S的为eden区域，有S的为survivor区域），蓝色为老年代（带有H的表示humongous ，存放humongous objects，即大于等于region一半的对象）。右侧为G1收集器的垃圾收集环图，G1的垃圾收集在层次上可以分为两个阶段，young-only阶段和Space-reclamation阶段，在young-only阶段又分为Initial Mark ，Remark，Cleanup。</p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制9.png" alt="img" /></p>
+<p style="margin: 0px 0px 1.2em !important;"><img src="./images/Java垃圾回收机制10.png" alt="" /></p>
+<src style="height: 0; width: 0; max-height: 0; max-width: 0; overflow: hidden; font-size: 0em; padding: 0; margin: 0;" title="MDH:PHByZT48YnI+SmF2YSDlhoXlrZjov5DooYzml7bljLrln5/kuK3nmoTnqIvluo/orqHmlbDlmajj
+gIHomZrmi5/mnLrmoIjjgIHmnKzlnLDmlrnms5XmoIjpmo/nur/nqIvogIznlJ/nga3vvIzmoIjk
+uK3nmoTmoIjluKfpmo/nnYDmlrnms5XnmoTov5vlhaXlkozpgIDlh7rogIzmnInmnaHkuI3ntIrl
+nLDmiafooYznnYDlh7rmoIjlkozlhaXmoIjmk43kvZzjgILmr4/kuIDkuKrmoIjluKfkuK3liIbp
+hY3lpJrlsJHlhoXlrZjln7rmnKzkuIrmmK/lnKjnsbvnu5PmnoTnoa7lrprkuIvmnaXml7blsLHl
+t7Lnn6XnmoTvvIjlsL3nrqHlnKjov5DooYzmnJ/kvJrnlLEgSklUIOe8luivkeWZqOi/m+ihjOS4
+gOS6m+S8mOWMlu+8ie+8jOWboOatpOi/meWHoOS4quWMuuWfn+eahOWGheWtmOWIhumFjeWSjOWb
+nuaUtumDveWFt+Wkh+ehruWumuaAp++8jOS4jemcgOimgei/h+WkmuiAg+iZkeWbnuaUtueahOmX
+rumimO+8jOWboOS4uuaWueazlee7k+adn+aIluiAhee6v+eoi+e7k+adn+aXtu+8jOWGheWtmOiH
+queEtuWwsei3n+maj+edgOWbnuaUtuS6huOAgjxicj48YnI+6ICMIEphdmEg5aCG5LiN5LiA5qC3
+77yM5LiA5Liq5o6l5Y+j5Lit55qE5aSa5Liq5a6e546w57G76ZyA6KaB55qE5YaF5a2Y5Y+v6IO9
+5LiN5LiA5qC377yM5LiA5Liq5pa55rOV5Lit55qE5aSa5Liq5YiG5pSv6ZyA6KaB55qE5YaF5a2Y
+5Lmf5Y+v6IO95LiN5LiA5qC377yM5oiR5Lus5Y+q5pyJ5Zyo56iL5bqP5aSE5LqO6L+Q6KGM5pyf
+6Ze05pe25omN6IO955+l6YGT5Lya5Yib5bu65ZOq5Lqb5a+56LGh77yM6L+Z6YOo5YiG5YaF5a2Y
+55qE5YiG6YWN5ZKM5Zue5pS26YO95piv5Yqo5oCB55qE77yM5Z6D5Zy+5pS26ZuG5Zmo5omA5YWz
+5rOo55qE5piv6L+Z6YOo5YiG5YaF5a2Y44CCPGJyPjxicj4jIyMg6Ieq5Yqo5Z6D5Zy+5pS26ZuG
+PGJyPjxicj7oh6rliqjlnoPlnL7mlLbpm4bmmK/mn6XnnIvloIblhoXlrZjvvIzor4bliKvmraPl
+nKjkvb/nlKjpgqPkupvlr7nosaHvvIzpgqPkupvlr7nosaHmnKrooqvliKDpmaTvvIzliKDpmaTm
+nKrooqvkvb/nlKjlr7nosaHnmoTov4fnqIvjgILkvb/nlKjkuK3lr7nosaHmiJblvJXnlKjnmoTl
+r7nosaHmhI/lkbPnnYDnqIvluo/nmoTmn5Dkupvpg6jliIbku7vnhLbnu7TmiqTmjIflkJHor6Xl
+r7nosaHnmoTmjIfpkojjgILnqIvluo/nmoTku7vkvZXpg6jliIbpg73kuI3lho3lvJXnlKjmnKrk
+vb/nlKjnmoTlr7nosaHmiJbmnKrlvJXnlKjnmoTlr7nosaHvvIzliJnlj6/ku6Xlm57mlLbmnKrl
+vJXnlKjlr7nosaHnmoTlhoXlrZjjgILlnKhD6K+t6KiA5Lit77yM5YaF5a2Y55qE5YiG6YWN5ZKM
+6YeK5pS+5piv5omL5Yqo55qE6L+H56iL77yM5ZyoSmF2YeivreiogOS4reWGheWtmOeahOWIhumF
+jeWSjOWbnuaUtuaYr+eUseWeg+WcvuaUtumbhuWZqOiHquWKqOWkhOeQhueahOOAgjxicj48YnI+
+6ICM5Zyo6Ieq5Yqo5Z6D5Zy+5pS26ZuG5Lit5aaC5L2V56Gu5a6a6YKj5Lqb5YaF5a2Y6ZyA6KaB
+6KKr5Zue5pS277yM6YCa5bi45p2l6K+056ys5LiA5q2l5bCx5piv5qCH6K6w77yM5Yip55So5byV
+55So6K6h5pWw77yM5Y+v6L6+5oCn5YiG5p6Q562J5p2l5qCH6K6w6YKj5Lqb5YaF5a2Y5q2j5Zyo
+5L2/55So77yM6YKj5Lqb5YaF5a2Y5LiN5Zyo5L2/55So44CCPGJyPjxicj4hW2ltZ10oaHR0cHM6
+Ly9naXRlZS5jb20vbW8tc2UtZGUtZmVuZy9ub3Rlcy9yYXcvbWFzdGVyLyVFOSVBQiU5OCVFNiU4
+MCVBNyVFOCU4MyVCRCVFNyVCQyU5NiVFNyVBOCU4QiVFNCVCOCU5MyVFOSVBMiU5OC9pbWFnZXMv
+My4xLjIlMjAlRTUlODYlODUlRTUlQUQlOTglRTYlQTAlODclRTglQUUlQjAuUE5HKTxicj48YnI+
+IyMjIOW8leeUqOiuoeaVsOazlTxicj48YnI+5byV55So6K6h5pWw5rOV5Li76KaB5piv6YCa6L+H
+57uZ5a+56LGh5Lit5re75Yqg5LiA5Liq5byV55So6K6h5pWw5Zmo77yM5q+P5b2T5LiA5Liq5Zyw
+5pa55byV55So5a6D5pe277yM6K6h5pWw5Zmo55qE5YC85bCx5YqgMe+8jOW9k+W8leeUqOWkseaV
+iOaXtu+8jOiuoeaVsOWZqOeahOWAvOWwseWHjzHvvIzlvZPorqHmlbDlmajnmoTlgLzkuLow5pe2
+77yM5a+56LGh5bCx5piv5LiN5Y+v6IO96KKr5L2/55So55qE77yM5Y+v5Lul5a+55YW26L+b6KGM
+5Z6D5Zy+5Zue5pS244CC5byV55So6K6h5pWw5rOV55qE5a6e546w566A5Y2V77yM5pWI546H5Lmf
+5q+U6L6D6auY77yM5L2G5piv5a6D5b6I6Zq+6Kej5Yaz5a+56LGh5LmL6Ze05b6q546v5byV55So
+55qE6Zeu6aKY44CCPGJyPjxicj4jIyMg5Y+v6L6+5oCn5YiG5p6Q566X5rOVPGJyPjxicj7lj6/o
+vr7mgKfliIbmnpDnrpfms5XvvIzkuZ/np7DkuLrmoLnmkJzntKLnrpfms5XvvIzov5nkuKrnrpfm
+s5XnmoTln7rmnKzmgJ3ot6/lsLHmmK/pgJrov4fkuIDns7vliJfnmoTlkI3kuLrigJxHQyBSb290
+c+KAneeahOWvueixoeS4uui1t+Wni+eCue+8jOS7jui/meS6m+iKgueCueW8gOWni+WQkeS4i+aQ
+nOe0ou+8jOaQnOe0ouaJgOi1sOi/h+eahOi3r+W+hOensOS4uuW8leeUqOmTvu+8jOW9k+S4gOS4
+quWvueixoeWIsOKAnEdDIFJvb3Rz4oCd5rKh5pyJ5Lu75L2V5byV55So6ZO+55u46L+e77yM5YiZ
+6K+B5piO5a+56LGh5piv5LiN5Y+v55So55qE77yM5Y+v5Lul5a+55YW26L+b6KGM5Z6D5Zy+5Zue
+5pS244CCPGJyPjxicj7nroDljZXmnaXor7TvvIzlsIblr7nosaHlj4rlhbblvJXnlKjlhbPns7vn
+nIvkvZzkuIDkuKrlm77vvIzpgInlrprmtLvliqjnmoTlr7nosaHkvZzkuLrigJxHQyBSb290c+KA
+ne+8jOeEtuWQjui3n+i4quW8leeUqOmTvuadoe+8jOWmguaenOS4gOS4quWvueixoeWSjOKAnUdD
+IFJvb3Rz4oCc5LmL6Ze05LiN5Y+v6L6+77yM5Lmf5bCx5piv5LiN5a2Y5Zyo5byV55So77yM5Y2z
+5Y+v6K6k5Li65piv5Y+v5Zue5pS25a+56LGh44CCPGJyPjxicj4hW2ltZ10oaHR0cHM6Ly9naXRl
+ZS5jb20vbW8tc2UtZGUtZmVuZy9ub3Rlcy9yYXcvbWFzdGVyLyVFOSVBQiU5OCVFNiU4MCVBNyVF
+OCU4MyVCRCVFNyVCQyU5NiVFNyVBOCU4QiVFNCVCOCU5MyVFOSVBMiU5OC9pbWFnZXMvMy4xLjIl
+MjAlRTUlOEYlQUYlRTglQkUlQkUlRTYlODAlQTclRTUlODglODYlRTYlOUUlOTAlRTclQUUlOTcl
+RTYlQjMlOTUuUE5HKTxicj48YnI+IyMjIOW8leeUqOexu+Wei+WSjOWPr+i+vuaAp+e6p+WIqzxi
+cj48YnI+KirlvJXnlKjnsbvlnosqKu+8mjxicj4tIOW8uuW8leeUqO+8iFN0cm9uZyBSZWZlcmVu
+Y2XvvInvvJrmnIDluLjop4HnmoTmma7pgJrlvJXnlKjvvIzlj6ropoHov5jmnInlvLrlvJXnlKjm
+jIflkJHkuIDkuKrlr7nosaHvvIzlsLHkuI3kvJrlm57mlLY8YnI+LSDova/lvJXnlKjvvIhTb2Z0
+IFJlZmVyZW5jZe+8ie+8mkpWTeiupOS4uuWGheWtmOS4jei2s+mYv+aXtuWAme+8jOaJjeS8muWO
+u+ivleWbvuWbnuaUtui9r+W8leeUqOaMh+WQkeeahOWvueixoe+8iOe8k+WtmOWcuuaZr++8iTxi
+cj4tIOW8seW8leeUqO+8iFdlYWsgUmVmZXJlbmNl77yJ77ya6Jm954S25piv5byV55So77yM5L2G
+6ZqP5pe25pyJ5Y+v6IO96KKr5Zue5pS25o6JPGJyPi0g6Jma5byV55So77yIUGhhbnRvbSBSZWZl
+cmVuY2XvvInvvJrkuI3og73pgJrov4flroPorr/pl67lr7nosaHvvIzmj5Dkvpvlr7nosaHooqtm
+aW5hbGl6ZeS7peWQju+8jOaJp+ihjOaMh+WumumAu+i+keeahOacuuWItuOAgjxicj48YnI+Kirl
+j6/ovr7mgKfnuqfliKsqKu+8mjxicj4tIOW8uuWPr+i+vu+8iFN0cm9uZ2x5IFJlYWNoYWJsZe+8
+ie+8muS4gOS4quWvueixoeWPr+S7peacieS4gOS4quaIluWkmuS4que6v+eoi+WPr+S7peS4jemA
+mui/h+WQhOenjeW8leeUqOiuv+mXruWIsOeahOaDheWGtTxicj4tIOi9r+WPr+i+vu+8iFNvZnRs
+eSBSZWFjaGFibGXvvInvvJrlj6rog73pgJrov4fova/lvJXnlKjmiY3og73orr/pl67liLDnmoTn
+irbmgIE8YnI+LSDlvLHlvJXnlKjvvIhXZWFrbHkgUmVhY2hhYmxl77yJ77ya5Y+q6IO96YCa6L+H
+5byx5byV55So6K6/6Zeu5pe255qE54q25oCB77yM5b2T5byx5byV55So6KKr5riF6Zmk55qE5pe2
+5YCZ77yM5bCx56ym5ZCI6ZSA5q+B5p2h5Lu2PGJyPi0g5bm75YOP5Y+v6L6+77yIUGhhbnRvbSBS
+ZWFjaGFibGXvvInvvJrkuI3lrZjlnKjlhbbku5blvJXnlKjvvIzlubbkuJRmaW5hbGl6Zei/h+S6
+hu+8jOWPquacieW5u+WDj+W8leeUqOaMh+WQkei/meS4quWvueixoTxicj4tIOS4jeWPr+i+vu+8
+iFVucmVhY2hhYmxl77yJ77ya5oSP5ZGz552A5a+56LGh5Y+v5Lul6KKr5riF6Zmk5LqGPGJyPjxi
+cj4jIyMg5Z6D5Zy+5pS26ZuG566X5rOVPGJyPjxicj7nm67liY3kuLvmtYHlub/ms5vkvb/nlKjn
+moTlnoPlnL7mlLbpm4bnrpfms5XvvIzkuLvopoHmnInmoIforrAt5riF6Zmk566X5rOV77yITWFy
+ay1Td2VlcO+8ie+8jOWkjeWItueul+azle+8iENvcGluZ++8ieS7peWPiuagh+iusC3mlbTnkIbn
+rpfms5XvvIhNYXJrLUNvbXBhY3TvvInjgII8YnI+PGJyPioq5qCH6K6wLea4hemZpOeul+azlSoq
+77ya6aaW5YWI6K+G5Yir5Ye65omA5pyJ6KaB5Zue5pS255qE5a+56LGh77yM54S25ZCO6L+b6KGM
+5riF6Zmk44CC5qCH6K6w77yM5riF6Zmk55qE6L+H56iL5pWI546H5pyJ6ZmQ77yM5a2Y5Zyo5YaF
+5a2Y56KO54mH5YyW55qE6Zeu6aKY77yM5LiN6YCC5ZCI54m55Yir5aSn55qE5aCG44CC5YW25LuW
+5pS26ZuG566X5rOV5Z+65pys6YO95piv5Z+65LqO5qCH6K6wLea4hemZpOeahOaAnei3r+i/m+ih
+jOaUuei/m+OAgjxicj48YnI+IVtpbWddKGh0dHBzOi8vZ2l0ZWUuY29tL21vLXNlLWRlLWZlbmcv
+bm90ZXMvcmF3L21hc3Rlci8lRTklQUIlOTglRTYlODAlQTclRTglODMlQkQlRTclQkMlOTYlRTcl
+QTglOEIlRTQlQjglOTMlRTklQTIlOTgvaW1hZ2VzLzMuMS4yJTIwJUU2JUEwJTg3JUU4JUFFJUIw
+JUU2JUI4JTg1JUU5JTk5JUE0JUU3JUFFJTk3JUU2JUIzJTk1LlBORyk8YnI+PGJyPioq5aSN5Yi2
+566X5rOVKirvvJrliJLliIbkuKTlnZflkIznrYnlpKflsI/nmoTljLrln5/vvIzmlLbpm4bml7bl
+sIbmtLvnnYDnmoTlr7nosaHlpI3liLbliLDlj6bkuIDlnZfljLrln5/jgILlpI3liLbov4fnqIvk
+uK3lsIblr7nosaHpobrluo/mlL7nva7vvIzlsLHlj6/ku6Xpgb/lhY3lhoXlrZjnoo7niYfljJbj
+gILkvYbmmK/lpI3liLbliqDkuIrpooTnlZnlhoXlrZjmnInkuIDlrprnmoTmtarotLk8YnI+PGJy
+PiFbaW1nXShodHRwczovL2dpdGVlLmNvbS9tby1zZS1kZS1mZW5nL25vdGVzL3Jhdy9tYXN0ZXIv
+JUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgzJUJEJUU3JUJDJTk2JUU3JUE4JThCJUU0JUI4JTkzJUU5
+JUEyJTk4L2ltYWdlcy8zLjEuMiUyMCVFNSVBNCU4RCVFNSU4OCVCNiVFNyVBRSU5NyVFNiVCMyU5
+NS5QTkcpPGJyPjxicj4qKuagh+iusC3mlbTnkIbnrpfms5UqKu+8muexu+S8vOS6juagh+iusC3m
+uIXpmaTvvIzkvYbkuLrpgb/lhY3lhoXlrZjnoo7niYfljJbvvIzlroPkvJrlnKjmuIXnkIbov4fn
+qIvkuK3lsIblr7nosaHnp7vliqjvvIzku6Xnoa7kv53np7vliqjlkI7nmoTlr7nosaHljaDnlKjo
+v57nu63nmoTlhoXlrZg8YnI+PGJyPiFbaW1nXShodHRwczovL2dpdGVlLmNvbS9tby1zZS1kZS1m
+ZW5nL25vdGVzL3Jhdy9tYXN0ZXIvJUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgzJUJEJUU3JUJDJTk2
+JUU3JUE4JThCJUU0JUI4JTkzJUU5JUEyJTk4L2ltYWdlcy8zLjEuMiUyMCVFNiVBMCU4NyVFOCVB
+RSVCMCVFNiU5NSVCNCVFNyU5MCU4NiVFNyVBRSU5NyVFNiVCMyU5NS5QTkcpPGJyPjxicj4jIyMg
+5YiG5Luj5pS26ZuGPGJyPjxicj7moLnmja7lr7nosaHnmoTlrZjmtLvlkajmnJ/vvIzlsIblhoXl
+rZjliJLliIbkuLrlh6DkuKrljLrln5/vvIzkuI3lkIzljLrln5/ph4fnlKjlkIjpgILnmoTlnoPl
+nL7mlLbpm4bnrpfms5XjgILnm67liY3kuLvmtYHnmoRKVk3kuIDoiKzlsIbloIblhoXlrZjliIbk
+uLrmlrDnlJ/ku6PlkozogIHlubTku6PvvIjlpKflsI/mr5TliJfkuLox77yaMu+8ie+8jOiAjOaW
+sOeUn+S7o+WPiOiiq+WIhuS4uuS6hmVkZW7jgIFmcm9tIHN1cnZpdm9y44CBdG8gc3Vydml2b3Lv
+vIjlpKflsI/mr5TliJfkuLo4OjE6Me+8ieOAguWcqOaWsOeUn+S7o+S4re+8jOavj+asoeWeg+Wc
+vuaUtumbhuaXtumDveWPkeeOsOacieWkp+mHj+Wvueixoeatu+WOu++8jOWPquacieWwkemHj+Wt
+mOa0u++8jOmCo+S5iOWwseWPr+S7pemAieeUqOWkjeWItueul+azle+8jOWPqumcgOS7mOWHuuWw
+kemHj+WvueixoeeahOWkjeWItuaIkOacrOWwseWPr+S7peWujOaIkOaUtumbhuOAguWcqOiAgeW5
+tOS7o+S4re+8jOWvueixoeWtmOa0u+eOh+mrmO+8jOWwseWPr+S7peS9v+eUqOagh+iusC3muIXp
+maTvvIzmoIforrAt5pW055CG566X5rOV44CCPGJyPjxicj7mlrDnlJ/ku6Plh6DkuY7mmK/miYDm
+nIlKQVZB5a+56LGh5Ye655Sf55qE5Zyw5pa577yMSkFWQeWvueixoeeUs+ivt+eahOWGheWtmOWS
+jOWtmOaUvumDveaYr+WcqOi/meS4quWcsOaWue+8jEpWTeavj+asoeWPquS8muS9v+eUqOaWsOeU
+n+S7o+S4reeahGVkZW7lkozlhbbkuK3kuIDlnZdzdXJ2aXZvcuadpeS4uuWvueixoeacjeWKoe+8
+jOaJgOS7peaXoOiuuuS7gOS5iOaXtuWAme+8jOmDveS8muacieS4gOWdl3N1cnZpdm9y56m66Ze0
+56m66Zey44CC5b2T5a+56LGh57uP6L+H5LiA5qyhbWlub3IgZ2PlkI7ku43nhLblrZjmtLvvvIzl
+ubbkuJTog73lpJ/ooqvlj6blpJbkuIDlnZdzdXJ2aXZvcuaJgOWuuee6s++8jOWImeS9v+eUqOWk
+jeWItueul+azleWwhui/meS6m+S7jeeEtuWtmOa0u+eahOWvueixoeWkjeWItuWIsOWPpuWkluS4
+gOWdl3N1cnZpb3LljLrln5/kuK3vvIznhLblkI7muIXnkIbmjollZGVu5ZKM5LmL5YmN5L2/55So
+55qEc3Vydml2b3LljLrln5/vvIzlubblsIbov5nkupvlrZjmtLvnmoTlr7nosaHlubTpvoQrMe+8
+jOS7peWQjuWvueixoeWcqHN1cnZpdm9y5Lit5q+P54as6L+H5LiA5qyhbWlub3IgZ2PliJnlubTp
+voTlop7liqAx77yM5b2T5bm06b6E6L6+5Yiw5p+Q5Liq5YC85pe277yI6buY6K6kMTXvvIzpgJro
+v4forr7nva7lj4LmlbAtWFg6TWF4VGVudXJpbmdUaHJlc2hvbGTmnaXorr7nva7vvInvvIzov5nk
+upvlr7nosaHlsLHkvJrov5vlhaXogIHlubTku6PjgILlvZPnhLbvvIzlr7nkuo7kuIDkupvovoPl
+pKfnmoTlr7nosaHlj6/ku6Xnm7TmjqXov5vlhaXogIHlubTku6PvvIzlj6/ku6XmoLnmja4tWFg6
+K1ByZXRlbnVyZVNpemVUaHJlc2hvbGTorr7nva7lpKflr7nosaHov5vlhaXogIHlubTku6PnmoTp
+mIjlgLzjgII8YnI+PGJyPuaWsOeUn+S7o+mHh+eUqOWkjeWItueul+azle+8mjxicj48YnI+IVtp
+bWddKGh0dHBzOi8vZ2l0ZWUuY29tL21vLXNlLWRlLWZlbmcvbm90ZXMvcmF3L21hc3Rlci8lRTkl
+QUIlOTglRTYlODAlQTclRTglODMlQkQlRTclQkMlOTYlRTclQTglOEIlRTQlQjglOTMlRTklQTIl
+OTgvaW1hZ2VzLzMuMS4yJTIwJUU2JTk2JUIwJUU3JTk0JTlGJUU0JUJCJUEzJUU1JTlFJTgzJUU1
+JTlDJUJFJUU2JTk0JUI2JUU5JTlCJTg2LlBORyk8YnI+PGJyPuiAgeW5tOS7o+S9v+eUqOagh+iu
+sC3mlbTnkIbnrpfms5XvvJo8YnI+PGJyPiFbaW1nXShodHRwczovL2dpdGVlLmNvbS9tby1zZS1k
+ZS1mZW5nL25vdGVzL3Jhdy9tYXN0ZXIvJUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgzJUJEJUU3JUJD
+JTk2JUU3JUE4JThCJUU0JUI4JTkzJUU5JUEyJTk4L2ltYWdlcy8zLjEuMiUyMCVFOCU4MCU4MSVF
+NSVCOSVCNCVFNCVCQiVBMyVFNSU5RSU4MyVFNSU5QyVCRSVFNiU5NCVCNiVFOSU5QiU4Ni5QTkcp
+PGJyPjxicj4jIyMg5Z6D5Zy+5pS26ZuG5ZmoPGJyPjxicj7lnoPlnL7mlLbpm4bnrpfms5Xlj6rm
+mK/lhoXlrZjlm57mlLbnmoTnkIborrrmlrnms5XvvIzlnoPlnL7mlLbpm4blmajmiY3mmK/lhoXl
+rZjlm57mlLbnmoTlhbfkvZPlrp7njrDjgIJKYXZh6Jma5ouf5py66KeE6IyD5Lit5a+55Z6D5Zy+
+5pS26ZuG5Zmo55qE5a6e546w5rKh5pyJ5YW35L2T55qE6KeE5a6a77yM5LiN5ZCM5Y6C5ZWG77yM
+5LiN5ZCM54mI5pys55qE5Z6D5Zy+5pS26ZuG5Zmo5Y+v6IO95Lya5beu5Yir5b6I5aSn44CC55uu
+5YmN5bi46KeB55qE5Z6D5Zy+5pS26ZuG5Zmo5Li76KaB5pyJU2VyaWFs5pS26ZuG5Zmo77yMUGFy
+TmV35pS26ZuG5Zmo77yMUGFyYWxsZWwgU2NhdmVuZ2XmlLbpm4blmajvvIxTZXJpYWwgT2xk5pS2
+6ZuG5Zmo77yMUGFyYWxsZWwgT2xk5pS26ZuG5Zmo77yMQ01T5pS26ZuG5Zmo77yMRzHmlLbpm4bl
+majjgILov5nkupvlnoPlnL7mlLbpm4blmajlkITmnInkvJjliqPvvIzkuIDoiKzpg73mmK/nu4Tl
+kIjlnKjkuIDotbfkvb/nlKjvvIzkuIvlm77lsZXnpLrkuoblnKjmlrDnlJ/ku6PlkozogIHlubTk
+u6Plj6/nlKjnmoTlnoPlnL7mlLbpm4blmajnu4TlkIjvvJo8YnI+PGJyPiFbaW1nXShodHRwczov
+L2dpdGVlLmNvbS9tby1zZS1kZS1mZW5nL25vdGVzL3Jhdy9tYXN0ZXIvJUU5JUFCJTk4JUU2JTgw
+JUE3JUU4JTgzJUJEJUU3JUJDJTk2JUU3JUE4JThCJUU0JUI4JTkzJUU5JUEyJTk4L2ltYWdlcy8z
+LjEuMiUyMCVFNSU5RSU4MyVFNSU5QyVCRSVFNiU5NCVCNiVFOSU5QiU4NiVFNSU5OSVBOCVFNyVC
+QiU4NCVFNSU5MCU4OC5QTkcpPGJyPjxicj4jIyMjIFNlcmlhbOaUtumbhuWZqDxicj48YnI+U2Vy
+aWFs5pS26ZuG5Zmo5piv5LiA5Liq5Liy6KGM5pS26ZuG5Zmo77yM5L2/55So5Y2V5Liq57q/56iL
+5p2l5omn6KGM5omA5pyJ5Z6D5Zy+5pS26ZuG5bel5L2c77yM6YCC5ZCI5Y2V5aSE55CG5Zmo5py6
+5Zmo77yMR0PlnKjlt6XkvZznmoTml7blgJnlsIbmmoLlgZzlhbbku5bmiYDmnInnmoTlt6XkvZzn
+ur/nqIvvvIzljbPigJ1TdG9wIFRoZSBXb3JsZOKAnOOAglNlcmlhbOaUtumbhuWZqOaYr+S4gOS4
+quaWsOeUn+S7o+eahOWNlee6v+eoi+aUtumbhuWZqO+8jOWug+S9v+eUqOWkjeWItueul+azle+8
+jOaYr+iZmuaLn+acuuWcqGNsaWVudOaooeW8j+S4i+eahOm7mOiupOaWsOeUn+S7o+aUtumbhuWZ
+qO+8jOWPr+S7pemAmui/h+iuvue9ruWPguaVsC1YWDorVXNlU2VyaWFsR0PmnaXkvb/nlKjjgII8
+YnI+PGJyPiMjIyMgUGFyTmV35pS26ZuG5ZmoPGJyPjxicj5QYXJOZXfmlLbpm4blmajlj6/ku6Xn
+kIbop6PkuLrkuLLooYzmlLbpm4blmajnmoTlpJrnur/nqIvniYjmnKzvvIzlhbbmlbTkvZPnrpfm
+s5XlkoxTZXJpYWzmr5TovoPnm7jkvLzvvIzpmaTkuobkvb/nlKjlpJrnur/nqIvov5vooYzlnoPl
+nL7lm57mlLbvvIzlhbbku5bnmoTln7rmnKzlkoxTZXJpYWzmlLbpm4blmajkuIDmoLfjgIJQYXJO
+ZXfmlLbpm4blmajmmK/omZrmi5/mnLrlnKhzZXJ2ZXLmqKHlvI/kuIvnmoTpu5jorqTmlrDnlJ/k
+u6PmlLbpm4blmajvvIzlj6/ku6XpgJrov4forr7nva7lj4LmlbAtWFg6K1VzZVBhck5ld0dD5p2l
+5L2/55So44CC6buY6K6k5oOF5Ya15LiL5a6D5byA5ZCv55qE57q/56iL5pWw5ZKMQ1BV5pWw6YeP
+55u45ZCM77yM5Lmf5Y+v5Lul6YCa6L+H6K6+572u5Y+C5pWwLVhYOlBhcmFsbGVsR0NUaHJlYWRz
+5p2l6YWN572u5Z6D5Zy+5pS26ZuG55qE57q/56iL5pWw44CCPGJyPjxicj4jIyMjIFBhcmFsbGVs
+IFNjYXZlbmdl5pS26ZuG5ZmoPGJyPjxicj5QYXJhbGxlbCBTY2F2ZW5nZeaUtumbhuWZqOS5n+aY
+r+S4gOS4quaWsOeUn+S7o+eahOW5tuihjOWeg+WcvuaUtumbhuWZqO+8jOS9v+eUqOeahOS5n+aY
+r+WkjeWItueul+azleOAglBhcmFsbGVsIFNjYXZlbmdl5pS26ZuG5Zmo55qE55uu5qCH5piv6L6+
+5Yiw5LiA5Liq5Y+v5o6n5Yi255qE5ZCe5ZCQ6YeP44CC5ZCe5ZCQ6YeP5bCx5pivQ1BV6L+Q6KGM
+55So5oi35Luj56CB55qE5pe26Ze05LiOQ1BV5raI6ICX55qE5oC75pe26Ze055qE5q+U5YC877yM
+5Y2z5ZCe5ZCQ6YePPei/kOihjOeUqOaIt+S7o+eggeaXtumXtC/vvIjov5DooYznlKjmiLfku6Pn
+oIHml7bpl7Qr5Z6D5Zy+5pS26ZuG5pe26Ze077yJ44CCUGFyYWxsZWwgU2NhdmVuZ2XmlLbpm4bl
+majmj5DkvpstWFg6TWF4R0NQYXVzZU1pbGxpc+adpeaOp+WItuacgOWkp+Weg+WcvuaUtumbhuWB
+nOmhv+aXtumXtOWSjC1YWDpHQ1RpbWVSYXRpb+adpeebtOaOpeiuvue9ruWQnuWQkOmHj+eahOWk
+p+Wwj+OAgjxicj48YnI+IyMjIyBTZXJpYWwgT2xk5pS26ZuG5ZmoPGJyPjxicj5TZXJpYWwgT2xk
+5pS26ZuG5Zmo5pivU2VyaWFs5pS26ZuG5Zmo55qE5Zyo6ICB5bm05Luj5L2/55So55qE54mI5pys
+77yM5a6D6YeH55So5LqG5qCH6K6wLeaVtOeQhueul+azle+8jOWPr+S7pemAmui/h+iuvue9ruWP
+guaVsC1YWDorVXNlU2VyaWFsT2xkR0PmnaXkvb/nlKjjgII8YnI+PGJyPiMjIyMgUGFyYWxsZWwg
+T2xk5pS26ZuG5ZmoPGJyPjxicj5QYXJhbGxlbCBPbGTmlLbpm4blmajmmK9QYXJhbGxlbCBTY2F2
+ZW5nZeaUtumbhuWZqOeahOiAgeW5tOS7o+eJiOacrO+8jOS9v+eUqOWkmue6v+eoi+WSjOagh+iu
+sC3mlbTnkIbnrpfms5XvvIzlj6/ku6XpgJrov4forr7nva7lj4LmlbAtWFg6K1VzZVBhcmFsbGVs
+T2xkR0PmnaXkvb/nlKjjgII8YnI+PGJyPiMjIyMgQ01T5pS26ZuG5ZmoPGJyPjxicj5DTVPmlLbp
+m4blmajmmK/kuIDkuKrlubblj5HmlLbpm4blmajvvIxDTVPljbNDb25jdXJyZW50IE1hcmsgU3dh
+cO+8jOS4u+imgeeUqOS6juiAgeW5tOS7o++8jOS9v+eUqOagh+iusC3muIXpmaTnrpfms5XvvIzl
+j6/ku6XpgJrov4forr7nva7lj4LmlbAtWFg6K1VzZUNvbmNNYXJrU3dlZXBHQ+adpeS9v+eUqOOA
+gkNNU+aUtumbhuWZqOWPr+S7peW5tuihjOeahOaJp+ihjOeUqOaIt+eoi+W6j+WSjOWeg+WcvuWb
+nuaUtu+8jOi/meagt+WwseWPr+S7peWHj+WwkeWbnuaUtueahOWBnOmhv+aXtumXtOOAgkNNU+aU
+tumbhuWZqOiuvuiuoeeahOS4u+imgeebrueahOWwseaYr+S4uuS6huWHj+WwkeWbnuaUtuWBnOmh
+v+aXtumXtO+8jOebruWJjeW+iOWkmueahEphdmHlupTnlKjpg73pm4bkuK3lnKjkupLogZTnvZHn
+vZHnq5nmiJZCL1Pns7vnu5/mnI3liqHnq6/vvIzov5nnsbvlupTnlKjlsKTlhbbph43op4bmnI3l
+iqHnmoTlk43lupTpgJ/luqbvvIzluIzmnJvns7vnu5/lgZzpob/ml7bpl7TmnIDnn63vvIxDTVPm
+lLbpm4blmajpnZ7luLjnrKblkIjov5nnsbvlupTnlKjnmoTopoHmsYLjgILlvZPnhLbvvIxDTVPm
+lLbpm4blmajkuZ/mnInoh6rlt7HnmoTnvLrngrnvvIzlroPkvJrljaDnlKjmm7TlpJrnmoRDUFXo
+tYTmupDvvIzlubblkoznlKjmiLfnur/nqIvkuonmiqLvvIzlkIzml7bnlLHkuo7ph4fnlKjmoIfo
+rrDvvI3muIXpmaTnrpfms5XvvIzlrZjlnKjnnYDlhoXlrZjnoo7niYfljJbnmoTpl67popjvvIzp
+lb/ml7bpl7Tov5DooYznrYnmg4XlhrXkuIvlj6/og73lj5FmdWxsIGdj5a+86Ie05oG25Yqj55qE
+5YGc6aG/44CCPGJyPjxicj5DTVPmlLbpm4blmajlnoPlnL7mlLbpm4bnmoTmlbTkuKrov4fnqIvm
+nIk05Liq5q2l6aqk77yM5Yid5aeL5qCH6K6w77yM5bm25Y+R5qCH6K6w77yM6YeN5YaZ5qCH6K6w
+5Lul5Y+K5bm25Y+R5riF6Zmk44CC5YW25Lit5Yid5aeL5qCH6K6w5ZKM6YeN5YaZ5qCH6K6w5Lu7
+54S26ZyA6KaB4oCdU3RvcCBUaGUgV29ybGTigJ3vvIzkvYbmmK/pgJ/luqblvojlv6vvvIzmlbTk
+uKrov4fnqIvkuK3ogJfml7bnmoTmk43kvZzlnKjlubblj5HmoIforrDlkozlubblj5HmuIXpmaTp
+mLbmrrXvvIzlnKjov5nkuKrov4fnqIvkuK3vvIzmlLbpm4blmajnur/nqIvpg73lj6/ku6Xlkozn
+lKjmiLfnur/nqIvkuIDotbflt6XkvZzjgII8YnI+PGJyPiFbaW1nXShodHRwczovL2dpdGVlLmNv
+bS9tby1zZS1kZS1mZW5nL25vdGVzL3Jhdy9tYXN0ZXIvJUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgz
+JUJEJUU3JUJDJTk2JUU3JUE4JThCJUU0JUI4JTkzJUU5JUEyJTk4L2ltYWdlcy8zLjEuMiUyMENN
+UyVFNiU5NCVCNiVFOSU5QiU4NiVFNSU5OSVBOC5QTkcpPGJyPjxicj4jIyMjIEcx5pS26ZuG5Zmo
+PGJyPjxicj5HMe+8iEdhcmFnZSBGaXJzdO+8ieaUtumbhuWZqOaYr+W9k+WJjeWeg+WcvuaUtumb
+huWZqOaKgOacr+acgOWJjeayv+eahOaIkOaenO+8jOWcqEpESzfkuK3lvIDlp4vkvb/nlKjvvIjl
+j6/ku6XpgJrov4fphY3nva4tWFg6K1VzZUcxR0Pkvb/nlKjvvInvvIzku45KREs55byA5aeLRzHl
+t7Lnu4/miJDkuLpKVk3pu5jorqTnmoTlnoPlnL7mlLbpm4blmajjgIJHMeWeg+WcvuaUtumbhuWZ
+qOS5n+aYr+S7peWFs+azqOW7tui/n+S4uuebruagh+OAgeacjeWKoeWZqOerr+W6lOeUqOeahOWe
+g+WcvuaUtumbhuWZqO+8jOWFtuebruagh+WwseaYr+WPluS7o0NNU+Weg+WcvuaUtumbhuWZqOOA
+gjxicj48YnI+RzHph4fnlKjkuobliIbljLooUmVnaW9uKeeahOaAnei3r++8jOWwhuaVtOS4quWg
+huepuumXtOWIhuaIkOiLpeW5suS4quWkp+Wwj+ebuOetieeahOWGheWtmOWMuuWfn++8jOavj+as
+oeWIhumFjeWvueixoeepuumXtOWwhumAkOauteWcsOS9v+eUqOWGheWtmO+8jOi/meagt+acgOWk
+p+eahOWlveWkhOWwseaYr+WMluaVtOS4uumbtu+8jOmBv+WFjeWFqOWGheWtmOaJq+aPj++8jOWP
+qumcgOimgeaMieeFp+WMuuWfn+adpei/m+ihjOaJq+aPj+WNs+WPr+OAguWQr+WKqOaXtuWPr+S7
+pemAmui/h+WPguaVsC1YWDpHMUhlYXBSZWdpb25TaXplPW7lj6/mjIflrprliIbljLrlpKflsI8o
+MU1CfjMyTULvvIzkuJTlv4XpobvmmK8y55qE5bmCKe+8jOm7mOiupOWwhuaVtOWghuWIkuWIhuS4
+ujIwNDjkuKrliIbljLrjgILlnKjloIbnmoTkvb/nlKjkuIrvvIzmlbTkuKrlhoXlrZjliIbljLrk
+uI3lrZjlnKjniannkIbkuIrnmoTlubTovbvku6PlkozogIHlubTku6PnmoTljLrliKvvvIzkuZ/k
+uI3pnIDopoHlrozlhajni6znq4vnmoQgU3Vydml2b3IgdG8gc3BhY2Ug5aCG5YGa5aSN5Yi25YeG
+5aSH44CCRzEg5Y+q5pyJ6YC76L6R5LiK55qE5YiG5Luj5qaC5b+177yM5oiW6ICF6K+05q+P5Liq
+5YiG5Yy66YO95Y+v6IO96ZqPIEcxIOeahOi/kOihjOWcqOS4jeWQjOS7o+S5i+mXtOWJjeWQjuWI
+h+aNouOAgjxicj48YnI+RzHmlLbpm4blmajmlbTkvZPph4fnlKjmoIforrAt5pW055CG566X5rOV
+77yM5bGA6YOo5piv6YCa6L+H5piv6YCa6L+H5aSN5Yi2566X5rOV77yM5LiN5Lya5Lqn55Sf5YaF
+5a2Y56KO54mH77yM6IO95YWF5YiG5Yip55So5aSaIENQVeOAgeWkmuaguOeOr+Wig+ehrOS7tuS8
+mOWKv++8jOWwvemHj+e8qeefreKAnVN0b3AgVGhlIFdvcmxk4oCd55qE5pe26Ze0PGJyPjxicj7k
+uIvlm77lt6bkvqfkuLpHMeaUtumbhuWZqOeahOWGheWtmOWIkuWIhuamguWbvu+8jOe6ouiJsuS4
+uuaWsOeUn+S7o++8iOayoeaciVPnmoTkuLplZGVu5Yy65Z+f77yM5pyJU+eahOS4unN1cnZpdm9y
+5Yy65Z+f77yJ77yM6JOd6Imy5Li66ICB5bm05Luj77yI5bim5pyJSOeahOihqOekumh1bW9uZ291
+cyDvvIzlrZjmlL5odW1vbmdvdXMgb2JqZWN0c++8jOWNs+Wkp+S6juetieS6jnJlZ2lvbuS4gOWN
+iueahOWvueixoe+8ieOAguWPs+S+p+S4ukcx5pS26ZuG5Zmo55qE5Z6D5Zy+5pS26ZuG546v5Zu+
+77yMRzHnmoTlnoPlnL7mlLbpm4blnKjlsYLmrKHkuIrlj6/ku6XliIbkuLrkuKTkuKrpmLbmrrXv
+vIx5b3VuZy1vbmx56Zi25q615ZKMU3BhY2UtcmVjbGFtYXRpb27pmLbmrrXvvIzlnKh5b3VuZy1v
+bmx56Zi25q615Y+I5YiG5Li6SW5pdGlhbCBNYXJrIO+8jFJlbWFya++8jENsZWFudXDjgII8YnI+
+PGJyPiFbaW1nXShodHRwczovL2dpdGVlLmNvbS9tby1zZS1kZS1mZW5nL25vdGVzL3Jhdy9tYXN0
+ZXIvJUU5JUFCJTk4JUU2JTgwJUE3JUU4JTgzJUJEJUU3JUJDJTk2JUU3JUE4JThCJUU0JUI4JTkz
+JUU5JUEyJTk4L2ltYWdlcy8zLjEuMiUyMEcxJUU2JTk0JUI2JUU5JTlCJTg2JUU1JTk5JUE4LlBO
+Ryk8YnI+PGJyPjxicj48L3ByZT48cD48aW1nIHNyYz0iaHR0cHM6Ly9pbWcyMDE4LmNuYmxvZ3Mu
+Y29tL2Jsb2cvMTczNTg0MS8yMDE5MTAvMTczNTg0MS0yMDE5MTAyMjIwMjM0NDA2Ni0xNTI1MTIz
+NzcxLnBuZyIgYWx0PSIiIGRhdGEtbWNlLXNyYz0iaHR0cHM6Ly9pbWcyMDE4LmNuYmxvZ3MuY29t
+L2Jsb2cvMTczNTg0MS8yMDE5MTAvMTczNTg0MS0yMDE5MTAyMjIwMjM0NDA2Ni0xNTI1MTIzNzcx
+LnBuZyI+PC9wPjxwcmU+PGJyPjxicj48L3ByZT4=">​
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

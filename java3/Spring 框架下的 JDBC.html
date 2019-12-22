@@ -1,0 +1,399 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring 框架下的 JDBC' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring 框架下的 JDBC</center></div><div class='banquan'>原文出处:本文由博客园博主张泽提供。<br/>
+原文连接:https://www.cnblogs.com/zhangze-lifetime/p/11773230.html</div><br>
+    <h1>Spring JDBC</h1>
+<p><span style="font-family: 楷体; font-size: 18px;">&nbsp;&nbsp;&nbsp; Spring 对JDBC技术规范做了进一步封装，它又叫Spring JDBCTemplate(jdbc模板技术)</span></p>
+<p><br />&nbsp;&nbsp;<span style="font-family: 楷体; font-size: 18px;"> &nbsp; 纯JDBC：代码清晰的、效率最高、代码是最烦的、</span><br /><span style="font-family: 楷体; font-size: 18px;">&nbsp;&nbsp; &nbsp;Spring JDBCTemplate:代码相对来说就不那么清晰，效率要低一点，代码相对简单</span></p>
+<p><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;<span style="font-size: 18px;">如何进行Spring和jdbc的集合？（数据库的连接池）</span></span><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;(1) 导入jar 包：spring-jdbc.jar&nbsp; 驱动类 &nbsp; 连接池 DruidUtil2(框架的原型)</span><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;(2) 配置类：@Configuration</span><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;(3) @Spring IOC + JDBC 实现</span><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;JdbcConfig： a.配置属性&nbsp; b.配置DataSource Bean</span><br /><span style="font-family: 楷体; font-size: 16px;">&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;(4) 配置JdbcTemplate Bean&nbsp; @Bean</span></p>
+<p><span style="font-family: 楷体; font-size: 16px;">1.<span style="font-family: times new roman, times;">pom.xml</span> 所需要的jar包</span></p>
+<src class="cnblogs_code">
+<pre><code>     
+    <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> https://mvnrepository.com/artifact/org.springframework/spring-jdbc </span><span style="color: #008000;">--&gt;</span>
+    <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-jdbc<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>${spring.version}<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+    <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> MySQL数据库连接池 </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> https://mvnrepository.com/artifact/mysql/mysql-connector-java </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>mysql<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>mysql-connector-java<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>5.1.48<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> Druid </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #008000;">&lt;!--</span><span style="color: #008000;"> https://mvnrepository.com/artifact/com.alibaba/druid </span><span style="color: #008000;">--&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>com.alibaba<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>druid<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+            <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>1.1.20<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">2. 一个实体类：Account.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Account {
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> id;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String name;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> Double balance;
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Account( String name, Double balance) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+        </span><span style="color: #0000ff;">this</span>.balance =<span style="color: #000000;"> balance;
+    }
+    </span><span style="color: #0000ff;">public</span> Account(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id, String name, Double balance) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+        </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+        </span><span style="color: #0000ff;">this</span>.balance =<span style="color: #000000;"> balance;
+    }
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Account() {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">();
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getId() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> id;
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setId(<span style="color: #0000ff;">int</span><span style="color: #000000;"> id) {
+        </span><span style="color: #0000ff;">this</span>.id =<span style="color: #000000;"> id;
+    }
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String getName() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> name;
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setName(String name) {
+        </span><span style="color: #0000ff;">this</span>.name =<span style="color: #000000;"> name;
+    }
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Double getBalance() {
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> balance;
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setBalance(Double balance) {
+        </span><span style="color: #0000ff;">this</span>.balance =<span style="color: #000000;"> balance;
+    }
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> hashCode() {
+        </span><span style="color: #0000ff;">final</span> <span style="color: #0000ff;">int</span> prime = 31<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">int</span> result = 1<span style="color: #000000;">;
+        result </span>= prime * result + ((balance == <span style="color: #0000ff;">null</span>) ? 0<span style="color: #000000;"> : balance.hashCode());
+        result </span>= prime * result +<span style="color: #000000;"> id;
+        result </span>= prime * result + ((name == <span style="color: #0000ff;">null</span>) ? 0<span style="color: #000000;"> : name.hashCode());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> result;
+    }
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> equals(Object obj) {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span> ==<span style="color: #000000;"> obj)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (obj == <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (getClass() !=<span style="color: #000000;"> obj.getClass())
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        Account other </span>=<span style="color: #000000;"> (Account) obj;
+        </span><span style="color: #0000ff;">if</span> (balance == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (other.balance != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">balance.equals(other.balance))
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (id !=<span style="color: #000000;"> other.id)
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">if</span> (name == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">if</span> (other.name != <span style="color: #0000ff;">null</span><span style="color: #000000;">)
+                </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        } </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">name.equals(other.name))
+            </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+    @Override
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String toString() {
+        </span><span style="color: #0000ff;">return</span> "Account [id=" + id + ", name=" + name + ", balance=" + balance + "]"<span style="color: #000000;">;
+    }
+    
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">3. 接口：IAccount.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * AccountDao接口
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> 张泽
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">interface</span><span style="color: #000000;"> IAccountDao {
+    List</span>&lt;Account&gt;<span style="color: #000000;"> findAll();
+    </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> delete(Account act);
+    </span><span style="color: #0000ff;">void</span><span style="color: #000000;"> saveOrUpdate(Account act);
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">4.1 接口实现类(JDBC)：AccountDaoJdbcImpl.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.Connection;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.ResultSet;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.sql.Statement;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.ArrayList;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> javax.sql.DataSource;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Repository;
+</span><span style="color: #008000;">//</span><span style="color: #008000;">@Component</span>
+@Repository("accountDaoJdbcImpl") <span style="color: #008000;">//</span><span style="color: #008000;">-- 存储、仓库/  做存储服务</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AccountDaoJdbcImpl <span style="color: #0000ff;">implements</span><span style="color: #000000;"> IAccountDao {
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> DataSource ds;
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;Account&gt;<span style="color: #000000;"> findAll() {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            Connection con </span>=<span style="color: #000000;"> ds.getConnection();
+            String sql </span>= "select * from account"<span style="color: #000000;">;
+            Statement stmt </span>=<span style="color: #000000;"> con.createStatement();
+            ResultSet rs </span>=<span style="color: #000000;"> stmt.executeQuery(sql);
+            List</span>&lt;Account&gt; acts = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+            </span><span style="color: #0000ff;">while</span><span style="color: #000000;">(rs.next()) {
+                Account act </span>= <span style="color: #0000ff;">new</span> Account(rs.getInt(1),rs.getString(2),rs.getDouble(3<span style="color: #000000;">));
+                acts.add(act);
+            }
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> acts;
+            
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Exception e) {e.printStackTrace();}
+        
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> delete(Account act) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated method stub</span>
+<span style="color: #000000;">        
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> saveOrUpdate(Account act) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> TODO Auto-generated method stub</span>
+<span style="color: #000000;">        
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">4.2 <span style="font-family: 楷体; font-size: 16px;">接口实现类(Spring JDBCTemplate)：AccountDaoTemplateImpl.java</span></span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.jdbc.core.BeanPropertyRowMapper;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.jdbc.core.JdbcTemplate;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.stereotype.Repository;
+
+@Repository(</span>"accountDaoTemplateImpl"<span style="color: #000000;">)
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> AccountDaoTemplateImpl <span style="color: #0000ff;">implements</span><span style="color: #000000;"> IAccountDao {
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> JdbcTemplate jdbcTemplate;
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> List&lt;Account&gt;<span style="color: #000000;"> findAll() {
+        System.out.println(</span>"accountDaoTemplateImpl"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> jdbcTemplate.query(
+                </span>"select * from account"<span style="color: #000000;">,
+                </span><span style="color: #0000ff;">new</span> BeanPropertyRowMapper&lt;Account&gt;(Account.<span style="color: #0000ff;">class</span><span style="color: #000000;">)
+                );
+    }
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> saveOrUpdate(Account act) {
+        
+        </span><span style="color: #0000ff;">if</span>(act.getId()==0<span style="color: #000000;">) {
+            jdbcTemplate.update(
+                    </span>"insert into account(name,balance) values(?,?)"<span style="color: #000000;">,
+                    </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Object[] {act.getName(),act.getBalance()}
+                    );
+        }</span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            jdbcTemplate.update(
+                    </span>"update account set name=?,balance=? where id=?"<span style="color: #000000;">,
+                    </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Object[] {act.getName(),act.getBalance(),act.getId()}
+                    );
+        }
+        
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> delete(Account act) {
+        jdbcTemplate.update(
+                </span>"delete from account where id=?"<span style="color: #000000;">,
+                </span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Object[] {act.getId()}
+                );
+    }
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">5.1 JDBC 配置资源：jdbc.properties</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">jdbc.driverClass=com.mysql.jdbc.Driver
+jdbc.url=jdbc:mysql://localhost:3306/demo
+jdbc.username=root
+jdbc.password=root
+
+pool.maxActive=10</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">5.2 JDBC 配置类：JdbcConfig.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> javax.sql.DataSource;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Value;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Bean;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Configuration;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.PropertySource;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.jdbc.core.JdbcTemplate;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> com.alibaba.druid.pool.DruidDataSource;
+
+</span><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * JdbcConfig类
+ * </span><span style="color: #808080;">@author</span><span style="color: #008000;"> 张泽
+ *
+ </span><span style="color: #008000;">*/</span><span style="color: #000000;">
+@Configuration
+@PropertySource(</span>"classpath:jdbc.properties"<span style="color: #000000;">) 
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">--你的配置信息的位置</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> JdbcConfig {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">-- 1. 获取配置信息</span>
+    @Value("${jdbc.driverClass}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String driver;
+    @Value(</span>"${jdbc.url}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String url;
+    @Value(</span>"${jdbc.username}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String username;
+    @Value(</span>"${jdbc.password}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String password;
+    
+    @Value(</span>"${pool.maxActive}"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> maxActive;
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">-- 2. 数据库连接池对象</span>
+    @Bean(name="dataSource"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> DataSource createDataSource() {
+        DruidDataSource ds </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> DruidDataSource();    
+        ds.setDriverClassName(driver);
+        ds.setUrl(url);
+        ds.setUsername(username);
+        ds.setPassword(password);
+        ds.setMaxActive(maxActive);
+        
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> ds;
+    }
+    
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">-- 3. 配置JdbcTemplate</span>
+    @Bean(name="jdbcTemplate"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JdbcTemplate createJdbcTemplate(DataSource ds) {
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span> JdbcTemplate(ds);<span style="color: #008000;">//</span><span style="color: #008000;">-- 利用数据源构造JdbcTemplate</span>
+<span style="color: #000000;">    }
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">6. Spring 配置类：SpringConfig.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * Spring 配置类
+ * 多配置的使用方式
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.ComponentScan;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Configuration;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.Import;
+
+@Configuration
+@ComponentScan(</span>"day")<span style="color: #008000;">//</span><span style="color: #008000;">--所在包名</span>
+@Import(JdbcConfig.<span style="color: #0000ff;">class</span>)  <span style="color: #008000;">//</span><span style="color: #008000;">-- 在主配置中导入子配置</span>
+<span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> SpringConfig {
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">7. 主函数入口：Invoker.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> javax.sql.DataSource;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.ApplicationContext;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Invoker {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ApplicationContext ctx</span>=
+                <span style="color: #0000ff;">new</span> AnnotationConfigApplicationContext(SpringConfig.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+        DataSource ds </span>= (DataSource)ctx.getBean("dataSource"<span style="color: #000000;">);
+        System.out.println(ds);
+    }
+}</span></code></pre>
+
+<p>&nbsp;</p>
+<p><span style="font-family: 楷体; font-size: 16px;">8. 测试类：TestAccountDao.java</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">import</span><span style="color: #000000;"> java.util.List;
+
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.Test;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.junit.runner.RunWith;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Autowired;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.beans.factory.annotation.Qualifier;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.test.context.ContextConfiguration;
+</span><span style="color: #0000ff;">import</span><span style="color: #000000;"> org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+
+@RunWith(SpringJUnit4ClassRunner.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">)
+@ContextConfiguration(classes</span>= {SpringConfig.<span style="color: #0000ff;">class</span><span style="color: #000000;">})
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestAccountDao {
+    @Autowired
+    @Qualifier(</span>"accountDaoTemplateImpl")<span style="color: #008000;">//</span><span style="color: #008000;">-- 选择要调用 接口的实现类</span>
+    <span style="color: #0000ff;">private</span><span style="color: #000000;"> IAccountDao actDao;
+    
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testFind() {
+        List</span>&lt;Account&gt; acts =<span style="color: #000000;"> actDao.findAll();
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (Account account : acts) {
+            System.out.println(account);
+        }
+    }
+    
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testSave() {
+        actDao.saveOrUpdate(</span><span style="color: #0000ff;">new</span> Account("xx",12.0<span style="color: #000000;">));    
+    }
+    
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testUpdate() {
+        actDao.saveOrUpdate(</span><span style="color: #0000ff;">new</span> Account(8,"xx",22.0<span style="color: #000000;">));    
+    }
+    
+    @Test
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> testDelete() {
+        actDao.delete(</span><span style="color: #0000ff;">new</span> Account(8,"xx",22.0<span style="color: #000000;">));    
+    }
+    
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

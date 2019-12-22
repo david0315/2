@@ -1,0 +1,377 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修用vetr.x写一个HTTP接口适配器, 对接各种形式接口' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>用vetr.x写一个HTTP接口适配器, 对接各种形式接口</center></div><div class='banquan'>原文出处:本文由博客园博主何白白提供。<br/>
+原文连接:https://www.cnblogs.com/hebaibai/p/11549953.html</div><br>
+    <h1 id="用vetr.x写一个http接口适配器-对接各种形式接口">用vetr.x写一个HTTP接口适配器, 对接各种形式接口</h1>
+<p>项目地址：<a href="https://github.com/hjx601496320/transmit" class="uri">https://github.com/hjx601496320/transmit</a></p>
+<h3 id="业务说明">业务说明</h3>
+<p>在日常开发工作中，我们经常会遇到要和各种第三方调试接口的情况，如果是简单的几个接口还好，代码写起来很快就写好了。但是如果在某一种业务情况下，比如支付，我们对接了很多家第三方的支付公司，每一家的支付接口都不一样，这时就需要针对多家不同的接口文档编写不同的代码。又或者我们作为接口提供方提供一套标准的接口，但是某些客户会比较强硬，要求你提供的接口需要按照对方的要求来做，这时就又需要苦哈哈的写一个适配他们的代码。这个过程就十分的难受了。</p>
+<p>我所在的项目就遇到了这种问题，我在的项目是做保险业务的，现在需要对接多家保险公司的接口，每家数据还是那些常见的数据，但是数据结构都不相同。有些是XML的，有些是JSON的。像性别，证件类型的枚举值也都不大相同。</p>
+<p>所以根据现有的情况，我开发了一个HTTP接口适配工具。用于支持各种类型的HTTP接口转发，转换请求数据，转换响应数据的需求。</p>
+<h3 id="项目说明">项目说明</h3>
+<h4 id="业务需求">业务需求</h4>
+<ol>
+<li>可配置，可配置，可配置（重要的说3边）</li>
+<li>可以接受常见的HTTP请求， 比如POST+JSON，POST+XML，GET，POST+表单等</li>
+<li>数据转换过程不需要写java代码。</li>
+<li>可以实现接口加密解密等功能</li>
+<li>数据落库。</li>
+</ol>
+<h4 id="开发思路">开发思路</h4>
+<ol>
+<li>因为这个可配置是很重要的需求，但是我又不想写页面，所以定义一个配置文件是必不可少的，这里配置文件我使用<strong>json</strong>格式。</li>
+<li>对于接口信息的描述，可以写在配置文件中，比如定义一个接受请求的地址，再定义一个转发请求的地址，另外加上他们的数据格式和请求类型的描述。</li>
+<li>数据转换这里，因为涉及到xml和json格式的报文，每个报文的节点和层级深度都是不一样的，另外还要做到能够互相转换。所以我的做法是将他们深度遍历之后，做成<strong>Map&lt;String, Object&gt;</strong>这种的数据类型，其中Object 可以使另外一个Map， 也可以是一个List。总之就是一个<strong>树状结构</strong>。解析完数据之后，将数据放进freemarker模板文件中完成转换。当然这个模板是需要自己编写的。</li>
+<li>再能够完成数据转换之后需要考虑的是参数<strong>加密</strong>和<strong>签名</strong>的步骤，这可以设计一个接口，做成插件的形式，然后自己实现签名和验签的步骤。就类似<strong>jmeter</strong>的插件一样，做成一个jar包放在项目里就可以用了。</li>
+<li>数据落库这里很简单，将接受到的原始数据和接口返回的原始数据保存入库，并记录调用开始时间和调用结束时间就好了。</li>
+<li>项目框架上我选择的是<strong>vert.x</strong>，他是一个事件驱动<em>和</em>非阻塞的java框架，根据网上看到的测试结果，效率非常的高，很适合做这种类似中间件的工具。</li>
+</ol>
+<h3 id="项目介绍">项目介绍</h3>
+<p>因为是一个已经开发完成的工具，在公司项目中使用良好。下面说一下如何使用。</p>
+<h4 id="安装">安装</h4>
+<pre><code><code>git clone https://github.com/hjx601496320/transmit.git
+cd transmit/
+mvn package
+cd target/
+//解压
+tar -zxvf transmit.tar.gz
+//启动
+sh bin/start.sh</code></code></pre>
+<p>这里启动用的是linux的脚本，因为Windows脚本我不会写，所以只有linux的。</p>
+<p>也可以在项目中直接启动<strong>Main.java</strong>中的main方法。</p>
+<h4 id="项目结构">项目结构</h4>
+<pre><code><code>├── bin                         启动脚本
+│   ├── restart.sh              重启
+│   ├── start.sh                启动
+│   └── stop.sh                 停止
+├── config                      配置
+│   ├── config.json             启动时加载的配置文件
+│   └── logback.xml             日志配置，使用logback
+├── lib     
+│   ├── commons-cli-1.4.jar     依赖，自己添加的插件jar可以放在这里
+......
+│   ├── transmit-1.0-SNAPSHOT.jar
+│   ├── vertx-web-client-3.8.0.jar
+│   └── vertx-web-common-3.8.0.jar
+├── log                         日志
+│   ├── debug
+│   │   └── debug.2019-09-17.log
+│   ├── error
+│   │   └── error.2019-09-17.log
+│   └── info
+│       └── info.2019-09-17.log
+└── sout.log                     启动时输出的日志</code></code></pre>
+<h4 id="配置说明">配置说明</h4>
+<pre class="json"><code>{
+
+  其他配置
+  &quot;config&quot;: {
+    
+    是否缓存模板文件,默认true. 关闭的话每次请求会重新加载模板,方便调试.
+    &quot;cache&quot;: true,
+    
+    系统端口号
+    &quot;port&quot;: 9090,
+    
+    引用其他的配置文件的文件路径
+    &quot;import&quot;: [
+    ],
+    
+    其他组件加载, 执行CLass.forName, 可以加载自己定义的一些插件, 完成类似数据入库, 接口签名之类的功能
+    &quot;ext&quot;: [
+      &quot;com.hebaibai.ctrt.Driver&quot;
+    ],
+    
+    数据库配置, 用于保存接口请求日志
+    &quot;db&quot;: {
+      &quot;host&quot;: &quot;127.0.0.1&quot;,
+      &quot;database&quot;: &quot;dbname&quot;,
+      &quot;port&quot;: 3306,
+      &quot;username&quot;: &quot;root&quot;,
+      &quot;password&quot;: &quot;root&quot;
+    }
+  },
+  
+  配置示例
+  &quot;config-demo&quot;: {
+  
+    接受请求
+    &quot;request&quot;: {
+    
+      接受请求的地址 127.0.0.1:9090/download
+      &quot;path&quot;: &quot;/download&quot;,
+      
+      请求的方式
+      &quot;method&quot;: &quot;GET&quot;,
+      
+      请求参数类型: FORM(表单提交),  JSON(json),  QUERY(?key=value&amp;key2=value),  TEXT(文本),  XML(xml),
+      &quot;request-type&quot;: &quot;QUERY&quot;,
+      
+      返回参数类型
+      &quot;response-type&quot;: &quot;TEXT&quot;
+    },
+    
+    转发的接口配置
+    &quot;api&quot;: {
+    
+      接口请求地址
+      &quot;url&quot;: &quot;http://127.0.0.1:9003/api/download&quot;,
+      
+      插件编号, 在ext中加载来的
+      &quot;extCode&quot;: &quot;null&quot;,
+      
+      接口请求地址
+      &quot;method&quot;: &quot;GET&quot;,
+      
+      请求参数类型
+      &quot;request-type&quot;: &quot;QUERY&quot;,
+      
+      请求超时设置,默认3000 ms, 单位ms
+      &quot;timeout&quot;: 1,
+      
+      返回参数类型
+      &quot;response-type&quot;: &quot;TEXT&quot;,
+      
+      请求参数转换模板
+      &quot;request-ftl&quot;: &quot;/home/hjx/work/transmit/file/download-req.ftl&quot;,
+      
+      响应参数转换模板
+      &quot;response-ftl&quot;: &quot;/home/hjx/work/transmit/file/download-res.ftl&quot;
+    }
+  }
+}</code></code></pre>
+<h4 id="数据转换流程">数据转换流程</h4>
+<p><img src="./images/用vetr.x写一个HTTP接口适配器, 对接各种形式接口0.png" alt="流程图" /></p>
+<h4 id="配置示例">配置示例</h4>
+<p>这里说一下，比如需要根据一个第三方接口添加一个转换， 第三方接口信息如下：</p>
+<p>请求地址：http://xxx.xxx.com/text/getOrder</p>
+<p>请求方式：POST</p>
+<p>参数类型：JSON</p>
+<p>参数示例：</p>
+<pre class="json"><code>接口请求参数
+{
+    &quot;header&quot;: {
+        &quot;code&quot;: &quot;123123123&quot;,
+        &quot;date&quot;: &quot;2019-09-19 14:28:57&quot;
+    },
+    &quot;body&quot;: {
+        &quot;orderCode&quot;: &quot;O1231231231231231&quot;
+    }
+}
+接口返回参数
+{
+    &quot;code&quot;:1
+    &quot;msg&quot;:&quot;success&quot;
+}</code></code></pre>
+<p>而你能够发送的数据是这样的：</p>
+<p>请求方式：POST</p>
+<p>参数类型：XML</p>
+<p>参数示例：</p>
+<pre class="xml"><code>请求数据
+&lt;Demo&gt;
+  &lt;Info&gt;
+    &lt;Code&gt;XXX-1&lt;/Code&gt;
+    &lt;UUID&gt;d83a011a-958d-4310-a51b-0fb3a4228ef5&lt;/UUID&gt;
+    &lt;Time&gt;2017-11-15 16:57:36&lt;/Time&gt;
+  &lt;/Info&gt;
+  &lt;Order&gt;
+      &lt;SerialNo&gt;0&lt;/SerialNo&gt;
+      &lt;OrderNo&gt;123123123&lt;/OrderNo&gt;
+      &lt;OrderCode&gt;asdasdasd&lt;/OrderCode&gt;
+      &lt;Result&gt;1&lt;/Result&gt;
+  &lt;/Order&gt;
+&lt;/Demo&gt;
+需要返回的数据
+&lt;Demo&gt;
+  &lt;Info&gt;
+    &lt;Code&gt;1&lt;/Code&gt;
+  &lt;/Info&gt;
+  &lt;Order&gt;
+      &lt;Msg&gt;success&lt;/Msg&gt;
+  &lt;/Order&gt;
+&lt;/Demo&gt;</code></code></pre>
+<p>这时你需要添加如下配置</p>
+<pre class="json"><code>{
+    &quot;config&quot;:{
+        &quot;port&quot;:9527,
+        &quot;import&quot;:[
+
+        ],
+        &quot;ext&quot;:[
+
+        ],
+        &quot;db&quot;:{
+            &quot;host&quot;:&quot;127.0.0.1&quot;,
+            &quot;database&quot;:&quot;dbname&quot;,
+            &quot;port&quot;:3306,
+            &quot;username&quot;:&quot;root&quot;,
+            &quot;password&quot;:&quot;root&quot;
+        }
+    },
+    &quot;getOrder&quot;:{
+        &quot;request&quot;:{
+            &quot;path&quot;:&quot;/getOrder&quot;,
+            &quot;method&quot;:&quot;POST&quot;,
+            &quot;request-type&quot;:&quot;XML&quot;,
+            &quot;response-type&quot;:&quot;XML&quot;
+        },
+        &quot;api&quot;:{
+            &quot;url&quot;:&quot;http://xxx.xxx.com/text/getOrder&quot;,
+            &quot;method&quot;:&quot;POST&quot;,
+            &quot;request-type&quot;:&quot;JSON&quot;,
+            &quot;response-type&quot;:&quot;JSON&quot;,
+            &quot;request-ftl&quot;:&quot;/home/hjx/work/transmit/file/getOrder-req.json&quot;,
+            &quot;response-ftl&quot;:&quot;/home/hjx/work/transmit/file/getOrder-res.xml&quot;
+        }
+    }
+}</code></code></pre>
+<h6 id="请求转换homehjxworktransmitfilegetorder-req.xml">请求转换/home/hjx/work/transmit/file/getOrder-req.xml</h6>
+<pre class="json"><code>{
+    &quot;header&quot;: {
+        &quot;code&quot;: &quot;${ROOT.Info.Code}&quot;,
+        &quot;date&quot;: &quot;${ROOT.Info.Time}&quot;
+    },
+    &quot;body&quot;: {
+        &quot;orderCode&quot;: &quot;${ROOT.Order.OrderCode}&quot;
+    }
+}</code></code></pre>
+<h6 id="响应转换模板homehjxworktransmitfilegetorder-res.xml">响应转换模板/home/hjx/work/transmit/file/getOrder-res.xml</h6>
+<pre class="xml"><code>&lt;Demo&gt;
+  &lt;Info&gt;
+    &lt;Code&gt;${ROOT.code}&lt;/Code&gt;
+  &lt;/Info&gt;
+  &lt;Order&gt;
+      &lt;Msg&gt;${ROOT.msg}&lt;/Msg&gt;
+  &lt;/Order&gt;
+&lt;/Demo&gt;</code></code></pre>
+<p>配置完成后，启动transmit，向http://127.0.0.1:9527/getOrder发送post请求，就可以转换你的请求参数，并完成对http://xxx.xxx.com/text/getOrder接口的调用了。</p>
+<h4 id="关于模板中原始数据的访问">关于模板中原始数据的访问</h4>
+<p>原始数据：</p>
+<pre class="xml"><code>&lt;Demo&gt;
+  &lt;Info&gt;
+    &lt;Code&gt;XXX-1&lt;/Code&gt;
+    &lt;UUID&gt;d83a011a-958d-4310-a51b-0fb3a4228ef5&lt;/UUID&gt;
+    &lt;Time&gt;2017-11-15 16:57:36&lt;/Time&gt;
+  &lt;/Info&gt;
+  &lt;Order&gt;
+      &lt;SerialNo&gt;0&lt;/SerialNo&gt;
+      &lt;OrderNo&gt;123123123&lt;/OrderNo&gt;
+      &lt;OrderCode&gt;asdasdasd&lt;/OrderCode&gt;
+      &lt;Result&gt;1&lt;/Result&gt;
+  &lt;/Order&gt;
+&lt;/Demo&gt;</code></code></pre>
+<p>对应的节点</p>
+<pre><code><code>${ROOT.Info.Code}=XXX-1
+${ROOT.Info.UUID}=d83a011a-958d-4310-a51b-0fb3a4228ef5
+${ROOT.Info.Time}=2017-11-15 16:57:36
+${ROOT.Order.SerialNo}=0
+${ROOT.Order.OrderNo}=123123123
+${ROOT.Order.OrderCode}=asdasdasd
+${ROOT.Order.Result}=1</code></code></pre>
+<h4 id="插件编写">插件编写</h4>
+<p>插件有两种。</p>
+<h5 id="一种">一种</h5>
+<p>是实现接口<strong>com.hebaibai.ctrt.transmit.util.ext</strong>。这个接口可以处理一些签名之类的操作，其中有四个方法。</p>
+<pre class="java"><code>    /**
+     * 用于判断是否使用该插件，extCode为配置文件中的配置
+     * @param extCode
+     * @return
+     */
+    boolean support(String extCode);
+
+    /**
+     * 获取插件编号
+     *
+     * @return
+     */
+    String getCode();
+
+    /**
+     * 在api请求前前执行
+     *
+     * @param value    完整的数据
+     * @param valueMap 放进freemarker的数据
+     * @return 插件处理后的数据
+     */
+    String beforRequest(String value, Map&lt;String, Object&gt; valueMap) throws Exception;
+
+    /**
+     * 在api响应后执行
+     *
+     * @param value    完整的数据
+     * @param valueMap 放进freemarker的数据
+     * @return
+     */
+    String afterResponse(String value, Map&lt;String, Object&gt; valueMap) throws Exception;</code></code></pre>
+<p><strong>单独新建项目</strong>，实现该接口，添加一个类：</p>
+<pre class="java"><code>package com.hebaibai.ctrt;
+import com.hebaibai.ctrt.ext.sign.PICC_XM_testSign;
+import com.hebaibai.ctrt.transmit.util.CrtrUtils;
+
+/**
+ * 驱动
+ */
+public class Driver {
+
+    /**
+     * 将插件添加进项目
+     */
+    static {
+        System.out.println(&quot;加载 签名插件...&quot;);
+        CrtrUtils.EXT_LIST.add(你编写的插件实例对象);
+    }
+}</code></code></pre>
+<p>之后将这个项目单独打成jar包，放进项目的<strong>lib</strong>文件夹中。之后修改配置：</p>
+<pre class="json"><code>。。。
+        &quot;ext&quot;:[
+            &quot;com.hebaibai.ctrt.Driver&quot;
+        ],
+。。。</code></code></pre>
+<p>就完成了。</p>
+<h5 id="另一种">另一种</h5>
+<p>添加freemarker自定义指令，操作和上面的插件差不多，需要实现<strong>freemarker.template.TemplateDirectiveModel</strong>接口，然后</p>
+<pre class="java"><code>package com.hebaibai.ctrt;
+import com.hebaibai.ctrt.ext.sign.PICC_XM_testSign;
+import com.hebaibai.ctrt.transmit.util.CrtrUtils;
+
+/**
+ * 驱动
+ */
+public class Driver {
+
+    /**
+     * 将插件添加进项目
+     */
+    static {
+        System.out.println(&quot;加载 签名插件...&quot;);
+        CrtrUtils.EXT_LIST.add(你编写的插件实例对象);
+        
+        //freeMarker 自定义指令
+        CrtrUtils.FREEMARKER_DIRECTIVE_MODEL.put(&quot;has&quot;, new Has());
+    }
+}</code></code></pre>
+<p>就完成了。</p>
+<h4 id="没了">没了</h4>
+<p>最后项目地址：<a href="https://github.com/hjx601496320/transmit" class="uri">https://github.com/hjx601496320/transmit</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

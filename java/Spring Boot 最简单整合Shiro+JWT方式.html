@@ -1,0 +1,140 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot 最简单整合Shiro+JWT方式' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot 最简单整合Shiro+JWT方式</center></div><div class='banquan'>原文出处:本文由博客园博主木子山禾提供。<br/>
+原文连接:https://www.cnblogs.com/muzishanhe/p/12015410.html</div><br>
+    <h4 id="简介">简介</h4>
+<p>目前<code>RESTful</code>大多都采用<code>JWT</code>来做授权校验，在<code>Spring Boot</code> 中可以采用<code>Shiro</code>和<code>JWT</code>来做简单的权限以及认证验证，在和<code>Spring Boot</code>集成的过程中碰到了不少坑。便结合自身以及大家的常用的运用场景开发出了这个最简单的整合方式<code>fastdep-shiro-jwt</code>。</p>
+<h4 id="源码地址">源码地址</h4>
+<p>希望大家可以star支持一下，后续还会加入其它依赖的简易整合。<br />
+<a href="https://github.com/louislivi/fastdep" class="uri">https://github.com/louislivi/fastdep</a></p>
+<h1 id="引入依赖">引入依赖</h1>
+<ul>
+<li><code>Maven</code></li>
+</ul>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.louislivi.fastdep&lt;/groupId&gt;
+    &lt;artifactId&gt;fastdep-shiro-jwt&lt;/artifactId&gt;
+    &lt;version&gt;1.0.2&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<ul>
+<li><code>Gradle</code></li>
+</ul>
+<pre class="groovy"><code>compile group: &#39;com.louislivi.fastdep&#39;, name: &#39;fastdep-redis&#39;, version: &#39;1.0.2&#39;</code></code></pre>
+<h1 id="配置文件">配置文件</h1>
+<ul>
+<li><p><code>application.yml</code></p>
+<pre class="yaml"><code>fastdep:
+  shiro-jwt:
+    filter: #shiro过滤规则
+      admin:
+        path: /admin/**
+        role: jwt # jwt为需要进行token校验
+      front:
+        path: /front/**/**
+        role: anon # anon为无需校验
+    secret: &quot;6Dx8SIuaHXJYnpsG18SSpjPs50lZcT52&quot; # jwt秘钥
+#    expireTime: 7200000 # token有效期
+#    prefix: &quot;Bearer &quot;  # token校验时的前缀
+#    signPrefix: &quot;Bearer &quot; # token生成签名的前缀
+#    header: &quot;Authorization&quot; # token校验时的header头
+#    以下对应为shiro配置参数，无特殊需求无需配置
+#    loginUrl: 
+#    successUrl: 
+#    unauthorizedUrl: 
+#    filterChainDefinitions: </code></code></pre></li>
+<li><p>用户权限配置类</p>
+<pre class="java"><code>@Component
+public class FastDepShiroJwtConfig extends FastDepShiroJwtAuthorization {
+
+  @Autowired
+  private UserRequestDataMapper userRequestDataMapper;
+
+  @Override
+  public SimpleAuthorizationInfo getAuthorizationInfo(String userId) {
+      // 查询该用户下的所有权限（当前为示例仅查询用户ID真实环境替换为用户的权限值）
+      Set&lt;String&gt; collect = userRequestDataMapper.selectOptions().stream().map(u -&gt; u.getUserId().toString()).collect(Collectors.toSet());
+        SimpleAuthorizationInfo simpleAuthorizationInfo = new SimpleAuthorizationInfo();
+        System.out.println(collect);
+        // 当前值为 [1]
+        // 添加用户权限到SimpleAuthorizationInfo中
+        simpleAuthorizationInfo.addStringPermissions(collect);
+        return simpleAuthorizationInfo;
+    }
+}</code></code></pre></li>
+</ul>
+<h1 id="运用">运用</h1>
+<pre class="java"><code>@RestController
+public class TestController {
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    /**
+     * 当前为示例所以直接返回了token，真实环境为校验登录信息后再返回token即可
+     * @author : louislivi
+     */
+    @GetMapping(&quot;front/login&quot;)
+    public String login() {
+        // ...校验登录信息是否正确
+        // 传入用户唯一标示
+        return jwtUtil.sign(&quot;1&quot;); 
+    }
+
+    /**
+     * 当前为示例所以权限写的是用户ID 真实环境替换为权限key
+     * @author : louislivi
+     */
+    @GetMapping(&quot;admin&quot;)
+    @RequiresPermissions(&quot;1&quot;)
+    public String jwt() {
+        return &quot;ok!&quot;;
+    }
+}</code></code></pre>
+<h1 id="测试">测试</h1>
+<p>1.获取<code>token</code><br />
+<img src="./images/Spring Boot 最简单整合Shiro+JWT方式0.png" alt="front-login.png" /></p>
+<p>2.测试权限校验</p>
+<ul>
+<li><p>带token<br />
+<img src="./images/Spring Boot 最简单整合Shiro+JWT方式1.png" alt="hasToken.png" /></p></li>
+<li>不带token</li>
+</ul>
+<pre class="json"><code>{
+    &quot;msg&quot;: &quot;Access denied !&quot;,
+    &quot;code&quot;: 401
+}</code></code></pre>
+<ul>
+<li>带上token但是，<code>SimpleAuthorizationInfo</code>中无指定权限</li>
+</ul>
+<pre><code><code>{
+    &quot;msg&quot;: &quot;Subject does not have permission [1]&quot;,
+    &quot;code&quot;: 403
+}</code></code></pre>
+<blockquote>
+<p>扩展</p>
+</blockquote>
+<p>有时候需要自定义权限校验以及错误返回信息结构等，这时候就需要重写<code>FastDepShiroJwtAuthorization</code>类中的方法。更多详情请看<a href="https://fastdep.louislivi.com/#/module/fastdep-shiro-jwt">这里</a></p>
+<h4 id="原理">原理</h4>
+<p>使用<code>ImportBeanDefinitionRegistrar</code> <code>BeanDefinitionBuilder.genericBeanDefinition</code>动态注入<code>Bean</code>其实很简单有兴趣可以去看看源码，这样的依赖集成是不是简单了很多呢？</p>
+<p>希望大家能够支持开源，给个小星星，后续还会继续开发其他依赖的整合，甚至兼容其他框架使用。<code>fastdep</code>让<code>java</code>整合依赖更简单。在此也招募有志同道合的<code>coder</code>共同完善这个项目。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

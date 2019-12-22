@@ -1,0 +1,72 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Java发送邮件必带超时时间配置' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Java发送邮件必带超时时间配置</center></div><div class='banquan'>原文出处:本文由博客园博主Java3y提供。<br/>
+原文连接:https://www.cnblogs.com/Java3y/p/11471036.html</div><br>
+    <h2 id="前言">前言</h2>
+<blockquote>
+<p>只有光头才能变强。</p>
+</blockquote>
+<blockquote>
+<p>文本已收录至我的GitHub仓库，欢迎Star：<a href="https://github.com/ZhongFuCheng3y/3y" class="uri">https://github.com/ZhongFuCheng3y/3y</a></p>
+</blockquote>
+<p>在线上遇到了一个发送邮件的问题，记录一下。</p>
+<h2 id="一先说背景">一、先说背景</h2>
+<p>某一天，小王跟我反馈：“麻烦检查一下线上邮件的发送情况，我这查出来发送失败啦”</p>
+<p>我去DB查了一下近期的邮件发送情况，表示：“看着都挺正常的，线上没有异常的情况。可能邮件在redis里边堆积了，还没消费”</p>
+<pre><code><code>select * from email order by id desc limit 100</code></code></pre>
+<p>先来说一下我这边发邮件的大致实现方式：</p>
+<p><img src="./images/Java发送邮件必带超时时间配置0.png" alt="处理邮件消息的方式" /></p>
+<p>这样做有什么好处？把Redis当做一个消息队列，把请求全部扔到Redis上，这能<strong>削峰</strong>。机器A/B/C的线程会在<strong>一定的间隔内</strong>向Redis拉取消息，然后调用邮件接口进行发送。</p>
+<p>而我这边会在页面上提供一个功能给业务方查询各类消息是否发送成功，由于发送邮件是一个<strong>异步</strong>的操作，而前同事在编写的时候又<strong>追求实时性</strong>。</p>
+<ul>
+<li>目前的逻辑是：如果push到Redis是成功的，并且Redis里边没有堆积着消息(说明机器A/B/C能及时处理掉这封邮件)，那就认为这封邮件发送成功。</li>
+</ul>
+<p>PS：(如果系统不存在问题，其实这个实现也是OK的。<strong>因为邮件的发送量一般不会太大(Redis不会堆积消息)，并且发送邮件的成功率也是挺高的</strong>。</p>
+<p>回到问题上，由于有上面的一个背景，所以我就猜测：是不是小王在查结果时，这封邮件还堆积在Redis上，所以就直接返回失败了。果不其然，我去查了一下Redis，还有200封邮件没消息。</p>
+<p>于是我就问小王：“你这发了多少封邮件啊？”小王表示：“20分钟500封，1qps都不到”。我想了一下：“那我们这有四台机器，按道理是不会堆积那么多的”。</p>
+<p>于是跑去线上服务器看一下消费的日志，发现<strong>只有一台</strong>机器在消费Redis的数据。又去看了一下错误的日志是不是有大量的错误信息，<strong>但</strong>并没找到错误的日志...</p>
+<p>于是去查了一下机器的监控信息，也没发现异样。那问题就来了：为啥就只有一台机器在消费Redis的消息呢？其他三台机器的日志和监控信息都没异常。</p>
+<h2 id="二解决">二、解决</h2>
+<p>从日志和机器的信息都判断不出有什么问题，这时我又想起在Java中的一个命令：<code>jstack</code></p>
+<blockquote>
+<p>jstack命令主要用来查看Java线程的调用堆栈的，可以用来分析线程问题（如死锁）。</p>
+</blockquote>
+<p>jstack详细用法以及教程：<a href="https://www.cnblogs.com/kongzhongqijing/articles/3630264.html" class="uri">https://www.cnblogs.com/kongzhongqijing/articles/3630264.html</a></p>
+<p>于是我就去执行了一下<code>jstack</code>命令，在信息中搜了一下&quot;Email&quot;，真被我搜出来了：</p>
+<p><img src="./images/Java发送邮件必带超时时间配置1.png" alt="发邮件卡住了" /></p>
+<p>那就好办了，只要搜一下：“Java 发送邮箱 线程 阻塞”此类的关键字，应该就有解决方案了。</p>
+<p><img src="./images/Java发送邮件必带超时时间配置2.png" alt="解决方案" /></p>
+<p>最后，发现是因为在发送邮件的时候没有配置<strong>超时时间</strong>，导致某些线程在发送邮件的时候阻塞掉了（具体原因不明）</p>
+<ul>
+<li>mail.smtp.connectiontimeout：连接时间限制，单位毫秒。是关于与邮件服务器建立连接的时间长短的。默认是无限制。</li>
+<li>mail.smtp.timeout：邮件接收时间限制，单位毫秒。这个是有关邮件接收时间长短。默认是无限制。</li>
+<li>mail.smtp.writetimeout：邮件发送时间限制，单位毫秒。有关发送邮件时内容上传的时间长短。默认同样是无限制。</li>
+</ul>
+<h2 id="最后">最后</h2>
+<blockquote>
+<p>乐于输出<strong>干货</strong>的Java技术公众号：<strong>Java3y</strong>。公众号内<strong>有200多篇原创</strong>技术文章、海量视频资源、精美脑图，<strong>关注即可获取！</strong></p>
+</blockquote>
+<p><img src="./images/Java发送邮件必带超时时间配置3.png" alt="转发到朋友圈是对我最大的支持！" /></p>
+<p>觉得我的文章写得不错，点<strong>赞</strong>！</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

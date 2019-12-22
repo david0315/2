@@ -1,0 +1,323 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修[springboot 开发单体web shop] 3. 用户注册实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>[springboot 开发单体web shop] 3. 用户注册实现</center></div><div class='banquan'>原文出处:本文由博客园博主IsaacZhang提供。<br/>
+原文连接:https://www.cnblogs.com/zhangpan1244/p/11809826.html</div><br>
+    <src class="toc">
+    <p class="toc-title">目录</p>
+    <src class="toc-list">
+        <ul>
+        <li><a href="#用户注册">用户注册</a><ul>
+        <li><a href="#创建数据库">创建数据库</a></li>
+        <li><a href="#生成usermapper">生成UserMapper</a></li>
+        <li><a href="#编写业务逻辑">编写业务逻辑</a></li>
+        <li><a href="#编写user-service">编写user service</a><ul>
+        <li><a href="#userserviceimplfinduserbyusername-说明">UserServiceImpl#findUserByUserName 说明</a></li>
+        <li><a href="#userserviceimplcreateuser-说明">UserServiceImpl#createUser 说明</a></li>
+        </ul></li>
+        <li><a href="#编写user-controller">编写user controller</a><ul>
+        <li><a href="#usercontrollervalidateusernameusername-说明">UserController#validateUsername(username) 说明</a></li>
+        <li><a href="#usercontrollercreateuseruserrequestdto-说明">UserController#createUser(UserRequestDTO) 说明</a></li>
+        </ul></li>
+        <li><a href="#测试api">测试API</a><ul>
+        <li><a href="#usercontrollervalidateusernameusername-测试">UserController#validateUsername(username) 测试</a></li>
+        <li><a href="#usercontrollercreateuseruserrequestdto-测试">UserController#createUser(UserRequestDTO) 测试</a></li>
+        </ul></li>
+        <li><a href="#下节预告">下节预告</a></li>
+        </ul></li>
+        </ul>
+    
+
+<h1 id="用户注册">用户注册</h1>
+<p>作为一个现代化电商平台，什么最重要呢？of course 是用户，广大用户群体是支持我们可持续发展的基石，<code>顾客是上帝</code>， 虽然在当今上帝已经不被重视了，特别是很多的平台对于老用户就是恨不得赶紧Out...但是用户量是一切的基础，那我们就开始创建我们的上帝吧！</p>
+<h2 id="创建数据库">创建数据库</h2>
+<hr />
+<p>数据库的部分，我在这里就不多讲了，大家需要的话可以直接去<a href="https://github.com/Isaac-Zhang/expensive-shop/tree/master/db">传送门</a> 抓取脚本<code>expensive-shop.sql</code>.</p>
+<h2 id="生成usermapper">生成UserMapper</h2>
+<hr />
+<p>参考上节内容：<a href="https://www.cnblogs.com/zhangpan1244/p/11803023.html">传送门</a></p>
+<h2 id="编写业务逻辑">编写业务逻辑</h2>
+<hr />
+<p>首先，我们先来分析一下要注册一个用户，我们系统都需要做哪些动作？<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现0.png" alt="user register" /></p>
+<ul>
+<li>validate
+<ul>
+<li>input string(校验输入我们需要通过两个角度处理)
+<ul>
+<li><p>FrontEnd valid</p>
+<blockquote>
+<p>前端校验是为了降低我们服务器端压力而做的一部分校验，这部分校验可以拦截大多数的错误请求。</p>
+</blockquote></li>
+<li><p>Backend valid</p>
+<blockquote>
+<p>后端校验是为了防止某些不法小伙伴绕开前端从而直接访问我们的api造成数据请求服务器错误，或者前端小伙伴程序有bug...无论是哪一种可能性，都有可能造成严重的后果。</p>
+</blockquote></li>
+</ul></li>
+<li><p>email &amp; mobile invalid</p>
+<blockquote>
+<p>因为本人没有追求email / 短信发送服务器，所以这一步就pass，小伙伴们可以自行研究哈。</p>
+</blockquote></li>
+</ul></li>
+<li>control
+<ul>
+<li><p>create user</p>
+<blockquote>
+<p>校验通过后，就可以进行创建用户的动作了。<br />
+接下来，我们就可以来实际编码实现业务了，我们使用最基本的分层架构，在之前我们已经通过<code>Mybatis Generator</code>工具生成了基本的<code>pojo</code>,<code>mapper</code>，对于简单的操作我们只需要再编写<code>service</code>和<code>controller</code>层就可以完成我们的开发工作了。</p>
+</blockquote></li>
+</ul></li>
+</ul>
+<h2 id="编写user-service">编写user service</h2>
+<hr />
+<p>在<code>mscx-shop-service</code>中创建<code>com.liferunner.service.IUserService</code>接口，包含2个方法<code>findUserByUserName</code>和<code>createUser</code>，如下：</p>
+<pre><code><code>public interface IUserService {
+
+    /**
+     * 根据用户名查询用户是否存在
+     *
+     * @param username
+     * @return
+     */
+    Users findUserByUserName(String username);
+
+    /**
+     * 创建用户
+     *
+     * @param userRequestDTO 用户请求dto
+     * @return 当前用户
+     */
+    Users createUser(UserRequestDTO userRequestDTO) throws Exception;
+}</code></code></pre>
+<p>接着，我们需要具体实现这个接口类，如下：</p>
+<pre><code><code>@Service
+@Slf4j
+public class UserServiceImpl implements IUserService {
+    private final String FACE_IMG = &quot;https://avatars1.githubusercontent.com/u/4083152?s=88&amp;v=4&quot;;
+
+    // 构造器注入
+    private final UsersMapper usersMapper;
+    private final Sid sid;
+
+    @Autowired
+    public UserServiceImpl(UsersMapper usersMapper, Sid sid) {
+        this.usersMapper = usersMapper;
+        this.sid = sid;
+    }
+
+    @Override
+    public Users findUserByUserName(String username) {
+        // 构建查询条件
+        Example example = new Example(Users.class);
+        val condition = example.createCriteria()
+                .andEqualTo(&quot;username&quot;, username);
+        return this.usersMapper.selectOneByExample(example);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    @Override
+    public Users createUser(UserRequestDTO userRequestDTO) throws Exception {
+        log.info(&quot;======begin create user : {}=======&quot;, userRequestDTO);
+        val user = Users.builder()
+                .id(sid.next()) //生成分布式id
+                .username(userRequestDTO.getUsername())
+                .password(MD5GeneratorTools.getMD5Str(userRequestDTO.getPassword()))
+                .birthday(DateUtils.parseDate(&quot;1970-01-01&quot;, &quot;yyyy-MM-dd&quot;))
+                .nickname(userRequestDTO.getUsername())
+                .face(this.FACE_IMG)
+                .sex(SexEnum.secret.type)
+                .createdTime(new Date())
+                .updatedTime(new Date())
+                .build();
+        this.usersMapper.insertSelective(user);
+        log.info(&quot;======end create user : {}=======&quot;, userRequestDTO);
+        return user;
+    }
+}</code></code></pre>
+<p>这里有几处地方有必要说明一下：</p>
+<h3 id="userserviceimplfinduserbyusername-说明">UserServiceImpl#findUserByUserName 说明</h3>
+<ul>
+<li><code>tk.mybatis.mapper.entity.Example</code> 通过使用Example来构建mybatis的查询参数，如果有多个查询条件，可以通过<code>example.createCriteria().addxxx</code>逐一添加。</li>
+</ul>
+<h3 id="userserviceimplcreateuser-说明">UserServiceImpl#createUser 说明</h3>
+<ul>
+<li><code>@Transactional(propagation = Propagation.REQUIRED)</code>,开启事务，选择事务传播级别为<code>REQUIRED</code>,表示必须要有一个事务存在，如果调用者不存在事务，那本方法就自己开启一个新的事物，如果调用方本身存在一个活跃的事务，那本方法就加入到它里面（同生共死）。</li>
+<li><code>org.n3r.idworker.Sid</code>, 这个是一个开源的 分布式ID生成器组件，<a href="https://github.com/bingoohuang/idworker-client">传送门</a>, 后期有机会的话，会专门写一个id生成器文章。</li>
+<li><code>MD5GeneratorTools</code> 是用来对数据进行MD5加密的工具类，大家可以在源码中下载。也可以直接使用<code>java.security.MessageDigest</code> 直接加密实现，总之密码不能明文存储就行了。</li>
+<li><code>SexEnum</code> 这个是一个表述性别类型的枚举，在我们编码的规范中，尽量要求不要出现<code>Magic number</code>,就是开发界常说的魔术数字（即1,2,300...）</li>
+<li>这里的日志打印，可能有人会问为什么你没有声明类似:<code>private final static Logger logger = LoggerFactory.getLogger(UserServiceImpl.class);</code> ,这是因为我们在开始的时候，我们引入了<code>lombok</code>依赖，不记得的同学可以参考<a href="https://www.cnblogs.com/zhangpan1244/p/11793065.html">传送门</a>。在这里依赖中，它继承了很多的日志组件，我们只需要使用一个注解<code>lombok.extern.slf4j.Slf4j</code>来开启日志，使用<code>log.info..</code>就可以了。</li>
+<li><code>UserRequestDTO</code> 又是个什么鬼？在我们开发的过程中，很可能会有大批量的参数需要传递，这时我们如果使用<code>xxx#(String aa,Integer bb,Boolean cc...)</code>会让我们烦不胜数，而且看着也不美观，这时候我们就可以选择创建一个新对象来帮助我们传递数据，那么也就是我们的<code>UserRequestDTO</code>对象，所谓的<code>DTO</code>就是<code>Data Transfer Object</code>的首字母缩写，顾名思义，它是用来传递数据对象用的。</li>
+</ul>
+<h2 id="编写user-controller">编写user controller</h2>
+<hr />
+<p>同样在<code>mscx-shop-api</code>中，创建<code>com.liferunner.api.controller.UserController</code>,实现用户创建。</p>
+<pre><code><code>@RestController
+@RequestMapping(name = &quot;/users&quot;)
+@Slf4j
+@Api(tags=&quot;用户管理&quot;)
+public class UserController {
+
+    @Autowired
+    private IUserService userService;
+
+    @ApiOperation(&quot;校验是否重名&quot;)
+    @GetMapping(&quot;/validateUsername&quot;)
+    public JsonResponse validateUsername(@RequestParam String username) {
+        // 判断用户名是否非法
+        if (StringUtils.isBlank(username))
+            return JsonResponse.errorMsg(&quot;用户名不能为空！&quot;);
+        if (null != userService.findUserByUserName(username))
+            return JsonResponse.errorMsg(&quot;用户名已存在！&quot;);
+        // 用户名可用
+        return JsonResponse.ok();
+    }
+
+    @ApiOperation(&quot;创建用户&quot;)
+    @PostMapping(&quot;/create&quot;)
+    public JsonResponse createUser(@RequestBody UserRequestDTO userRequestDTO) {
+        try {
+            if (StringUtils.isBlank(userRequestDTO.getUsername()))
+                return JsonResponse.errorMsg(&quot;用户名不能为空&quot;);
+            if (null != this.userService.findUserByUserName(userRequestDTO.getUsername())) {
+                return JsonResponse.errorMsg(&quot;用户名已存在！&quot;);
+            }
+            if (StringUtils.isBlank(userRequestDTO.getPassword()) ||
+                    StringUtils.isBlank(userRequestDTO.getConfimPassword()) ||
+                    userRequestDTO.getPassword().length() &lt; 8) {
+                return JsonResponse.errorMsg(&quot;密码为空或长度小于8位&quot;);
+            }
+            if (!userRequestDTO.getPassword().equals(userRequestDTO.getConfimPassword()))
+                return JsonResponse.errorMsg(&quot;两次密码不一致！&quot;);
+            val user = this.userService.createUser(userRequestDTO);
+            if (null != user)
+                return JsonResponse.ok(user);
+        } catch (Exception e) {
+            log.error(&quot;创建用户失败,{}&quot;, userRequestDTO);
+        }
+        return JsonResponse.errorMsg(&quot;创建用户失败&quot;);
+    }
+}</code></code></pre>
+<h3 id="usercontrollervalidateusernameusername-说明">UserController#validateUsername(username) 说明</h3>
+<ul>
+<li><code>JsonResponse</code>对象是为了方便返回给客户端一个统一的格式而封装的数据对象。</li>
+</ul>
+<pre><code><code>@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class JsonResponse {
+
+    // 定义jackson对象
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // 响应业务状态
+    private Integer status;
+    // 响应消息
+    private String message;
+    // 响应中的数据
+    private Object data;
+
+    public static JsonResponse build(Integer status, String msg, Object data) {
+        return new JsonResponse(status, msg, data);
+    }
+
+    public static JsonResponse ok(Object data) {
+        return new JsonResponse(data);
+    }
+
+    public static JsonResponse ok() {
+        return new JsonResponse(null);
+    }
+
+    public static JsonResponse errorMsg(String msg) {
+        return new JsonResponse(500, msg, null);
+    }
+
+    public static JsonResponse errorMap(Object data) {
+        return new JsonResponse(501, &quot;error&quot;, data);
+    }
+
+    public static JsonResponse errorTokenMsg(String msg) {
+        return new JsonResponse(502, msg, null);
+    }
+
+    public static JsonResponse errorException(String msg) {
+        return new JsonResponse(555, msg, null);
+    }
+
+    public static JsonResponse errorUserQQ(String msg) {
+        return new JsonResponse(556, msg, null);
+    }
+
+    public JsonResponse(Object data) {
+        this.status = 200;
+        this.message = &quot;OK&quot;;
+        this.data = data;
+    }
+
+    public Boolean isOK() {
+        return this.status == 200;
+    }
+}</code></code></pre>
+<h3 id="usercontrollercreateuseruserrequestdto-说明">UserController#createUser(UserRequestDTO) 说明</h3>
+<ul>
+<li>如上文所讲，需要先做各种校验</li>
+<li>成功则返回<code>JsonResponse</code></li>
+<li>细心的同学可能看到了上文中有几个注解<code>@Api(tags=&quot;用户管理&quot;)</code>,<code>@ApiOperation(&quot;创建用户&quot;)</code>,这个是Swagger 的注解，我们会在下一节和大家详细探讨，以及如何生成<code>off-line docs</code>。</li>
+</ul>
+<h2 id="测试api">测试API</h2>
+<hr />
+<p>在我们每次修改完成之后，都尽可能的<code>mvn clean install</code>一次，因为我们隶属不同的project，如果不重新安装一次，偶尔遇到的问题会让人怀疑人生的。</p>
+<pre class="shell"><code>...
+[INFO] expensive-shop ..................................... SUCCESS [  1.220 s]
+[INFO] mscx-shop-common ................................... SUCCESS [  9.440 s]
+[INFO] mscx-shop-pojo ..................................... SUCCESS [  2.020 s]
+[INFO] mscx-shop-mapper ................................... SUCCESS [  1.564 s]
+[INFO] mscx-shop-service .................................. SUCCESS [  1.366 s]
+[INFO] mscx-shop-api ...................................... SUCCESS [  4.614 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  20.739 s
+[INFO] Finished at: 2019-11-06T14:53:55+08:00
+[INFO] ------------------------------------------------------------------------</code></code></pre>
+<p>当看到上述运行结果之后，就可以启动我们的应用就行测试啦～</p>
+<h3 id="usercontrollervalidateusernameusername-测试">UserController#validateUsername(username) 测试</h3>
+<p>测试API的方式有很多种，比如<code>curl localhost:8080/validateUsername</code>，在比如使用超级流行的<code>Postman</code>也是完全ok的，我这里用的是之前在第一篇中和大家所说的一个插件<code>Restful Toolkit(可以实现和postman一样的简单效果,同时还能帮助我们生成一部分测试信息)</code>，当我们应用启动之后，效果如下图，<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现1.png" alt="rest plugin" /></p>
+<p>我们可以看到，插件帮我们生成了几个测试方法，比如我们点击<code>validateUsername</code>,下方就会生成当前方法是一个包含<code>username</code>参数的<code>GET</code>方法，<code>demoData</code>是插件默认给我们生成的测试数据。可以随意修改。<br />
+点击Send：<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现2.png" alt="result" /><br />
+可以看到请求成功了，并且返回我们自定义的JSON格式数据。</p>
+<h3 id="usercontrollercreateuseruserrequestdto-测试">UserController#createUser(UserRequestDTO) 测试</h3>
+<p>接着我们继续测试用户注册接口，请求如下：<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现3.png" alt="send" /><br />
+可以看到，当我们选择<code>create</code>方法时，插件自动帮我们设置请求类型为<code>POST</code>，并且<code>RequestBody</code>的默认值也帮助我们生成了，我只修改了默认的<code>username</code>和<code>password</code>值，<code>confimPassword</code>的默认值我没有变动，那按照我们的校验逻辑，它应该返回的是<code>return JsonResponse.errorMsg(&quot;两次密码不一致！&quot;);</code>这一行，点击Send：<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现4.png" alt="result" /><br />
+修改<code>confimPassword</code>为<code>12345678</code>,点击Send：<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现5.png" alt="result2" /><br />
+可以看到，创建用户成功，并且将当前创建的用户返回到了我们请求客户端。那么我们继续重复点击创建，会怎么样呢？继续Send:<br />
+<img src="./images/[springboot 开发单体web shop] 3. 用户注册实现6.png" alt="result3" /><br />
+可以看到，我们的验证重复用户也已经生效啦。</p>
+<h2 id="下节预告">下节预告</h2>
+<hr />
+<p>下一节我们将学习如何使用Swagger自动生成API接口文档给前端，以及如果没有外部网络的情况下，或者需要和第三方平台对接的时候，我们如何生成<code>离线文档</code>给到第三方。<br />
+gogogo！</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,211 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot系列：Spring Boot异步调用@Async' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot系列：Spring Boot异步调用@Async</center></div><div class='banquan'>原文出处:本文由博客园博主杨小格子提供。<br/>
+原文连接:https://www.cnblogs.com/imyanger/p/11809093.html</div><br>
+    <p>在实际开发中，有时候为了及时处理请求和进行响应，我们可能会多任务同时执行，或者先处理主任务，也就是异步调用，异步调用的实现有很多，例如多线程、定时任务、消息队列等，</p>
+<p>这一章节，我们就来讲讲@Async异步方法调用。</p>
+<h3 id="一async使用演示">一、@Async使用演示</h3>
+<p>@Async是Spring内置注解，用来处理异步任务，在SpringBoot中同样适用，且在SpringBoot项目中，除了boot本身的starter外，不需要额外引入依赖。</p>
+<p>而要使用@Async，需要在启动类上加上@EnableAsync主动声明来开启异步方法。</p>
+<pre><code><code>@EnableAsync
+@SpringBootApplication
+public class SpringbootApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringbootApplication.class, args);
+    }
+
+}</code></code></pre>
+<p>现假设有3个任务需要去处理，分别对应AsyncTask类的taskOne、taskTwo、taskThree方法，这里做了线程的sleep来模拟实际运行。</p>
+<pre><code><code>@Slf4j
+@Component
+public class AsyncTask {
+
+    private Random random = new Random();
+    
+    public void taskOne() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务一执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+    
+    public void taskTwo() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务二执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+    
+    public void taskThree() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务三执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+
+}</code></code></pre>
+<p>然后编写测试类，由于@Async注解需要再Spring容器启动后才能生效，所以这里讲测试类放到了SpringBoot的test包下，使用了SpringBootTest。</p>
+<pre><code><code>@Slf4j
+@RunWith(SpringRunner.class)
+@SpringBootTest(classes = SpringbootApplication.class)
+public class AsyncTaskTest {
+
+    @Autowired
+    private AsyncTask asyncTask;
+
+    @Test
+    public void doAsyncTasks(){
+        try {
+            long start = System.currentTimeMillis();
+            asyncTask.taskOne();
+            asyncTask.taskTwo();
+            asyncTask.taskThree();
+            Thread.sleep(5000);
+            long end = System.currentTimeMillis();
+            log.info(&quot;主程序执行完成耗时{}秒&quot;, (end - start)/1000f);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+}</code></code></pre>
+<p>运行测试方法，可以在控制台看到任务一二三按顺序执行，最后主程序完成，这和我们的预期一样，因为我们没有任何额外的处理，他们就是普通的方法，按编码顺序依次执行。</p>
+<p><img src="./images/SpringBoot系列：Spring Boot异步调用@Async0.png" /></p>
+<p>而如果要使任务并发执行，我们只需要在任务方法上使用@Async注解即可，需要注意的是@Async所修饰的方法不要定义为static类型，这样异步调用不会生效。</p>
+<pre><code><code>@Slf4j
+@Component
+public class AsyncTask {
+
+    private Random random = new Random();
+
+    //@Async所修饰的函数不要定义为static类型，这样异步调用不会生效
+    @Async
+    public void taskOne() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务一执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+
+    @Async
+    public void taskTwo() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务二执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+
+    @Async
+    public void taskThree() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务三执行完成耗时{}秒&quot;, (end - start)/1000f);
+    }
+
+}</code></code></pre>
+<p>然后我们在运行测试类，这个时候输出可能就五花八门了，任意任务都可能先执行完成，也有可能有的方法因为主程序关闭而没有输出。</p>
+<p><img src="./images/SpringBoot系列：Spring Boot异步调用@Async1.png" /></p>
+<h3 id="二future获取异步执行结果">二、Future获取异步执行结果</h3>
+<p>上面演示了@Async，但是有时候除了需要任务并发调度外，我们还需要获取任务的返回值，且在多任务都执行完成后再结束主任务，这个时候又该怎么处理呢？</p>
+<p>在多线程里通过Callable和Future可以获取返回值，这里也是类似的，我们使用Future返回方法的执行结果，AsyncResult<T>是Future的一个实现类。</p>
+<pre><code><code>@Slf4j
+@Component
+public class FutureTask {
+
+    private Random random = new Random();
+
+    //@Async所修饰的函数不要定义为static类型，这样异步调用不会生效
+    @Async
+    public Future&lt;String&gt; taskOne() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务一执行完成耗时{}秒&quot;, (end - start)/1000f);
+        return new AsyncResult &lt;&gt;(&quot;任务一Ok&quot;);
+    }
+
+    @Async
+    public Future&lt;String&gt; taskTwo() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务二执行完成耗时{}秒&quot;, (end - start)/1000f);
+        return new AsyncResult &lt;&gt;(&quot;任务二OK&quot;);
+    }
+
+    @Async
+    public Future&lt;String&gt; taskThree() throws InterruptedException {
+        long start = System.currentTimeMillis();
+        Thread.sleep(random.nextInt(10000));
+        long end = System.currentTimeMillis();
+        log.info(&quot;任务三执行完成耗时{}秒&quot;, (end - start)/1000f);
+        return new AsyncResult &lt;&gt;(&quot;任务三Ok&quot;);
+    }
+
+}</code></code></pre>
+<p>在AsyncResult中：</p>
+<ul>
+<li>isDone()方法可以用于判断异步方法是否执行完成，若任务完成，则返回true</li>
+<li>get()方法可用于获取任务执行后返回的结果</li>
+<li>cancel(boolean mayInterruptIfRunning)可用于取消任务，参数mayInterruptIfRunning表示是否允许取消正在执行却没有执行完毕的任务，如果设置true，则表示可以取消正在执行过程中的任务</li>
+<li>isCancelled()方法表示任务是否被取消成功，如果在任务正常完成前被取消成功，则返回 true</li>
+<li>get(long timeout, TimeUnit unit)用来获取执行结果，如果在指定时间内，还没获取到结果，就直接返回null</li>
+</ul>
+<pre><code><code>@Slf4j
+@RunWith(SpringRunner.class)
+@SpringBootTest(classes = SpringbootApplication.class)
+public class AsyncTaskTest {
+
+    @Autowired
+    private FutureTask futureTask;
+
+    @Test
+    public void doFutureTasks(){
+        try {
+            long start = System.currentTimeMillis();
+            Future &lt;String&gt; future1 = futureTask.taskOne();
+            Future &lt;String&gt; future2 = futureTask.taskTwo();
+            Future &lt;String&gt; future3 = futureTask.taskThree();
+            //3个任务执行完成之后再执行主程序
+            do {
+                Thread.sleep(100);
+            } while (future1.isDone() &amp;&amp; future2.isDone() &amp;&amp; future3.isDone());
+            log.info(&quot;获取异步方法的返回值:{}&quot;, future1.get());
+            Thread.sleep(5000);
+            long end = System.currentTimeMillis();
+            log.info(&quot;主程序执行完成耗时{}秒&quot;, (end - start)/1000f);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        }
+    }
+
+}</code></code></pre>
+<p>运行测试类，我们可以看到任务一二三异步执行了，主任务最后执行完成，而且可以获取到任务的返回信息。</p>
+<p><img src="./images/SpringBoot系列：Spring Boot异步调用@Async2.png" /></p>
+<p>源码地址：<a href="https://github.com/imyanger/springboot-project/tree/master/p23-springboot-async" class="uri">https://github.com/imyanger/springboot-project/tree/master/p23-springboot-async</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

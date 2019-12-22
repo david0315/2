@@ -1,0 +1,206 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot 对IBM MQ进行数据监听接收以及数据发送' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot 对IBM MQ进行数据监听接收以及数据发送</center></div><div class='banquan'>原文出处:本文由博客园博主italy_meng提供。<br/>
+原文连接:https://www.cnblogs.com/cloudam/p/11942373.html</div><br>
+    <p>一、需求介绍</p>
+<p>后端使用Spring Boot2.0框架，要实现IBM MQ的实时数据JMS监听接收处理，并形成回执通过MQ队列发送。</p>
+<p>二、引入依赖jar包</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>org.springframework<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>spring-jms<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>4.3.18.RELEASE<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>javax.jms<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>javax.jms-api<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>com.ibm.mq<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">groupId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>com.ibm.mq.allclient<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">artifactId</span><span style="color: #0000ff;">&gt;</span>
+        <span style="color: #0000ff;">&lt;</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>9.1.0.0<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">version</span><span style="color: #0000ff;">&gt;</span>
+<span style="color: #0000ff;">&lt;/</span><span style="color: #800000;">dependency</span><span style="color: #0000ff;">&gt;</span></code></pre>
+
+<p>三、监听实现</p>
+<p>代码中分为三大块：</p>
+<p>1、MQ通道连接，我这边是用的用户名密码连接，如果非密码的可不入参</p>
+<p>2、MQ的队列连接并实现监听</p>
+<p>3、MQ发送</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Configuration
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MqTestConfig {
+    
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MqProperties mqProperties;
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">=======================MQ 通道工厂============================*</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Bean(name</span>="mqQueueConnectionFactory"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MQQueueConnectionFactory mqQueueConnectionFactory(){
+        MQQueueConnectionFactory mqQueueConnectionFactory </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MQQueueConnectionFactory();
+        mqQueueConnectionFactory.setHostName(mqProperties.getHostName());
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            mqQueueConnectionFactory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+            mqQueueConnectionFactory.setCCSID(mqProperties.getCcsid());
+            mqQueueConnectionFactory.setChannel(mqProperties.getChannel());
+            mqQueueConnectionFactory.setPort(mqProperties.getPort());
+            mqQueueConnectionFactory.setQueueManager(mqProperties.getQueueManager());
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> mqQueueConnectionFactory;
+    }
+    @Bean(name</span>="userCredentialsConnectionFactoryAdapter"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> UserCredentialsConnectionFactoryAdapter userCredentialsConnectionFactoryAdapter(MQQueueConnectionFactory mqQueueConnectionFactory){
+        UserCredentialsConnectionFactoryAdapter userCredentialsConnectionFactoryAdapter </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> UserCredentialsConnectionFactoryAdapter();
+        userCredentialsConnectionFactoryAdapter.setUsername(mqProperties.getUserName());
+        userCredentialsConnectionFactoryAdapter.setPassword(mqProperties.getPassword());
+        userCredentialsConnectionFactoryAdapter.setTargetConnectionFactory(mqQueueConnectionFactory);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> userCredentialsConnectionFactoryAdapter;
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">============================MQ 消息监听接收=============================*</span><span style="color: #008000;">*/</span>
+    <span style="color: #008000;">//</span><span style="color: #008000;">队列连接</span>
+    @Bean(name="mqueue"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> MQQueue mqueue(){
+        MQQueue mqQueue </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> MQQueue();
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            mqQueue.setBaseQueueName(mqProperties.getBaseQueueNameRecv());
+            mqQueue.setBaseQueueManagerName(mqProperties.getBaseQueueManagerName());
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+            e.printStackTrace();
+        }
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> mqQueue;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">对队列进行监听</span>
+    @Bean(name="simpleMessageListenerContainer"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> SimpleMessageListenerContainer simpleMessageListenerContainer(UserCredentialsConnectionFactoryAdapter userCredentialsConnectionFactoryAdapter,MQQueue mqueue){
+        SimpleMessageListenerContainer simpleMessageListenerContainer </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleMessageListenerContainer();
+        simpleMessageListenerContainer.setConnectionFactory(userCredentialsConnectionFactoryAdapter);
+        simpleMessageListenerContainer.setDestination(mqueue);
+        simpleMessageListenerContainer.setMessageListener(decMqRiskRecvService());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> simpleMessageListenerContainer;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">报文处理类</span>
+    @Bean(name="decMqRiskRecvService"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> DecMqRiskRecvService decMqRiskRecvService(){
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> DecMqRiskRecvService();
+    }
+    
+    </span><span style="color: #008000;">/**</span><span style="color: #008000;">============================MQ 发送消息============================*</span><span style="color: #008000;">*/</span><span style="color: #000000;">
+    @Bean(name</span>="cachingConnectionFactory"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> CachingConnectionFactory cachingConnectionFactory(UserCredentialsConnectionFactoryAdapter userCredentialsConnectionFactoryAdapter){
+        CachingConnectionFactory cachingConnectionFactory </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> CachingConnectionFactory();
+        cachingConnectionFactory.setTargetConnectionFactory(userCredentialsConnectionFactoryAdapter);
+        cachingConnectionFactory.setSessionCacheSize(</span>5<span style="color: #000000;">);
+        cachingConnectionFactory.setReconnectOnException(</span><span style="color: #0000ff;">true</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> cachingConnectionFactory;
+    }
+    @Bean(name</span>="jmsTransactionManager"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> PlatformTransactionManager jmsTransactionManager(CachingConnectionFactory cachingConnectionFactory){
+        JmsTransactionManager jmsTransactionManager </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> JmsTransactionManager();
+        jmsTransactionManager.setConnectionFactory(cachingConnectionFactory);
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> jmsTransactionManager;
+    }
+    @Bean(name</span>="jmsOperations"<span style="color: #000000;">)
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> JmsOperations jmsOperations(CachingConnectionFactory cachingConnectionFactory){
+        JmsTemplate jmsTemplate </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> JmsTemplate(cachingConnectionFactory);
+        jmsTemplate.setReceiveTimeout(mqProperties.getReceiveTimeout());
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> jmsTemplate;
+    }
+
+}</span></code></pre>
+
+<p>mq配置文件</p>
+<p>记得要添加get和set方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Configuration
+@ConfigurationProperties(prefix</span>=<span style="color: #000000;">MqProperties.MQ_PREFIX)
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> MqProperties {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">final</span> String MQ_PREFIX = "mq"<span style="color: #000000;">;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String hostName;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> port;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String channel;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> ccsid;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String userName;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String password;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String queueManager;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String baseQueueManagerName;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String baseQueueNameRecv;
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> String baseQueueNameSend;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> receiveTimeout;</span><span style="color: #000000;">
+    
+}</span></code></pre>
+
+<p>报文处理类及回执发送</p>
+<p>1、实现类要实现MessageListener，重写onMessage方法，Message就是监听到的消息。</p>
+<p>2、读取报文时为防止乱码，我这边按照格式分两种方式读取转码。</p>
+<p>3、发送回执，之前发送发现报文多出了一些报文头信息，所以在队列信息加了</p>
+<p>　　"queue:///" + mqProperties.getBaseQueueNameSend() + "?targetClient=1"</p>
+<p>　<em>　</em>这样发送的报文会去掉报文头信息。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Service
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> DecMqRiskRecvService <span style="color: #0000ff;">implements</span><span style="color: #000000;"> MessageListener {
+
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> JmsOperations jmsOperations;
+    @Autowired
+    </span><span style="color: #0000ff;">private</span><span style="color: #000000;"> MqProperties mqProperties;
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onMessage(Message message) {
+        String str </span>= <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1、读取报文</span>
+        <span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">if</span> (message <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> BytesMessage) {
+                BytesMessage bm </span>=<span style="color: #000000;"> (BytesMessage) message;
+                </span><span style="color: #0000ff;">byte</span>[] bys = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+                bys </span>= <span style="color: #0000ff;">new</span> <span style="color: #0000ff;">byte</span>[(<span style="color: #0000ff;">int</span><span style="color: #000000;">) bm.getBodyLength()];
+                bm.readBytes(bys);
+                str </span>= <span style="color: #0000ff;">new</span> String(bys, "UTF-8"<span style="color: #000000;">);
+            } </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                str </span>=<span style="color: #000000;"> ((TextMessage) message).getText();
+                str </span>= <span style="color: #0000ff;">new</span> String(str.getBytes("ISO-8859-1"), "UTF-8"<span style="color: #000000;">);
+            }
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JMSException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2、处理报文
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3、组装回执发送</span>
+        String receipt = ""<span style="color: #000000;">;
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            jmsOperations.convertAndSend(</span>"queue:///" + mqProperties.getBaseQueueNameSend() + "?targetClient=1", receipt.getBytes("UTF-8"<span style="color: #000000;">));
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (JmsException e) {
+            e.printStackTrace();
+        } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+    }
+
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

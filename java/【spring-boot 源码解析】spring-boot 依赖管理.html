@@ -1,0 +1,229 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【spring-boot 源码解析】spring-boot 依赖管理' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【spring-boot 源码解析】spring-boot 依赖管理</center></div><div class='banquan'>原文出处:本文由博客园博主逸飞兮提供。<br/>
+原文连接:https://www.cnblogs.com/lw5946/p/11444634.html</div><br>
+    <p>关键词：spring-boot 依赖管理、spring-boot-dependencies、spring-boot-parent</p>
+<h1 id="问题">问题</h1>
+<p>maven 工程，依赖管理是非常基本又非常重要的功能，现在的工程越来越庞大，依赖越来越多，各种二方包、三方包太多太多，依赖冲突处理起来真是让人头疼，经常需要涉及到多个地方需要调整。</p>
+<p><em>微信公众号：逸飞兮（专注于java知识领域的源码分析，从源码中理解框架/工具原理、验证CS专业知识）</em></p>
+<h1 id="解决方案">解决方案</h1>
+<p>使用统一的依赖管理模块来管理工程中的<strong>所有</strong>依赖。</p>
+<p>spring-boot 工程常使用 spring-boot-dependencies、spring-boot-starter-parent 管理工程依赖。</p>
+<p>spring-boot 的最上级工程是 spring-boot-build，以下开始一步一步深入了解 spring-boot 依赖解决方案。</p>
+<h1 id="spring-boot-中的方案">spring-boot 中的方案</h1>
+<h2 id="spring-boot-build">spring-boot-build</h2>
+<p>spring-boot 的最上层工程，指定了 maven profiles、maven repositories、maven pluginRepositories、maven build pluginManagement。</p>
+<ul>
+<li>profiles：中包含代码风格检查、代码风格 format；更方便导入 eclipse；maven 仓库</li>
+<li>repositories：允许在开发过程中导入快照和里程碑 BOM。这个部分在 install/deploy 期间被 flatten 插件删除。包含 maven 中央仓库、spring 快照仓库、spring 里程碑仓库</li>
+<li>pluginRepositories：插件仓库，包含 maven 中央仓库、spring 快照仓库、spring 里程碑仓库</li>
+<li>pluginManagement：构建插件管理，这个插件的配置只用于存储 Eclipse m2e 设置，它对 Maven 构建本身没有影响。</li>
+</ul>
+<h2 id="spring-boot-dependencies">spring-boot-dependencies</h2>
+<p>dependencies 的父工程是<strong>spring-boot-build</strong>，不包含代码，只用 pom 来管理依赖，pom.xml 如下：</p>
+<pre><code><code>&lt;parent&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-build&lt;/artifactId&gt;
+        &lt;version&gt;${revision}&lt;/version&gt;
+        &lt;relativePath&gt;../..&lt;/relativePath&gt;
+&lt;/parent&gt;
+&lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+&lt;packaging&gt;pom&lt;/packaging&gt;
+&lt;dependencyManagement&gt;
+  &lt;!-- 省略具体依赖管理 --&gt;
+&lt;/dependencyManagement&gt;
+&lt;build&gt;
+  &lt;pluginManagement&gt;
+    &lt;!-- 省略具体构建插件管理 --&gt;
+  &lt;/pluginManagement&gt;
+  &lt;plugins&gt;
+    &lt;!-- 省略具体构建插件 --&gt;
+  &lt;/plugins&gt;
+&lt;/build&gt;</code></code></pre>
+<p>从 pom 中可以看出，spring-boot-dependencies 中除了引入了（3 个）插件，更多的是做版本的管理。</p>
+<p>其中，引入的插件是：</p>
+<ul>
+<li>flatten-maven-plugin：对 pom 精简插件</li>
+<li>xml-maven-plugin：1. 根据 schema 验证 XML 文件；2. 使用 XSLT 样式转换 XML 文件</li>
+<li>build-helper-maven-plugin：指定多个源码目录</li>
+</ul>
+<p>dependencyManagement 中差不多管理了 spring-boot 工程中所有的依赖。</p>
+<p>pluginManagement 中管理了常用的各种 maven 插件，这里就不详述了。</p>
+<p>其中包含了 maven-clean-plugin、maven-compiler-plugin、maven-assembly-plugin、maven-war-plugin、maven-jar-plugin、<strong>spring-boot-maven-plugin</strong>，其中 spring-boot-maven-plugin 插件对于 spring-boot 工程非常重要，会把 maven 打包成的 jar 重新打包成可执行 jar。</p>
+<h2 id="spring-boot-starter-parent重要">spring-boot-starter-parent（重要）</h2>
+<p><em>既然有了 spring-boot-dependencies 这么丰富的依赖、插件版本管理，那么还搞一个 spring-boot-starter-parent 呢？</em></p>
+<p>spring-boot-starter-parent 的父工程是<strong>spring-boot-dependencies</strong>，不包含代码，只用 pom 来管理依赖，pom.xml 如下：</p>
+<pre><code><code>&lt;parent&gt;
+  &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+  &lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+  &lt;version&gt;${revision}&lt;/version&gt;
+  &lt;relativePath&gt;../../spring-boot-dependencies&lt;/relativePath&gt;
+&lt;/parent&gt;
+&lt;artifactId&gt;spring-boot-starter-parent&lt;/artifactId&gt;
+&lt;packaging&gt;pom&lt;/packaging&gt;
+&lt;name&gt;Spring Boot Starter Parent&lt;/name&gt;
+&lt;description&gt;Parent pom providing dependency and plugin management for applications
+  built with Maven&lt;/description&gt;
+&lt;properties&gt;
+  &lt;main.basedir&gt;${basedir}/../../..&lt;/main.basedir&gt;
+  &lt;java.version&gt;1.8&lt;/java.version&gt;
+  &lt;!-- 资源分隔符 --&gt;
+  &lt;resource.delimiter&gt;@&lt;/resource.delimiter&gt; &lt;!-- delimiter that doesn&#39;t clash with Spring ${} placeholders --&gt;
+  &lt;project.build.sourceEncoding&gt;UTF-8&lt;/project.build.sourceEncoding&gt;
+  &lt;project.reporting.outputEncoding&gt;UTF-8&lt;/project.reporting.outputEncoding&gt;
+  &lt;maven.compiler.source&gt;${java.version}&lt;/maven.compiler.source&gt;
+  &lt;maven.compiler.target&gt;${java.version}&lt;/maven.compiler.target&gt;
+&lt;/properties&gt;
+&lt;build&gt;
+  &lt;resources&gt;
+    &lt;resource&gt;
+      &lt;directory&gt;${basedir}/src/main/resources&lt;/directory&gt;
+      &lt;filtering&gt;true&lt;/filtering&gt;
+      &lt;includes&gt;
+        &lt;include&gt;**/application*.yml&lt;/include&gt;
+        &lt;include&gt;**/application*.yaml&lt;/include&gt;
+        &lt;include&gt;**/application*.properties&lt;/include&gt;
+      &lt;/includes&gt;
+    &lt;/resource&gt;
+    &lt;resource&gt;
+      &lt;directory&gt;${basedir}/src/main/resources&lt;/directory&gt;
+      &lt;excludes&gt;
+        &lt;exclude&gt;**/application*.yml&lt;/exclude&gt;
+        &lt;exclude&gt;**/application*.yaml&lt;/exclude&gt;
+        &lt;exclude&gt;**/application*.properties&lt;/exclude&gt;
+      &lt;/excludes&gt;
+    &lt;/resource&gt;
+  &lt;/resources&gt;
+  &lt;pluginManagement&gt;
+    &lt;plugins&gt;
+      &lt;!-- 省略其它不用太关心的 plugin --&gt;
+      &lt;!-- spring-boot 提供的 maven 重打包插件，重要！！！ --&gt;
+      &lt;plugin&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;executions&gt;
+              &lt;execution&gt;
+                &lt;id&gt;repackage&lt;/id&gt;
+                &lt;goals&gt;
+                  &lt;goal&gt;repackage&lt;/goal&gt;
+                &lt;/goals&gt;
+              &lt;/execution&gt;
+            &lt;/executions&gt;
+            &lt;configuration&gt;
+              &lt;mainClass&gt;${start-class}&lt;/mainClass&gt;
+            &lt;/configuration&gt;
+          &lt;/plugin&gt;
+    &lt;/plugins&gt;
+  &lt;/pluginManagement&gt;
+  &lt;plugins&gt;
+            &lt;!-- 引入公共插件：flatten-maven-plugin、xml-maven-plugin --&gt;
+  &lt;/plugins&gt;</code></code></pre>
+<h3 id="特性">特性</h3>
+<ul>
+<li>默认编译版本：Java 1.8</li>
+<li>源码编码：UTF-8</li>
+<li>继承自 spring-boot-dependencies 的 dependencyManagement</li>
+<li>spring-boot-maven-plugin 的 goal 设置为 repackage</li>
+<li>maven 资源过滤（application*.yml、application*.yaml、application*.properties 等）、插件配置</li>
+<li>资源分隔符：“@”，在 application*.yml 中使用@来引用 maven 属性，常见用法如下：spring.application.name=@artifactId@</li>
+</ul>
+<blockquote>
+<p>Note that, since the <code>application.properties</code> and <code>application.yml</code> files accept Spring style placeholders (<code>${…}</code>), the Maven filtering is changed to use <code>@..@</code>placeholders. (You can override that by setting a Maven property called <code>resource.delimiter</code>.)</p>
+</blockquote>
+<p>译：</p>
+<blockquote>
+<p>注意，由于 application.properties 和 application.yml 文件接受 spring 样式的占位符（$…），所以 maven filter 将更改为使用@…@占位符。（可以通过设置名为 resource.delimiter 的 maven 属性来覆盖该属性。）</p>
+</blockquote>
+<h2 id="spring-boot-parent">spring-boot-parent</h2>
+<pre><code><code>&lt;parent&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+        &lt;version&gt;${revision}&lt;/version&gt;
+        &lt;relativePath&gt;../spring-boot-dependencies&lt;/relativePath&gt;
+&lt;/parent&gt;
+&lt;artifactId&gt;spring-boot-parent&lt;/artifactId&gt;
+&lt;packaging&gt;pom&lt;/packaging&gt;
+&lt;dependencyManagement&gt;
+  &lt;!-- 省略具体依赖管理 --&gt;
+&lt;/dependencyManagement&gt;
+&lt;dependencies&gt;
+  &lt;!-- 省略具体依赖 --&gt;
+&lt;/dependencies&gt;
+&lt;build&gt;
+  &lt;pluginManagement&gt;
+    &lt;!-- 省略具体构建插件管理 --&gt;
+  &lt;/pluginManagement&gt;
+  &lt;plugins&gt;
+    &lt;!-- 省略具体构建插件 --&gt;
+  &lt;/plugins&gt;
+  &lt;profiles&gt;
+    &lt;!-- 省略具体 profile --&gt;
+  &lt;/profiles&gt;
+&lt;/build&gt;</code></code></pre>
+<h3 id="dependencymanagement">dependencyManagement</h3>
+<p>包含两个部分：</p>
+<ul>
+<li>内部未发布的 spring-boot 依赖</li>
+<li>附加的 Spring 引导依赖项 (对用户无效)</li>
+</ul>
+<p>因此，这里所加入的依赖管理，用户不需要关心，很好，省心。</p>
+<h3 id="dependencies">dependencies</h3>
+<p>公共的依赖，主要是一些<strong>测试</strong>依赖，如：junit、hamcrest、mockito、spring-test，还有断言依赖：assertj。</p>
+<h3 id="plugins">plugins</h3>
+<p>添加了 spring-boot 公用的一些插件，如：maven-compiler-plugin、maven-jar-plugin、maven-war-plugin、maven-source-plugin 等</p>
+<h3 id="profiles">profiles</h3>
+<p>用户基本不用关心。省略</p>
+<h1 id="选择">选择</h1>
+<p>spring-boot-dependencies 和 spring-boot-starter-parent、 spring-boot-parent 都提供了依赖管理的功能，那我们在开发的过程中，到底使用哪个呢？</p>
+<ul>
+<li>spring-boot-parent ：目的不是提供给用户使用的，使用 spring-boot 开源项目用于管理 spring-boot-project 整个大工程中的除了 spring-boot-starters （提供给我们使用的各个开箱即用的三方包） 的其他模块的。</li>
+<li>spring-boot-starter-parent：我们通过 Spring Initializr 构建一个 spring-boot 项目的时候，官方默认是让我们使用的 spring-boot-starter-parent ，大致可以认为官方建议使用此方式管理依赖，毕竟此方式提供的依赖、插件管理更多，更适合使用。</li>
+<li>spring-boot-dependencies：若在使用的时候，工程不想指定父工程，或者必须使用公司的父工程，可以通过 dependencyManagement 引入此依赖管理。</li>
+</ul>
+<p>使用 spring-boot-dependencies，相比较 spring-boot-starter-parent 的时候特别注意要加上<strong>spring-boot-maven-plugin</strong>，如下：</p>
+<pre><code><code>&lt;build&gt;
+  &lt;plugins&gt;
+    &lt;plugin&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+    &lt;/plugin&gt;
+  &lt;/plugins&gt;
+  &lt;pluginManagement&gt;
+    &lt;plugins&gt;
+      &lt;plugin&gt;
+        &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+        &lt;version&gt;${springboot.version}&lt;/version&gt;
+      &lt;/plugin&gt;
+    &lt;/plugins&gt;
+  &lt;/pluginManagement&gt;
+&lt;/build&gt;</code></code></pre>
+<p>至于 spring-boot-starter-parent 的其他额外指定的 jar，按需添加。</p>
+<h1 id="实际使用">实际使用</h1>
+<p>在工程中使用的时候，所有的二方、三方 jar 都应该统一管理，除了 spring-boot 提供的依赖，我们还有很多 jar 需要管理，如：mysql 驱动包、mybatis 包、各种工具包或者公司内的二方包等。因此，最好使用一个单独的模块来构建自己的 dependencies 或 parent。</p>
+<h1 id="待续">待续</h1>
+<p>em……写到这里就结束了吗？似乎还没有，还需要细致分析下一些具体依赖是如何选择的，比如：spring-boot 选择的是什么日志框架，logback？log4j2？log4j？那对于代码中不是用 spring-boot 指定的日志实现时，spring-boot 又是怎么做的呢？期待后续更新？更或者不更新，谁知道呢？</p>
+<p>公众号：逸飞兮（<em>专注于java知识领域的源码分析，从源码中理解框架/工具原理、验证CS专业知识的应用</em>）</p>
+<p><img src="./images/【spring-boot 源码解析】spring-boot 依赖管理0.png" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

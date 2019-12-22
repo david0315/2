@@ -1,0 +1,67 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring Boot 之异步执行方法' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring Boot 之异步执行方法</center></div><div class='banquan'>原文出处:本文由博客园博主Java架构Monster提供。<br/>
+原文连接:https://www.cnblogs.com/sevencutekk/p/11559000.html</div><br>
+    <p><strong>前言：</strong></p>
+<p>最近的时候遇到一个需求，就是当服务器接到请求并不需要任务执行完成才返回结果，可以立即返回结果，让任务异步的去执行。开始考虑是直接启一个新的线程去执行任务或者把任务提交到一个线程池去执行，这两种方法都是可以的。但是Spring 这么强大，肯定有什么更简单的方法，就 google 了一下，还真有呢。就是使用 @EnableAsync 和 @Async 这两个注解就 ok 了。</p>
+<p><img src="./images/Spring Boot 之异步执行方法0.png" alt="" /></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h1>给方法加上 @Async 注解</h1>
+<pre><code>package me.deweixu.aysncdemo.service;<br />public interface AsyncService {<br /> void asyncMethod(String arg);<br />}</code></pre>
+<pre><code>package me.deweixu.aysncdemo.service.ipml;<br />import me.deweixu.aysncdemo.service.AsyncService;<br />import org.springframework.scheduling.annotation.Async;<br />import org.springframework.stereotype.Service;<br />@Service<br />public class AsyncServiceImpl implements AsyncService {<br /> @Async<br /> @Override<br /> public void asyncMethod(String arg) {<br /> System.out.println("arg:" + arg);<br /> System.out.println("=====" + Thread.currentThread().getName() + "=========");<br /> }<br />}</code></pre>
+<p><strong>@EnableAsync</strong></p>
+<p>在启动类或者配置类加上 @EnableAsync 注解</p>
+<pre><code>package me.deweixu.aysncdemo;<br />import org.springframework.boot.SpringApplication;<br />import org.springframework.boot.autoconfigure.SpringBootApplication;<br />import org.springframework.scheduling.annotation.EnableAsync;<br />@EnableAsync<br />@SpringBootApplication<br />public class AysncDemoApplication {<br /> public static void main(String[] args) {<br /> SpringApplication.run(AysncDemoApplication.class, args);<br /> }<br />}</code></pre>
+<h1>测试</h1>
+<pre><code>package me.deweixu.aysncdemo;<br />import me.deweixu.aysncdemo.service.AsyncService;<br />import org.junit.Test;<br />import org.junit.runner.RunWith;<br />import org.springframework.beans.factory.annotation.Autowired;<br />import org.springframework.boot.test.context.SpringBootTest;<br />import org.springframework.test.context.junit4.SpringRunner;<br />@RunWith(SpringRunner.class)<br />@SpringBootTest<br />public class AysncDemoApplicationTests {<br /> @Autowired<br /> AsyncService asyncService;<br /> @Test<br /> public void testAsync() {<br /> System.out.println("=====" + Thread.currentThread().getName() + "=========");<br /> asyncService.asyncMethod("Async");<br /> }<br />}</code></pre>
+<pre><code><br />=====main=========<br />2018-03-25 21:30:31.391 INFO 28742 --- [ main] .s.a.AnnotationAsyncExecutionInterceptor : No task executor bean found for async processing: no bean of type TaskExecutor and no bean named 'taskExecutor' either<br />arg:Async<br />=====SimpleAsyncTaskExecutor-1=========</code></pre>
+<p>&nbsp;</p>
+<p>从上面的结果看 asyncService.asyncMethod("Async") 确实异步执行了，它使用了一个新的线程。</p>
+<p>指定 "Executor"</p>
+<p>从上面执行的日志可以猜测到 Spring 默认使用 SimpleAsyncTaskExecutor 来异步执行任务的，可以搜索到这个类。 @Async 也可以指定自定义的 Executor。</p>
+<p>在启动类中增加自定义的 Executor</p>
+<pre><code>package me.deweixu.aysncdemo;<br />import org.springframework.boot.SpringApplication;<br />import org.springframework.boot.autoconfigure.SpringBootApplication;<br />import org.springframework.context.annotation.Bean;<br />import org.springframework.scheduling.annotation.EnableAsync;<br />import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;<br />import java.util.concurrent.Executor;<br />@EnableAsync<br />@SpringBootApplication<br />public class AysncDemoApplication {<br /> public static void main(String[] args) {<br /> SpringApplication.run(AysncDemoApplication.class, args);<br /> }<br /> @Bean(name = "threadPoolTaskExecutor")<br /> public Executor threadPoolTaskExecutor() {<br /> return new ThreadPoolTaskExecutor();<br /> }<br />}</code></pre>
+<p><strong>指定 "Executor"</strong></p>
+<pre><code>package me.deweixu.aysncdemo.service.ipml;<br />import me.deweixu.aysncdemo.service.AsyncService;<br />import org.springframework.scheduling.annotation.Async;<br />import org.springframework.stereotype.Service;<br />@Service<br />public class AsyncServiceImpl implements AsyncService {<br /> @Async("threadPoolTaskExecutor")<br /> @Override<br /> public void asyncMethod(String arg) {<br /> System.out.println("arg:" + arg);<br /> System.out.println("=====" + Thread.currentThread().getName() + "=========");<br /> }<br />}<br /><br /></code></pre>
+<p>这样在异步执行任务的时候就使用 threadPoolTaskExecutor</p>
+<p><strong>设置默认的</strong></p>
+<p><strong>Executor</strong></p>
+<p>上面提到如果 @Async 不指定 Executor 就默认使用 SimpleAsyncTaskExecutor，其实默认的 Executor 是可以使用 AsyncConfigurer 接口来配置的</p>
+<pre><code>@Configuration<br />public class SpringAsyncConfig implements AsyncConfigurer {<br /> <br /> @Override<br /> public Executor getAsyncExecutor() {<br /> return new ThreadPoolTaskExecutor();<br /> }<br /> <br />}</code></pre>
+<p><strong>异常捕获</strong></p>
+<p>在异步执行的方法中是可能出现异常的，我们可以在任务内部使用 try catch 来处理异常，当任务抛出异常时， Spring 也提供了捕获它的方法。</p>
+<p>实现 AsyncUncaughtExceptionHandler 接口</p>
+<pre><code>public class CustomAsyncExceptionHandler<br /> implements AsyncUncaughtExceptionHandler {<br /> <br /> @Override<br /> public void handleUncaughtException(<br /> Throwable throwable, Method method, Object... obj) {<br /> <br /> System.out.println("Exception message - " + throwable.getMessage());<br /> System.out.println("Method name - " + method.getName());<br /> for (Object param : obj) {<br /> System.out.println("Parameter value - " + param);<br /> }<br /> }<br /> <br />}<br /><br /></code></pre>
+<pre><code>实现 AsyncConfigurer 接口重写 getAsyncUncaughtExceptionHandler 方法</code></pre>
+<pre><code>@Configuration<br />public class SpringAsyncConfig implements AsyncConfigurer {<br /> <br /> @Override<br /> public Executor getAsyncExecutor() {<br /> return new ThreadPoolTaskExecutor();<br /> }<br /> <br /> @Override<br /> public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {<br /> return new CustomAsyncExceptionHandler();<br /> }<br /> <br />}<br /><br /></code></pre>
+<p>改写 asyncMethod 方法使它抛出异常</p>
+<pre><code> @Async<br /> @Override<br /> public void asyncMethod(String arg) {<br /> System.out.println("arg:" + arg);<br /> System.out.println("=====" + Thread.currentThread().getName() + "=========");<br /> throw new NullPointerException();<br /> }</code></pre>
+<p>运行结果：</p>
+<pre><code>=====main=========<br />arg:Async<br />=====threadPoolTaskExecutor-1=========<br />Exception message - Async NullPointerException<br />Method name - asyncMethod<br />Parameter value - Async</code></pre>
+<p>正确捕获到了异常。</p>
+<p>我是小架，我们</p>
+<p>下篇文章见！</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

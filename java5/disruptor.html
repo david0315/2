@@ -1,0 +1,369 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修disruptor' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>disruptor</center></div><div class='banquan'>原文出处:本文由博客园博主马杏争1994提供。<br/>
+原文连接:https://www.cnblogs.com/mxz1994/p/11479422.html</div><br>
+    <h1 id="toc_0">disruptor</h1>
+<h2 id="toc_1" class="highlighted-anchor">一 概述</h2>
+<p>CPU缓存<br />网页浏览器为了加快速度,会在本机存缓存以前浏览过的数据; 传统数据库或NoSQL数据库为了加速查询, 常在内存设置一个缓存, 减少对磁盘(慢)的IO. 同样内存与CPU的速度相差太远, 于是CPU设计者们就给CPU加上了缓存(CPU Cache). 如果你需要对同一批数据操作很多次, 那么把数据放至离CPU更近的缓存, 会给程序带来很大的速度提升. 例如, 做一个循环计数, 把计数变量放到缓存里,就不用每次循环都往内存存取数据了. 下面是CPU Cache的简单示意图.</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor0.png" alt="cpucache" /><span class="img-caption">cpucache</span>
+<p style="margin: 0px;">
+<br />随着多核的发展, CPU Cache分成了三个级别: L1, L2, L3. 级别越小越接近CPU, 所以速度也更快, 同时也代表着容量越小.</p>
+<p>&nbsp;</p>
+<table>
+<thead>
+<tr><th>从cpu到</th><th>大约需要的CPU周期</th><th>大约需要的时间(单位ns)</th><th>内存大小</th></tr>
+
+
+</thead>
+<tbody>
+<tr>
+<td>寄存器</td>
+<td>1 cycle</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+
+
+</tr>
+<tr>
+<td>L1 Cache</td>
+<td>~3-4 cycles</td>
+<td>~0.5-1 ns</td>
+<td>32k</td>
+
+
+</tr>
+<tr>
+<td>L2 Cache</td>
+<td>~10-20 cycles</td>
+<td>~3-7 ns</td>
+<td>256K</td>
+
+
+</tr>
+<tr>
+<td>L3 Cache</td>
+<td>~40-45 cycles</td>
+<td>~15 ns</td>
+<td>12MB</td>
+
+
+</tr>
+<tr>
+<td>跨cpu槽传输</td>
+<td>&nbsp;</td>
+<td>~20 ns</td>
+<td>&nbsp;</td>
+
+
+</tr>
+<tr>
+<td>内存</td>
+<td>~120-240 cycles</td>
+<td>~60-120ns</td>
+<td>&nbsp;</td>
+
+
+</tr>
+
+
+</tbody>
+
+
+</table>
+<pre><code><code class="lang-java hljs"><span class="hljs-keyword">public <span class="hljs-class"><span class="hljs-keyword">class <span class="hljs-title">CacheTest {
+    <span class="hljs-keyword">static  <span class="hljs-keyword">long[][] arr;
+
+    <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">main<span class="hljs-params">(String[] args) {
+        arr = <span class="hljs-keyword">new <span class="hljs-keyword">long[<span class="hljs-number">1024 * <span class="hljs-number">1024][];
+        <span class="hljs-keyword">for (<span class="hljs-keyword">int i = <span class="hljs-number">0; i &lt; <span class="hljs-number">1024 * <span class="hljs-number">1024; i++) {
+            arr[i] = <span class="hljs-keyword">new <span class="hljs-keyword">long[<span class="hljs-number">8];
+            <span class="hljs-keyword">for (<span class="hljs-keyword">int j = <span class="hljs-number">0; j &lt; <span class="hljs-number">8; j++) {
+                arr[i][j] = <span class="hljs-number">0L;
+            }
+        }
+        <span class="hljs-keyword">long sum = <span class="hljs-number">0L;
+        <span class="hljs-keyword">long marked = System.currentTimeMillis();
+        <span class="hljs-keyword">for (<span class="hljs-keyword">int i = <span class="hljs-number">0; i &lt; <span class="hljs-number">1024 * <span class="hljs-number">1024; i+=<span class="hljs-number">1) {   <span class="hljs-comment">// 加载了1024 * 1024 次
+            <span class="hljs-keyword">for(<span class="hljs-keyword">int j =<span class="hljs-number">0; j&lt; <span class="hljs-number">8;j++){
+                sum = arr[i][j];   <span class="hljs-comment">// arr[i][0] --- arr[i][7]
+            }
+        }
+        System.out.println(<span class="hljs-string">"Loop times:" + (System.currentTimeMillis() - marked) + <span class="hljs-string">"ms"); <span class="hljs-comment">// 18ms
+
+        marked = System.currentTimeMillis();
+        <span class="hljs-keyword">for (<span class="hljs-keyword">int i = <span class="hljs-number">0; i &lt; <span class="hljs-number">8; i+=<span class="hljs-number">1) {  <span class="hljs-comment">// 加载了1024*1024 * 8
+            <span class="hljs-keyword">for(<span class="hljs-keyword">int j =<span class="hljs-number">0; j&lt; <span class="hljs-number">1024 * <span class="hljs-number">1024;j++){
+                sum = arr[j][i];
+            }
+        }
+        System.out.println(<span class="hljs-string">"Loop times:" + (System.currentTimeMillis() - marked) + <span class="hljs-string">"ms"); <span class="hljs-comment">// 155ms
+    }
+}
+</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>result:</p>
+<pre><code><code class="hljs">Loop times:13ms
+Loop times:58ms
+</code></code></pre>
+<p>CPU存取缓存都是按行为最小单位操作的. 在这儿我将不提及缓存的associativity问题, 将问题简化一些. 一个Java long型占8字节, 所以从一条缓存行上你可以获取到8个long型变量. 所以如果你访问一个long型数组, 当有一个long被加载到cache中, 将无消耗地加载了另外7个. 所以可以非常快地遍历数组.</p>
+<pre><code><code class="hljs">查看cpu核心数
+cat /proc/cpuinfo
+查看缓存行大小
+cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size
+</code></code></pre>
+<pre><code><code class="hljs">perf stat -e L1-dcache-load-misses java L1CacheMiss
+查看L1-dcache-load-misses
+</code></code></pre>
+<p>L1 Cache满了之后才会发生的cache miss. 其实cache miss的原因有下面三种:</p>
+<ol>
+<li>第一次访问数据, 在cache中根本不存在这条数据, 所以cache miss, 可以通过prefetch解决.</li>
+<li>cache冲突, 需要通过补齐来解决.</li>
+<li>就是我示例的这种, cache满, 一般情况下我们需要减少操作的数据大小, 尽量按数据的物理顺序访问数据.</li>
+</ol>
+<p>@Contended //-XX:-RestrictContended</p>
+<p>典型的CPU微架构有3级缓存, 每个核都有自己私有的L1, L2缓存. 那么多线程编程时, 另外一个核的线程想要访问当前核内L1, L2 缓存行的数据, 该怎么办呢?</p>
+<p>首先我们需要谈到一个协议&ndash;MESI协议, M,E,S和I代表使用MESI协议时缓存行所处的四个状态:<br />M(修改, Modified): 本地处理器已经修改缓存行, 即是脏行, 它的内容与内存中的内容不一样. 并且此cache只有本地一个拷贝(专有).<br />E(专有, Exclusive): 缓存行内容和内存中的一样, 而且其它处理器都没有这行数据<br />S(共享, Shared): 缓存行内容和内存中的一样, 有可能其它处理器也存在此缓存行的拷贝<br />I(无效, Invalid): 缓存行失效, 不能使用</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor1.png" alt="MESI" /><span class="img-caption">MESI</span>
+<p style="margin: 0px;">
+<br /><strong>初始</strong><span class="Apple-converted-space"><span class="Apple-converted-space">&nbsp;一开始时, 缓存行没有加载任何数据, 所以它处于I状态<br />**本地写(Local Write)**如果本地处理器写数据至处于I状态的缓存行, 则缓存行的状态变成M<br /><strong>本地读(Local Read)</strong><span class="Apple-converted-space">&nbsp;如果本地处理器读取处于I状态的缓存行, 很明显此缓存没有数据给它. 此时分两种情况: (1)其它处理器的缓存里也没有此行数据, 则从内存加载数据到此缓存行后, 再将它设成E状态, 表示只有我一家有这条数据, 其它处理器都没有 (2)其它处理器的缓存有此行数据, 则将此缓存行的状态设为S状态.<br /><strong>远程读(Remote Read)</strong><span class="Apple-converted-space">&nbsp;假设我们有两个处理器c1和c2. 如果c2需要读另外一个处理器c1的缓存行内容, c1需要把它缓存行的内容通过内存控制器(Memory Controller)发送给c2, c2接到后将相应的缓存行状态设为S. 在设置之前, 内存也得从总线上得到这份数据并保存.<br /><strong>远程写(Remote Write)</strong><span class="Apple-converted-space">&nbsp;其实确切地说不是远程写, 而是c2得到c1的数据后, 不是为了读, 而是为了写. 也算是本地写, 只是c1也拥有这份数据的拷贝, 这该怎么办呢? c2将发出一个RFO(Request For Owner)请求, 它需要拥有这行数据的权限, 其它处理器的相应缓存行设为I, 除了它自已, 谁不能动这行数据. 这保证了数据的安全, 同时处理RFO请求以及设置I的过程将给写操作带来很大的性能消耗.</span></span></span></span></span></p>
+<p>&nbsp;</p>
+<p><strong>分析Volatile</strong></p>
+<table>
+<thead>
+<tr><th>&nbsp;</th><th>&nbsp;</th></tr>
+
+
+</thead>
+<tbody>
+<tr>
+<td>汇编代码：</td>
+<td>0x01a3de1d: movb $0x0,0x1104800(%esi);0x01a3de24: lock addl $0x0,(%esp);</td>
+
+
+</tr>
+<tr>
+<td>java</td>
+<td>instance = new Singleton();//instance是volatile变量</td>
+
+
+</tr>
+
+
+</tbody>
+
+
+</table>
+<p>lock前缀的指令在多核处理器下会引发了两件事情。<br />将当前处理器缓存行的数据会写回到系统内存。<br />这个写回内存的操作会引起在其他CPU里缓存了该内存地址的数据无效。<br />处理器为了提高处理速度，不直接和内存进行通讯，而是先将系统内存的数据读到内部缓存（L1,L2或其他）后再进行操作，但操作完之后不知道何时会写到内存，如果对声明了Volatile变量进行写操作，<strong>JVM就会向处理器发送一条Lock前缀的指令</strong>，将这个变量所在缓存行的数据写回到系统内存。但是就算写回到内存，如果其他处理器缓存的值还是旧的，再执行计算操作就会有问题，所以在多处理器下，<strong>为了保证各个处理器的缓存是一致的，就会实现缓存一致性协议</strong>，每个处理器通过嗅探在总线上传播的数据来检查自己缓存的值是不是过期了，当处理器发现自己缓存行对应的内存地址被修改，就会<strong>将当前处理器的缓存行设置成无效状态(I)</strong>，当处理器要对这个数据进行修改操作的时候，会强制重新从系统内存里把数据读到处理器缓存里。<br />如果通过嗅探一个处理器来检测其他处理器打算写内存地址，而这个地址当前处理<strong>共享状态(S)</strong>，那么正在嗅探的处理器将无效它的缓存行，在下次访问相同内存地址时，强制执行缓存行填充。</p>
+<pre><code><code class="lang-java hljs"><span class="hljs-keyword">public <span class="hljs-class"><span class="hljs-keyword">class <span class="hljs-title">FalseSharing <span class="hljs-keyword">implements <span class="hljs-title">Runnable{
+        <span class="hljs-keyword">public <span class="hljs-keyword">final <span class="hljs-keyword">static <span class="hljs-keyword">long ITERATIONS = <span class="hljs-number">500L * <span class="hljs-number">1000L * <span class="hljs-number">100L;
+        <span class="hljs-keyword">private <span class="hljs-keyword">int arrayIndex = <span class="hljs-number">0;
+        <span class="hljs-keyword">private <span class="hljs-keyword">static ValueNoPadding[] longs;
+
+        <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-title">FalseSharing<span class="hljs-params">(<span class="hljs-keyword">final <span class="hljs-keyword">int arrayIndex) {
+            <span class="hljs-keyword">this.arrayIndex = arrayIndex;
+        }
+
+        <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">main<span class="hljs-params">(<span class="hljs-keyword">final String[] args) <span class="hljs-keyword">throws Exception {
+            <span class="hljs-keyword">for(<span class="hljs-keyword">int i=<span class="hljs-number">1;i&lt;<span class="hljs-number">10;i++){
+                System.gc();
+                <span class="hljs-keyword">final <span class="hljs-keyword">long start = System.currentTimeMillis();
+                runTest(i);
+                System.out.println(<span class="hljs-string">"Thread num "+i+<span class="hljs-string">" duration = " + (System.currentTimeMillis() - start));
+            }
+
+        }
+ 
+        <span class="hljs-function"><span class="hljs-keyword">private <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">runTest<span class="hljs-params">(<span class="hljs-keyword">int NUM_THREADS) <span class="hljs-keyword">throws InterruptedException {
+            Thread[] threads = <span class="hljs-keyword">new Thread[NUM_THREADS];
+            longs = <span class="hljs-keyword">new ValueNoPadding[NUM_THREADS];
+            <span class="hljs-keyword">for (<span class="hljs-keyword">int i = <span class="hljs-number">0; i &lt; longs.length; i++) {
+                longs[i] = <span class="hljs-keyword">new ValueNoPadding();
+            }
+            <span class="hljs-keyword">for (<span class="hljs-keyword">int i = <span class="hljs-number">0; i &lt; threads.length; i++) {
+                threads[i] = <span class="hljs-keyword">new Thread(<span class="hljs-keyword">new FalseSharing(i));
+            }
+            <span class="hljs-keyword">for (Thread t : threads) {
+                t.start();
+            }
+            <span class="hljs-keyword">for (Thread t : threads) {
+                t.join();
+            }
+        }
+ 
+        <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">void <span class="hljs-title">run<span class="hljs-params">() {
+            <span class="hljs-keyword">long i = ITERATIONS + <span class="hljs-number">1;
+            <span class="hljs-keyword">while (<span class="hljs-number">0 != --i) {
+                longs[arrayIndex].value = <span class="hljs-number">0L;
+            }
+        }
+    <span class="hljs-comment">// 对于伪共享，一般的解决方案是，增大数组元素的间隔使得由不同线程存取的元素位于不同的缓存行上，以空间换时间。
+    <span class="hljs-comment">/**
+     Thread num 1 duration = 509
+     Thread num 2 duration = 508
+     Thread num 3 duration = 532
+     Thread num 4 duration = 1007
+     Thread num 5 duration = 784
+     Thread num 6 duration = 989
+     Thread num 7 duration = 905
+     Thread num 8 duration = 1020
+     Thread num 9 duration = 1163
+     */
+    <span class="hljs-comment">// Java long型占8字节  64字节
+    <span class="hljs-keyword">public <span class="hljs-keyword">final <span class="hljs-keyword">static <span class="hljs-class"><span class="hljs-keyword">class <span class="hljs-title">ValuePadding {
+        <span class="hljs-comment">//如果只对final的FalseSharing类可见（就是说ValuePadding不能再被继承了）。这样一来编译器就会&ldquo;知道&rdquo;它正在审视的是所有可以看到这个填充字段的代码，这样就可以证明没有行为依赖于p1到p7这些字段。那么&ldquo;聪明&rdquo;的JVM会把上面这些丝毫不占地方的字段统统优化掉。
+        <span class="hljs-keyword">protected <span class="hljs-keyword">long p1, p2, p3, p4, p5, p6, p7;
+            <span class="hljs-keyword">protected <span class="hljs-keyword">volatile <span class="hljs-keyword">long value = <span class="hljs-number">0L;
+            <span class="hljs-keyword">protected <span class="hljs-keyword">long p8, p9, p10, p11, p12, p13, p14;
+            <span class="hljs-comment">//无论当前cache line被填充到了什么位置，我们都能保证value这个值都独自占用一个cache line
+        }
+
+    <span class="hljs-comment">/**
+     * Thread num 1 duration = 696
+     * Thread num 2 duration = 1402
+     * Thread num 3 duration = 1830
+     * Thread num 4 duration = 2546
+     * Thread num 5 duration = 3885
+     * Thread num 6 duration = 3454
+     * Thread num 7 duration = 2713
+     * Thread num 8 duration = 3000
+     * Thread num 9 duration = 2504
+     */
+    <span class="hljs-comment">//我们用伪共享(False Sharing)的理论来分析一下. 后面的那个程序longs数组的4个元素,由于VolatileLong只有1个长整型成员, 所以整个数组都将被加载至同一缓存行, 但有多个线程同时操作这条缓存行, 于是伪共享就悄悄地发生了.
+    <span class="hljs-meta">@Contended  <span class="hljs-comment">//-XX:-RestrictContended
+    <span class="hljs-keyword">public <span class="hljs-keyword">final <span class="hljs-keyword">static <span class="hljs-class"><span class="hljs-keyword">class <span class="hljs-title">ValueNoPadding {
+            <span class="hljs-keyword">protected <span class="hljs-keyword">volatile <span class="hljs-keyword">long value = <span class="hljs-number">0L;
+        }
+}
+</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>当多线程修改互相独立的变量时，如果这些变量共享同一个缓存行，就会无意中影响彼此的性能，这就是伪共享<br />XY 在同一缓存行<br />在核心1上运行的线程想更新变量X，同时核心2上的线程想要更新变量Y。不幸的是，这两个变量在同一个缓存行中。每个线程都要去竞争缓存行的所有权来更新变量。如果核心1获得了所有权，缓存子系统将会使核心2中对应的缓存行失效。当核心2获得了所有权然后执行更新操作，核心1就要使自己对应的缓存行失效。这会来来回回的经过L3缓存，大大影响了性能。如果互相竞争的核心位于不同的插槽，就要额外横跨插槽连接，问题可能更加严重。</p>
+<p>总结：伪共享在多核编程中很容易发生, 而且比较隐蔽. 例如, 在JDK的LinkedBlockingQueue中, 存在指向队列头的引用head和指向队列尾的引用last. 而这种队列经常在异步编程中使有,这两个引用的值经常的被不同的线程修改, 但它们却很可能在同一个缓存行, 于是就产生了伪共享. 线程越多, 核越多,对性能产生的负面效果就越大.</p>
+<h2 id="toc_2">二 高性能队列</h2>
+<p>High Performance Inter-Thread Messaging Library<br /><a href="http://lmax-exchange.github.io/disruptor/files/Disruptor-1.0.pdf">概述-英</a><br /><a href="http://blog.sina.com.cn/s/blog_68ffc7a4010150yl.html">概述-中</a></p>
+<p>介绍Disruptor之前，我们先来看一看常用的线程安全的内置队列有什么问题。Java的内置队列如下表所示。</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor2.png" alt="" />
+<p style="margin: 0px;">
+<span class="Apple-converted-space"><span class="Apple-converted-space"><span class="Apple-converted-space"><span class="Apple-converted-space"><span class="Apple-converted-space"><br />我们就从数组和链表两种数据结构来看，基于数组线程安全的队列，比较典型的是ArrayBlockingQueue，它主要通过加锁的方式来保证线程安全；基于链表的线程安全队列分成LinkedBlockingQueue和ConcurrentLinkedQueue两大类，前者也通过锁的方式来实现线程安全，而后者以及上面表格中的LinkedTransferQueue都是通过原子变量compare and swap（以下简称&ldquo;CAS&rdquo;）这种不加锁的方式来实现的。</span></span></span></span></span></p>
+<p>&nbsp;</p>
+<p>通过不加锁的方式实现的队列都是无界的（无法保证队列的长度在确定的范围内）；而加锁的方式，可以实现有界队列。在稳定性要求特别高的系统中，为了防止生产者速度过快，导致内存溢出，只能选择有界队列；同时，为了减少Java的垃圾回收对系统性能的影响，会尽量选择array/heap格式的数据结构。这样筛选下来，符合条件的队列就只有ArrayBlockingQueue。</p>
+<p>CAS操作比单线程无锁慢了1个数量级；有锁且多线程并发的情况下，速度比单线程无锁慢3个数量级。可见无锁速度最快。<br />单线程情况下，不加锁的性能 &gt; CAS操作的性能 &gt; 加锁的性能。<br />在多线程情况下，为了保证线程安全，必须使用CAS或锁，这种情况下，CAS的性能超过锁的性能，前者大约是后者的8倍。</p>
+<p>ArrayBlockingQueue有三个成员变量： - takeIndex：需要被取走的元素下标 - putIndex：可被元素插入的位置的下标 - count：队列中元素的数量</p>
+<p>这三个变量很容易放到一个缓存行中，但是之间修改没有太多的关联。所以每次修改，都会使之前缓存的数据失效，从而不能完全达到共享的效果。</p>
+<p class="img-package"><img class="img-center view-image" src="./images/disruptor3.png" alt=" ArrayBlockingQueue伪共享示意图" /><span class="img-caption">ArrayBlockingQueue伪共享示意图</span></p>
+<p>Disruptor通过以下设计来解决队列速度慢的问题： - 环形数组结构</p>
+<ol>
+<li>为了避免垃圾回收，采用数组而非链表。同时，数组对处理器的缓存机制更加友好。 - 元素位置定位</li>
+<li>数组长度2^n，通过位运算，加快定位的速度。下标采取递增的形式。不用担心index溢出的问题。index是long类型，即使100万QPS的处理速度，也需要30万年才能用完。 - 无锁设计</li>
+<li>每个生产者或者消费者线程，会先申请可以操作的元素在数组中的位置，申请到之后，直接在该位置写入或者读取数据。</li>
+
+
+</ol>
+<p>Disruptor相对于传统方式的优点：</p>
+<ol>
+<li>没有竞争=没有锁=非常快。</li>
+<li>所有访问者都记录自己的序号的实现方式，允许多个生产者与多个消费者共享相同的数据结构。</li>
+<li>在每个对象中都能跟踪序列号（ring buffer，claim Strategy，生产者和消费者），加上神奇的cache line padding，就意味着没有为伪共享和非预期的竞争。</li>
+
+
+</ol>
+<p>一个生产者 直接申请内存写入m个元素 无cas 操作</p>
+<p>多个生产者 如何防止多个线程重复写同一个元素 每个线程获取不同的一段数组空间进行操作。这个通过CAS很容易达到。只需要在分配元素的时候，通过CAS判断一下这段空间是否已经分配出去即可。<br />如何防止读取的时候，读到还未写的元素。Disruptor在多个生产者的情况下，引入了一个与Ring Buffer大小相同的buffer：available Buffer。当某个位置写入成功的时候，便把availble Buffer相应的位置置位，标记为写入成功。读取的时候，会遍历available Buffer，来判断元素是否已经就绪。<br />下面分读数据和写数据两种情况介绍。<br />读数据<br />生产者多线程写入的情况会复杂很多： 1. 申请读取到序号n； 2. 若writer cursor &gt;= n，这时仍然无法确定连续可读的最大下标。从reader cursor开始读取available Buffer，一直查到第一个不可用的元素，然后返回最大连续可读元素的位置； 3. 消费者读取元素。<br />如下图所示，读线程读到下标为2的元素，三个线程Writer1/Writer2/Writer3正在向RingBuffer相应位置写数据，写线程被分配到的最大元素下标是11。<br />读线程申请读取到下标从3到11的元素，判断writer cursor&gt;=11。然后开始读取availableBuffer，从3开始，往后读取，发现下标为7的元素没有生产成功，于是WaitFor(11)返回6。<br />然后，消费者读取下标从3到6共计4个元素。</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor4.png" alt="多个生产者情况下，消费者消费过程示意图" /><span class="img-caption">多个生产者情况下，消费者消费过程示意图</span>
+<p>&nbsp;</p>
+<p>写数据<br />多个生产者写入的时候： 1. 申请写入m个元素； 2. 若是有m个元素可以写入，则返回最大的序列号。每个生产者会被分配一段独享的空间； 3. 生产者写入元素，写入元素的同时设置available Buffer里面相应的位置，以标记自己哪些位置是已经写入成功的。</p>
+<p>如下图所示，Writer1和Writer2两个线程写入数组，都申请可写的数组空间。Writer1被分配了下标3到下表5的空间，Writer2被分配了下标6到下标9的空间。<br />Writer1写入下标3位置的元素，同时把available Buffer相应位置置位，标记已经写入成功，往后移一位，开始写下标4位置的元素。Writer2同样的方式。最终都写入完成。</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor5.png" alt="多个生产者情况下，生产者生产过程示意图" /><span class="img-caption">多个生产者情况下，生产者生产过程示意图</span>
+<p>&nbsp;</p>
+<p>防止不同生产者对同一段空间写入的代码，如下所示：</p>
+<pre><code><code class="lang-java hljs"><span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">long <span class="hljs-title">tryNext<span class="hljs-params">(<span class="hljs-keyword">int n) <span class="hljs-keyword">throws InsufficientCapacityException
+{
+    <span class="hljs-keyword">if (n &lt; <span class="hljs-number">1)
+    {
+        <span class="hljs-keyword">throw <span class="hljs-keyword">new IllegalArgumentException(<span class="hljs-string">"n must be &gt; 0");
+    }
+    <span class="hljs-keyword">long current;
+    <span class="hljs-keyword">long next;
+    <span class="hljs-keyword">do
+    {
+        current = cursor.get();
+        next = current + n;
+ 
+        <span class="hljs-keyword">if (!hasAvailableCapacity(gatingSequences, n, current))
+        {
+            <span class="hljs-keyword">throw InsufficientCapacityException.INSTANCE;
+        }
+    }
+    <span class="hljs-keyword">while (!cursor.compareAndSet(current, next));
+    <span class="hljs-keyword">return next;
+}
+</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p><a href="https://github.com/LMAX-Exchange/disruptor/wiki/Getting-Started">Getting Started</a></p>
+<pre><code><code class="lang-java hljs"><span class="hljs-keyword">public <span class="hljs-class"><span class="hljs-keyword">class <span class="hljs-title">LongEventMain8 {
+    <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">handleEvent<span class="hljs-params">(LongEvent event, <span class="hljs-keyword">long sequence, <span class="hljs-keyword">boolean endOfBatch)
+    {
+        System.out.println(event);
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">translate<span class="hljs-params">(LongEvent event, <span class="hljs-keyword">long sequence, ByteBuffer buffer)
+    {
+        event.set(buffer.getLong(<span class="hljs-number">0));
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">public <span class="hljs-keyword">static <span class="hljs-keyword">void <span class="hljs-title">main<span class="hljs-params">(String[] args) <span class="hljs-keyword">throws Exception
+    {
+        <span class="hljs-comment">// Specify the size of the ring buffer, must be power of 2.
+        <span class="hljs-keyword">int bufferSize = <span class="hljs-number">1024;
+
+        <span class="hljs-comment">// Construct the Disruptor
+        <span class="hljs-comment">/**
+         * RingBuffer生产工厂,初始化RingBuffer的时候使用
+         * RingBuffer的大小
+         * 采用单生产者模式
+         *默认阻塞策略BlockingWaitStrategy
+         *
+         */
+        Disruptor&lt;LongEvent&gt; disruptor = <span class="hljs-keyword">new Disruptor&lt;&gt;(LongEvent::<span class="hljs-keyword">new, bufferSize, DaemonThreadFactory.INSTANCE);
+
+        <span class="hljs-comment">// 设置EventHandler
+        disruptor.handleEventsWith(LongEventMain8::handleEvent);
+
+        <span class="hljs-comment">// Start the Disruptor, starts all threads running
+        disruptor.start();
+
+        <span class="hljs-comment">// Get the ring buffer from the Disruptor to be used for publishing.
+        RingBuffer&lt;LongEvent&gt; ringBuffer = disruptor.getRingBuffer();
+
+        ByteBuffer bb = ByteBuffer.allocate(<span class="hljs-number">8);
+        <span class="hljs-keyword">for (<span class="hljs-keyword">long l = <span class="hljs-number">0; <span class="hljs-keyword">true; l++)
+        {
+            bb.putLong(<span class="hljs-number">0, l);
+            ringBuffer.publishEvent(LongEventMain8::translate, bb);
+            Thread.sleep(<span class="hljs-number">1000);
+        }
+    }
+}
+</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></code></code></pre>
+<p>生产者的等待策略<br />暂时只有休眠1ns。 LockSupport.parkNanos(1);</p>
+<p>消费者的等待策略 等待给定的sequence变为可用</p>
+<src class="img-package"><img class="img-center view-image" src="./images/disruptor6.png" alt="" />
+<p>&nbsp;</p>
+<p><a href="https://brokendreams.iteye.com/blog/2255720">disruptor-3.3.2源码解析汇总</a><br /><a href="http://ifeve.com/disruptor/">并发框架Disruptor译文</a></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

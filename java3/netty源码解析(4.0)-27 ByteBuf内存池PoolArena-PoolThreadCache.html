@@ -1,0 +1,226 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修netty源码解析(4.0)-27 ByteBuf内存池PoolArena-PoolThreadCache' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>netty源码解析(4.0)-27 ByteBuf内存池PoolArena-PoolThreadCache</center></div><div class='banquan'>原文出处:本文由博客园博主自带buff提供。<br/>
+原文连接:https://www.cnblogs.com/brandonli/p/11649251.html</div><br>
+    <p>　　前面两章分析的PoolChunk和PoolSubpage，从功能上来说已经可以直接拿来用了。但直接使用这个两个类管理内存在高频分配/释放内存场景下会有性能问题，PoolChunk分配内存时算法复杂度最高的是allocateNode方法，释放内存时算法复杂度最高的是free方法。 PoolChunk中二叉树的高度是maxOrder,&nbsp; 那么算法负责度是O(maxOrder)，netty默认的maxOrder是11。另外，PoolChunk不是线程安全的，如果在多线程环境下需要加锁调用，这个开销比算法开销还要大。</p>
+<p>　　为了解决性能问题，netty设计PoolThreadCache(PTC)。每个线程持有一个PTC对象，每个PTC对象持有多个MemoryRegionCache(MRC)对象。MRC对象缓存了大小相同的内存块。PooledByteBuf在释放内存时，会把内存缓存到，MRC对象中，下次分配内存是会优先从MRC中取出缓存的内存。这样，在高频，多线程分配/释放的场景下，可以避免绝大部分PoolChunk算法开销和锁开销。</p>
+<p>&nbsp;</p>
+<h1>cache的设计</h1>
+<p>　　在<a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/brandonli/p/11625304.html">netty源码解解析(4.0)-25 ByteBuf内存池:PoolArena-PoolChunk</a>中讲到，PoolArena把内存按内存大小把内存分为4中类型。PTC只缓存Tiny，Small, Normal三种内存。PTC内部维护了这三种内存的缓存数组，每种内存有两个数组，分别用来缓存堆内存和直接内存。</p>
+<src class="cnblogs_code">
+<pre><code>    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;<span style="color: #0000ff;">byte</span>[]&gt;<span style="color: #000000;">[] tinySubPageHeapCaches;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;<span style="color: #0000ff;">byte</span>[]&gt;<span style="color: #000000;">[] smallSubPageHeapCaches;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;ByteBuffer&gt;<span style="color: #000000;">[] tinySubPageDirectCaches;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;ByteBuffer&gt;<span style="color: #000000;">[] smallSubPageDirectCaches;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;<span style="color: #0000ff;">byte</span>[]&gt;<span style="color: #000000;">[] normalHeapCaches;
+    </span><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">final</span> MemoryRegionCache&lt;ByteBuffer&gt;[] normalDirectCaches;</code></pre>
+
+<p>　　这几十个数组都在PTC的构造方法中初始化，tinySubPageHeapCahes和tinSubPageDirectCaches的长度，PoolArena.numTinySubpagePools。smallSubPageHeapCaches和smallSubPageDirectCaches的长度是heapArena.numSmallSubpagePools。这个两种类型的cache都是调用createSubPageCaches方法创建。normalHeadpCaches和normalDirectCaches的长度取决于传递给构造方法的maxCachedBufferCapacity参数和PoolArena.pageSize，这种cache是调用createNormalCaches创建。</p>
+<p>　　PoolArena.numTinySubpagePools和PoolArena.numSmallSubpagePools的含义在<a id="cb_post_title_url" class="postTitle2" href="https://www.cnblogs.com/brandonli/p/11642434.html">netty源码解解析(4.0)-26 ByteBuf内存池:PoolArena-PoolSubpage</a>中有详细的分析。</p>
+<p>　　下面以createNormalCaches方法的实现为例分析cache的创建:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> &lt;T&gt; MemoryRegionCache&lt;T&gt;<span style="color: #000000;">[] createNormalCaches(
+</span><span style="color: #008080;"> 2</span>             <span style="color: #0000ff;">int</span> cacheSize, <span style="color: #0000ff;">int</span> maxCachedBufferCapacity, PoolArena&lt;T&gt;<span style="color: #000000;"> area) {
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">if</span> (cacheSize &gt; 0 &amp;&amp; maxCachedBufferCapacity &gt; 0<span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">int</span> max =<span style="color: #000000;"> Math.min(area.chunkSize, maxCachedBufferCapacity);
+</span><span style="color: #008080;"> 5</span>             <span style="color: #0000ff;">int</span> arraySize = Math.max(1, log2(max / area.pageSize) + 1<span style="color: #000000;">);
+</span><span style="color: #008080;"> 6</span> 
+<span style="color: #008080;"> 7</span>             @SuppressWarnings("unchecked"<span style="color: #000000;">)
+</span><span style="color: #008080;"> 8</span>             MemoryRegionCache&lt;T&gt;[] cache = <span style="color: #0000ff;">new</span><span style="color: #000000;"> MemoryRegionCache[arraySize];
+</span><span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; cache.length; i++<span style="color: #000000;">) {
+</span><span style="color: #008080;">10</span>                 cache[i] = <span style="color: #0000ff;">new</span> NormalMemoryRegionCache&lt;T&gt;<span style="color: #000000;">(cacheSize);
+</span><span style="color: #008080;">11</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache;
+</span><span style="color: #008080;">13</span>         } <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+</span><span style="color: #008080;">14</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">15</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">16</span>     }</code></pre>
+
+<p>　　和createSubPageCaches不同，这个方法没有数组长度的参数，需要自己计算数组长度。</p>
+<p>　　4,5行，计算cache数组长度。max是最大运行缓存的内存大小，它被限制为&lt;=chunkSize。arraySize是数组的大小。如果max/area.pageSize = 2<sup>k</sup>, (k&lt;=maxOrder)。log2(max/ares.pageSize) = k。arraySize 最小是1， 最大是maxOrder + 1。这意味着可缓存的内存大小是pageSize * 2<sup>0</sup>, paggeSize * 2<sup>1</sup>, ...... pageSize * 2<sup>arraySize-1</sup></p>
+<p>　　8-11行，创建cache数组，并逐个初始化。</p>
+<p>　　</p>
+<p>　　这三种类型的数组有不同的特性，这些特性就是它们缓存内存的方式:</p>
+<p>　　tinySubPageHeapCahes和tinSubPageDirectCaches:&nbsp; 这两个数组的长度是512 &gt;&gt; 4 = 512/16 = 32。索引idx位置缓存的内存长度normCapacity = idx&nbsp; * 16, 已知normCapacity，idx = normCapacity/16 = normCapacity &gt;&gt; 4。</p>
+<p>　　smallSubPageHeapCaches和smallSubPageDirectCaches: 这个数组的长度是log2(pageSize) - 9。索引idx位置缓存内存的长度normCapacity = (1 &lt;&lt; 9) * 2<sup>idx </sup>=2<sup>9+idx</sup>,&nbsp; 已知normCapacity，idx = log2(normCapacity) - 9。</p>
+<p>　　normalHeadpCaches和normalDirectCaches: 这个数组的长度范围是[1, maxOrder + 1)。索引idx位置缓存的内存长度normCapacity = pageSize * 2<sup>idx</sup>, 已知normCapacity，idx=log2(normCapacity/pageSize)。</p>
+<p>&nbsp;</p>
+<h1>向cache中添加内存</h1>
+<p>　　在PooledByteBuf是否内存时，会优调用PTC对象的add方法先把内存添添加到cache中:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">boolean</span> add(PoolArena&lt;?&gt; area, PoolChunk chunk, <span style="color: #0000ff;">long</span> handle, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity, SizeClass sizeClass) {
+</span><span style="color: #008080;"> 2</span>         MemoryRegionCache&lt;?&gt; cache =<span style="color: #000000;"> cache(area, normCapacity, sizeClass);
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">if</span> (cache == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache.add(chunk, handle);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">private</span> MemoryRegionCache&lt;?&gt; cache(PoolArena&lt;?&gt; area, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity, SizeClass sizeClass) {
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">switch</span><span style="color: #000000;"> (sizeClass) {
+</span><span style="color: #008080;">11</span>         <span style="color: #0000ff;">case</span><span style="color: #000000;"> Normal:
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheForNormal(area, normCapacity);
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">case</span><span style="color: #000000;"> Small:
+</span><span style="color: #008080;">14</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheForSmall(area, normCapacity);
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">case</span><span style="color: #000000;"> Tiny:
+</span><span style="color: #008080;">16</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cacheForTiny(area, normCapacity);
+</span><span style="color: #008080;">17</span>         <span style="color: #0000ff;">default</span><span style="color: #000000;">:
+</span><span style="color: #008080;">18</span>             <span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span><span style="color: #000000;"> Error();
+</span><span style="color: #008080;">19</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">20</span>     }</code></pre>
+
+<p>　　2行，调用cache方法找定位到MRC对象。</p>
+<p>　　6行，把内存添加MRC对象。</p>
+<p>　　10-19行，根据sizeClass调用不同的方法定位MRC对象。这里的sizeClass是根据normCapacity得到的，</p>
+<p>　　　　normCapacity &lt; 512: sizeClass = Tiny</p>
+<p>　　　　512 &lt;= normCapacity &lt; pageSize: sizeClass = Small</p>
+<p>　　　　pageSize &lt;= normCapacity &lt; chunkSize: sizeClass = Nomral</p>
+<p>　　接下来看看这三个用来定位MRC对象的方法是如何实现的。首先来看cacheForTiny:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> MemoryRegionCache&lt;?&gt; cacheForTiny(PoolArena&lt;?&gt; area, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> idx =<span style="color: #000000;"> PoolArena.tinyIdx(normCapacity);
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (area.isDirect()) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(tinySubPageDirectCaches, idx);
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(tinySubPageHeapCaches, idx);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> &lt;T&gt; MemoryRegionCache&lt;T&gt; cache(MemoryRegionCache&lt;T&gt;[] cache, <span style="color: #0000ff;">int</span><span style="color: #000000;"> idx) {
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">if</span> (cache == <span style="color: #0000ff;">null</span> || idx &gt; cache.length - 1<span style="color: #000000;">) {
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">13</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache[idx];
+</span><span style="color: #008080;">14</span>     }</code></pre>
+
+<p>　　第2行, 计算数组的索引 idx = normapCapacity &gt;&gt; 4。</p>
+<p>　　第4，6行调用的cache实现代码在9-14行。把MRC对象从数组中取出。</p>
+<p>&nbsp;</p>
+<p>　　cacheForSmall，cacheForNormal方法和cacheForTiny类似，不同的是计算idx的方法。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>     <span style="color: #0000ff;">private</span> MemoryRegionCache&lt;?&gt; cacheForSmall(PoolArena&lt;?&gt; area, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;"> 2</span>         <span style="color: #0000ff;">int</span> idx =<span style="color: #000000;"> PoolArena.smallIdx(normCapacity);
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (area.isDirect()) {
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(smallSubPageDirectCaches, idx);
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;"> 6</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(smallSubPageHeapCaches, idx);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>     <span style="color: #0000ff;">private</span> MemoryRegionCache&lt;?&gt; cacheForNormal(PoolArena&lt;?&gt; area, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">if</span><span style="color: #000000;"> (area.isDirect()) {
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">int</span> idx = log2(normCapacity &gt;&gt;<span style="color: #000000;"> numShiftsNormalDirect);
+</span><span style="color: #008080;">12</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(normalDirectCaches, idx);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">        }
+</span><span style="color: #008080;">14</span>         <span style="color: #0000ff;">int</span> idx = log2(normCapacity &gt;&gt;<span style="color: #000000;"> numShiftsNormalHeap);
+</span><span style="color: #008080;">15</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> cache(normalHeapCaches, idx);
+</span><span style="color: #008080;">16</span>     }</code></pre>
+
+<p>　　第2行计算idx方法和第11行类似: log2(val),&nbsp; 初始化res=0，循环计算(val &gt;&gt;&gt; 1) == 0 ? res : res += 1。当res不变时返回，这个是就是log2(val)的值。&nbsp;</p>
+<p>　　第11行，numShiftsNormalDirect = log2(pageSize),&nbsp; normCapacity &gt;&gt; numShiftsNormalDirect = normCapacity/pageSize。第14行同理。&nbsp;</p>
+<p>&nbsp;</p>
+<h1>从cache中分配内存</h1>
+<p>　　分配内存的过程也依赖前面分析的几个cacheForXXX方法:</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span> <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 2</span> <span style="color: #008000;">     * Try to allocate a tiny buffer out of the cache. Returns {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> true} if successful {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> false} otherwise
+</span><span style="color: #008080;"> 3</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;"> 4</span>     <span style="color: #0000ff;">boolean</span> allocateTiny(PoolArena&lt;?&gt; area, PooledByteBuf&lt;?&gt; buf, <span style="color: #0000ff;">int</span> reqCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;"> 5</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> allocate(cacheForTiny(area, normCapacity), buf, reqCapacity);
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;"> 7</span> 
+<span style="color: #008080;"> 8</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;"> 9</span> <span style="color: #008000;">     * Try to allocate a small buffer out of the cache. Returns {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> true} if successful {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> false} otherwise
+</span><span style="color: #008080;">10</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;">11</span>     <span style="color: #0000ff;">boolean</span> allocateSmall(PoolArena&lt;?&gt; area, PooledByteBuf&lt;?&gt; buf, <span style="color: #0000ff;">int</span> reqCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;">12</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> allocate(cacheForSmall(area, normCapacity), buf, reqCapacity);
+</span><span style="color: #008080;">13</span> <span style="color: #000000;">    }
+</span><span style="color: #008080;">14</span> 
+<span style="color: #008080;">15</span>     <span style="color: #008000;">/**</span>
+<span style="color: #008080;">16</span> <span style="color: #008000;">     * Try to allocate a small buffer out of the cache. Returns {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> true} if successful {</span><span style="color: #808080;">@code</span><span style="color: #008000;"> false} otherwise
+</span><span style="color: #008080;">17</span>      <span style="color: #008000;">*/</span>
+<span style="color: #008080;">18</span>     <span style="color: #0000ff;">boolean</span> allocateNormal(PoolArena&lt;?&gt; area, PooledByteBuf&lt;?&gt; buf, <span style="color: #0000ff;">int</span> reqCapacity, <span style="color: #0000ff;">int</span><span style="color: #000000;"> normCapacity) {
+</span><span style="color: #008080;">19</span>         <span style="color: #0000ff;">return</span><span style="color: #000000;"> allocate(cacheForNormal(area, normCapacity), buf, reqCapacity);
+</span><span style="color: #008080;">20</span>     }</code></pre>
+
+<p>　　allocate方法实现比较简单，它调用MRC对象的allocate方法为PooledByteBuf分配内存，并初始化。</p>
+<p>　　</p>
+<h2>MemoryRegionCache(MRC)实现</h2>
+<p>　　PTC使用MRC对象缓存大小相同的内存块。它内部维护了一个队列，队列中保存的是大小从PoolChunk中分配的内存块。它有两个最重要的属性:</p>
+<p>　　<strong>Queue&lt;Entry&lt;T&gt;&gt; queue</strong>:&nbsp; 缓存内存块的队列。</p>
+<p>　　<strong>SizeClass sizeClass</strong>:&nbsp; 内存的类型, Tiny, Small或Normal。</p>
+<p>　　MRC有三个类:</p>
+<p>　　<strong>MemoryRegionCache&lt;T&gt;</strong>: 抽象类，定义了抽象方法initBuf。</p>
+<p>　　<strong>SubPageMemoryRegionCache&lt;T&gt;:</strong> 实现initBuf方法，使用Tiny或Small内存初始化PooledByteBuf。</p>
+<p>　　NormalMemoryRegionCache&lt;T&gt;: 实现initBuf方法，使用Normal内存初始化PooledByteBuf。</p>
+<p>　　MRC的主要功能是：缓存一块内存，把PoolChunk, handle代表的内存添加到queue中。从queue中取出一块内存，调用initBuf方法初始化PooledByteBuf。</p>
+<p>&nbsp;</p>
+<h3>缓存内存</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>         <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span> add(PoolChunk&lt;T&gt; chunk, <span style="color: #0000ff;">long</span><span style="color: #000000;"> handle) {
+</span><span style="color: #008080;"> 2</span>             Entry&lt;T&gt; entry =<span style="color: #000000;"> newEntry(chunk, handle);
+</span><span style="color: #008080;"> 3</span>             <span style="color: #0000ff;">boolean</span> queued =<span style="color: #000000;"> queue.offer(entry);
+</span><span style="color: #008080;"> 4</span>             <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">queued) {
+</span><span style="color: #008080;"> 5</span>                 <span style="color: #008000;">//</span><span style="color: #008000;"> If it was not possible to cache the chunk, immediately recycle the entry</span>
+<span style="color: #008080;"> 6</span> <span style="color: #000000;">                entry.recycle();
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>             <span style="color: #0000ff;">return</span><span style="color: #000000;"> queued;
+</span><span style="color: #008080;">10</span>         }</code></pre>
+
+<p>　　这个方法用来吧chunk和handle代表的内存添加的queue中。Entry&lt;T&gt;是MRC的内部类，实现很简单，只是为了能在queue中缓存chunk和handle数据，它使用了Recycler功能，把自己放进了可循环使用的对象池中。</p>
+<p>&nbsp;</p>
+<h3>从取出一块内存,并初始化PooledByteBuf</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>         <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">boolean</span> allocate(PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;"> 2</span>             Entry&lt;T&gt; entry =<span style="color: #000000;"> queue.poll();
+</span><span style="color: #008080;"> 3</span>             <span style="color: #0000ff;">if</span> (entry == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+</span><span style="color: #008080;"> 4</span>                 <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">            }
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">            initBuf(entry.chunk, entry.handle, buf, reqCapacity);
+</span><span style="color: #008080;"> 7</span> <span style="color: #000000;">            entry.recycle();
+</span><span style="color: #008080;"> 8</span> 
+<span style="color: #008080;"> 9</span>             <span style="color: #008000;">//</span><span style="color: #008000;"> allocations is not thread-safe which is fine as this is only called from the same thread all time.</span>
+<span style="color: #008080;">10</span>             ++<span style="color: #000000;"> allocations;
+</span><span style="color: #008080;">11</span>             <span style="color: #0000ff;">return</span> <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+</span><span style="color: #008080;">12</span>         }</code></pre>
+
+<p>　　2-5行，取出一块内存。</p>
+<p>　　6行，初始化PooledByteBuf。</p>
+<p>　　下面是两个initBuf实现。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008080;"> 1</span>        <span style="color: #008000;">//</span><span style="color: #008000;">SubPageMemoryRegionCache&lt;T&gt;</span>
+<span style="color: #008080;"> 2</span> <span style="color: #000000;">        @Override
+</span><span style="color: #008080;"> 3</span>         <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> initBuf(
+</span><span style="color: #008080;"> 4</span>                 PoolChunk&lt;T&gt; chunk, <span style="color: #0000ff;">long</span> handle, PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;"> 5</span> <span style="color: #000000;">            chunk.initBufWithSubpage(buf, handle, reqCapacity);
+</span><span style="color: #008080;"> 6</span> <span style="color: #000000;">        } 
+</span><span style="color: #008080;"> 7</span>     
+<span style="color: #008080;"> 8</span>         <span style="color: #008000;">//</span><span style="color: #008000;">NormalMemoryRegionCache&lt;T&gt;</span>
+<span style="color: #008080;"> 9</span> <span style="color: #000000;">        @Override
+</span><span style="color: #008080;">10</span>         <span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> initBuf(
+</span><span style="color: #008080;">11</span>                 PoolChunk&lt;T&gt; chunk, <span style="color: #0000ff;">long</span> handle, PooledByteBuf&lt;T&gt; buf, <span style="color: #0000ff;">int</span><span style="color: #000000;"> reqCapacity) {
+</span><span style="color: #008080;">12</span> <span style="color: #000000;">            chunk.initBuf(buf, handle, reqCapacity);
+</span><span style="color: #008080;">13</span>         }    </code></pre>
+
+<p>　　由5, 12行，可以看到，这两个方法只是用来调用PoolChunk实现的PooledByteBuf初始化方法。</p>
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

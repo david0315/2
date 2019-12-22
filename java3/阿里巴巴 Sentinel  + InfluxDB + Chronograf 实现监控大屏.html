@@ -1,0 +1,80 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏</center></div><div class='banquan'>原文出处:本文由博客园博主小柒2012提供。<br/>
+原文连接:https://www.cnblogs.com/smallSevens/p/11595596.html</div><br>
+    <p><img src="./images/阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏0.png" /></p>
+<h2 id="前言">前言</h2>
+<p>在上一篇推文中，我们使用时序数据库 <code>InfluxDb</code> 做了流控数据存储，但是数据存储不是目的，分析监控预警才是最终目标，那么问题来了，如何更好的实现呢？用过阿里巴巴 Sentinel 控制台的小伙伴，是不是觉得它的控制台丑爆了，而且只有短短的五厘米，显然不能满足大部分人或者场景的使用。</p>
+<h2 id="架构">架构</h2>
+<p><img src="./images/阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏1.png" /></p>
+<h4 id="工具">工具</h4>
+<ul>
+<li>sentinel-dashboard（控制台，收集数据）</li>
+<li>Influxdb（时序数据库，存储数据）</li>
+<li>Chronograf （展示控制台，显示数据并实现预警）</li>
+</ul>
+<h2 id="安装">安装</h2>
+<p>Sentinel 控制台 和 时序数据库 Influxdb 的安装方式前面已经聊过，这里不再赘述，简单说下 Chronograf 展示控制台的安装方式，这里推荐使用 Docker 安装方式。</p>
+<pre><code><code>$ docker run -p 8888:8888 \
+      -v $PWD:/var/lib/chronograf \
+      chronograf</code></code></pre>
+<p>安装成功以后，浏览器访问 <code>http://ip:8888</code> 你应该看到一个欢迎页面：</p>
+<p><img src="./images/阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏2.png" /></p>
+<p>然后，自行配置数据源，根据业务场景组装监控大屏。</p>
+<h2 id="大屏">大屏</h2>
+<p>这里根据 Sentinel 限流组件采集的数据，组装了一个简单的监控大屏，可以监控历史访问总量、最近一小时的访问量、限流数以及最近几分钟或者几小时的访问曲线等等，相比于阿里演示版是不是瞬间高大上的些许。</p>
+<p><img src="./images/阿里巴巴 Sentinel  + InfluxDB + Chronograf 实现监控大屏3.png" /></p>
+<h4 id="总访问量">总访问量</h4>
+<pre><code><code>SELECT SUM(&quot;successQps&quot;) AS &quot;总访问量&quot; FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;</code></code></pre>
+<h4 id="最近一小时访问量">最近一小时访问量</h4>
+<pre><code><code>SELECT SUM(&quot;successQps&quot;) AS &quot;访问量&quot;
+FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;
+WHERE TIME &gt; NOW() - 1h</code></code></pre>
+<h4 id="最近一小时限流数">最近一小时限流数</h4>
+<pre><code><code>SELECT SUM(&quot;blockQps&quot;) AS &quot;限流数&quot;
+FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;
+WHERE time &gt; now() - 1h</code></code></pre>
+<h4 id="最近一小时异常数">最近一小时异常数</h4>
+<pre><code><code>SELECT SUM(&quot;exceptionQps&quot;) AS &quot;异常数&quot;
+FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;
+WHERE time &gt; now() - 1h</code></code></pre>
+<h4 id="最近一小时的访问趋势图秒级别">最近一小时的访问趋势图(秒级别)</h4>
+<pre><code><code>SELECT SUM(&quot;successQps&quot;) AS &quot;访问量&quot;
+FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;
+WHERE time &gt; now() - 1h
+GROUP BY time(1s)</code></code></pre>
+<h4 id="最近12小时资源访问排名">最近12小时资源访问排名</h4>
+<pre><code><code>SELECT SUM(&quot;successQps&quot;) AS &quot;成功qps&quot;, SUM(&quot;blockQps&quot;) AS &quot;限流qps&quot;
+FROM &quot;sentinel_log&quot;.&quot;autogen&quot;.&quot;sentinelInfo&quot;
+WHERE time &gt; now() - 12h
+GROUP BY resource</code></code></pre>
+<h2 id="预警">预警</h2>
+<p>后期我们在 Chronograf 中接入 Kapacitor ，Chronograf会自动打开该Configure Alert Endpoints部分，Kapacitor支持多个警报端点/事件处理程序。有兴趣的小伙伴也可以在 Sentinel 控制台中根据流控数据进行更智能化的设置，比如根据限流失败数以及机器指标动态调整流控规则。</p>
+<h2 id="小结">小结</h2>
+<p>有了她，小哥哥、小姐姐们再也不用担心凌晨一点的闹钟了，是不是很爽？以上只是冰山一角，目前我们上线的监控系统平台，通过各种第三方组件库（<code>Telegraf、InfluxDB、Chronograf、Kapacitor、Grafana、Prometheus、Consul、Elasticsearch、Kibana</code>），接入了 1000 台服务器实时监控，200个监控大屏，上千个监控指标，每日处理成吨的数据。是不是很吊！？我唧唧都佩服我自己的想象力。</p>
+<h2 id="源码">源码</h2>
+<p><a href="https://gitee.com/52itstyle/sentinel-dashboard" class="uri" title="https://gitee.com/52itstyle/sentinel-dashboard">https://gitee.com/52itstyle/sentinel-dashboard</a></p>
+<h2 id="参考">参考</h2>
+<p><a href="https://hub.docker.com/_/chronograf" class="uri">https://hub.docker.com/_/chronograf</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

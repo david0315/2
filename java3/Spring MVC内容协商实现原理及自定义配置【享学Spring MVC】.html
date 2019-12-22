@@ -1,0 +1,547 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】</center></div><div class='banquan'>原文出处:本文由博客园博主_YourBatman提供。<br/>
+原文连接:https://www.cnblogs.com/fangshixiang/p/11420805.html</div><br>
+    <h4 id="每篇一句">每篇一句</h4>
+<blockquote>
+<p>在绝对力量面前，一切技巧都是浮云</p>
+</blockquote>
+<h4 id="前言">前言</h4>
+<p><a href="https://blog.csdn.net/f641385712/article/details/100020664">上文</a> 介绍了Http内容协商的一些概念，以及<code>Spring MVC</code>内置的4种协商方式使用介绍。本文主要针对<code>Spring MVC</code>内容协商方式：从步骤、原理层面理解，最后达到通过自己来扩展协商方式效果。</p>
+<p>首先肯定需要介绍的，那必然就是<code>Spring MVC</code>的默认支持的四大协商策略的原理分析喽：</p>
+<h2 id="contentnegotiationstrategy">ContentNegotiationStrategy</h2>
+<p>该接口就是<code>Spring MVC</code>实现内容协商的策略接口：</p>
+<pre><code><code>// A strategy for resolving the requested media types for a request.
+// @since 3.2
+@FunctionalInterface
+public interface ContentNegotiationStrategy {
+    // @since 5.0.5
+    List&lt;MediaType&gt; MEDIA_TYPE_ALL_LIST = Collections.singletonList(MediaType.ALL);
+
+    // 将给定的请求解析为媒体类型列表
+    // 返回的 List 首先按照 specificity 参数排序，其次按照 quality 参数排序
+    // 如果请求的媒体类型不能被解析则抛出 HttpMediaTypeNotAcceptableException 异常
+    List&lt;MediaType&gt; resolveMediaTypes(NativeWebRequest webRequest) throws HttpMediaTypeNotAcceptableException;
+}</code></code></pre>
+<p>说白了，这个策略接口就是想知道客户端的请求需要什么类型（<code>MediaType</code>）的数据<code>List</code>。从 <a href="https://blog.csdn.net/f641385712/article/details/100020664">上文</a> 我们知道<code>Spring MVC</code>它支持了4种不同的协商机制，它都和此策略接口相关的。<br />
+它的继承树：<br />
+<img src="./images/Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】0.png" alt="在这里插入图片描述" /><br />
+从实现类的名字上就能看出它和上文提到的4种方式恰好是一一对应着的（<code>ContentNegotiationManager</code>除外）。</p>
+<blockquote>
+<p><code>Spring MVC</code>默认加载两个该策略接口的实现类：<br />
+<code>ServletPathExtensionContentNegotiationStrategy</code>--&gt;根据文件扩展名（支持RESTful）。<br />
+<code>HeaderContentNegotiationStrategy</code>--&gt;根据<code>HTTP Header</code>里的<code>Accept</code>字段（支持Http）。</p>
+</blockquote>
+<h4 id="headercontentnegotiationstrategy">HeaderContentNegotiationStrategy</h4>
+<p><code>Accept Header</code>解析：它根据请求头<code>Accept</code>来协商。</p>
+<pre><code><code>public class HeaderContentNegotiationStrategy implements ContentNegotiationStrategy {
+    @Override
+    public List&lt;MediaType&gt; resolveMediaTypes(NativeWebRequest request) throws HttpMediaTypeNotAcceptableException {
+    
+        // 我的Chrome浏览器值是：[text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3]
+        // postman的值是：[*/*]
+        String[] headerValueArray = request.getHeaderValues(HttpHeaders.ACCEPT);
+        if (headerValueArray == null) {
+            return MEDIA_TYPE_ALL_LIST;
+        }
+
+        List&lt;String&gt; headerValues = Arrays.asList(headerValueArray);
+        try {
+            List&lt;MediaType&gt; mediaTypes = MediaType.parseMediaTypes(headerValues);
+            // 排序
+            MediaType.sortBySpecificityAndQuality(mediaTypes);
+            // 最后Chrome浏览器的List如下：
+            // 0 = {MediaType@6205} &quot;text/html&quot;
+            // 1 = {MediaType@6206} &quot;application/xhtml+xml&quot;
+            // 2 = {MediaType@6207} &quot;image/webp&quot;
+            // 3 = {MediaType@6208} &quot;image/apng&quot;
+            // 4 = {MediaType@6209} &quot;application/signed-exchange;v=b3&quot;
+            // 5 = {MediaType@6210} &quot;application/xml;q=0.9&quot;
+            // 6 = {MediaType@6211} &quot;*/*;q=0.8&quot;
+            return !CollectionUtils.isEmpty(mediaTypes) ? mediaTypes : MEDIA_TYPE_ALL_LIST;
+        } catch (InvalidMediaTypeException ex) {
+            throw new HttpMediaTypeNotAcceptableException(&quot;Could not parse &#39;Accept&#39; header &quot; + headerValues + &quot;: &quot; + ex.getMessage());
+        }
+    }
+}</code></code></pre>
+<p>可以看到，<strong>如果没有传递Accept，则默认使用MediaType.ALL 也就是<code>*/*</code></strong></p>
+<h4 id="abstractmappingcontentnegotiationstrategy">AbstractMappingContentNegotiationStrategy</h4>
+<p>通过<code>file extension</code>/<code>query param</code>来协商的抽象实现类。在了解它之前，有必要先插队先了解<code>MediaTypeFileExtensionResolver</code>它的作用：</p>
+<h2 id="section">---</h2>
+<p><code>MediaTypeFileExtensionResolver</code>：<code>MediaType</code>和路径扩展名解析策略的接口，例如将 <code>.json</code> 解析成 <code>application/json</code> 或者反向解析</p>
+<pre><code><code>// @since 3.2
+public interface MediaTypeFileExtensionResolver {
+
+    // 根据指定的mediaType返回一组文件扩展名
+    List&lt;String&gt; resolveFileExtensions(MediaType mediaType);
+    // 返回该接口注册进来的所有的扩展名
+    List&lt;String&gt; getAllFileExtensions();
+}</code></code></pre>
+<p>继承树如下：<br />
+<img src="./images/Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】1.png" alt="在这里插入图片描述" /><br />
+显然，本处只需要讲解它的直接实现子类<code>MappingMediaTypeFileExtensionResolver</code>即可：</p>
+<h6 id="mappingmediatypefileextensionresolver">MappingMediaTypeFileExtensionResolver</h6>
+<pre><code><code>public class MappingMediaTypeFileExtensionResolver implements MediaTypeFileExtensionResolver {
+
+    // key是lowerCaseExtension，value是对应的mediaType
+    private final ConcurrentMap&lt;String, MediaType&gt; mediaTypes = new ConcurrentHashMap&lt;&gt;(64);
+    // 和上面相反，key是mediaType，value是lowerCaseExtension（显然用的是多值map）
+    private final MultiValueMap&lt;MediaType, String&gt; fileExtensions = new LinkedMultiValueMap&lt;&gt;();
+    // 所有的扩展名（List非set哦~）
+    private final List&lt;String&gt; allFileExtensions = new ArrayList&lt;&gt;();
+
+    ...
+    public Map&lt;String, MediaType&gt; getMediaTypes() {
+        return this.mediaTypes;
+    }
+    // protected 方法
+    protected List&lt;MediaType&gt; getAllMediaTypes() {
+        return new ArrayList&lt;&gt;(this.mediaTypes.values());
+    }
+    // 给extension添加一个对应的mediaType
+    // 采用ConcurrentMap是为了避免出现并发情况下导致的一致性问题
+    protected void addMapping(String extension, MediaType mediaType) {
+        MediaType previous = this.mediaTypes.putIfAbsent(extension, mediaType);
+        if (previous == null) {
+            this.fileExtensions.add(mediaType, extension);
+            this.allFileExtensions.add(extension);
+        }
+    }
+
+    // 接口方法：拿到指定的mediaType对应的扩展名们~
+    @Override
+    public List&lt;String&gt; resolveFileExtensions(MediaType mediaType) {
+        List&lt;String&gt; fileExtensions = this.fileExtensions.get(mediaType);
+        return (fileExtensions != null ? fileExtensions : Collections.emptyList());
+    }
+    @Override
+    public List&lt;String&gt; getAllFileExtensions() {
+        return Collections.unmodifiableList(this.allFileExtensions);
+    }
+
+    // protected 方法：根据扩展名找到一个MediaType~（当然可能是找不到的）
+    @Nullable
+    protected MediaType lookupMediaType(String extension) {
+        return this.mediaTypes.get(extension.toLowerCase(Locale.ENGLISH));
+    }
+}</code></code></pre>
+<p>此抽象类维护一些Map以及提供操作的方法，它维护了一个文件扩展名和<code>MediaType</code>的双向查找表。扩展名和<code>MediaType</code>的对应关系：</p>
+<ol>
+<li>一个<code>MediaType</code>对应N个扩展名</li>
+<li><h2 id="一个扩展名最多只会属于一个mediatype">一个扩展名最多只会属于一个MediaType~</h2>
+<hr />
+继续回到<code>AbstractMappingContentNegotiationStrategy</code>。</li>
+</ol>
+<pre><code><code>// @since 3.2 它是个协商策略抽象实现，同时也有了扩展名+MediaType对应关系的能力
+public abstract class AbstractMappingContentNegotiationStrategy extends MappingMediaTypeFileExtensionResolver implements ContentNegotiationStrategy {
+
+    // Whether to only use the registered mappings to look up file extensions,
+    // or also to use dynamic resolution (e.g. via {@link MediaTypeFactory}.
+    // org.springframework.http.MediaTypeFactory是Spring5.0提供的一个工厂类
+    // 它会读取/org/springframework/http/mime.types这个文件，里面有记录着对应关系
+    private boolean useRegisteredExtensionsOnly = false;
+    // Whether to ignore requests with unknown file extension. Setting this to
+    // 默认false：若认识不认识的扩展名，抛出异常：HttpMediaTypeNotAcceptableException
+    private boolean ignoreUnknownExtensions = false;
+
+    // 唯一构造函数
+    public AbstractMappingContentNegotiationStrategy(@Nullable Map&lt;String, MediaType&gt; mediaTypes) {
+        super(mediaTypes);
+    }
+
+    // 实现策略接口方法
+    @Override
+    public List&lt;MediaType&gt; resolveMediaTypes(NativeWebRequest webRequest) throws HttpMediaTypeNotAcceptableException {
+        // getMediaTypeKey：抽象方法(让子类把扩展名这个key提供出来)
+        return resolveMediaTypeKey(webRequest, getMediaTypeKey(webRequest));
+    }
+
+    public List&lt;MediaType&gt; resolveMediaTypeKey(NativeWebRequest webRequest, @Nullable String key) throws HttpMediaTypeNotAcceptableException {
+        if (StringUtils.hasText(key)) {
+            // 调用父类方法：根据key去查找出一个MediaType出来
+            MediaType mediaType = lookupMediaType(key); 
+            // 找到了就return就成（handleMatch是protected的空方法~~~  子类目前没有实现的）
+            if (mediaType != null) {
+                handleMatch(key, mediaType); // 回调
+                return Collections.singletonList(mediaType);
+            }
+
+            // 若没有对应的MediaType，交给handleNoMatch处理（默认是抛出异常，见下面）
+            // 注意：handleNoMatch如果通过工厂找到了，那就addMapping()保存起来（相当于注册上去）
+            mediaType = handleNoMatch(webRequest, key);
+            if (mediaType != null) {
+                addMapping(key, mediaType);
+                return Collections.singletonList(mediaType);
+            }
+        }
+        return MEDIA_TYPE_ALL_LIST; // 默认值：所有
+    }
+
+    // 此方法子类ServletPathExtensionContentNegotiationStrategy有复写
+    @Nullable
+    protected MediaType handleNoMatch(NativeWebRequest request, String key) throws HttpMediaTypeNotAcceptableException {
+
+        // 若不是仅仅从注册里的拿，那就再去MediaTypeFactory里看看~~~  找到了就返回
+        if (!isUseRegisteredExtensionsOnly()) {
+            Optional&lt;MediaType&gt; mediaType = MediaTypeFactory.getMediaType(&quot;file.&quot; + key);
+            if (mediaType.isPresent()) {
+                return mediaType.get();
+            }
+        }
+
+        // 忽略找不到，返回null吧  否则抛出异常：HttpMediaTypeNotAcceptableException
+        if (isIgnoreUnknownExtensions()) {
+            return null;
+        }
+        throw new HttpMediaTypeNotAcceptableException(getAllMediaTypes());
+    }
+}</code></code></pre>
+<p>该抽象类实现了模版处理流程。<br />
+由子类去决定：你的扩展名是来自于URL的参数还是来自于path...</p>
+<h5 id="parametercontentnegotiationstrategy">ParameterContentNegotiationStrategy</h5>
+<p>上面抽象类的子类具体实现，从名字中能看出扩展名来自于param参数。</p>
+<pre><code><code>public class ParameterContentNegotiationStrategy extends AbstractMappingContentNegotiationStrategy {
+    // 请求参数默认的key是format，你是可以设置和更改的。(set方法)
+    private String parameterName = &quot;format&quot;;
+
+    // 唯一构造
+    public ParameterContentNegotiationStrategy(Map&lt;String, MediaType&gt; mediaTypes) {
+        super(mediaTypes);
+    }
+    ... // 生路get/set
+
+    // 小Tips：这里调用的是getParameterName()而不是直接用属性名，以后建议大家设计框架也都这么使用 虽然很多时候效果是一样的，但更符合使用规范
+    @Override
+    @Nullable
+    protected String getMediaTypeKey(NativeWebRequest request) {
+        return request.getParameter(getParameterName());
+    }
+}</code></code></pre>
+<p>根据一个查询参数(query parameter)判断请求的<code>MediaType</code>,该查询参数缺省使用<code>format</code>。</p>
+<blockquote>
+<p>需要注意的是：基于param的此策略<code>Spring MVC</code>虽然支持，但默认是木有开启的，若想使用需要手动显示开启</p>
+</blockquote>
+<h5 id="pathextensioncontentnegotiationstrategy">PathExtensionContentNegotiationStrategy</h5>
+<p>它的扩展名需要从Path里面分析出来。</p>
+<pre><code><code>public class PathExtensionContentNegotiationStrategy extends AbstractMappingContentNegotiationStrategy {
+
+    private UrlPathHelper urlPathHelper = new UrlPathHelper();
+
+    // 它额外提供了一个空构造
+    public PathExtensionContentNegotiationStrategy() {
+        this(null);
+    }
+    // 有参构造
+    public PathExtensionContentNegotiationStrategy(@Nullable Map&lt;String, MediaType&gt; mediaTypes) {
+        super(mediaTypes);
+        setUseRegisteredExtensionsOnly(false);
+        setIgnoreUnknownExtensions(true); // 注意：这个值设置为了true
+        this.urlPathHelper.setUrlDecode(false); // 不需要解码（url请勿有中文）
+    }
+
+    // @since 4.2.8  可见Spring MVC允许你自己定义解析的逻辑
+    public void setUrlPathHelper(UrlPathHelper urlPathHelper) {
+        this.urlPathHelper = urlPathHelper;
+    }
+
+
+    @Override
+    @Nullable
+    protected String getMediaTypeKey(NativeWebRequest webRequest) {
+        HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
+        if (request == null) {
+            return null;
+        }
+
+        // 借助urlPathHelper、UriUtils从URL中把扩展名解析出来
+        String path = this.urlPathHelper.getLookupPathForRequest(request);
+        String extension = UriUtils.extractFileExtension(path);
+        return (StringUtils.hasText(extension) ? extension.toLowerCase(Locale.ENGLISH) : null);
+    }
+
+    // 子类ServletPathExtensionContentNegotiationStrategy有使用和复写
+    // 它的作用是面向Resource找到这个资源对应的MediaType ~
+    @Nullable
+    public MediaType getMediaTypeForResource(Resource resource) { ... }
+}</code></code></pre>
+<p>根据请求<code>URL</code>路径中所请求的<strong>文件资源的扩展名</strong>部分判断请求的<code>MediaType</code>（借助<code>UrlPathHelper</code>和<code>UriUtils</code>解析<code>URL</code>）。</p>
+<h6 id="servletpathextensioncontentnegotiationstrategy">ServletPathExtensionContentNegotiationStrategy</h6>
+<p>它是对<code>PathExtensionContentNegotiationStrategy</code>的扩展，和<code>Servlet</code>容器有关了。因为<code>Servlet</code>额外提供了这个方法：<code>ServletContext#getMimeType(String)</code>来处理文件的扩展名问题。</p>
+<pre><code><code>public class ServletPathExtensionContentNegotiationStrategy extends PathExtensionContentNegotiationStrategy {
+    private final ServletContext servletContext;
+    ... // 省略构造函数
+
+    // 一句话：在去工厂找之前，先去this.servletContext.getMimeType(&quot;file.&quot; + extension)这里找一下，找到就直接返回。否则再进工厂
+    @Override
+    @Nullable
+    protected MediaType handleNoMatch(NativeWebRequest webRequest, String extension) throws HttpMediaTypeNotAcceptableException { ... }
+
+    //  一样的：先this.servletContext.getMimeType(resource.getFilename()) 再交给父类处理
+    @Override
+    public MediaType getMediaTypeForResource(Resource resource) { ... }
+
+    // 两者调用父类的条件都是：mediaType == null || MediaType.APPLICATION_OCTET_STREAM.equals(mediaType)
+}</code></code></pre>
+<p>说明：<code>ServletPathExtensionContentNegotiationStrategy</code>是<code>Spring MVC</code>默认就开启支持的策略，无需手动开启。</p>
+<h4 id="fixedcontentnegotiationstrategy">FixedContentNegotiationStrategy</h4>
+<p>固定类型解析：返回<code>固定</code>的MediaType。</p>
+<pre><code><code>public class FixedContentNegotiationStrategy implements ContentNegotiationStrategy {
+    private final List&lt;MediaType&gt; contentTypes;
+
+    // 构造函数：必须指定MediaType
+    // 一般通过@RequestMapping.produces这个注解属性指定（可指定多个）
+    public FixedContentNegotiationStrategy(MediaType contentType) {
+        this(Collections.singletonList(contentType));
+    }
+    // @since 5.0
+    public FixedContentNegotiationStrategy(List&lt;MediaType&gt; contentTypes) {
+        this.contentTypes = Collections.unmodifiableList(contentTypes);
+    }
+}</code></code></pre>
+<p>固定参数类型非常简单，构造函数传进来啥返回啥（不能为null）。</p>
+<hr />
+<h2 id="contentnegotiationmanager">==ContentNegotiationManager==</h2>
+<p>介绍完了上面4中协商策略，开始介绍这个协商&quot;容器&quot;。<br />
+这个管理器它的作用特别像之前讲述的<code>xxxComposite</code>这种“容器”管理类，总体思想是管理、委托，有了之前的基础了解起他还是非常简单的了。</p>
+<pre><code><code>//  它不仅管理一堆strategies（List），还管理一堆resolvers（Set）
+public class ContentNegotiationManager implements ContentNegotiationStrategy, MediaTypeFileExtensionResolver {
+    private final List&lt;ContentNegotiationStrategy&gt; strategies = new ArrayList&lt;&gt;();
+    private final Set&lt;MediaTypeFileExtensionResolver&gt; resolvers = new LinkedHashSet&lt;&gt;();
+    
+    ...
+    // 若没特殊指定，至少是包含了这一种的策略的：HeaderContentNegotiationStrategy
+    public ContentNegotiationManager() {
+        this(new HeaderContentNegotiationStrategy());
+    }
+    ... // 因为比较简单，所以省略其它代码
+}</code></code></pre>
+<p>它是一个<code>ContentNegotiationStrategy</code>容器，同时也是一个<code>MediaTypeFileExtensionResolver</code>容器。自身同时实现了这两个接口。</p>
+<h4 id="contentnegotiationmanagerfactorybean">ContentNegotiationManagerFactoryBean</h4>
+<p>顾名思义，它是专门用于来创建一个<code>ContentNegotiationManager</code>的<code>FactoryBean</code>。</p>
+<pre><code><code>// @since 3.2  还实现了ServletContextAware，可以得到当前servlet容器上下文
+public class ContentNegotiationManagerFactoryBean implements FactoryBean&lt;ContentNegotiationManager&gt;, ServletContextAware, InitializingBean {
+    
+    // 默认就是开启了对后缀的支持的
+    private boolean favorPathExtension = true;
+    // 默认没有开启对param的支持
+    private boolean favorParameter = false;
+    // 默认也是开启了对Accept的支持的
+    private boolean ignoreAcceptHeader = false;
+
+    private Map&lt;String, MediaType&gt; mediaTypes = new HashMap&lt;String, MediaType&gt;();
+    private boolean ignoreUnknownPathExtensions = true;
+    // Jaf是一个数据处理框架，可忽略
+    private Boolean useJaf;
+    private String parameterName = &quot;format&quot;;
+    private ContentNegotiationStrategy defaultNegotiationStrategy;
+    private ContentNegotiationManager contentNegotiationManager;
+    private ServletContext servletContext;
+    ... // 省略普通的get/set
+
+    // 注意这里传入的是：Properties  表示后缀和MediaType的对应关系
+    public void setMediaTypes(Properties mediaTypes) {
+        if (!CollectionUtils.isEmpty(mediaTypes)) {
+            for (Entry&lt;Object, Object&gt; entry : mediaTypes.entrySet()) {
+                String extension = ((String)entry.getKey()).toLowerCase(Locale.ENGLISH);
+                MediaType mediaType = MediaType.valueOf((String) entry.getValue());
+                this.mediaTypes.put(extension, mediaType);
+            }
+        }
+    }
+    public void addMediaType(String fileExtension, MediaType mediaType) {
+        this.mediaTypes.put(fileExtension, mediaType);
+    }
+    ...
+    
+    // 这里面处理了很多默认逻辑
+    @Override
+    public void afterPropertiesSet() {
+        List&lt;ContentNegotiationStrategy&gt; strategies = new ArrayList&lt;ContentNegotiationStrategy&gt;();
+
+        // 默认favorPathExtension=true，所以是支持path后缀模式的
+        // servlet环境使用的是ServletPathExtensionContentNegotiationStrategy，否则使用的是PathExtensionContentNegotiationStrategy
+        // 
+        if (this.favorPathExtension) {
+            PathExtensionContentNegotiationStrategy strategy;
+            if (this.servletContext != null &amp;&amp; !isUseJafTurnedOff()) {
+                strategy = new ServletPathExtensionContentNegotiationStrategy(this.servletContext, this.mediaTypes);
+            } else {
+                strategy = new PathExtensionContentNegotiationStrategy(this.mediaTypes);
+            }
+            strategy.setIgnoreUnknownExtensions(this.ignoreUnknownPathExtensions);
+            if (this.useJaf != null) {
+                strategy.setUseJaf(this.useJaf);
+            }
+            strategies.add(strategy);
+        }
+
+        // 默认favorParameter=false 木有开启滴
+        if (this.favorParameter) {
+            ParameterContentNegotiationStrategy strategy = new ParameterContentNegotiationStrategy(this.mediaTypes);
+            strategy.setParameterName(this.parameterName);
+            strategies.add(strategy);
+        }
+
+        // 注意这前面有个!，所以默认Accept也是支持的
+        if (!this.ignoreAcceptHeader) {
+            strategies.add(new HeaderContentNegotiationStrategy());
+        }
+
+        // 若你喜欢，你可以设置一个defaultNegotiationStrategy  最终也会被add进去
+        if (this.defaultNegotiationStrategy != null) {
+            strategies.add(this.defaultNegotiationStrategy);
+        }
+
+        // 这部分我需要提醒注意的是：这里使用的是ArrayList，所以你add的顺序就是u最后的执行顺序
+        // 所以若你指定了defaultNegotiationStrategy，它也是放到最后的
+        this.contentNegotiationManager = new ContentNegotiationManager(strategies);
+    }
+
+    // 三个接口方法
+    @Override
+    public ContentNegotiationManager getObject() {
+        return this.contentNegotiationManager;
+    }
+    @Override
+    public Class&lt;?&gt; getObjectType() {
+        return ContentNegotiationManager.class;
+    }
+    @Override
+    public boolean isSingleton() {
+        return true;
+    }
+}</code></code></pre>
+<p>这里解释了 <a href="https://blog.csdn.net/f641385712/article/details/100020664">该文</a> 的顺序（<code>后缀 &gt; 请求参数 &gt; HTTP首部Accept</code>）现象。<code>Spring MVC</code>是通过它来创建<code>ContentNegotiationManager</code>进而管理协商策略的。</p>
+<h3 id="内容协商的配置contentnegotiationconfigurer">内容协商的配置：<code>ContentNegotiationConfigurer</code></h3>
+<p>虽然说默认情况下<code>Spring</code>开启的协商支持能覆盖我们绝大部分应用场景了，但不乏有的时候我们也还是需要对它进行个性化的，那么这部分就讲解下对它的个性化配置~</p>
+<h5 id="contentnegotiationconfigurer">ContentNegotiationConfigurer</h5>
+<p>它用于&quot;收集&quot;配置项，根据你提供的配置项来创建出一个<code>ContentNegotiationManager</code>。</p>
+<pre><code><code>public class ContentNegotiationConfigurer {
+
+    private final ContentNegotiationManagerFactoryBean factory = new ContentNegotiationManagerFactoryBean();
+    private final Map&lt;String, MediaType&gt; mediaTypes = new HashMap&lt;String, MediaType&gt;();
+
+    public ContentNegotiationConfigurer(@Nullable ServletContext servletContext) {
+        if (servletContext != null) {
+            this.factory.setServletContext(servletContext);
+        }
+    }
+    // @since 5.0
+    public void strategies(@Nullable List&lt;ContentNegotiationStrategy&gt; strategies) {
+        this.factory.setStrategies(strategies);
+    }
+    ...
+    public ContentNegotiationConfigurer defaultContentTypeStrategy(ContentNegotiationStrategy defaultStrategy) {
+        this.factory.setDefaultContentTypeStrategy(defaultStrategy);
+        return this;
+    }
+
+    // 手动创建出一个ContentNegotiationManager 此方法是protected 
+    // 唯一调用处是：WebMvcConfigurationSupport
+    protected ContentNegotiationManager buildContentNegotiationManager() {
+        this.factory.addMediaTypes(this.mediaTypes);
+        return this.factory.build();
+    }
+}</code></code></pre>
+<p><code>ContentNegotiationConfigurer</code>可以认为是提供一个设置<code>ContentNegotiationManagerFactoryBean</code>的入口（自己内容new了一个它的实例），最终交给<code>WebMvcConfigurationSupport</code>向容器内注册这个Bean：</p>
+<pre><code><code>public class WebMvcConfigurationSupport implements ApplicationContextAware, ServletContextAware {
+    ...
+    // 请注意是BeanName为：mvcContentNegotiationManager
+    // 若实在有需要，你是可以覆盖的~~~~
+    @Bean
+    public ContentNegotiationManager mvcContentNegotiationManager() {
+        if (this.contentNegotiationManager == null) {
+            ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer(this.servletContext);
+            configurer.mediaTypes(getDefaultMediaTypes()); // 服务端默认支持的后缀名--&gt;MediaType们~~~
+
+            // 这个方法就是回调我们自定义配置的protected方法~~~~
+            configureContentNegotiation(configurer);
+        
+            // 调用方法生成一个管理器
+            this.contentNegotiationManager = configurer.buildContentNegotiationManager();
+        }
+        return this.contentNegotiationManager;
+    }
+
+
+    // 默认支持的协商MediaType们~~~~
+    protected Map&lt;String, MediaType&gt; getDefaultMediaTypes() {
+        Map&lt;String, MediaType&gt; map = new HashMap&lt;&gt;(4);
+        // 几乎不用
+        if (romePresent) {
+            map.put(&quot;atom&quot;, MediaType.APPLICATION_ATOM_XML);
+            map.put(&quot;rss&quot;, MediaType.APPLICATION_RSS_XML);
+        }
+        // 若导了jackson对xml支持的包，它就会被支持
+        if (jaxb2Present || jackson2XmlPresent) {
+            map.put(&quot;xml&quot;, MediaType.APPLICATION_XML);
+        }
+        // jackson.databind就支持json了，所以此处一般都是满足的
+        // 额外还支持到了gson和jsonb。希望不久将来内置支持fastjson
+        if (jackson2Present || gsonPresent || jsonbPresent) {
+            map.put(&quot;json&quot;, MediaType.APPLICATION_JSON);
+        }
+        if (jackson2SmilePresent) {
+            map.put(&quot;smile&quot;, MediaType.valueOf(&quot;application/x-jackson-smile&quot;));
+        }
+        if (jackson2CborPresent) {
+            map.put(&quot;cbor&quot;, MediaType.valueOf(&quot;application/cbor&quot;));
+        }
+        return map;
+    }
+    ...
+}</code></code></pre>
+<blockquote>
+<p>Tips：<code>WebMvcConfigurationSupport</code>是<code>@EnableWebMvc</code>导进去的。</p>
+</blockquote>
+<h5 id="配置实践">配置实践</h5>
+<p>有了上面理论的支撑，那么使用<code>Spring MVC</code>协商的最佳实践配置可参考如下（大多数情况下都无需配置）：</p>
+<pre><code><code>@Configuration
+@EnableWebMvc
+public class WebMvcConfig extends WebMvcConfigurerAdapter {
+
+    @Override
+    public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
+        configurer.favorParameter(true)
+        //.parameterName(&quot;mediaType&quot;)
+        //.defaultContentTypeStrategy(new ...) // 自定义一个默认的内容协商策略
+        //.ignoreAcceptHeader(true) // 禁用Accept协商方式
+        //.defaultContentType(MediaType.APPLICATION_JSON) // 它的效果是new FixedContentNegotiationStrategy(contentTypes)  增加了对固定策略的支
+        //.strategies(list);
+        //.useRegisteredExtensionsOnly() //PathExtensionContentNegotiationStrategy.setUseRegisteredExtensionsOnly(this.useRegisteredExtensionsOnly);
+        ;
+    }
+}</code></code></pre>
+<h4 id="总结">总结</h4>
+<p>本文从原理上分析了<code>Spring MVC</code>对内容协商策略的管理、使用以及开放的配置，旨在做到心中有数，从而更好、更安全、更方便的进行扩展，对下文内容协商视图的理解有非常大的帮助作用，有兴趣的可持续关注~</p>
+<h4 id="相关阅读">相关阅读</h4>
+<p><a href="https://blog.csdn.net/f641385712/article/details/100020664">ContentNegotiation内容协商机制(一)---Spring MVC内置支持的4种内容协商方式【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100060445">ContentNegotiation内容协商机制(二)---Spring MVC内容协商实现原理及自定义配置【享学Spring MVC】</a><br />
+<a href="https://blog.csdn.net/f641385712/article/details/100079806">ContentNegotiation内容协商机制(三)---在视图View上的应用：ContentNegotiatingViewResolver深度解析【享学Spring MVC】</a></p>
+<h4 id="知识交流">知识交流</h4>
+<p>==The last：如果觉得本文对你有帮助，不妨点个赞呗。当然分享到你的朋友圈让更多小伙伴看到也是被<code>作者本人许可的~</code>==</p>
+<p><strong>若对技术内容感兴趣可以加入wx群交流：<code>Java高工、架构师3群</code>。<br />
+若群二维码失效，请加wx号：<code>fsx641385712</code>（或者扫描下方wx二维码）。并且备注：<code>&quot;java入群&quot;</code> 字样，会手动邀请入群</strong><br />
+==若对Spring、SpringBoot、MyBatis等源码分析感兴趣，可加我wx：fsx641385712，手动邀请你入群一起飞==</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

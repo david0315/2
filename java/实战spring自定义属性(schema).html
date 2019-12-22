@@ -1,0 +1,357 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修实战spring自定义属性(schema)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>实战spring自定义属性(schema)</center></div><div class='banquan'>原文出处:本文由博客园博主zq2599提供。<br/>
+原文连接:https://www.cnblogs.com/bolingcavalry/p/11551968.html</div><br>
+    <h3 id="关于spring自定义属性schema">关于spring自定义属性(schema)</h3>
+<p>在开发Dubbo应用的时候，我们会在xml中做以下类似的配置：</p>
+<pre><code><code>&lt;dubbo:application name=&quot;dubbo_service_provider&quot; /&gt;
+&lt;dubbo:registry address=&quot;zookeeper://127.0.0.1:2181&quot; /&gt;
+&lt;dubbo:protocol name=&quot;dubbo&quot; port=&quot;20880&quot; /&gt;</code></code></pre>
+<p>spring启动后，Dubbo的本地运行时环境就会获取到这些信息，根据这些信息完成注册服务，今天我们实战的内容就是开发一个类似的自定义属性，然后在spring项目中使用这个属性；</p>
+<h3 id="全文概览">全文概览</h3>
+<p>整个实战过程分为以下几步：</p>
+<ol>
+<li>创建web工程；</li>
+<li>创建配置属性的bean；</li>
+<li>创建XSD文件；</li>
+<li>创建自定义BeanDefinitionParser，制定配置信息的解析规则；</li>
+<li>创建自定义NamespaceHandler，规定配置信息的解析器；</li>
+<li>添加spring.handlers文件;</li>
+<li>添加spring.schemas文件;</li>
+<li>在工程中配置一个这样的属性；</li>
+<li>启动web工程，验证配置；</li>
+</ol>
+<h3 id="源码下载">源码下载</h3>
+<p>如果您不打算编码，也可以在GitHub下载本次实战的源码，地址是：https://github.com/zq2599/blog_demos ，里面有多个工程，本次用到的是springschemademo，如下图红框所示：</p>
+<p><img src="./images/实战spring自定义属性(schema)0.png" alt="这里写图片描述" /></p>
+<p>接下来开始实战：</p>
+<h3 id="创建web工程">创建web工程</h3>
+<p>创建一个maven工程，pom.xml的内容如下，主要是把spring相关的依赖引入：</p>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot;
+         xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;groupId&gt;com.bolingcavalry&lt;/groupId&gt;
+  &lt;artifactId&gt;springschemademo&lt;/artifactId&gt;
+  &lt;packaging&gt;war&lt;/packaging&gt;
+  &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;name&gt;app Maven Webapp&lt;/name&gt;
+  &lt;url&gt;http://maven.apache.org&lt;/url&gt;
+  &lt;properties&gt;
+    &lt;!-- spring版本号 --&gt;
+    &lt;spring.version&gt;4.0.2.RELEASE&lt;/spring.version&gt;
+  &lt;/properties&gt;
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;junit&lt;/groupId&gt;
+      &lt;artifactId&gt;junit&lt;/artifactId&gt;
+      &lt;version&gt;4.11&lt;/version&gt;
+      &lt;!-- 表示开发的时候引入，发布的时候不会加载此包 --&gt;
+      &lt;scope&gt;test&lt;/scope&gt;
+    &lt;/dependency&gt;
+    &lt;!-- spring核心包 --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-core&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-web&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-oxm&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-tx&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-jdbc&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-webmvc&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-aop&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-context-support&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-test&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-beans&lt;/artifactId&gt;
+      &lt;version&gt;${spring.version}&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;!-- 导入java ee jar 包 --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;javax&lt;/groupId&gt;
+      &lt;artifactId&gt;javaee-api&lt;/artifactId&gt;
+      &lt;version&gt;7.0&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;!-- JSTL标签类 --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;jstl&lt;/groupId&gt;
+      &lt;artifactId&gt;jstl&lt;/artifactId&gt;
+      &lt;version&gt;1.2&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;!-- 映入JSON --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.codehaus.jackson&lt;/groupId&gt;
+      &lt;artifactId&gt;jackson-mapper-asl&lt;/artifactId&gt;
+      &lt;version&gt;1.9.13&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;!-- 上传组件包 --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;commons-fileupload&lt;/groupId&gt;
+      &lt;artifactId&gt;commons-fileupload&lt;/artifactId&gt;
+      &lt;version&gt;1.3.1&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;commons-io&lt;/groupId&gt;
+      &lt;artifactId&gt;commons-io&lt;/artifactId&gt;
+      &lt;version&gt;2.4&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;commons-codec&lt;/groupId&gt;
+      &lt;artifactId&gt;commons-codec&lt;/artifactId&gt;
+      &lt;version&gt;1.9&lt;/version&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+  &lt;build&gt;
+    &lt;finalName&gt;${project.artifactId}&lt;/finalName&gt;
+
+    &lt;resources&gt;
+      &lt;resource&gt;
+        &lt;directory&gt;src/main/java&lt;/directory&gt;
+        &lt;includes&gt;
+          &lt;include&gt;**/*.properties&lt;/include&gt;
+          &lt;include&gt;**/*.xml&lt;/include&gt;
+        &lt;/includes&gt;
+        &lt;!-- 是否替换资源中的属性--&gt;
+        &lt;filtering&gt;false&lt;/filtering&gt;
+      &lt;/resource&gt;
+      &lt;resource&gt;
+        &lt;directory&gt;src/main/resources&lt;/directory&gt;
+      &lt;/resource&gt;
+    &lt;/resources&gt;
+    &lt;plugins&gt;
+      &lt;plugin&gt;
+        &lt;groupId&gt;org.apache.tomcat.maven&lt;/groupId&gt;
+        &lt;artifactId&gt;tomcat7-maven-plugin&lt;/artifactId&gt;
+        &lt;version&gt;2.2&lt;/version&gt;
+        &lt;configuration&gt;
+          &lt;url&gt;http://localhost:8080/manager/text&lt;/url&gt;
+          &lt;server&gt;tomcat7&lt;/server&gt;
+          &lt;path&gt;/${project.artifactId}&lt;/path&gt;
+          &lt;update&gt;true&lt;/update&gt;
+        &lt;/configuration&gt;
+      &lt;/plugin&gt;
+    &lt;/plugins&gt;
+  &lt;/build&gt;
+&lt;/project&gt;</code></code></pre>
+<p>web.xml中加上spring mvc的配置：</p>
+<pre><code><code>&lt;servlet&gt;
+        &lt;servlet-name&gt;SpringMVC&lt;/servlet-name&gt;
+        &lt;servlet-class&gt;org.springframework.web.servlet.DispatcherServlet&lt;/servlet-class&gt;
+        &lt;init-param&gt;
+            &lt;param-name&gt;contextConfigLocation&lt;/param-name&gt;
+            &lt;param-value&gt;classpath:spring-mvc.xml&lt;/param-value&gt;
+        &lt;/init-param&gt;
+        &lt;load-on-startup&gt;1&lt;/load-on-startup&gt;
+        &lt;async-supported&gt;true&lt;/async-supported&gt;
+    &lt;/servlet&gt;
+    &lt;servlet-mapping&gt;
+        &lt;servlet-name&gt;SpringMVC&lt;/servlet-name&gt;
+        &lt;!-- 此处可以可以配置成*.do，对应struts的后缀习惯 --&gt;
+        &lt;url-pattern&gt;/&lt;/url-pattern&gt;
+    &lt;/servlet-mapping&gt;</code></code></pre>
+<p>还有spring的配置文件，加上注解相关的配置：</p>
+<pre><code><code>&lt;!-- 启动SpringMVC的注解功能，完成请求和注解POJO的映射 --&gt;
+    &lt;bean
+        class=&quot;org.springframework.web.servlet.mvc.annotation.AnnotationMethodHandlerAdapter&quot;&gt;
+        &lt;property name=&quot;messageConverters&quot;&gt;
+            &lt;list&gt;
+                &lt;!-- JSON转换器 --&gt;
+                &lt;ref bean=&quot;mappingJacksonHttpMessageConverter&quot; /&gt;
+            &lt;/list&gt;
+        &lt;/property&gt;
+    &lt;/bean&gt;</code></code></pre>
+<p>其余的配置可以自行设置，或者参考我上传到git上的源码；</p>
+<h3 id="创建配置属性的bean">创建配置属性的bean</h3>
+<p>本次实战的示例，以&quot;电脑&quot;为例，有两个属性：操作系统和内存大小，如下：</p>
+<pre class="java"><code>package com.bolingcavalry;
+
+/**
+ * Description:
+ *
+ * @author willzhao
+ * @email zq2599@gmail.com
+ * @date 2017/7/1 22:15
+ */
+public class Computer {
+
+    /**
+     * 操作系统
+     */
+    private String os;
+
+    /**
+     * 内存大小
+     */
+    private int ram;
+
+    public String getOs() {
+        return os;
+    }
+
+    public void setOs(String os) {
+        this.os = os;
+    }
+
+    public int getRam() {
+        return ram;
+    }
+
+    public void setRam(int ram) {
+        this.ram = ram;
+    }
+}</code></code></pre>
+<h3 id="创建xsd文件">创建XSD文件</h3>
+<p>在工程的src\main\resources\META-INF\computer.xsd目录下创建computer.xsd文件，内容如下：</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;xsd:schema
+        xmlns=&quot;http://blog.csdn.net/boling_cavalry/schema/computer&quot;
+        xmlns:xsd=&quot;http://www.w3.org/2001/XMLSchema&quot;
+        xmlns:beans=&quot;http://www.springframework.org/schema/beans&quot;
+        targetNamespace=&quot;http://blog.csdn.net/boling_cavalry/schema/computer&quot;
+        elementFormDefault=&quot;qualified&quot;
+        attributeFormDefault=&quot;unqualified&quot;&gt;
+    &lt;xsd:import namespace=&quot;http://www.springframework.org/schema/beans&quot;/&gt;
+    &lt;xsd:element name=&quot;computer&quot;&gt;
+        &lt;xsd:complexType&gt;
+            &lt;xsd:complexContent&gt;
+                &lt;xsd:extension base=&quot;beans:identifiedType&quot;&gt;
+                    &lt;xsd:attribute name=&quot;os&quot; type=&quot;xsd:string&quot;/&gt;
+                    &lt;xsd:attribute name=&quot;ram&quot; type=&quot;xsd:int&quot;/&gt;
+                &lt;/xsd:extension&gt;
+            &lt;/xsd:complexContent&gt;
+        &lt;/xsd:complexType&gt;
+    &lt;/xsd:element&gt;
+&lt;/xsd:schema&gt;</code></code></pre>
+<p>注意xmlns和targetNamespace的内容，在外部使用时也会用到，还有就是xsd:element节点，里面对computer的两个属性做了约束；</p>
+<h3 id="创建自定义beandefinitionparser制定配置信息的解析规则">创建自定义BeanDefinitionParser，制定配置信息的解析规则</h3>
+<p>接下来要写个BeanDefinitionParser，作用是拿到xml中的computer节点后，该如何从这个节点中取得有效的信息给spring环境，源码如下：</p>
+<pre class="java"><code>public class ComputerBeanDefinitionParser extends AbstractSingleBeanDefinitionParser {
+    @Override
+    protected Class&lt;?&gt; getBeanClass(Element element) {
+        return Computer.class;
+    }
+
+    @Override
+    protected void doParse(Element element, BeanDefinitionBuilder builder) {
+        String os = element.getAttribute(&quot;os&quot;);
+        String ramStr = element.getAttribute(&quot;ram&quot;);
+
+        if(StringUtils.hasText(os)){
+            builder.addPropertyValue(&quot;os&quot;, os);
+        }
+        if(StringUtils.hasText(ramStr)){
+            builder.addPropertyValue(&quot;ram&quot;, Integer.valueOf(ramStr));
+        }
+    }
+}</code></code></pre>
+<p>getBeanClass方法决定了解析节点后返回的bean的类型；<br />
+doParse方法的入参中收到了computer节点，在方法中解析&quot;os&quot;和&quot;ram&quot;两个节点，然后调用builder.addPropertyValue可以把解析结果传入builder中；</p>
+<h3 id="创建自定义namespacehandler规定配置信息的解析器">创建自定义NamespaceHandler，规定配置信息的解析器</h3>
+<p>自定义的NamespaceHandler，可以告诉spring环境，遇到computer的配置信息后，应该用ComputerBeanDefinitionParser去解析，代码很少，如下：</p>
+<pre class="java"><code>public class ComputerNamespaceHandler extends NamespaceHandlerSupport {
+    public void init() {
+        registerBeanDefinitionParser(&quot;computer&quot;, new ComputerBeanDefinitionParser());
+    }
+}</code></code></pre>
+<h3 id="添加spring.handlers文件">添加spring.handlers文件</h3>
+<p>在src\main\resources\META-INF\目录下，添加spring.handlers文件，内容只有一行，如下：</p>
+<pre class="log"><code>http\://blog.csdn.net/boling_cavalry/schema/computer=com.bolingcavalry.ComputerNamespaceHandler</code></code></pre>
+<h3 id="添加spring.schemas文件">添加spring.schemas文件</h3>
+<p>在src\main\resources\META-INF\目录下，添加spring.schemas文件，内容只有一行，如下：</p>
+<pre class="log"><code>http\://blog.csdn.net/boling_cavalry/schema/computer.xsd=META-INF/computer.xsd</code></code></pre>
+<h3 id="在工程中配置一个这样的属性">在工程中配置一个这样的属性</h3>
+<p>准备得差不多了，可以验证一下啦，在spring的配置文件中，如果要用到这个属性，可以按照如下方式来写：</p>
+<pre><code><code>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;beans xmlns=&quot;http://www.springframework.org/schema/beans&quot;
+    xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xmlns:p=&quot;http://www.springframework.org/schema/p&quot;
+    xmlns:context=&quot;http://www.springframework.org/schema/context&quot;
+    xmlns:mvc=&quot;http://www.springframework.org/schema/mvc&quot;
+    xmlns:bolingcavalry=&quot;http://blog.csdn.net/boling_cavalry/schema/computer&quot;
+    xsi:schemaLocation=&quot;http://www.springframework.org/schema/beans  
+                            http://www.springframework.org/schema/beans/spring-beans-3.1.xsd  
+                            http://www.springframework.org/schema/context  
+                            http://www.springframework.org/schema/context/spring-context-3.1.xsd  
+                            http://www.springframework.org/schema/mvc  
+                            http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd
+                            http://blog.csdn.net/boling_cavalry/schema/computer
+                            http://blog.csdn.net/boling_cavalry/schema/computer.xsd&quot;&gt;
+
+    &lt;bolingcavalry:computer id=&quot;computer&quot; os=&quot;centos&quot; ram=&quot;8&quot; /&gt;
+&lt;/beans&gt;</code></code></pre>
+<p>除了bolingcavalry:computer的配置，还要注意xmlns:bolingcavalry的配置，还有xsi:schemaLocation中“http://blog.csdn.net/boling_cavalry/schema/computer&quot;和<br />
+&quot;http://blog.csdn.net/boling_cavalry/schema/computer.xsd” 也不要遗漏。</p>
+<h3 id="启动web工程验证配置">启动web工程，验证配置</h3>
+<p>为了验证配置是生效的，我们写一个controller在浏览器中显示配置信息，代码如下：</p>
+<pre class="java"><code>@Controller
+public class HelloController {
+
+    private static SimpleDateFormat sdf = new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;);
+
+    @Autowired
+    Computer computer;
+
+    @RequestMapping(&quot;/hello&quot;)
+    @ResponseBody
+    public String toIndex(HttpServletRequest request, Model model) {
+        return &quot;hello 001 [&quot; + sdf.format(new Date()) + &quot;], computer os [&quot; + computer.getOs() + &quot;], ram [&quot; + computer.getRam() + &quot;]&quot;;
+    }
+}</code></code></pre>
+<p>computer提供autowire注入，在web响应的时候会输出它的两个属性，现在启动tomcat并部署这个webapp，在浏览器中输入http://localhost:8080/springschemademo/hello， 就能看到如下输出：</p>
+<p><img src="./images/实战spring自定义属性(schema)1.png" alt="这里写图片描述" /></p>
+<p>以上就是spring自定义schema的实战内容，这里只是为了快速体验这个功能，实际的应用中应该是把这种能力封装到库中，然后提供给应用方来使用。</p>
+<h3 id="欢迎关注我的公众号程序员欣宸">欢迎关注我的公众号：程序员欣宸</h3>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

@@ -1,0 +1,59 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修记一次tomcat内存大涨到溢出的经历' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>记一次tomcat内存大涨到溢出的经历</center></div><div class='banquan'>原文出处:本文由博客园博主冰湖一角提供。<br/>
+原文连接:https://www.cnblogs.com/bingyimeiling/p/11505844.html</div><br>
+    <p>前一段时间提交了一个产品版本给测试人员测试，测试结果简直出人意料！</p>
+<p>测试一段时间后页面就卡死了，当时根据这个现象下意识的怀疑是卡到数据库这一层，然后查看数据库连接相关的参数，如意料之中的相似，连接数太多了！当把数据库连接数解决后，本以为这个bug解决了，但是...</p>
+<p>测试一段时间后页面又卡死了！！！</p>
+<p>打开任务管理器，发现tomcat内存超过了1.5G，而且tomcat关不掉！是什么原因导致的呢？左思右想之后，想到了一个可能会导致tomcat内存上涨的点，那就是多线程，然后翻代码找线程池的配置，发现也没什么可疑之处。</p>
+<p>那就先解决下tomcat关不掉的问题吧，百度...检查代码...几十分钟后找到了，在tomcat监听器的销毁方法(contextDestroyed)里没有关闭线程池，这种情况下，由于线程池没法关闭，进而导致tomcat无法关闭的问题。</p>
+<p>将代码改为：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> InitListener <span style="color: #0000ff;">implements</span><span style="color: #000000;"> ServletContextListener{
+    </span><span style="color: #0000ff;">private</span> Logger logger = Logger.getLogger(InitListener.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> contextInitialized(ServletContextEvent sce) {
+        logger.info(</span>"启动tomcat"<span style="color: #000000;">);
+    }
+
+    @Override
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> contextDestroyed(ServletContextEvent sce) {
+        logger.info(</span>"关闭tomcat,关闭线程池"<span style="color: #000000;">);
+        ClassPathXmlApplicationContext classPathXmlApplicationContext </span>= <span style="color: #0000ff;">new</span> ClassPathXmlApplicationContext("classpath*:applicationContext.xml"<span style="color: #000000;">);
+        ThreadPoolTaskExecutor myTaskExecutor </span>= (ThreadPoolTaskExecutor) classPathXmlApplicationContext.getBean("myTaskExecutor"<span style="color: #000000;">);
+        myTaskExecutor.shutdown();
+    }
+
+}</span></code></pre>
+
+<p>好了，tomcat关不掉的问题是解决了。</p>
+<p>接下来解决内存溢出的问题(先看日志)：</p>
+<p>查看tomcat的日志发现，<strong>页面每一次调用后台接口Spring的配置文件都会初始化一遍</strong>，也就是每次请求spring都会重新注入一次bean，而且占用的内存不会被回收！</p>
+<p>然后我就想什么情况下会初始化spring的配置文件：tomcat启动的时候；通过关键字new出来的时候，即</p>
+<pre><code><span> ClassPathXmlApplicationContext classPathXmlApplicationContext = new ClassPathXmlApplicationContext("classpath*:applicationContext.xml"<span>);<br /></span></span><br /><span style="font-size: 14px;">然后就全局搜索代码找，果然在过滤器里找到了，每次接口来就会new一个对象，多可怕的代码，在心里一直骂自己当时怎么想的！这次经历我会引以为戒，记下来也是告诉自己以后不要再犯类似的问题。</span></code></pre>
+<p>&nbsp;</p>
+<p><strong>欢迎关注微信公众号【Java典籍】，收看更多Java技术干货！</strong></p>
+<p><strong>　　&nbsp;<strong>▼微信扫一扫下图&darr;&darr;&darr;二维码关注</strong></strong></p>
+<p>　<img src="./images/记一次tomcat内存大涨到溢出的经历0.png" alt="" width="151" height="151" /></p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

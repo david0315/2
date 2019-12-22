@@ -1,0 +1,73 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修beanfactory中单例bean的初始化过程（一）' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>beanfactory中单例bean的初始化过程（一）</center></div><div class='banquan'>原文出处:本文由博客园博主_我在清水河边提供。<br/>
+原文连接:https://www.cnblogs.com/wzqshb/p/11774767.html</div><br>
+    <blockquote>
+<p>Date 10.06 pm</p>
+</blockquote>
+<h2 id="point">Point</h2>
+<h3 id="完成beanfactory中单例bean的初始化">完成beanfactory中单例bean的初始化</h3>
+<h4 id="beanfactory.preinstantiatesingletons">beanFactory.preInstantiateSingletons()</h4>
+<ol>
+<li>拿到所有的bean定义信息（在 <code>beanDefinitionNames</code>中，遍历list</li>
+<li>获取到bean的定义信息</li>
+<li>如果这个bean不是抽象，是单例，不是懒加载的<br />
+</li>
+<li><p>判断这个bean是否factorybean（判断这个bean有没有实现factoryBean接口），是的话，用工厂里面的方法去创建bean。</p>
+<ul>
+<li>调用<code>getbean(&amp;beanname)</code> 获取到beanFactory对象。</li>
+</ul></li>
+<li>调用<code>getBean(beanName)</code>创建bean
+<ul>
+<li>调用 <code>doGetBean()</code></li>
+<li><code>transformedBeanName</code>进入这个方法将之前工厂bean的前缀去除，将别名转成正式的名称</li>
+<li><p><code>getSingleton</code>检测单例缓存中是否有已构建的单实例bean，有就直接返回这个单例bean</p>
+<pre><code><code>/** Cache of singleton objects: bean name to bean instance. */
+private final Map&lt;String, Object&gt; singletonObjects = new ConcurrentHashMap&lt;&gt;(256);</code></code></pre>
+所有实例过的单例bean都会在这注册，检查的时候还会判断当前bean有没有在创建过程中。如果有的话，会在<code>earlySingletonObjects</code>去获取，要是这个还是没有获取到的话，会去<code>singletonFactories</code>这个map中去获取，要是获取到的话就删除<code>singletonFactories</code>中的bean，转而在<code>earlySingletonObjects</code>这个map里面去注册</li>
+<li>没有获取到bean（开始创建bean的流程）
+<ul>
+<li>就先判断下我们是不是正在创建这个bean的实例，避免循环引用的问题。</li>
+<li>获取bean的父工厂（这个主要是如果有Springmvc的话 可能会有这种父子工厂）这个父工厂要是能获取到的话，又会去调用父工厂的dogetbean方法，获取不到父工厂的话直接下一步</li>
+<li>标记当前bean已经创建，大概就是把当前beanname放到<code>Collections.newSetFromMap(new ConcurrentHashMap&lt;&gt;(256))</code>里面，防止多线程的时候多次创建单例bean</li>
+<li>获取bean的定义信息</li>
+<li>获取bean所依赖的其他bean，如果有，还是调用getbean的方式去构建那些依赖的bean</li>
+<li>如果这个bean是单例bean，回掉<code>createBean</code>，开始单例bean创建
+<ul>
+<li>拿到bean的定义信息</li>
+<li>解析bean的定义的类型，检查这个定义信息中的beanClass是不是为空</li>
+<li>检测是否有bean方法被重写，有的话准备重写这个bean方法（也是检查bean定义信息里面的<code>methodOverrides</code>这个属性有没有值）</li>
+<li>让BeanPostProcessor提前拦截，返回代理对象<code>resolveBeforeInstantiation()</code>
+<ul>
+<li>先根据定义信息中的<code>beforeInstantiationResolved</code>判断初始化之前有没有处理，有的话就不进入这个processor中了，</li>
+<li>然后判断这个值是不是由application定义的 和 判断当前factory中已经有了<code>InstantiationAwareBeanPostProcessor</code>这个processor了，然后去获取这个bean的目标class，然后调用<code>InstantiationAwareBeanPostProcessor.postProcessBeforeInstantiation</code>启动前置处理器，然后如果返回的bean有值的话，再调用<code>applyBeanPostProcessorsAfterInitialization</code>后置处理器，然后将bean定义信息中<code>beforeInstantiationResolved</code>这个参数赋值成这个返回的bean，然后返回这个bean</li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ol>
+<blockquote>
+<p><a href="https://github.com/fulln" class="uri">https://github.com/fulln</a></p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

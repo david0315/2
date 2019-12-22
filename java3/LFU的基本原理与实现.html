@@ -1,0 +1,247 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修LFU的基本原理与实现' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>LFU的基本原理与实现</center></div><div class='banquan'>原文出处:本文由博客园博主Yrion提供。<br/>
+原文连接:https://www.cnblogs.com/wyq178/p/11790015.html</div><br>
+    <p><strong>前言</strong>:之前有写过一篇关于LRU的文章链接<a href="https://www.cnblogs.com/wyq178/p/9976815.html">https://www.cnblogs.com/wyq178/p/9976815.html</a>&nbsp; LRU全称:Least Recently Used:最近最少使用策略,判断最近被使用的时间,距离目前最远的数据优先被淘汰,作为一种根据访问时间来更改链表顺序从而实现缓存淘汰的算法,它是redis采用的淘汰算法之一。redis还有一个缓存策略叫做LFU, 那么LFU是什么呢？我们本期博客来分下一下LFU：</p>
+<p><strong>本篇博客的目录：</strong></p>
+<p><strong>一:&nbsp; LRU是什么</strong></p>
+<p><strong>二：LRU的实现</strong></p>
+<p><strong>三：测试</strong></p>
+<p><strong>四：<span class="cnblogs_code_copy"><a title="复制代码">LRU和LFU的区别以及缺陷</a></span></strong></p>
+<p><strong>五：总结</strong></p>
+<p>&nbsp;</p>
+<p><span style="font-size: 12px;">正文</span></p>
+<p><strong>一：LRU是什么</strong></p>
+<p><strong>&nbsp; &nbsp; &nbsp;LFU,全称是:Least Frequently Used，最不经常使用策略,在一段时间内,数据被使用频次最少的,优先被淘汰。<strong><span><span>最少使用</span></span></strong><span><span>（</span></span><strong><span><span>LFU</span></span></strong><span><span>）是一种</span><span>用于管理</span><span>计算机内存</span><span>的缓存算法</span></span><span><span>。主要是记录和追踪内存块的使用次数,</span><span>当缓存已满并且需要更多空间时，系统将以最低内存块使用频率清除内存.</span></span>采用LFU算法的最简单方法是为每个加载到缓存的块分配一个计数器。每次引用该块时，计数器将增加一。当缓存达到容量并有一个新的内存块等待插入时，系统将搜索计数器最低的块并将其从缓存中删除(本段摘自维基百科)</strong></p>
+<p><strong><img src="./images/LFU的基本原理与实现0.png" alt="" width="936" height="914" /></strong></p>
+<p>&nbsp;解释:<strong>上面这个图就是一个LRU的简单实现思路,在链表的开始插入元素，然后每插入一次计数一次,接着按照次数重新排序链表，如果次数相同的话，按照插入时间排序，然后从链表尾部选择淘汰的数据~</strong></p>
+<p><strong>二：LRU实现</strong></p>
+<p><strong>2.1 定义Node节点</strong></p>
+<p>Node主要包含了key和value,因为LFU的主要实现思想是比较访问的次数,如果在次数相同的情况下需要比较节点的时间,越早放入的越快&nbsp; &nbsp; &nbsp; 被淘汰,因此我们需要在Node节点上加入time和count的属性,分别用来记录节点的访问的时间和访问次数。其他的版本实现方式里有新加个内部类来记录&nbsp;key的count和time,但是我觉得不够方便,还得单独维护一个map,成本有点大。还有一点注意的是这里实现了comparable接口，覆写了compare方法，这里&nbsp;的主要作用就是在排序的时候需要用到，在compare方法里面我们首先比较节点的访问次数，在访问次数相同的情况下比较节点的访问时间,这里是为了&nbsp;在排序方法里面通过比较key来选择淘汰的key</p>
+<src class="cnblogs_code">
+<pre><code> <span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 节点
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">class</span> Node <span style="color: #0000ff;">implements</span> Comparable&lt;Node&gt;<span style="color: #000000;">{
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">键</span>
+<span style="color: #000000;">            Object key;
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">值</span>
+<span style="color: #000000;">            Object value;
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 访问时间
+             </span><span style="color: #008000;">*/</span>
+            <span style="color: #0000ff;">long</span><span style="color: #000000;"> time;
+
+            </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+             * 访问次数
+             </span><span style="color: #008000;">*/</span>
+            <span style="color: #0000ff;">int</span><span style="color: #000000;"> count;
+
+            </span><span style="color: #0000ff;">public</span> Node(Object key, Object value, <span style="color: #0000ff;">long</span> time, <span style="color: #0000ff;">int</span><span style="color: #000000;"> count) {
+                </span><span style="color: #0000ff;">this</span>.key =<span style="color: #000000;"> key;
+                </span><span style="color: #0000ff;">this</span>.value =<span style="color: #000000;"> value;
+                </span><span style="color: #0000ff;">this</span>.time =<span style="color: #000000;"> time;
+                </span><span style="color: #0000ff;">this</span>.count =<span style="color: #000000;"> count;
+            }
+
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getKey() {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> key;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setKey(Object key) {
+                </span><span style="color: #0000ff;">this</span>.key =<span style="color: #000000;"> key;
+            }
+
+            </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> Object getValue() {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> value;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setValue(Object value) {
+                </span><span style="color: #0000ff;">this</span>.value =<span style="color: #000000;"> value;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">long</span><span style="color: #000000;"> getTime() {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> time;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setTime(<span style="color: #0000ff;">long</span><span style="color: #000000;"> time) {
+                </span><span style="color: #0000ff;">this</span>.time =<span style="color: #000000;"> time;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> getCount() {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> count;
+            }
+
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> setCount(<span style="color: #0000ff;">int</span><span style="color: #000000;"> count) {
+                </span><span style="color: #0000ff;">this</span>.count =<span style="color: #000000;"> count;
+            }
+
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> compareTo(Node o) {
+                </span><span style="color: #0000ff;">int</span> compare = Integer.compare(<span style="color: #0000ff;">this</span><span style="color: #000000;">.count, o.count);
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">在数目相同的情况下 比较时间</span>
+                <span style="color: #0000ff;">if</span> (compare==0<span style="color: #000000;">){
+                    </span><span style="color: #0000ff;">return</span> Long.compare(<span style="color: #0000ff;">this</span><span style="color: #000000;">.time,o.time);
+                }
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> compare;
+            }
+        }</span></code></pre>
+
+<p><span class="cnblogs_code_copy"><img src="./images/LFU的基本原理与实现1.png" alt="" /></span></p>
+<p>&nbsp;<strong>2<span class="cnblogs_code_copy">.2:定义LFU类</span></strong></p>
+<p><span class="cnblogs_code_copy">&nbsp;定义LFU类,这里采用了泛型,声明了K和V,还有总容量和一个Map(caches)用来维护所有的节点。在构造方法里将size传递进去,并且创建了一个LinkedHashMap，采用linkedHashMap的主要原因是维护key的顺序</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> LFU&lt;K,V&gt;<span style="color: #000000;"> {
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         *  总容量
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">int</span><span style="color: #000000;"> capacity;
+
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 所有的node节点
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">private</span> Map&lt;K, Node&gt;<span style="color: #000000;"> caches;
+        </span><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 构造方法
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> size
+        </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> LFU(<span style="color: #0000ff;">int</span><span style="color: #000000;"> size) {
+           </span><span style="color: #0000ff;">this</span>.capacity =<span style="color: #000000;"> size;
+           caches </span>= <span style="color: #0000ff;">new</span> LinkedHashMap&lt;K,Node&gt;<span style="color: #000000;">(size);
+        }
+}</span></code></pre>
+
+<p><strong><span class="cnblogs_code_copy">2.3: 添加元素</span></strong></p>
+<p><span class="cnblogs_code_copy">添加元素的逻辑主要是先从缓存中根据key获取节点，如果获取不到，证明是新添加的元素，然后和容量比较，大于预定容量的话，需要找出count计数最小(计数相同的情况下,选择时间最久)的节点，然后移除掉那个。如果在预定的大小之内，就新创建节点，注意这里不能使用</span>&nbsp;System.currentTimeMillis()<span class="cnblogs_code_copy">方法，因为毫秒级别的粒度无法对插入的时间进行区分,在运行比较快的情况下，只有</span>System.nanoTime()才可以将key的插入时间区分，默认设置count计数为1.如果能获取到，表示是旧的元素，那么就用新值覆盖旧值，计数+1,设置key的time为当前纳秒时间。最后还需要进行排序，这里可以看出插入元素的逻辑主要是添加进入缓存,更新元素的时间和计数~</p>
+<src class="cnblogs_code">
+<pre><code>       <span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 添加元素
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> key
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> value
+         </span><span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> put(K key, V value) {
+        Node node </span>=<span style="color: #000000;"> caches.get(key);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果新元素</span>
+        <span style="color: #0000ff;">if</span> (node == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">如果超过元素容纳量</span>
+            <span style="color: #0000ff;">if</span> (caches.size() &gt;=<span style="color: #000000;"> capacity) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;">移除count计数最小的那个key</span>
+                K leastKey =<span style="color: #000000;"> removeLeastCount();
+                caches.remove(leastKey);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">创建新节点</span>
+            node = <span style="color: #0000ff;">new</span> Node(key,value,System.nanoTime(),1<span style="color: #000000;">);
+            caches.put(key, node);
+        }</span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">已经存在的元素覆盖旧值</span>
+            node.value =<span style="color: #000000;"> value;
+            node.setCount(node.getCount()</span>+1<span style="color: #000000;">);
+            node.setTime(System.nanoTime());
+        }
+        sort();
+    }</span></code></pre>
+
+<p>&nbsp;每次put或者get元素都需要进行排序，排序的主要意义在于按照key的cout和time进行一个key顺序的重组，这里的逻辑是首先将缓存map创建成一个list,然后按照Node的value进行，重组整个map。然后将原来的缓存清空，遍历这个map，&nbsp;把key和value的值放进去原来的缓存中的顺序就进行了重组~这里区分于LRU的不同点在于使用了java的集合API，LRU的排序是进行节点移动。而在LFU中实现比较复杂,因为put的时候不光得比较基数还有时间。如果不借助java的API的话，可以新维护一个节点频率链表,每次将key保存在这个节点频率链表中移动指针，从而也间接可以实现排序~</p>
+<src class="cnblogs_code">
+<pre><code>   <span style="color: #008000;">/**</span><span style="color: #008000;">
+     * 排序
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">private</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> sort() {
+
+        List</span>&lt;Map.Entry&lt;K, Node&gt;&gt; list = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">(caches.entrySet());
+        Collections.sort(list, </span><span style="color: #0000ff;">new</span> Comparator&lt;Map.Entry&lt;K, Node&gt;&gt;<span style="color: #000000;">() {
+            @Override
+            </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">int</span> compare(Map.Entry&lt;K, Node&gt; o1, Map.Entry&lt;K, Node&gt;<span style="color: #000000;"> o2) {
+                </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> o2.getValue().compareTo(o1.getValue());
+            }
+        });
+
+        caches.clear();
+        </span><span style="color: #0000ff;">for</span> (Map.Entry&lt;K, Node&gt;<span style="color: #000000;"> kNodeEntry : list) {
+            caches.put(kNodeEntry.getKey(),kNodeEntry.getValue());
+        }
+    }</span></code></pre>
+
+<p><strong><span class="cnblogs_code_copy">&nbsp;移除最小的元素</span></strong></p>
+<p><span class="cnblogs_code_copy">淘汰最小的元素这里调用了Collections.min方法，然后通过比较key的compare方法，找到计数最小和时间最长的元素，直接从缓存中移除~</span></p>
+<src class="cnblogs_code">
+<pre><code>       <span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 移除统计数或者时间比较最小的那个
+         * </span><span style="color: #808080;">@return</span>
+         <span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">private</span><span style="color: #000000;"> K removeLeastCount() {
+            Collection</span>&lt;Node&gt; values =<span style="color: #000000;"> caches.values();
+            Node min </span>=<span style="color: #000000;"> Collections.min(values);
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> (K)min.getKey();
+
+         }</span></code></pre>
+
+<p><strong><span class="cnblogs_code_copy">2.4:获取元素</span></strong></p>
+<p><span class="cnblogs_code_copy">&nbsp;获取元素首先是从缓存map中获取，否则返回null，在获取到元素之后需要进行节点的更新，计数+1和刷新节点的时间，根据LFU的原则，在当前时间获取到这个节点以后，这个节点就暂时变成了热点节点，但是它的cout计数也有可能是小于某个节点的count的，所以</span></p>
+<p><span class="cnblogs_code_copy">此时不能将它直接移动到链表顶，还需要进行一次排序，重组它的位置~</span></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+         * 获取元素
+         * </span><span style="color: #808080;">@param</span><span style="color: #008000;"> key
+         * </span><span style="color: #808080;">@return</span>
+         <span style="color: #008000;">*/</span>
+        <span style="color: #0000ff;">public</span><span style="color: #000000;"> V get(K key){
+        Node node </span>=<span style="color: #000000;"> caches.get(key);
+        </span><span style="color: #0000ff;">if</span> (node!=<span style="color: #0000ff;">null</span><span style="color: #000000;">){
+            node.setCount(node.getCount()</span>+1<span style="color: #000000;">);
+            node.setTime(System.nanoTime());
+            sort();
+            </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> (V)node.value;
+        }
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }</span></code></pre>
+
+<p><strong><a style="font-family: 'Courier New'; font-size: 12px; background-color: #f5f5f5;" title="复制代码">三：测试</a></strong></p>
+<p>&nbsp;首先声明一个LRU，然后默认的最大的大小为5，依次put进入A、B、C、D、E、F6个元素,此时将会找到计数最小和时间最短的元素,那么将会淘汰A(因为count值都是1)。记着get两次B元素，那么B元素的count=3,时间更新为最新。此时B将会移动到顶，接着在getC元素,C元素的count=2，时间会最新，那么此时因为它的count值依然小于B,所以它依然在B后面，再getF元素，F元素的count=2,又因为它的时间会最新，所以在与C相同的计数下，F元素更新(时间距离现在最近)，所以链表将会移动，F会在C的前面，再次put一次C,此时C的count=3,同时时间为最新,那么此刻C的count和B保持一致，则他们比较时间，C明显更新，所以C将会排在B的前面，最终的顺序应该是:C-&gt;B-&gt;F-&gt;E-&gt;D</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span>  <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+
+        LFU</span>&lt;Integer, String&gt; lruCache = <span style="color: #0000ff;">new</span> LFU&lt;&gt;(5<span style="color: #000000;">);
+        lruCache.put(</span>1, "A"<span style="color: #000000;">);
+        lruCache.put(</span>2, "B"<span style="color: #000000;">);
+        lruCache.put(</span>3, "C"<span style="color: #000000;">);
+        lruCache.put(</span>4, "D"<span style="color: #000000;">);
+        lruCache.put(</span>5, "E"<span style="color: #000000;">);
+        lruCache.put(</span>6, "F"<span style="color: #000000;">);
+        lruCache.get(</span>2<span style="color: #000000;">);
+        lruCache.get(</span>2<span style="color: #000000;">);
+        lruCache.get(3</span><span style="color: #000000;">);
+        lruCache.get(</span>6<span style="color: #000000;">);<br />        //重新put节点3<br /></span>        lruCache.put(3,"C");</code></pre>
+<pre><code><span style="color: #0000ff;">        final</span> Map&lt;Integer, Node&gt; caches = (Map&lt;Integer, Node&gt;<span style="color: #000000;">) lruCache.caches; </span><span style="color: #0000ff;">for</span> (Map.Entry&lt;Integer, Node&gt;<span style="color: #000000;"> nodeEntry : caches.entrySet()) { System.out.println(nodeEntry.getValue().value); } }</span></code></pre>
+
+<p><span class="cnblogs_code_copy"><strong>&nbsp; &nbsp; 运行结果：</strong></span></p>
+<p><span class="cnblogs_code_copy"><strong><img src="./images/LFU的基本原理与实现2.png" alt="" /></strong></span></p>
+<p>&nbsp;</p>
+<h4>&nbsp;<span class="cnblogs_code_copy"><a title="复制代码">四：LRU和LFU的区别以及LFU的缺点</a></span></h4>
+<p><span class="cnblogs_code_copy">&nbsp; &nbsp; LRU和LFU侧重点不同，LRU主要体现在对元素的使用时间上,而LFU主要体现在对元素的使用频次上。LFU的缺陷是：在短期的时间内，对某些缓存的访问频次很高，这些缓存会立刻晋升为热点数据，而保证不会淘汰，这样会驻留在系统内存里面。而实际上，</span><span class="cnblogs_code_copy">这部分数据只是短暂的高频率访问，之后将会长期不访问,瞬时的高频访问将会造成这部分数据的引用频率加快，而一些新加入的缓存很容易被快速删除，因为它们的引用频率很低。</span></p>
+<p><strong>&nbsp;五：总结</strong></p>
+<p><strong>&nbsp; &nbsp; 本篇博客针对LFU做了一个简单的介绍，并详细介绍了如何用java来实现LFU，并且和LRU做了一个简单的比较。针对一种缓存策略。LFU有自己的独特使用场景，如何实现LFU和利用LFU的特性来实现开发过程部分功能是我们需要思考的。实际在使用中LRU的使用频率要高于LFU,不过了解这种算法也算是程序员的必备技能。</strong></p>
+<p>&nbsp;</p>
+<p>最后:&nbsp;<strong>如果对学习java有兴趣可以加入群:618626589,本群旨在打造无培训广告、无闲聊扯皮、无注水斗图的纯技术交流群，群里每天会分享有价值的问题和学习资料,欢迎各位随时加入～&nbsp;</strong>&nbsp; &nbsp;&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

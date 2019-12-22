@@ -1,0 +1,203 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置</center></div><div class='banquan'>原文出处:本文由博客园博主桌前明月提供。<br/>
+原文连接:https://www.cnblogs.com/jerry126/p/11621334.html</div><br>
+    <h2 id="前言">前言</h2>
+<p>在<a href="https://mp.weixin.qq.com/s/5rx03KY8d2m0RQjKQwbTCQ">《带你入门SpringCloud统一配置 | SpringCloud Config》</a>中通过 SpringCloud Config 完成了统一配置基础环境搭建，但是并没有实现配置修改自动更新的操作（GitHub 或Gitee 修改配置后，需要重启配置服务才能更新配置）。</p>
+<p>本文是<a href="https://mp.weixin.qq.com/s/5rx03KY8d2m0RQjKQwbTCQ">《带你入门SpringCloud统一配置 | SpringCloud Config》</a>的续篇，通过 SpringCloud Bus 完成配置修改自动更新的操作介绍。</p>
+<p>阅读本文前需要你先移步<a href="https://mp.weixin.qq.com/s/5rx03KY8d2m0RQjKQwbTCQ">《带你入门SpringCloud统一配置 | SpringCloud Config》</a>因为本文是在其基础上进行讲解的。</p>
+<p>另外需要你熟悉 SpringBoot 项目的基本使用即可，还有一点需要注意的是在操作过程中尽量和我本地环境一致，因为环境不一致可能会带来一些问题。我本地环境如下：</p>
+<ul>
+<li>SpringBoot Version: 2.1.0.RELEASE</li>
+<li>SpringCloud Version: Greenwich.RELEASE</li>
+<li>Apache Maven Version： 3.6.0</li>
+<li>Java Version： 1.8.0_144</li>
+<li>IDEA：Spring Tools Suite (STS)</li>
+</ul>
+<p>接下来就开始 SpringCloud Bus 环境搭建操作介绍！</p>
+<h2 id="springcloud-bus-环境搭建">SpringCloud Bus 环境搭建</h2>
+<p>第一步：安装并启用 RabbitMQ，这里就不做详细介绍了。可以查看之前的总结：<a href="https://blog.csdn.net/ljk126wy/article/details/95042599">Windows 环境安装 RabbitMQ</a></p>
+<blockquote>
+<p>如果你的 RabbitMQ和 Config Server 端不在一台机器上，或者端口、用户名、密码不是使用的默认配置，那么你需要进行如下配置在 Config Server 端 application.properties 中 <br></p>
+<p>spring.rabbitmq.host=rabbitmq 服务IP地址<br />
+spring.rabbitmq.port=rabbitmq 服务端口号<br />
+spring.rabbitmq.username=rabbitmq 服务用户名<br />
+spring.rabbitmq.password=rabbitmq 服务密码</p>
+</blockquote>
+<p>第二步：在 Config Server 端端和客户端都引入 spring-cloud-starter-bus-amqp 依赖。具体代码如下：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-bus-amqp&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>第三步：在Config Server 端的 application.properties 中需要添加如下配置，目的是把刷新配置接口暴露出来，具体配置如下：</p>
+<pre><code><code>management.endpoints.web.exposure.include=  *</code></code></pre>
+<p>第四步：Config Client 端引入openfeign starter 依赖，具体代码如下：</p>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>第五步：验证 Config Server 端和 Config Client 端是否在 RabbitMQ 注册队列和是否注册到 Eureka Server 端上。如下图所示：</p>
+<blockquote>
+<p>需要先启动 Eureka Server 服务端，然后在依次启动 Config Server端和Config Client端。</p>
+</blockquote>
+<p><img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置0.png" alt="在这里插入图片描述" /><br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置1.png" alt="在这里插入图片描述" /><br />
+第六步：Config Client 端上访问配置的 Controller 声明刷新配置作用域@RefreshScope。具体代码如下：</p>
+<pre class="java"><code>@RestController
+@RefreshScope
+public class EvnController {
+    @Value(&quot;${env}&quot;)
+    private String env;
+    
+    @RequestMapping(&quot;/env&quot;)
+    public String evn() {
+        return this.env;
+    }
+}</code></code></pre>
+<blockquote>
+<p>不添加 @RefreshScope注解，配置更新后不会生效。<br />
+如果是自定义前缀配置需要在@ConfigurationProperties下添加 @RefreshScope即可，</p>
+</blockquote>
+<p>最七步在 Gitee 上配置 WebHooks，具体操作方式如下图所示：</p>
+<p>进入Gitee 点击管理，然后点击 WebHooks。<br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置2.png" alt="在这里插入图片描述" /><br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置3.png" alt="在这里插入图片描述" /><br />
+点击添加按钮添加新的 WebHooks 设置。<br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置4.png" alt="在这里插入图片描述" /><br />
+输入本地映射外网访问域名+/actuator/bus-refresh，自己测试可以使用 NATAPP 进行内网穿穿透配置。具体配置请查看 https://natapp.cn/。<br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置5.png" alt="在这里插入图片描述" /></p>
+<h2 id="测试">测试</h2>
+<p><strong>手动访问更新链接进行测试</strong></p>
+<p>修改配置在码云远程仓库上，然后使用 PostMan 访问：http://localhost:8080/actuator/bus-refresh ，如下图所示：</p>
+<blockquote>
+<p>这里演示直接是在码云上操作，相当于执行 git push 操作。</p>
+</blockquote>
+<p><img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置6.png" alt="在这里插入图片描述" /><br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置7.png" alt="在这里插入图片描述" /><br />
+然后在查看商品服务（Config Client端）配置是否生效。如下图所示自动更新成功！<br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置8.png" alt="在这里插入图片描述" /><br />
+<strong>WebHooks 测试</strong></p>
+<p>进入 WebHooks 设置，然后点击测试。会报如下图所示错误：<br />
+<img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置9.png" alt="在这里插入图片描述" /></p>
+<p>解决方案：</p>
+<p>参考来CSDN 作者 <a href="https://blog.csdn.net/m0_37556444">tinysakurac</a> 解决方案。<br />
+文章：<a href="https://blog.csdn.net/m0_37556444/article/details/82812816">《解决使用spring cloud config bus使用webhook自动刷新出现的400问题》</a> (https://blog.csdn.net/m0_37556444/article/details/82812816)</p>
+<p>问题产生原因：GitHub在进行 POST 请求的同时默认会在 Body 加上这么一串载荷(payload)，而 /actuator/bus-refresh 接口没有进行接受这些信息处理，所以就报错了。</p>
+<p>解决问题思路：通过拦截器拦截 bus-refresh请求，然后在 HttpServletRequestMapper 包装类将 Request中 Body 内容置空。具体代码如下：</p>
+<p>拦截 bus-refresh请求Filter 类。</p>
+<pre class="java"><code>public class BusRefreshFilter implements Filter{
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        HttpServletRequest httpServletRequest = (HttpServletRequest)request;
+        String url = new String(httpServletRequest.getRequestURI());
+        //只过滤/actuator/bus-refresh请求
+        if (!url.endsWith(&quot;/bus-refresh&quot;)) {
+            chain.doFilter(request, response);
+            return;
+        }
+        //使用HttpServletRequest包装原始请求达到修改post请求中body内容的目的
+        CustometRequestWrapper requestWrapper = new CustometRequestWrapper(httpServletRequest);
+        chain.doFilter(requestWrapper, response);
+    }
+}</code></code></pre>
+<p>自定义 HttpServletRequestWrapper 类</p>
+<pre class="java"><code>public class CustometRequestWrapper extends HttpServletRequestWrapper{
+
+    public CustometRequestWrapper(HttpServletRequest request) {
+        super(request);
+    }
+    @Override
+    public ServletInputStream getInputStream() throws IOException {
+        byte[] bytes = new byte[0];
+        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+
+        return new ServletInputStream() {
+            @Override
+            public boolean isFinished() {
+                return byteArrayInputStream.read() == -1 ? true:false;
+            }
+
+            @Override
+            public boolean isReady() {
+                return false;
+            }
+
+            @Override
+            public void setReadListener(ReadListener readListener) {
+
+            }
+
+            @Override
+            public int read() throws IOException {
+                return byteArrayInputStream.read();
+            }
+
+        
+        };
+    }
+}</code></code></pre>
+<p>将拦截 bus-refresh请求Filter 添加到 Spring 上下文中配置类。</p>
+<pre class="java"><code>@Configuration
+public class FilterConfig {
+     @Bean
+        public FilterRegistrationBean&lt;BusRefreshFilter&gt; filterRegistration() {
+            FilterRegistrationBean&lt;BusRefreshFilter&gt; registration = new FilterRegistrationBean&lt;BusRefreshFilter&gt;();
+            registration.setFilter(new BusRefreshFilter());
+            List&lt;String&gt; urlList = new ArrayList&lt;String&gt;();
+            urlList.add(&quot;/*&quot;);
+            registration.setUrlPatterns(urlList);
+            registration.setName(&quot;BusRefreshFilter&quot;);
+            registration.setOrder(1);
+            return registration;
+        }
+}</code></code></pre>
+<p><img src="./images/带你入门SpringCloud 之 通过SpringCloud Bus 自动更新配置10.png" alt="在这里插入图片描述" /></p>
+<p>然后修改Gitee 上的配置信息后就可以自动更新了，这里就不在进行演示操作来。</p>
+<p>还有一种方式是通过访问 Config Server端域名/monitor 来取代 Config Server端域名//actuator/bus-refresh。本方式个人尝试没有成功！具体配置官网介绍如下：</p>
+<p>Many source code repository providers (such as Github, Gitlab, Gitea, Gitee, Gogs, or Bitbucket) notify you of changes in a repository through a webhook. You can configure the webhook through the provider’s user interface as a URL and a set of events in which you are interested. For instance, Github uses a POST to the webhook with a JSON body containing a list of commits and a header (X-Github-Event) set to push. If you add a dependency on the spring-cloud-config-monitor library and activate the Spring Cloud Bus in your Config Server, then a /monitor endpoint is enabled.</p>
+<p>在Config Server 添加 spring-cloud-config-monitor 依赖</p>
+<pre><code><code>&lt;dependency&gt;
+          &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+          &lt;artifactId&gt;spring-cloud-config-monitor&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>然后在Config Client 添加如下配置：<br />
+参考：<a href="https://github.com/spring-cloud/spring-cloud-bus/issues/124" class="uri">https://github.com/spring-cloud/spring-cloud-bus/issues/124</a></p>
+<pre><code><code>spring.cloud.bus.id=${vcap.application.name:${spring.application.name:application}}:${vcap.application.instance_index:${spring.profiles.active:${local.server.port:${server.port:0}}}}:${vcap.application.instance_id:${random.value}}</code></code></pre>
+<h2 id="小结">小结</h2>
+<p>当将远程仓库配置文件修改后，通过GitHub 或者 Gitee 的 WebHooks 配置自动访问接口bus-refresh 来通知Config Server 端。</p>
+<p>Config Server 端收到请求后将配置 clone 下来，然后通过消息队列（默认是RabbitMQ）将修改后的配置发送给 Config Client 端。Config Client 端收到消息后重新从Config Server 端获取最新的配置信息。</p>
+<p>而WebHooks 配置请求接口 bus-refresh 和消息队列发送配置给 Config Client 端都是 SpringCloud Bus 帮助我们完成的。</p>
+<h2 id="代码示例">代码示例</h2>
+<p>如果你按照上述方式搭建并未成功，可以参考我在GitHub 项目 <a href="https://github.com/zhuoqianmingyue/spring-cloud-get-started">spring-cloud-get-started</a> 仓库中模块名为：</p>
+<p>spring-cloud-config-eureka-service<br />
+spring-cloud-config-server<br />
+spring-cloud-config-product-service<br />
+进行对比查看是否配置有误。</p>
+<p>spring-cloud-get-started 项目地址：<a href="https://github.com/zhuoqianmingyue/spring-cloud-get-started" class="uri">https://github.com/zhuoqianmingyue/spring-cloud-get-started</a></p>
+<h2 id="参考文献">参考文献</h2>
+<p><a href="https://blog.csdn.net/m0_37556444/article/details/82812816" class="uri">https://blog.csdn.net/m0_37556444/article/details/82812816</a> By <a href="https://blog.csdn.net/m0_37556444">tinysakurac</a></p>
+<p><a href="https://cloud.spring.io/spring-cloud-config/reference/html/" class="uri">https://cloud.spring.io/spring-cloud-config/reference/html/</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

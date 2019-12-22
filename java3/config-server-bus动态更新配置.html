@@ -1,0 +1,182 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修config-server-bus动态更新配置' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>config-server-bus动态更新配置</center></div><div class='banquan'>原文出处:本文由博客园博主张占岭提供。<br/>
+原文连接:https://www.cnblogs.com/lori/p/11988692.html</div><br>
+    <p>config-server用来搭建配置中心，而配置信息一般使用gitlab仓库来存储，这样在你的配置发生改变时，不需要从新打包，而如果使用<code>native</code>的试，则需要从新打一个config-server的jar包。</p>
+<h1 id="配置的热更新">配置的热更新</h1>
+<p>当你的服务的配置信息发生改变时，一般来说需要从新重启你的服务，配置信息才能生效，这对于我们来说是不友好的，所以springcloud有一种消息总线的方式来实现配置信息的热更新，更你的服务不需要从新启动。</p>
+<h1 id="项目搭建">项目搭建</h1>
+<h2 id="eureka-server">eureka-server</h2>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-server&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>程序添加注解</p>
+<pre><code><code>@SpringBootApplication
+@EnableEurekaServer
+public class EurekaserverApplication {
+
+  public static void main(String[] args) {
+    SpringApplication.run(EurekaserverApplication.class, args);
+  }
+
+}</code></code></pre>
+<p>yml文件</p>
+<pre><code><code>server:
+ port: 8761
+
+eureka:
+ instance:
+   hostname: localhost
+ client:
+  registerWithEureka: false
+  fetchRegistry: false
+  serviceUrl:
+    defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+   enable-self-preservation: false #自我保护机制
+   eviction-interval-timer-in-ms: 30000  #及时踢出已关停的节点</code></code></pre>
+<h2 id="config-server">config-server</h2>
+<p>它是配置中心，其它服务如果通过config-server在eureka里的服务名去连接它，这种是以eureka为核心；也可以单独指定，并把eureka的信息写到config-server仓库里，这是以config-server为核心，这两种方式都可以，咱们这个例子是以eureka为核心的，所以config-server也是一个eureka-client.</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>程序添加注解</p>
+<pre><code><code>@SpringBootApplication
+@EnableDiscoveryClient
+@EnableConfigServer
+public class ConfigserverApplication {
+
+  public static void main(String[] args) {
+    SpringApplication.run(ConfigserverApplication.class, args);
+  }
+
+}
+</code></code></pre>
+<p>添加yml配置</p>
+<pre><code><code>spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          uri: git@github.com:***/config_repo.git
+          username: ***
+          password: ***
+          searchPaths: &#39;{profile}&#39;
+server:
+  port: 8888
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/</code></code></pre>
+<h2 id="config-client-service1">config-client-service1</h2>
+<p>这是我们具体的业务服务，它是一个eureka-client也是一个config-client，它需要把自己注册到eureka里，也需要从config-server拉自己的信息，它需要有配置信息的热更新，所以这需要引用<code>amqp</code>包和<code>actuator</code>健康检测包。</p>
+<pre><code><code>&lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-bus-amqp&lt;/artifactId&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<p>程序添加注解</p>
+<pre><code><code>@SpringBootApplication
+@EnableDiscoveryClient
+@RestController
+@RefreshScope
+public class Service1Application {
+
+  @Value(&quot;${auth.name:empty}&quot;)
+  String author;
+
+  public static void main(String[] args) {
+    SpringApplication.run(Service1Application.class, args);
+  }
+
+  @GetMapping(&quot;/hello&quot;)
+  public String hello() {
+    return author;
+  }
+}</code></code></pre>
+<p>添加yml文件</p>
+<pre><code><code>spring:
+  cloud:
+    bus.trace.enabled: true #配置动态更新
+    rabbitmq:
+      host: 127.0.0.1
+      port: 5672
+      username: guest
+      password: guest
+    config:
+      discovery:
+        enabled: true #这块表示启用service-id不用uri
+        service-id: config-server  #这块是服务的id
+      label: master
+      profile: svt
+  application:
+    name: service1
+server:
+  port: 8081
+eureka:
+  instance:
+    prefer-ip-address: true #基于IP地址的注册而不是主机名
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+logging:
+  level:
+    org:
+      springframework:
+        security: DEBUG
+management:
+  endpoints:
+    web:
+      exposure:
+        include: bus-refresh
+</code></code></pre>
+<h2 id="配置更新">配置更新</h2>
+<p>当你的<code>config_repo</code>仓库有文件更新时，你可以调用任意一个服务去触发它，测试的代码如</p>
+<pre><code><code> curl -v -X POST &quot;http://localhost:8081/actuator/bus-refresh&quot;</code></code></pre>
+<p>如果成功后，一般会返回httpstatuscode:<code>204</code>的状态码，当然这种也是手动更新，如果希望动态更新，可以在gitlab或者github上对config_repo项目添加webhook的事件，当有分支合并到dev或者master时，去自动触发bus-refresh。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

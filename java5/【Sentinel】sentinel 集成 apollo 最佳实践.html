@@ -1,0 +1,390 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修【Sentinel】sentinel 集成 apollo 最佳实践' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>【Sentinel】sentinel 集成 apollo 最佳实践</center></div><div class='banquan'>原文出处:本文由博客园博主KIWI的碎碎念提供。<br/>
+原文连接:https://www.cnblogs.com/kiwifly/p/11569190.html</div><br>
+    <h1 id="sentinelsentinel-集成-apollo-最佳实践">【Sentinel】sentinel 集成 apollo 最佳实践</h1>
+<p><img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践0.png" alt="sentinel" /></p>
+<h3 id="前言">前言</h3>
+<p>  在 sentinel 的控制台设置的规则信息默认都是存在内存当中的。所以无论你是重启了 sentinel 的客户端还是 sentinel 的控制台。你所设置的规则都会丢失。如果想要 sentinel 在线上环境使用，要么花钱用阿里云上的付费版本，要么自己去实现规则的持久化，如果你或你所在的公司不差钱，那么关掉这篇文章，直接用付费版吧，省掉了一大堆坑要踩。或者你是一个特立独行的人，那么我们接着往下说。<br />
+  首先说一下写这篇文章的原因，因为真得在与 apllo 集成时，踩坑踩到怀疑人生。另一点是，找了一大堆关于集成的 apollo 的文章，都清一色的都是仿照官方给的限流规则的 DEMO 做的。 但是 sentinel 规则还有熔断规则、参数限流、系统限流、黑白名单等很多规则，每个规则还有细节上的不一致，这些都没有提，还有一些客户端的坑就更没有了。踩了这么多坑，有了一点心得与体会，梳理与此，希望能帮助到读者。</p>
+<h3 id="拉取-sentinel-控制台源码进行修改">拉取 sentinel 控制台源码进行修改</h3>
+<p>  因为修改内容过多，本文不会详述，下面的截图是所有修改内容，并且因为写这篇文章时，1.7版本在 master 开发，有大量快照版本。所以是切到当前稳定的 1.6 分支进行修改的。我已经 fork sentinel 到我的 github，下面是修改的内容 <a href="https://github.com/kiwiflydream/Sentinel/commit/9c2a6f10f5a97d409d8497b5898eb4bbc18fb04e">地址</a></p>
+<p><img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践1.png" /></p>
+<h4 id="修改点1实现所有规则的拉取与推送接口">修改点1：实现所有规则的拉取与推送接口</h4>
+<p>  添加与实现了所有的规则的 Provider 与 Publisher 的配置拉取的与推送。</p>
+<h4 id="修改点2修改控制台使用的规则操作-api">修改点2：修改控制台使用的规则操作 api</h4>
+<p>规则在控制台的操作 controller 进行大量改造。</p>
+<h4 id="修改点3修改-xxentity">修改点3：修改 xxEntity</h4>
+<p>  最后一点也是最坑的修改了大量的 xxEntity 类，这些类是规则的实体类，本身没什么，源码是直接 json 化保存的，但是用于客户端集成的 spring-cloud-alibaba 使用了 json 校验，如果 apollo 保存的 json 与客户端的实体类有一丁点不一样就报 <strong>convert 0 rules but there are 1 rules from datasource . RuleCLass: FlowRule 。</strong> 是不是觉得很摸不着头脑，这报错跟 json 格式转换错误有什么，下面是 <strong>spring-cloud-alibaba</strong> json 转换的代码。</p>
+<p><img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践2.png" /></p>
+<p>  写这段代码的老哥，把这个异常吃了，并补上了一个 <em>// won't be happen</em> 的注释，你能理解我当时被这个报错坑的死去活来，后来发现是这里的问题吗？后来在 github 上找到两个同样的问题<a href="https://github.com/alibaba/Sentinel/issues/846">问题1</a>、<a href="https://github.com/alibaba/spring-cloud-alibaba/issues/569">问题2</a>，按照方法把 xxEntity 中用不到的字段全部加上 @JSONField(serialize = false) 解决。</p>
+<h4 id="修改点4抽离配置使得可以在启动的时传入">修改点4：抽离配置使得可以在启动的时传入</h4>
+<p>  添加的配置在下面</p>
+<h3 id="使用修改的控制台版本">使用修改的控制台版本</h3>
+<ol>
+<li>你可以fork sentinel 官方代码按上述的自行修改，然后打包</li>
+<li>你可以拉取我 fork 的 sentinel 代码下来直接打包</li>
+<li>你可以使用我已经打好的包 <a href="https://github.com/kiwiflydream/Sentinel/releases/download/1.6.3.apollo/sentinel-dashboard.jar">地址</a></li>
+</ol>
+<h3 id="自定义配置">自定义配置</h3>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: center;">配置名称</th>
+<th style="text-align: center;">是否必填</th>
+<th style="text-align: center;">默认值</th>
+<th style="text-align: center;">作用</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">env</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">DEV</td>
+<td style="text-align: center;">指定 apollo 使用的环境</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">app.id</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">sentinel-apollo</td>
+<td style="text-align: center;">指定保存 sentinel 规则的 apollo 应用 ID</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">cluster.name</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">default</td>
+<td style="text-align: center;">指定保存 sentinel 使用的 apollo 集群</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">namespace.name</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">application</td>
+<td style="text-align: center;">指定保存 sentinel 使用的 apollo 命名空间</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">modify.user</td>
+<td style="text-align: center;">是</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">apollo 控制台显示的修改人账号，此账号务必要有此应用的权限</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">modify.comment</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">modify by sentinel-dashboard</td>
+<td style="text-align: center;">apollo 控制台显示的修改备注</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">release.user</td>
+<td style="text-align: center;">是</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">apollo 控制台显示的发布人账号，此账号务必要有此应用的权限</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">release.comment</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">release by sentinel-dashboard</td>
+<td style="text-align: center;">apollo 控制台显示的发布备注</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">apollo.portal.url</td>
+<td style="text-align: center;">是</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"> apollo 控制台的地址</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">apollo.application.token</td>
+<td style="text-align: center;">是</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">指定保存 sentinel 规则的 apollo 应用 openapi 的 token</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">authority.key.suffix</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">authority</td>
+<td style="text-align: center;">认证规则保存在 apollo 中的 key 的后缀</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">degrade.key.suffix</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">degrade</td>
+<td style="text-align: center;">熔断规则保存在 apollo 中的 key 的后缀</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">flow.key.suffix</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">flow</td>
+<td style="text-align: center;">限流规则保存在 apollo 中的 key 的后缀</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">param.key.suffix</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">param_flow</td>
+<td style="text-align: center;">参数限流规则保存在 apollo 中的 key 的后缀</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">system.key.suffix</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">system</td>
+<td style="text-align: center;">系统限流规则保存在 apollo 中的 key 的后缀</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">auth.username</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">sentinel</td>
+<td style="text-align: center;">sentinel 控制台的登录用户名</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">auth.password</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">sentinel</td>
+<td style="text-align: center;">sentinel 控制台的登录密码</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">server.port</td>
+<td style="text-align: center;">否</td>
+<td style="text-align: center;">8080</td>
+<td style="text-align: center;">sentinel 控制台的启动端口</td>
+</tr>
+</tbody>
+</table>
+<h3 id="apollo-配置">Apollo 配置</h3>
+<h4 id="创建用于保存-sentinel-的项目">创建用于保存 sentinel 的项目</h4>
+<ol>
+<li>点击创建项目按钮<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践3.png" /></li>
+<li>输入项目信息<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践4.png" />
+<ol>
+<li><strong>应用 ID</strong> 对应 上面表格中的 <strong>app.id</strong></li>
+<li><strong>应用负责人</strong> 对应 上面表格中的 <strong>modify.user</strong> 和 <strong>release.user</strong></li>
+</ol></li>
+<li>创建一个公共命名空间
+<ol>
+<li>点击右下角添加 Namespace 按钮<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践5.png" /></li>
+<li>创建 Namespace<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践6.png" />
+<ol>
+<li>名称对应上面表格中的 <strong>namespace.name</strong>，注意名称是要包含部门名的，这里脱敏了</li>
+<li>类型一定要选择 public ，原因后面会说</li>
+</ol></li>
+</ol></li>
+<li>发布 Namespace<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践7.png" />
+<ol>
+<li>私有的空间是不能被继承的，application 没有用，可以删除
+<ol>
+<li>这里的用意是我们独立出一个单独的用于保存规则的 apollo 应用，因为是公共的，所以其它apollo 应用可以继承，这样对于已经集成 apollo 的项目来说，改动最小</li>
+<li>注意红色的提示，我们建的公共空间要首先发布一次，否则 api 无法访问到</li>
+</ol></li>
+</ol></li>
+<li>创建此项目的开放平台授权
+<ol>
+<li>点击右上角的<strong>开放平台授权管理</strong><br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践8.png" /></li>
+<li>创建应用<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践9.png" />
+<ol>
+<li><strong>第三方应用 ID</strong> 就是你上面创建的项目的 appId</li>
+<li><strong>第三方应用名称</strong> 随便写</li>
+</ol></li>
+<li>赋权<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践10.png" />
+<ol>
+<li><strong>token</strong> 你点击创建应用后自动生成的</li>
+<li><strong>被管理的 Appid</strong> 就是你上面创建的项目的 appId</li>
+<li><strong>授权类型</strong> 一定要选 App</li>
+</ol></li>
+</ol></li>
+</ol>
+<h3 id="spring-boot-集成-sentinel">spring boot 集成 sentinel</h3>
+<p>源码<a href="https://github.com/kiwiflydream/study-example/tree/master/study-sentinel-example">地址</a></p>
+<h4 id="引入依赖">引入依赖</h4>
+<pre><code><code>        &lt;dependency&gt;
+            &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-cloud-starter-alibaba-sentinel&lt;/artifactId&gt;
+            &lt;version&gt;0.9.0.RELEASE&lt;/version&gt;
+        &lt;/dependency&gt;
+        &lt;dependency&gt;
+            &lt;groupId&gt;com.alibaba.csp&lt;/groupId&gt;
+            &lt;artifactId&gt;sentinel-datasource-apollo&lt;/artifactId&gt;
+            &lt;version&gt;1.5.2&lt;/version&gt;
+        &lt;/dependency&gt;</code></code></pre>
+<h4 id="测试-controller">测试 controller</h4>
+<pre><code><code>package cn.coder4j.study.example.sentinel;
+
+import com.alibaba.csp.sentinel.annotation.SentinelResource;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+/**
+ * @author buhao
+ * @version TestController.java, v 0.1 2019-09-19 20:53 buhao
+ */
+@RequestMapping(&quot;/test&quot;)
+@Controller
+public class TestController {
+
+    /**
+     * 没有注解通过自适应的限流
+     * @return
+     */
+    @GetMapping(&quot;/flowRule&quot;)
+    @ResponseBody
+    public String flowRule(){
+        return &quot;success&quot;;
+    }
+
+    /**
+     * 通过手动注解的限流
+     * @return
+     */
+    @GetMapping(&quot;/flowRuleWithAnno&quot;)
+    @ResponseBody
+    @SentinelResource(&quot;flowRuleWithAnno&quot;)
+    public String flowRuleWithAnno(){
+        return &quot;success&quot;;
+    }
+
+    /**
+     * 参数限流规则测试
+     * @param param
+     * @return
+     */
+    @GetMapping(&quot;/paramFlowRule&quot;)
+    @ResponseBody
+    @SentinelResource(&quot;paramFlowRule&quot;)
+    public String paramFlowRule(String param){
+        return &quot;success&quot;;
+    }
+
+    /**
+     * 熔断规则测试
+     * @return
+     */
+    @GetMapping(&quot;/degradeRule&quot;)
+    @ResponseBody
+    @SentinelResource(&quot;degradeRule&quot;)
+    public String degradeRule(){
+        throw new RuntimeException(&quot;服务器异常&quot;);
+    }
+}</code></code></pre>
+<h4 id="配置-application.yml">配置 application.yml</h4>
+<pre class="yml"><code>apollo:
+  bootstrap:
+    enabled: true # 开启 apollo
+  meta: xxx       # 指定 apollo 注册地址
+app:
+  id: sentinel-apollo  # 指定规则项目在 apollo 的app.id，要与 sentinel 控制台启动参数一致
+spring:
+  application:
+    name: study-sentinel-example  # 应用名称，不同项目要唯一，会把他做为规则 Key 的前缀
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8989  # sentinel 控制台的地址
+      datasource:
+        ds1:
+          apollo:
+            namespace-name: {部门名}.sentinel-rule  # 保存规则的 apollo 应用的公共 namespace， 要与 sentinel 控制台启动参数一致
+            rule-type: flow   # 指定该数据源是限流规则
+            flow-rules-key: ${spring.application.name}-${spring.cloud.sentinel.datasource.ds1.apollo.rule-type} # 指定该规则在 apollo 应用中 key 名称
+        ds2:
+          apollo:
+            namespace-name: {部门名}.sentinel-rule
+            rule-type: degrade # 指定该数据源是熔断规则
+            flow-rules-key: ${spring.application.name}-${spring.cloud.sentinel.datasource.ds2.apollo.rule-type} # 指定该规则在 apollo 应用中 key 名称
+        ds3:
+          apollo:
+            namespace-name: {部门名}.sentinel-rule
+            rule-type: param_flow # 指定该数据源是参数限流规则
+            flow-rules-key: ${spring.application.name}-${spring.cloud.sentinel.datasource.ds3.apollo.rule-type} # 指定该规则在 apollo 应用中 key 名称
+        ds4:
+          apollo:
+            namespace-name: {部门名}.sentinel-rule
+            rule-type: system  # 指定该数据源是系统限流规则
+            flow-rules-key: ${spring.application.name}-${spring.cloud.sentinel.datasource.ds4.apollo.rule-type} # 指定该规则在 apollo 应用中 key 名称
+        ds5:
+          apollo:
+            namespace-name: {部门名}.sentinel-rule
+            rule-type: authority # 指定该数据源是认证限流(黑白名单)规则
+            flow-rules-key: ${spring.application.name}-${spring.cloud.sentinel.datasource.ds5.apollo.rule-type} # 指定该规则在 apollo 应用中 key 名称
+
+</code></code></pre>
+<h3 id="sentinel-控制台配置">sentinel 控制台配置</h3>
+<ol>
+<li>第一次启动时 sentinel 是没有应用数据，只要请求几次你应用的接口就可以了<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践11.png" /></li>
+<li>请求之后可以看到我们的应用在右侧列表了<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践12.png" /></li>
+<li>首先点击簇点监控，如果是空白的话说明，接口还没有被请求过，通过上面提供的 jmeter 脚本，可以快速访问所有接口，访问后如下图所示<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践13.png" />
+<ol>
+<li>可以看到除了我们手动通过注解定义的资源名，还多了一些是通过我们的 controller 路径的资源名，这些都是我们客户端集成 spring-cloud-starter-alibaba-sentinel 包后，自动适配的。这两种其实在使用上有区别的
+<ol>
+<li>自动适配的限流后会返回 <strong>Blocked by Sentinel (flow limiting)</strong></li>
+<li>通过注解的是会抛出 <strong>UndeclaredThrowableException</strong> 异常，我们可以通过 <a href="https://segmentfault.com/a/1190000012262244">文章</a> 说的方法转成我们想的限流异常处理。</li>
+</ol></li>
+<li>右边的操作就是添加各种规则，这里修改后会实时同步到客户端并同步保存到 apollo</li>
+</ol></li>
+</ol>
+<h3 id="jmeter-配置">jmeter 配置</h3>
+<p>  jmeter 是用于测试与验证规则使用的，因为可以设置线程数，所以可以很好的测试限流情况。测试脚本<a href="https://github.com/kiwiflydream/Sentinel/releases/download/1.6.3.apollo/sentinel.jmx">下载</a></p>
+<ol>
+<li><p>线程组要把线程设置成 100，方便后面的统计，另外为了在一秒内执行完，Ramp-Up 时间设为0<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践14.png" /></p></li>
+<li><p>请求默认值就是填写你本地的启的测试项目的地址<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践15.png" /></p></li>
+<li><p>xx 规则填写测试接口地址，参数限流因为要做对照实验所以写了两个<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践16.png" /></p></li>
+<li><p>查看结果树可以看到你每次请求的内容与结果<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践17.png" /></p></li>
+<li><p>可以看到上张图片内有红色的有绿色的，红色说明断言失败，绿色说明断言成功，断言的内容就是包含 success<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践18.png" /></p></li>
+<li><p>聚合统计，这个可以统计出100个线程请求后的总体结果，我们只要看 Error% 的失败率就可以了。图中可以看到除了熔断限流，其它限流失败率是 0<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践19.png" /></p></li>
+</ol>
+<h3 id="测试步骤">测试步骤</h3>
+<ol>
+<li>在簇点链路中找到 <strong>/test/flowRule</strong>，并点击<strong>流控</strong>按钮<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践20.png" /></li>
+<li>单机阈值填入 10，点击新增<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践21.png" /></li>
+<li>新增后会跳转到流程规则页面<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践22.png" /></li>
+<li>运行jemter，可以看到失败率为90%，这代表你的限流成功了<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践23.png" />
+<ol>
+<li>上面说了失败是因为断言没有成功，也就是说没有返回 success，那他现在返回的是什么呢？</li>
+<li>察看结果树，随便找一条红包的记录，看响应数量<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践24.png" /></li>
+<li>可以看到返回的是 &quot;<strong>Blocked by Sentinel (flow limiting)</strong>&quot;，这个就是集成后配置的限流页面的返回值，可以通过 <strong>spring.cloud.sentinel.servlet.block-page</strong> 指定成你自己的页面</li>
+</ol></li>
+<li>另外打开 apollo 可以看到，多了一个规则，这就是你刚刚添加的限流规则<br />
+<img src="./images/【Sentinel】sentinel 集成 apollo 最佳实践25.png" /></li>
+</ol>
+<p>欢迎关注我的公众号「KIWI的碎碎念」，也可以收藏 <a href="http://blog.coder4j.cn/">我的博客</a></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

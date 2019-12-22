@@ -1,0 +1,252 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud学习笔记(3)：使用Feign实现声明式服务调用' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud学习笔记(3)：使用Feign实现声明式服务调用</center></div><div class='banquan'>原文出处:本文由博客园博主布禾卡斐先生提供。<br/>
+原文连接:https://www.cnblogs.com/seve/p/11512249.html</div><br>
+    <h3 id="简介">简介</h3>
+<p>Feign是一个声明式的Web Service客户端，它简化了Web服务客户端的编写操作，相对于Ribbon+RestTemplate的方式，开发者只需通过简单的接口和注解来调用HTTP API。它支持Spring MVC注解和JAX-RS注解，还支持可插拔式的编码器和解码器。整合了Eureka，Ribbon和Hystrix，具有可插拔、基于注解、负载均衡、服务熔断等一系列便捷功能。</p>
+<h3 id="项目介绍">项目介绍</h3>
+<ol>
+<li>sc-parent，父模块(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-eureka，注册中心(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-provider，提供者(请参照<a href="https://www.cnblogs.com/seve/p/11502579.html">SpringCloud学习笔记(1)：Eureka注册中心</a>)</li>
+<li>sc-consumer-feign，基于Feign声明式调用的消费者</li>
+</ol>
+<h3 id="基于feign声明式调用的消费者">基于Feign声明式调用的消费者</h3>
+<h4 id="在父模块下创建子模块项目sc-consumer-feignpom.xml">1.在父模块下创建子模块项目sc-consumer-feign，pom.xml：</h4>
+<pre><code><code>&lt;project xmlns=&quot;http://maven.apache.org/POM/4.0.0&quot; xmlns:xsi=&quot;http://www.w3.org/2001/XMLSchema-instance&quot; xsi:schemaLocation=&quot;http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd&quot;&gt;
+  &lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+  &lt;parent&gt;
+    &lt;groupId&gt;com.cf&lt;/groupId&gt;
+    &lt;artifactId&gt;sc-parent&lt;/artifactId&gt;
+    &lt;version&gt;0.0.1-SNAPSHOT&lt;/version&gt;
+  &lt;/parent&gt;
+  &lt;artifactId&gt;sc-consumer-feign&lt;/artifactId&gt;
+  
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+        &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/project&gt;</code></code></pre>
+<h4 id="创建启动类feign.feignapplication">2.创建启动类feign.FeignApplication：</h4>
+<pre><code><code>package feign;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
+
+@SpringBootApplication
+@EnableFeignClients
+public class FeignApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(FeignApplication.class, args);
+    }
+}</code></code></pre>
+<h4 id="创建feign声明式接口feign.inter.bookservice">3.创建Feign声明式接口：feign.inter.BookService</h4>
+<pre><code><code>package feign.inter;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@FeignClient(&quot;sc-provider&quot;)
+public interface BookService {
+    
+    @GetMapping(&quot;/book/list&quot;)
+    public String getBookList();
+}
+</code></code></pre>
+<h4 id="创建调用提供者服务的controller">4.创建调用提供者服务的Controller：</h4>
+<pre><code><code>package feign.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import feign.inter.BookService;
+
+@RequestMapping(&quot;/feign&quot;)
+@RestController
+public class FeignController {
+    @Autowired
+    private BookService bookService;
+    
+    @GetMapping(&quot;/getBookList&quot;)
+    public String getBookList(){
+        return bookService.getBookList();
+    }
+}</code></code></pre>
+<h4 id="创建application.yml">5.创建application.yml：</h4>
+<pre><code><code>server:
+  port: 8084
+
+spring:
+  application:
+    name: sc-consumer-feign
+    
+eureka:
+  client:
+    registerWithEureka: false
+    serviceUrl:
+      defaultZone: http://localhost:8080/eureka/</code></code></pre>
+<h4 id="依次启动注册中心sc-eureka提供者sc-provider消费者sc-consumer-feign并访问httplocalhost8084feigngetbooklist">6.依次启动注册中心sc-eureka、提供者sc-provider、消费者sc-consumer-feign，并访问http://localhost:8084/feign/getBookList：</h4>
+<p><img src="./images/SpringCloud学习笔记(3)：使用Feign实现声明式服务调用0.png" /></p>
+<p>Feign基于Ribbon实现，也具有Ribbon负载均衡的特性，可以将调用的提供者服务换成sc-provider-random(请参照<a href="https://www.cnblogs.com/seve/p/11502669.html">SpringCloud学习笔记(2)：使用Ribbon负载均衡</a>)来测试。</p>
+<h3 id="带参数的请求">带参数的请求</h3>
+<p>上面例子没有涉及到参数的传递，接下来测试下如何使用Feign构造带参数的请求，首先对提供者和消费者做如下更改：</p>
+<pre><code><code>//提供者Controller添加了两个参数，并打印到控制台。
+@RequestMapping(&quot;/book&quot;)
+@RestController
+public class BookController {
+    @GetMapping(&quot;/list&quot;)
+    public String getBookList(String param1, Integer param2){
+        System.out.println(param1 + &quot;:&quot; + param2);
+        return &quot;[\&quot;Java入门到放弃\&quot;,\&quot;C++入门到放弃\&quot;,\&quot;Python入门到放弃\&quot;,\&quot;C入门到放弃\&quot;]&quot;;
+    }
+}
+
+
+//消费者Feign接口和Controller添加参数
+@FeignClient(&quot;sc-provider&quot;)
+public interface BookService {
+    @GetMapping(&quot;/book/list&quot;)
+    public String getBookList(String param1, Integer param2);
+}
+
+@RequestMapping(&quot;/feign&quot;)
+@RestController
+public class FeignController {
+    @Autowired
+    private BookService bookService;
+    
+    @GetMapping(&quot;/getBookList&quot;)
+    public String getBookList(){
+        return bookService.getBookList(&quot;Java&quot;, 520);
+    }
+}</code></code></pre>
+<p>依次启动注册中心sc-eureka、提供者sc-provider、消费者sc-consumer-feign，启动消费者sc-consumer-feign时会启动失败：<br />
+<font color="red">java.lang.IllegalStateException: Method has too many Body parameters: public abstract java.lang.String feign.inter.BookService.getBookList(java.lang.String,java.lang.Integer)</font></p>
+<h4 id="解决方法1">解决方法1</h4>
+<p>更改Feign接口，为参数添加@RequestParam注解：</p>
+<pre><code><code>@FeignClient(&quot;sc-provider&quot;)
+public interface BookService {
+    @GetMapping(&quot;/book/list&quot;)   
+    public String getBookList(@RequestParam(&quot;param1&quot;) String param1, @RequestParam(&quot;param2&quot;) Integer param2);
+}</code></code></pre>
+<h4 id="解决方法2">解决方法2</h4>
+<p>将参数封装到Map里，更改消费者Feign接口和Controller：</p>
+<pre><code><code>@FeignClient(&quot;sc-provider&quot;)
+public interface BookService {
+    @GetMapping(&quot;/book/list&quot;)
+    public String getBookList(@RequestParam Map&lt;String, Object&gt; paramMap);
+}
+
+@RequestMapping(&quot;/feign&quot;)
+@RestController
+public class FeignController {
+    @Autowired
+    private BookService bookService;
+    
+    @GetMapping(&quot;/getBookList&quot;)
+    public String getBookList(){
+        Map&lt;String,Object&gt; paramMap = new HashMap&lt;String, Object&gt;();
+        paramMap.put(&quot;param1&quot;, &quot;Java&quot;);
+        paramMap.put(&quot;param2&quot;, 520);
+        return bookService.getBookList(paramMap);
+    }
+}</code></code></pre>
+<p>在参数较多的情况下，该方式可以简化Feign接口的编写。</p>
+<h3 id="自定义类型的参数">自定义类型的参数</h3>
+<p>OpenFeign的@QueryMap注解支持将自定义类型用于GET参数映射，由于@QueryMap和Spring不兼容，Spring Cloud OpenFeign提供了一个等价的@SpringQueryMap注解，可以用于自定义类型和Map类型的参数映射。下面将使用自定义类型Params作为参数，使用@SpringQueryMap注解来处理自定义类型的参数映射。</p>
+<h4 id="分别在提供者和消费者中创建类params可以建一个公共模块然后在提供者和消费者中添加依赖">1.分别在提供者和消费者中创建类Params(可以建一个公共模块，然后在提供者和消费者中添加依赖)：</h4>
+<pre><code><code>public class Params {
+    private String param1;
+    
+    private Integer param2;
+
+    public String getParam1() {
+        return param1;
+    }
+
+    public void setParam1(String param1) {
+        this.param1 = param1;
+    }
+
+    public Integer getParam2() {
+        return param2;
+    }
+
+    public void setParam2(Integer param2) {
+        this.param2 = param2;
+    }
+    
+    @Override
+    public String toString() {
+        return &quot;Params [param1=&quot; + param1 + &quot;, param2=&quot; + param2 + &quot;]&quot;;
+    }
+
+    public Params(String param1, Integer param2) {
+        this.param1 = param1;
+        this.param2 = param2;
+    }
+
+    public Params() {}
+}</code></code></pre>
+<h4 id="更改提供者和消费者相关类">2.更改提供者和消费者相关类</h4>
+<pre><code><code>//提供者
+@RequestMapping(&quot;/book&quot;)
+@RestController
+public class BookController {
+    @GetMapping(&quot;/list&quot;)
+    public String getBookList(Params params){
+        System.out.println(params.toString());
+        return &quot;[\&quot;Java入门到放弃\&quot;,\&quot;C++入门到放弃\&quot;,\&quot;Python入门到放弃\&quot;,\&quot;C入门到放弃\&quot;]&quot;;
+    }
+}
+
+//消费者
+@FeignClient(&quot;sc-provider&quot;)
+public interface BookService {
+    @GetMapping(&quot;/book/list&quot;)
+    public String getBookList(@SpringQueryMap Params params);
+}
+
+@RequestMapping(&quot;/feign&quot;)
+@RestController
+public class FeignController {
+    @Autowired
+    private BookService bookService;
+    
+    @GetMapping(&quot;/getBookList&quot;)
+    public String getBookList(){    
+        Params params = new Params(&quot;Java&quot;, 520);
+        return bookService.getBookList(params);
+    }
+}</code></code></pre>
+<h4 id="依次启动注册中心sc-eureka提供者sc-provider消费者sc-consumer-feign并访问httplocalhost8084feigngetbooklist提供者控制台输出">3.依次启动注册中心sc-eureka、提供者sc-provider、消费者sc-consumer-feign，并访问http://localhost:8084/feign/getBookList，提供者控制台输出：</h4>
+<pre><code><code>Params [param1=Java, param2=520]</code></code></pre>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

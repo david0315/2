@@ -1,0 +1,333 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修死磕 java线程系列之线程池深入解析——未来任务执行流程' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>死磕 java线程系列之线程池深入解析——未来任务执行流程</center></div><div class='banquan'>原文出处:本文由博客园博主彤哥读源码提供。<br/>
+原文连接:https://www.cnblogs.com/tong-yuan/p/11795216.html</div><br>
+    <p><img src="./images/死磕 java线程系列之线程池深入解析——未来任务执行流程0.png" alt="threadpool_futuretask" /></p>
+<p>（手机横屏看源码更方便）</p>
+<hr />
+<p>注：java源码分析部分如无特殊说明均基于 java8 版本。</p>
+<p>注：线程池源码部分如无特殊说明均指ThreadPoolExecutor类。</p>
+<h2 id="简介">简介</h2>
+<p>前面我们一起学习了线程池中普通任务的执行流程，但其实线程池中还有一种任务，叫作未来任务（future task），使用它您可以获取任务执行的结果，它是怎么实现的呢？</p>
+<p>建议学习本章前先去看看彤哥之前写的《死磕 java线程系列之自己动手写一个线程池（续）》，有助于理解本章的内容，且那边的代码比较短小，学起来相对容易一些。</p>
+<h2 id="问题">问题</h2>
+<p>（1）线程池中的未来任务是怎么执行的？</p>
+<p>（2）我们能学到哪些比较好的设计模式？</p>
+<p>（3）对我们未来学习别的框架有什么帮助？</p>
+<h2 id="来个栗子">来个栗子</h2>
+<p>我们还是从一个例子入手，来讲解来章的内容。</p>
+<p>我们定义一个线程池，并使用它提交5个任务，这5个任务分别返回0、1、2、3、4，在未来的某一时刻，我们再取用它们的返回值，做一个累加操作。</p>
+<pre><code><code>public class ThreadPoolTest02 {
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
+        // 新建一个固定5个线程的线程池
+        ExecutorService threadPool = Executors.newFixedThreadPool(5);
+
+        List&lt;Future&lt;Integer&gt;&gt; futureList = new ArrayList&lt;&gt;();
+        // 提交5个任务，分别返回0、1、2、3、4
+        for (int i = 0; i &lt; 5; i++) {
+            int num = i;
+
+            // 任务执行的结果用Future包装
+            Future&lt;Integer&gt; future = threadPool.submit(() -&gt; {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println(&quot;return: &quot; + num);
+                // 返回值
+                return num;
+            });
+
+            // 把future添加到list中
+            futureList.add(future);
+        }
+
+        // 任务全部提交完再从future中get返回值，并做累加
+        int sum = 0;
+        for (Future&lt;Integer&gt; future : futureList) {
+            sum += future.get();
+        }
+
+        System.out.println(&quot;sum=&quot; + sum);
+    }
+}</code></code></pre>
+<p>这里我们思考两个问题：</p>
+<p>（1）<strong>如果这里使用普通任务，要怎么写，时间大概是多少？</strong></p>
+<p>如果使用普通任务，那么就要把累加操作放到任务里面，而且并不是那么好写（final的问题），总时间大概是1秒多一点。但是，这样有一个缺点，就是累加操作跟任务本身的内容耦合到一起了，后面如果改成累乘，还要修改任务的内容。</p>
+<p>（2）<strong>如果这里把future.get()放到for循环里面，时间大概是多少？</strong></p>
+<p>这个问题我们先不回答，先来看源码分析。</p>
+<h2 id="submit方法">submit()方法</h2>
+<p>submit方法，它是提交有返回值任务的一种方式，内部使用未来任务（FutureTask）包装，再交给execute()去执行，最后返回未来任务本身。</p>
+<pre><code><code>public &lt;T&gt; Future&lt;T&gt; submit(Callable&lt;T&gt; task) {
+    // 非空检测
+    if (task == null) throw new NullPointerException();
+    // 包装成FutureTask
+    RunnableFuture&lt;T&gt; ftask = newTaskFor(task);
+    // 交给execute()方法去执行
+    execute(ftask);
+    // 返回futureTask
+    return ftask;
+}
+protected &lt;T&gt; RunnableFuture&lt;T&gt; newTaskFor(Callable&lt;T&gt; callable) {
+    // 将普通任务包装成FutureTask
+    return new FutureTask&lt;T&gt;(callable);
+}</code></code></pre>
+<p>这里的设计很巧妙，实际上这两个方法都是在AbstractExecutorService这个抽象类中完成的，这是模板方法的一种运用。</p>
+<p>我们来看看FutureTask的继承体系：</p>
+<p><img src="./images/死磕 java线程系列之线程池深入解析——未来任务执行流程1.png" alt="threadpool_futuretask" /></p>
+<p>FutureTask实现了RunnableFuture接口，而RunnableFuture接口组合了Runnable接口和Future接口的能力，而Future接口提供了get任务返回值的能力。</p>
+<p>问题：<strong>submit()方法返回的为什么是Future接口而不是RunnableFuture接口或者FutureTask类呢？</strong></p>
+<p>答：这是因为submit()返回的结果，对外部调用者只想暴露其get()的能力（Future接口），而不想暴露其run()的能力（Runaable接口）。</p>
+<h2 id="futuretask类的run方法">FutureTask类的run()方法</h2>
+<p>经过上一章的学习，我们知道execute()方法最后调用的是task的run()方法，上面我们传进去的任务，最后被包装成了FutureTask，也就是说execute()方法最后会调用到FutureTask的run()方法，所以我们直接看这个方法就可以了。</p>
+<pre><code><code>public void run() {
+    // 状态不为NEW，或者修改为当前线程来运行这个任务失败，则直接返回
+    if (state != NEW ||
+        !UNSAFE.compareAndSwapObject(this, runnerOffset,
+                                     null, Thread.currentThread()))
+        return;
+    
+    try {
+        // 真正的任务
+        Callable&lt;V&gt; c = callable;
+        // state必须为NEW时才运行
+        if (c != null &amp;&amp; state == NEW) {
+            // 运行的结果
+            V result;
+            boolean ran;
+            try {
+                // 任务执行的地方【本文由公从号“彤哥读源码”原创】
+                result = c.call();
+                // 已执行完毕
+                ran = true;
+            } catch (Throwable ex) {
+                result = null;
+                ran = false;
+                // 处理异常
+                setException(ex);
+            }
+            if (ran)
+                // 处理结果
+                set(result);
+        }
+    } finally {
+        // 置空runner
+        runner = null;
+        // 处理中断
+        int s = state;
+        if (s &gt;= INTERRUPTING)
+            handlePossibleCancellationInterrupt(s);
+    }
+}</code></code></pre>
+<p>可以看到代码也比较简单，先做状态的检测，再执行任务，最后处理结果或异常。</p>
+<p>执行任务这里没啥问题，让我们看看处理结果或异常的代码。</p>
+<pre><code><code>protected void setException(Throwable t) {
+    // 将状态从NEW置为COMPLETING
+    if (UNSAFE.compareAndSwapInt(this, stateOffset, NEW, COMPLETING)) {
+        // 返回值置为传进来的异常（outcome为调用get()方法时返回的）
+        outcome = t;
+        // 最终的状态设置为EXCEPTIONAL
+        UNSAFE.putOrderedInt(this, stateOffset, EXCEPTIONAL); // final state
+        // 调用完成方法
+        finishCompletion();
+    }
+}
+protected void set(V v) {
+    // 将状态从NEW置为COMPLETING
+    if (UNSAFE.compareAndSwapInt(this, stateOffset, NEW, COMPLETING)) {
+        // 返回值置为传进来的结果（outcome为调用get()方法时返回的）
+        outcome = v;
+        // 最终的状态设置为NORMAL
+        UNSAFE.putOrderedInt(this, stateOffset, NORMAL); // final state
+        // 调用完成方法
+        finishCompletion();
+    }
+}</code></code></pre>
+<p>咋一看，这两个方法似乎差不多，不同的是出去的结果不一样且状态不一样，最后都调用了finishCompletion()方法。</p>
+<pre><code><code>private void finishCompletion() {
+    // 如果队列不为空（这个队列实际上为调用者线程）
+    for (WaitNode q; (q = waiters) != null;) {
+        // 置空队列
+        if (UNSAFE.compareAndSwapObject(this, waitersOffset, q, null)) {
+            for (;;) {
+                // 调用者线程
+                Thread t = q.thread;
+                if (t != null) {
+                    q.thread = null;
+                    // 如果调用者线程不为空，则唤醒它
+                    // 【本文由公从号“彤哥读源码”原创】
+                    LockSupport.unpark(t);
+                }
+                WaitNode next = q.next;
+                if (next == null)
+                    break;
+                q.next = null; // unlink to help gc
+                q = next;
+            }
+            break;
+        }
+    }
+    // 钩子方法，子类重写
+    done();
+    // 置空任务
+    callable = null;        // to reduce footprint
+}</code></code></pre>
+<p>整个run()方法总结下来：</p>
+<p>（1）FutureTask有一个状态state控制任务的运行过程，正常运行结束state从NEW-&gt;COMPLETING-&gt;NORMAL，异常运行结束state从NEW-&gt;COMPLETING-&gt;EXCEPTIONAL；</p>
+<p>（2）FutureTask保存了运行任务的线程runner，它是线程池中的某个线程；</p>
+<p>（3）调用者线程是保存在waiters队列中的，它是什么时候设置进去的呢？</p>
+<p>（4）任务执行完毕，除了设置状态state变化之外，还要唤醒调用者线程。</p>
+<p>调用者线程是什么时候保存在FutureTask中（waiters）的呢？查看构造方法：</p>
+<pre><code><code>public FutureTask(Callable&lt;V&gt; callable) {
+    if (callable == null)
+        throw new NullPointerException();
+    this.callable = callable;
+    this.state = NEW;       // ensure visibility of callable
+}</code></code></pre>
+<p>发现并没有相关信息，我们再试想一下，如果调用者不调用get()方法，那么这种未来任务是不是跟普通任务没有什么区别？确实是的哈，所以只有调用get()方法了才有必要保存调用者线程到FutureTask中。</p>
+<p>所以，我们来看看get()方法中是什么鬼。</p>
+<h2 id="futuretask类的get方法">FutureTask类的get()方法</h2>
+<p>get()方法调用时如果任务未执行完毕，会阻塞直到任务结束。</p>
+<pre><code><code>public V get() throws InterruptedException, ExecutionException {
+    int s = state;
+    // 如果状态小于等于COMPLETING，则进入队列等待
+    if (s &lt;= COMPLETING)
+        s = awaitDone(false, 0L);
+    // 返回结果（异常）
+    return report(s);
+}</code></code></pre>
+<p>是不是很清楚，如果任务状态小于等于COMPLETING，则进入队列等待。</p>
+<pre><code><code>private int awaitDone(boolean timed, long nanos)
+    throws InterruptedException {
+    // 我们这里假设不带超时
+    final long deadline = timed ? System.nanoTime() + nanos : 0L;
+    WaitNode q = null;
+    boolean queued = false;
+    for (;;) {
+        // 处理中断
+        if (Thread.interrupted()) {
+            removeWaiter(q);
+            throw new InterruptedException();
+        }
+        // 4. 如果状态大于COMPLETING了，则跳出循环并返回
+        // 这是自旋的出口
+        int s = state;
+        if (s &gt; COMPLETING) {
+            if (q != null)
+                q.thread = null;
+            return s;
+        }
+        // 如果状态等于COMPLETING，说明任务快完成了，就差设置状态到NORMAL或EXCEPTIONAL和设置结果了
+        // 这时候就让出CPU，优先完成任务
+        else if (s == COMPLETING) // cannot time out yet
+            Thread.yield();
+        // 1. 如果队列为空
+        else if (q == null)
+            // 初始化队列（WaitNode中记录了调用者线程）
+            q = new WaitNode();
+        // 2. 未进入队列
+        else if (!queued)
+            // 尝试入队
+            queued = UNSAFE.compareAndSwapObject(this, waitersOffset,
+                                                 q.next = waiters, q);
+        // 超时处理
+        else if (timed) {
+            nanos = deadline - System.nanoTime();
+            if (nanos &lt;= 0L) {
+                removeWaiter(q);
+                return state;
+            }
+            LockSupport.parkNanos(this, nanos);
+        }
+        // 3. 阻塞当前线程（调用者线程）
+        else
+            // 【本文由公从号“彤哥读源码”原创】
+            LockSupport.park(this);
+    }
+}</code></code></pre>
+<p>这里我们假设调用get()时任务还未执行，也就是其状态为NEW，我们试着按上面标示的1、2、3、4走一遍逻辑：</p>
+<p>（1）第一次循环，状态为NEW，直接到1处，初始化队列并把调用者线程封装在WaitNode中；</p>
+<p>（2）第二次循环，状态为NEW，队列不为空，到2处，让包含调用者线程的WaitNode入队；</p>
+<p>（3）第三次循环，状态为NEW，队列不为空，且已入队，到3处，阻塞调用者线程；</p>
+<p>（4）假设过了一会任务执行完毕了，根据run()方法的分析最后会unpark调用者线程，也就是3处会被唤醒；</p>
+<p>（5）第四次循环，状态肯定大于COMPLETING了，退出循环并返回；</p>
+<p>问题：<strong>为什么要在for循环中控制整个流程呢，把这里的每一步单独拿出来写行不行？</strong></p>
+<p>答：因为每一次动作都需要重新检查状态state有没有变化，如果拿出去写也是可以的，只是代码会非常冗长。这里只分析了get()时状态为NEW，其它的状态也可以自行验证，都是可以保证正确的，甚至两个线程交叉运行（断点的技巧）。</p>
+<p>OK，这里返回之后，再看看是怎么处理最终的结果的。</p>
+<pre><code><code>private V report(int s) throws ExecutionException {
+    Object x = outcome;
+    // 任务正常结束
+    if (s == NORMAL)
+        return (V)x;
+    // 被取消了
+    if (s &gt;= CANCELLED)
+        throw new CancellationException();
+    // 执行异常
+    throw new ExecutionException((Throwable)x);
+}</code></code></pre>
+<p>还记得前面分析run的时候吗，任务执行异常时是把异常放在outcome里面的，这里就用到了。</p>
+<p>（1）如果正常执行结束，则返回任务的返回值；</p>
+<p>（2）如果异常结束，则包装成ExecutionException异常抛出；</p>
+<p>通过这种方式，线程中出现的异常也可以返回给调用者线程了，不会像执行普通任务那样调用者是不知道任务执行到底有没有成功的。</p>
+<h2 id="其它">其它</h2>
+<p>FutureTask除了可以获取任务的返回值以外，还能够取消任务的执行。</p>
+<pre><code><code>public boolean cancel(boolean mayInterruptIfRunning) {
+    if (!(state == NEW &amp;&amp;
+          UNSAFE.compareAndSwapInt(this, stateOffset, NEW,
+              mayInterruptIfRunning ? INTERRUPTING : CANCELLED)))
+        return false;
+    try {    // in case call to interrupt throws exception
+        if (mayInterruptIfRunning) {
+            try {
+                Thread t = runner;
+                if (t != null)
+                    t.interrupt();
+            } finally { // final state
+                UNSAFE.putOrderedInt(this, stateOffset, INTERRUPTED);
+            }
+        }
+    } finally {
+        finishCompletion();
+    }
+    return true;
+}</code></code></pre>
+<p>这里取消任务是通过中断执行线程来处理的，有兴趣的同学可以自己分析一下。</p>
+<h2 id="回答开篇">回答开篇</h2>
+<p><strong>如果这里把future.get()放到for循环里面，时间大概是多少？</strong></p>
+<p>答：大概会是5秒多一点，因为每提交一个任务，都要阻塞调用者线程直到任务执行完毕，每个任务执行都是1秒多，所以总时间就是5秒多点。</p>
+<h2 id="总结">总结</h2>
+<p>（1）未来任务是通过把普通任务包装成FutureTask来实现的。</p>
+<p>（2）通过FutureTask不仅能够获取任务执行的结果，还有感知到任务执行的异常，甚至还可以取消任务；</p>
+<p>（3）AbstractExecutorService中定义了很多模板方法，这是一种很重要的设计模式；</p>
+<p>（4）FutureTask其实就是典型的异常调用的实现方式，后面我们学习到Netty、Dubbo的时候还会见到这种设计思想的。</p>
+<h2 id="彩蛋">彩蛋</h2>
+<p><strong>RPC框架中异步调用是怎么实现的？</strong></p>
+<p>答：RPC框架常用的调用方式有同步调用、异步调用，其实它们本质上都是异步调用，它们就是用FutureTask的方式来实现的。</p>
+<p>一般地，通过一个线程（我们叫作远程线程）去调用远程接口，如果是同步调用，则直接让调用者线程阻塞着等待远程线程调用的结果，待结果返回了再返回；如果是异步调用，则先返回一个未来可以获取到远程结果的东西FutureXxx，当然，如果这个FutureXxx在远程结果返回之前调用了get()方法一样会阻塞着调用者线程。</p>
+<p>有兴趣的同学可以先去预习一下dubbo的异步调用（它是把Future扔到RpcContext中的）。</p>
+<hr />
+<p>欢迎关注我的公众号“彤哥读源码”，查看更多源码系列文章, 与彤哥一起畅游源码的海洋。</p>
+<p><img src="./images/死磕 java线程系列之线程池深入解析——未来任务执行流程2.png" alt="qrcode" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

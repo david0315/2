@@ -1,0 +1,560 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring的事务传播属性详细解读' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring的事务传播属性详细解读</center></div><div class='banquan'>原文出处:本文由博客园博主HG-93提供。<br/>
+原文连接:https://www.cnblogs.com/cxydmx/p/11766342.html</div><br>
+    <src data-v-253c8433="" data-id="5da6ef00e51d4524bd1be589" itemprop="articleBody" class="article-content">
+<p>学习东西要知行合一，如果只是知道理论而没实践过，那么掌握的也不会特别扎实，估计过几天就会忘记，接下来我们一起实践来学习Spring事务的传播属性。</p>
+<h2 class="heading" data-id="heading-1">传播属性</h2>
+<p>传播属性定义的是<strong>当一个事务方法碰到另一个事务方法时的处理行为</strong>，一共有七种行为，定义如下</p>
+<table>
+<thead>
+<tr>
+<th>传播性</th>
+<th>值</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PROPAGATION_REQUIRED</code></td>
+<td>0</td>
+<td>支持当前事务，如果没有就新建事务</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_SUPPORTS</code></td>
+<td>1</td>
+<td>支持当前事务，如果没有就不以事务的方式运行</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_MANDATORY</code></td>
+<td>2</td>
+<td>支持当前事务，如果当前没事务就抛异常</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_REQUIRES_NEW</code></td>
+<td>3</td>
+<td>无论当前是否有事务，都会新起一个事务</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_NOT_SUPPORTED</code></td>
+<td>4</td>
+<td>不支持事务，如果当前存在事务，就将此事务挂起不以事务方式运行</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_NEVER</code></td>
+<td>5</td>
+<td>不支持事务，如果有事务就抛异常</td>
+</tr>
+<tr>
+<td><code>PROPAGATION_NESTED</code></td>
+<td>6</td>
+<td>如果当前存在事务，在当前事务中再新起一个事务</td>
+</tr>
+</tbody>
+</table>
+<p>其实只看概念的话已经很直截了当了说明了每个传播性的作用，此时我们再用具体的例子演示一下每个传播性属性下的行为。</p>
+<p>此次演示我们使用的是H2数据库，这个数据库是作用在内存里面的，所以对于我们演示事务效果来说正好，无需我们在进行其他的配置了，我们新建一个表。将下面语句放在<code>schema.sql</code>文件里面即可，SpringBoot程序在启动的时候就会自动为我们在内存里面建立这样的一个表。</p>
+<pre><code><code class="hljs bash copyable" lang="bash">CREATE TABLE FOO (ID INT IDENTITY, BAR VARCHAR(64));</code></code></pre><p>演示之前我们会定义两个类<code>FooService</code>和<code>BarService</code>。我们使用<code>BarService</code>里面的方法进行调用<code>FooService</code>中的方法。</p>
+<h3 class="heading" data-id="heading-2">环境准备</h3>
+<p>在进行事务演示之前，其实可以分为以下几种情况，根据排列组合，我们可以得出以下八种情况</p>
+<ul>
+<li>调用者：有无事务</li>
+<li>调用者：是否有异常</li>
+<li>被调用者：有无事务**(这个是通过传播属性进行控制的)**所以并不在排列组合中</li>
+<li>被调用者：是否有异常</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+<tr>
+<td>有</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>无</td>
+<td>无</td>
+</tr>
+<tr>
+<td>无</td>
+<td>有</td>
+<td>有</td>
+</tr>
+<tr>
+<td>无</td>
+<td>有</td>
+<td>无</td>
+</tr>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<h4 class="heading" data-id="heading-3">异常类</h4>
+<p>其中的<code>RollbackException</code>是我们自己定义的一个异常类</p>
+<pre><code><code class="hljs bash copyable" lang="bash">@Service
+public class BarServiceImpl implements BarService{
+    @Autowired
+    private FooService fooService;
+    // PROPAGATION_REQUIRED演示 无事务
+    @Override
+    public void <span class="hljs-built_in">test</span>RequiredNoTransactional() throws RollbackException {
+        fooService.testRequiredTransactional();
+    }
+}
+</code></code></pre><h4 class="heading" data-id="heading-4">调用者</h4>
+<p>在<code>BarService</code>中定义两个方法，一个是带着事务的，一个是不带事务的</p>
+<pre><code><code class="hljs bash copyable" lang="bash">// 有事务
+@Override
+@Transactional(rollbackFor = Exception.class)
+public void hasTransactional() throws RollbackException {
+}
+// 无事务
+@Override
+public void noTransactional() throws RollbackException {   
+}
+</code></code></pre><p>接下来我们就根据俄上面定义的八种情况进行事务传播属性的学习。</p>
+<h3 class="heading" data-id="heading-5"><code>PROPAGATION_REQUIRED</code></h3>
+<blockquote>
+<p>在此传播属性下，被调用方是否新建事务取决去调用者是否带着事务。</p>
+</blockquote>
+<p>想要了解这个传播属性的特性，其实我们演示上面八种情况的两个例子就够了</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况我们在被调用者抛出异常的情况下，如果查询不到插入的数据，那么就说明被调用者在调用者没有事务的情况下自己新建了事务。</li>
+<li>第二种情况我们在调用者抛出异常的情况下，如果查询不到插入的数据，那么就说明被调用者在调用者有事务的情况下就加入当前事务了。</li>
+</ul>
+<p>我们先来看一下被调用者的类的方法例子。</p>
+<pre><code><code class="hljs bash copyable" lang="bash">@Service
+public class FooServiceImpl implements FooService {
+    @Autowired
+    private JdbcTemplate jdbcTemplate;    
+    // REQUIRED传播属性-被调用者有异常抛出
+    @Override
+    @Transactional(rollbackFor = Exception.class,propagation = Propagation.REQUIRED)
+    public void <span class="hljs-built_in">test</span>RequiredHasException() throws RollbackException {
+        jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ("</span>+Global.REQUIRED_HAS_EXCEPTION+<span class="hljs-string">")"</span>);
+        throw new RollbackException();
+    }
+    // REQUIRED传播属性-被调用者无异常抛出
+    @Override
+    @Transactional(rollbackFor = Exception.class,propagation = Propagation.REQUIRED)
+    public void <span class="hljs-built_in">test</span>RequiredNoException() throws RollbackException {
+        jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ("</span>+Global.REQUIRED_NO_EXCEPTION+<span class="hljs-string">")"</span>);
+    }
+}
+</code></code></pre><p>接下来我们看一下调用者方法的例子</p>
+<pre><code><code class="hljs bash copyable" lang="bash">@Service
+public class BarServiceImpl implements BarService{
+    @Autowired
+    private FooService fooService;
+    // 有事务
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void hasTransactional() throws RollbackException {
+        // 调用者有事务,抛异常  被调用者无异常
+        fooService.testRequiredNoException();
+        throw new RollbackException();
+    }
+    // 无事务
+    @Override
+    public void noTransactional() throws RollbackException {
+        // 调用者无事务,不抛异常  被调用者有异常
+        fooService.testRequiredHasException();
+    }
+}
+</code></code></pre><p>此时我们在程序调用时进行查询</p>
+<pre><code><code class="hljs bash copyable" lang="bash">String noException = Global.REQUIRED_NO_EXCEPTION;
+String hasException = Global.REQUIRED_HAS_EXCEPTION;
+try {
+    barService.noTransactional();
+}catch (Exception e){
+    log.info(<span class="hljs-string">"第一种情况 {}"</span>,
+            jdbcTemplate
+                    .queryForObject(<span class="hljs-string">"SELECT COUNT(*) FROM FOO WHERE BAR='"</span>+hasException+<span class="hljs-string">"'"</span>, Long.class));
+}
+try {
+    barService.hasTransactional();
+}catch (Exception e){
+    log.info(<span class="hljs-string">"第二种情况 {}"</span>,
+            jdbcTemplate
+                    .queryForObject(<span class="hljs-string">"SELECT COUNT(*) FROM FOO WHERE BAR='"</span>+noException+<span class="hljs-string">"'"</span>, Long.class));
+}
+</code></code></pre><p>查看打印出来的日志</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 13:02:04.142  INFO 11869 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 0
+2019-10-16 13:02:04.143  INFO 11869 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 0
+</code></code></pre><p>我们看到我们都没有查到相应的数据，说明数据都回滚了。此时我们应该就理解了那句话<strong>支持当前事务，如果没有就新建事务</strong>。</p>
+<h3 class="heading" data-id="heading-6"><code>PROPAGATION_SUPPORTS</code></h3>
+<blockquote>
+<p>被调用者是否有事务，完全依赖于调用者，调用者有事务则有事务，调用者没事务则没事务。</p>
+</blockquote>
+<p>接下来我们还是用上面的两个例子进行演示</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况：被调用者抛出异常的情况下，如果仍能查询到数据，说明事务没有回滚，说明被调用者没有事务</li>
+<li>第二种情况：调用者抛出异常情况下，如果查不到数据，说明两个方法在一个事务中</li>
+</ul>
+<p>接下来仍然是例子演示</p>
+<p>被调用者，只是将<code>@Transactional</code>注解中的<code>propagation</code>属性更换为了<code>Propagation.SUPPORTS</code></p>
+<pre><code><code class="hljs bash copyable" lang="bash">// SUPPORTS传播属性-被调用者有异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.SUPPORTS)
+public void <span class="hljs-built_in">test</span>SupportsHasException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.SUPPORTS_HAS_EXCEPTION+<span class="hljs-string">"')"</span>);
+    throw new RollbackException();
+}
+// SUPPORTS传播属性-被调用者无异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.SUPPORTS)
+public void <span class="hljs-built_in">test</span>SupportsNoException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.SUPPORTS_NO_EXCEPTION+<span class="hljs-string">"')"</span>);
+}
+</code></code></pre><p>调用者和上面的例子调用一样，我们直接查看执行效果</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 13:50:27.738  INFO 12174 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 1
+2019-10-16 13:50:27.741  INFO 12174 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 0
+</code></code></pre><p>我们看到了在第一种情况下查到了数据，说明在第一种情况下被调用者是没有事务的。此时我们应该就理解了这句话
+<strong>支持当前事务，如果没有就不以事务的方式运行</strong>。</p>
+<h3 class="heading" data-id="heading-7"><code>PROPAGATION_MANDATORY</code></h3>
+<p>依然是这两个例子进行演示</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况：因为调用者没有事务，所以此传播属性下应该是抛异常的</li>
+<li>第二种情况：被调用者的事务和调用者事务是同样的</li>
+</ul>
+<p>接下来是被调用者的代码例子</p>
+<pre><code><code class="hljs bash copyable" lang="bash">// MANDATORY传播属性-被调用者有异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.MANDATORY)
+public void <span class="hljs-built_in">test</span>MandatoryHasException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.SUPPORTS_HAS_EXCEPTION+<span class="hljs-string">"')"</span>);
+    throw new RollbackException();
+}
+// MANDATORY传播属性-被调用者无异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.MANDATORY)
+public void <span class="hljs-built_in">test</span>MandatoryNoException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.SUPPORTS_NO_EXCEPTION+<span class="hljs-string">"')"</span>);
+}
+</code></code></pre><p>调用者和上面的例子调用一样，我们直接查看执行效果</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 13:58:39.178 ERROR 12317 --- [           main] c.e.t.t.TransactionApplication           : org.springframework.transaction.IllegalTransactionStateException: No existing transaction found <span class="hljs-keyword">for</span> transaction marked with propagation <span class="hljs-string">'mandatory'</span>
+2019-10-16 13:58:39.276  INFO 12317 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 0
+2019-10-16 13:58:39.281  INFO 12317 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 0
+</code></code></pre><p>我们发现和我们推测一样，说明被调用者是不会自己新建事务的，此时我们应该就理解了这句话<strong>支持当前事务，如果当前没事务就抛异常</strong>。</p>
+<h3 class="heading" data-id="heading-8"><code>PROPAGATION_REQUIRES_NEW</code></h3>
+<blockquote>
+<p>此传播属性下，无论调用者是否有事务，被调用者都会新建一个事务</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况：调用者无事务，被调用者会新建事务，所以查不到数据</li>
+<li>第二种情况：调用者有事务，被调用者会新建一个事务，所以调用者抛异常影响不到被调用者，所以能查到数据</li>
+</ul>
+<p>接下来我们演示代码。</p>
+<p>被调用者</p>
+<pre><code><code class="hljs bash copyable" lang="bash">// REQUIRES_NEW传播属性-被调用者有异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.REQUIRES_NEW)
+public void <span class="hljs-built_in">test</span>RequiresNewHasException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.REQUIRES_NEW_HAS_EXCEPTION+<span class="hljs-string">"')"</span>);
+    throw new RollbackException();
+}
+// REQUIRES_NEW传播属性-被调用者无异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.REQUIRES_NEW)
+public void <span class="hljs-built_in">test</span>RequiresNewNoException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.REQUIRES_NEW_NO_EXCEPTION+<span class="hljs-string">"')"</span>);
+}
+</code></code></pre><p>调用者的例子和上面的相同，我们直接来看执行情况</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 16:29:20.296  INFO 15553 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 0
+2019-10-16 16:29:20.298  INFO 15553 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 1
+</code></code></pre><p>我们发现和我们的推论是一样的，说明调用者的事务和被调用者的事务完全无关。此时我们应该就理解这句话了<strong>无论当前是否有事务，都会新起一个事务</strong>。</p>
+<h3 class="heading" data-id="heading-9"><code>PROPAGATION_NOT_SUPPORTED</code></h3>
+<blockquote>
+<p>无论调用者是否有事务，被调用者都不以事务的方法运行</p>
+</blockquote>
+<p>同样是这两个例子</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况：被调用者都不会有事务，那么在抛异常之后就能查到相应的数据</li>
+<li>第二种情况：在调用者有事务的情况下，被调用者也会在无事务环境下运行，所以我们依然能查到数据</li>
+</ul>
+<p>接下来验证我们的猜测</p>
+<pre><code><code class="hljs bash copyable" lang="bash">// NOT_SUPPORTED传播属性-被调用者有异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.NOT_SUPPORTED)
+public void <span class="hljs-built_in">test</span>NotSupportHasException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.NOT_SUPPORTS_HAS_EXCEPTION+<span class="hljs-string">"')"</span>);
+    throw new RollbackException();
+}
+// NOT_SUPPORTED传播属性-被调用者无异常抛出
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.NOT_SUPPORTED)
+public void <span class="hljs-built_in">test</span>NotSupportNoException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.NOT_SUPPORTS_NO_EXCEPTION+<span class="hljs-string">"')"</span>);
+}
+</code></code></pre><p>然后查看执行结果</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 16:38:35.065  INFO 15739 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 1
+2019-10-16 16:38:35.067  INFO 15739 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 1
+</code></code></pre><p>我们可以看到在最后两种情况都查到了数据，根据演示效果应该可以理解这句话了，<strong>不支持事务，如果当前存在事务，就将此事务挂起不以事务方式运行</strong>。</p>
+<h3 class="heading" data-id="heading-10"><code>PROPAGATION_NEVER</code></h3>
+<blockquote>
+<p>调用者有事务，被调用者就会抛出异常</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<p>这个就不演示，相信大家看到这里应该都会明白在第一种情况下我们是能够查到数据的。在第二种情况下由于调用者带着事务，所以会抛异常。</p>
+<h3 class="heading" data-id="heading-11"><code>PROPAGATION_NESTED</code></h3>
+<blockquote>
+<p>此传播属性下，被调用者的事务是调用者的事务的子集。</p>
+</blockquote>
+<p>我们重点说一下<code>NESTED</code>的传播属性的特性</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有</td>
+<td>被调用者会新起一个事务，此事务和调用者事务是一个嵌套的关系</td>
+</tr>
+<tr>
+<td>无</td>
+<td>被调用者会自己新起一个事务</td>
+</tr>
+</tbody>
+</table>
+<p>关于什么是嵌套事务的关系，我们用下面三个例子能够进行演示。</p>
+<table>
+<thead>
+<tr>
+<th>调用者是否有事务</th>
+<th>调用者是否有异常</th>
+<th>被调用者是否有异常</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无</td>
+<td>无</td>
+<td>有</td>
+</tr>
+<tr>
+<td>有</td>
+<td>有</td>
+<td>无</td>
+</tr>
+<tr>
+<td>有</td>
+<td>无</td>
+<td>有</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>第一种情况：如果查不到数据，则说明在调用者无事务情况下，被调用者会新起一个事务</li>
+<li>第二种情况：如果查不到数据，说明外层事务能够影响内层事务</li>
+<li>第三种情况：如果查到数据，说明内层事务不影响外层事务</li>
+</ul>
+<p>接下来我们编写具体的代码</p>
+<pre><code><code class="hljs bash copyable" lang="bash">// NESTED传播属性-回滚事务
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.NESTED)
+public void <span class="hljs-built_in">test</span>NestedHasException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.NESTED_HAS_EXCEPTION+<span class="hljs-string">"')"</span>);
+   // TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+    throw new RollbackException();
+}
+// NESTED传播属性-不回滚事务
+@Override
+@Transactional(rollbackFor = Exception.class,propagation = Propagation.NESTED)
+public void <span class="hljs-built_in">test</span>NestedNoException() throws RollbackException {
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.NESTED_NO_EXCEPTION+<span class="hljs-string">"')"</span>);
+}
+</code></code></pre><p>然后接下来的调用者也会有点区别</p>
+<pre><code><code class="hljs bash copyable" lang="bash">@Override
+@Transactional()
+public void hasTransactionalNoException() throws RollbackException {
+    // NESTED传播属性 - 调用者有事务,不抛异常  被调用者有异常
+    jdbcTemplate.execute(<span class="hljs-string">"INSERT INTO FOO (BAR) VALUES ('"</span>+Global.NESTED_HAS_EXCEPTION_TWO+<span class="hljs-string">"')"</span>);
+    fooService.testNestedHasException();
+}
+</code></code></pre><p>然后执行效果</p>
+<pre><code><code class="hljs bash copyable" lang="bash">2019-10-16 18:01:06.387  INFO 17172 --- [           main] c.e.t.t.TransactionApplication           : 第一种情况 0
+2019-10-16 18:01:06.389  INFO 17172 --- [           main] c.e.t.t.TransactionApplication           : 第二种情况 0
+2019-10-16 18:01:06.390  INFO 17172 --- [           main] c.e.t.t.TransactionApplication           : 第三种情况 1
+</code></code></pre><p>可以看出来嵌套事务的本质就是<strong>外层会影响内层，内层不影响外层</strong>。而<code>REQUIRES_NEW</code>则是<strong>互不影响</strong>。</p>
+<h2 class="heading" data-id="heading-12">总结</h2>
+<p>到现在我们已经全部分析完了七种传播属性，从写这篇文章开始到结束其中也碰到过一些坑，有些是不自己实践一遍是根本不知道的，所以我还是建议读者看完这篇文章以后自己进行实践，演示各种情况，只有这样才能够烂熟于心。</p>
+
+<p><br></p>
+<hr>
+<p><font color="Darkorange" size="4px"><b>关注微信公众号【<a style="text-decoration:none" href="http://mp.weixin.qq.com/s?__biz=MzU0OTg3ODQxNA==&mid=100000173&idx=1&sn=1af862786cc9126634f630a5d4d37d17&chksm=7ba86e4c4cdfe75aa0ce43095cbc2babff63affb0a5e18b5e8ff6a8f6fdc4b4bc129d6e7af10#rd">程序员的梦想</a>】，专注于Java，SpringBoot，SpringCloud，微服务，Docker以及前后端分离等全栈技术。</b></font></p>
+<p><img src="./images/Spring的事务传播属性详细解读0.png" alt="在这里插入图片描述" /></p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

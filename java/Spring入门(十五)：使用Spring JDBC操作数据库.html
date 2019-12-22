@@ -1,0 +1,513 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修Spring入门(十五)：使用Spring JDBC操作数据库' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>Spring入门(十五)：使用Spring JDBC操作数据库</center></div><div class='banquan'>原文出处:本文由博客园博主申城异乡人提供。<br/>
+原文连接:https://www.cnblogs.com/zwwhnly/p/11669583.html</div><br>
+    <p>在本系列的之前博客中，我们从没有讲解过操作数据库的方法，但是在实际的工作中，几乎所有的系统都离不开数据的持久化，所以掌握操作数据库的使用方法就非常重要。</p>
+<p>在Spring中，操作数据库有很多种方法，我们可以使用JDBC、Hibernate、MyBatis或者其他的数据持久化框架，本篇博客的重点是讲解下在Spring中如何通过JDBC操作数据库。</p>
+<h2 id="项目构建失败解决">1. 项目构建失败解决</h2>
+<p>在讲解JDBC前，我们先解决一个问题，因为本来构建正常的程序在重新构建打包时，竟然报了如下错误：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库0.png" /></p>
+<p>网上查找资料后，说是依赖的版本有冲突，于是检查了pom.xml中之前添加的Spring的依赖：</p>
+<pre><code><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-context&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-webmvc&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;!--spring aop支持--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-aop&lt;/artifactId&gt;
+    &lt;version&gt;5.1.8.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-test&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+    &lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>其中spring-aop的版本是5.1.8.RELEASE，而其余3个包的版本是4.3.18.RELEASE，将spring-aop版本也修改为4.3.18.RELEASE：</p>
+<pre><code><code>&lt;!--spring aop支持--&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-aop&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>此时重新构建打包，不再报错，打包成功：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库1.png" /></p>
+<p>不过上面的依赖还可以简化成下面这样的：</p>
+<pre class="xml"><code>&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-webmvc&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-test&lt;/artifactId&gt;
+    &lt;version&gt;4.3.18.RELEASE&lt;/version&gt;
+    &lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>因为spring-webmvc包已经包含了spring-context和spring-aop，因此没有必要重复添加这2个依赖：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库2.png" /></p>
+<h2 id="配置数据源">2. 配置数据源</h2>
+<p>首先执行如下语句创建MySql数据库spring_action_db：</p>
+<pre class="mysql"><code>CREATE DATABASE spring_action_db DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;</code></code></pre>
+<p>然后执行如下语句创建表book：</p>
+<pre class="mysql"><code>use spring_action_db;
+
+create table Book
+(
+  book_id     bigint auto_increment comment &#39;书籍id&#39;,
+  book_name   varchar(50) not null comment &#39;书名&#39;,
+  author      varchar(50) not null comment &#39;作者&#39;,
+  create_by   varchar(20) not null comment &#39;创建人&#39;,
+  create_time datetime    not null comment &#39;创建时间&#39;,
+  modify_by   varchar(20) not null comment &#39;修改人&#39;,
+  modify_time datetime    not null comment &#39;修改时间&#39;,
+  constraint Book_pk
+    primary key (book_id)
+)
+  comment &#39;书籍&#39;;</code></code></pre>
+<p>准备就绪后，新建配置类配置下数据源：</p>
+<pre><code><code>package chapter10.config;
+
+import org.apache.commons.dbcp2.BasicDataSource;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@ComponentScan(&quot;chapter10&quot;)
+public class DataSourceConfig {
+    @Bean
+    public BasicDataSource dataSource() {
+        BasicDataSource dataSource = new BasicDataSource();
+        dataSource.setDriverClassName(&quot;com.mysql.jdbc.Driver&quot;);
+        dataSource.setUrl(&quot;jdbc:mysql://localhost:3306/spring_action_db&quot;);
+        dataSource.setUsername(&quot;root&quot;);
+        dataSource.setPassword(&quot;root&quot;);
+
+        return dataSource;
+    }
+}</code></code></pre>
+<p>因为我们使用的是MySql数据库，所以驱动名称设置的是：com.mysql.jdbc.Driver。</p>
+<p>如果你使用的是其他类型的数据库，需要修改成对应的名称。</p>
+<p>因为使用到了MySql驱动，所以我们需要在pom.xml中添加如下依赖，否则在访问数据库时会获取不到连接：</p>
+<pre class="xml"><code>&lt;!-- MySql驱动 --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;mysql&lt;/groupId&gt;
+    &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
+    &lt;version&gt;5.1.46&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<h2 id="使用原始的jdbc代码">3. 使用原始的JDBC代码</h2>
+<p>首先，新建数据库实体类Book：</p>
+<pre><code><code>package chapter10.domain;
+
+import java.util.Date;
+
+public class Book {
+    private Long bookId;
+
+    private String bookName;
+
+    private String author;
+
+    private String createBy;
+
+    private Date createTime;
+
+    private String modifyBy;
+
+    private Date modifyTime;
+
+    public Book(String bookName, String author, String createBy) {
+        this.bookName = bookName;
+        this.author = author;
+        this.createBy = createBy;
+        this.createTime = new Date();
+        this.modifyBy=createBy;
+        this.modifyTime=new Date();
+    }
+    
+    public Book(Long bookId, String bookName, String author, String modifyBy) {
+        this.bookId = bookId;
+        this.bookName = bookName;
+        this.author = author;
+        this.modifyBy = modifyBy;
+    }
+    
+    public Book() {
+        
+    }
+
+    // 省略get和set方法
+}</code></code></pre>
+<p>然后定义数据访问接口BookRepository，暂时只添加addBook方法：</p>
+<pre><code><code>package chapter10.db;
+
+import chapter10.domain.Book;
+
+public interface BookRepository {
+    void addBook(Book book);
+}</code></code></pre>
+<h3 id="新增数据">3.1 新增数据</h3>
+<p>新建数据访问实现类JdbcBookRepository如下所示：</p>
+<pre><code><code>package chapter10.db.jdbc;
+
+import chapter10.db.BookRepository;
+import chapter10.domain.Book;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.Calendar;
+import java.util.Date;
+
+@Repository
+public class JdbcBookRepository implements BookRepository {
+    private static final String SQL_INSERT_BOOK =
+            &quot;INSERT INTO book(book_name, author, create_by, create_time, modify_by, modify_time) VALUES (?,?,?,?,?,?);&quot;;
+
+    @Autowired
+    private DataSource dataSource;
+
+    @Override
+    public void addBook(Book book) {
+        Connection connection = null;
+        PreparedStatement preparedStatement = null;
+
+        try {
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(new Date());
+
+            connection = dataSource.getConnection();
+            preparedStatement = connection.prepareStatement(SQL_INSERT_BOOK);
+            preparedStatement.setString(1, book.getBookName());
+            preparedStatement.setString(2, book.getAuthor());
+            preparedStatement.setString(3, book.getCreateBy());
+            preparedStatement.setTimestamp(4, new Timestamp(calendar.getTimeInMillis()));
+            preparedStatement.setString(5, book.getModifyBy());
+            preparedStatement.setTimestamp(6, new Timestamp(calendar.getTimeInMillis()));
+
+            preparedStatement.execute();
+        } catch (SQLException e) {
+            // 异常处理相关代码
+        } finally {
+            try {
+                if (preparedStatement != null) {
+                    preparedStatement.close();
+                }
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // 异常处理相关代码
+            }
+        }
+    }
+}</code></code></pre>
+<blockquote>
+<p>注意事项：该类添加了@Repository注解，以便Spring能够扫描到将其注册为bean。</p>
+</blockquote>
+<p>值得注意的是，在这段代码中，我们竟然捕获SQLException捕获了2次，这是因为<code>connection = dataSource.getConnection();</code>，<code>preparedStatement.execute();</code>，<code>preparedStatement.close();</code>，<code>connection.close();</code>都会抛出检查型异常SQLException，所以方法中必须捕获，否则会导致编译不通过：</p>
+<pre><code><code>Connection getConnection() throws SQLException;
+
+boolean execute() throws SQLException;
+
+void close() throws SQLException;
+
+void close() throws SQLException;</code></code></pre>
+<p>最后，新建单元测试类BookRepositoryTest如下所示：</p>
+<pre><code><code>package chapter10;
+
+import chapter10.config.DataSourceConfig;
+import chapter10.db.BookRepository;
+import chapter10.domain.Book;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes = DataSourceConfig.class)
+public class BookRepositoryTest {
+    @Autowired
+    private BookRepository bookRepository;
+
+    @Test
+    public void testAddBook() {
+        Book book = new Book(&quot;Spring实战（第4版）&quot;, &quot;Craig Walls&quot;, &quot;申城异乡人&quot;);
+
+        bookRepository.addBook(book);
+
+        book = new Book(&quot;Java EE开发的颠覆者：Spring Boot实战&quot;, &quot;汪云飞&quot;, &quot;申城异乡人&quot;);
+
+        bookRepository.addBook(book);
+
+        book = new Book(&quot;RabbitMQ实战指南&quot;, &quot;朱忠华&quot;, &quot;申城异乡人&quot;);
+
+        bookRepository.addBook(book);
+    }
+}</code></code></pre>
+<p>运行测试方法testAddBook()，数据成功新增到数据库：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库3.png" /></p>
+<h3 id="更新数据">3.2 更新数据</h3>
+<p>首先，在数据访问接口BookRepository中添加更新方法：</p>
+<pre><code><code>void updateBook(Book book);</code></code></pre>
+<p>然后在数据访问实现类JdbcBookRepository中实现该方法：</p>
+<pre><code><code>private static final String SQL_UPDATE_BOOK =
+            &quot;UPDATE Book SET book_name = ?,author = ?,modify_by = ?,modify_time=? WHERE book_id = ?;&quot;;
+
+@Override
+public void updateBook(Book book) {
+    Connection connection = null;
+    PreparedStatement preparedStatement = null;
+
+    try {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+
+        connection = dataSource.getConnection();
+        preparedStatement = connection.prepareStatement(SQL_UPDATE_BOOK);
+        preparedStatement.setString(1, book.getBookName());
+        preparedStatement.setString(2, book.getAuthor());
+        preparedStatement.setString(3, book.getModifyBy());
+        preparedStatement.setTimestamp(4, new Timestamp(calendar.getTimeInMillis()));
+        preparedStatement.setLong(5, book.getBookId());
+
+        preparedStatement.execute();
+    } catch (SQLException e) {
+        // 异常处理相关代码
+    } finally {
+        try {
+            if (preparedStatement != null) {
+                preparedStatement.close();
+            }
+            if (connection != null) {
+                connection.close();
+            }
+        } catch (SQLException e) {
+            // 异常处理相关代码
+        }
+    }
+}</code></code></pre>
+<p>是不是发现它的代码和之前的新增代码几乎是一样的，而且也不得不对检查型异常SQLException捕获了2次，有代码洁癖的人是不是忍不住想重构，哈哈。</p>
+<p>最后，在测试类BookRepositoryTest中添加测试方法testUpdateBook，如下所示：</p>
+<pre><code><code>@Test
+public void testUpdateBook() {
+    Book book = new Book(1L, &quot;Spring实战（第4版）&quot;, &quot;Craig Walls&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+
+    book = new Book(2L, &quot;Java EE开发的颠覆者：Spring Boot实战&quot;, &quot;汪云飞&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+
+    book = new Book(3L, &quot;RabbitMQ实战指南&quot;, &quot;朱忠华&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+}</code></code></pre>
+<p>执行该测试方法，数据更新成功：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库4.png" /></p>
+<h3 id="查找数据">3.3 查找数据</h3>
+<p>首先，在数据访问接口BookRepository中添加更新方法：</p>
+<pre><code><code>Book findBook(long bookId);</code></code></pre>
+<p>然后在数据访问实现类JdbcBookRepository中实现该方法：</p>
+<pre><code><code>private static final String SQL_SELECT_BOOK =
+            &quot;SELECT book_id,book_name,author,create_by,create_time,modify_by,modify_time FROM book WHERE book_id = ?;&quot;;
+
+@Override
+public Book findBook(long bookId) {
+    Connection connection = null;
+    PreparedStatement preparedStatement = null;
+
+    ResultSet resultSet = null;
+    Book book = null;
+    try {
+        connection = dataSource.getConnection();
+        preparedStatement = connection.prepareStatement(SQL_SELECT_BOOK);
+        preparedStatement.setLong(1, bookId);
+
+        resultSet = preparedStatement.executeQuery();
+
+        if (resultSet.next()) {
+            book = new Book();
+            book.setBookId(resultSet.getLong(&quot;book_id&quot;));
+            book.setBookName(resultSet.getString(&quot;book_name&quot;));
+            book.setAuthor(resultSet.getString(&quot;author&quot;));
+            book.setCreateBy(resultSet.getString(&quot;create_by&quot;));
+            book.setCreateTime(resultSet.getTimestamp(&quot;create_time&quot;));
+            book.setModifyBy(resultSet.getString(&quot;modify_by&quot;));
+            book.setModifyTime(resultSet.getTimestamp(&quot;modify_time&quot;));
+        }
+    } catch (SQLException e) {
+        // 异常处理相关代码
+    } finally {
+        try {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+            if (preparedStatement != null) {
+                preparedStatement.close();
+            }
+            if (connection != null) {
+                connection.close();
+            }
+        } catch (SQLException e) {
+            // 异常处理相关代码
+        }
+    }
+
+    return book;
+}</code></code></pre>
+<p>是不是发现它的代码和之前的新增、更新代码大部分是一样的，而且也不得不对检查型异常SQLException捕获了2次，有代码洁癖的人是不是已经开始动手重构了，哈哈。</p>
+<p>最后，在测试类BookRepositoryTest中添加测试方法testFindBook，如下所示：</p>
+<pre><code><code>@Test
+public void testFindBook() {
+    Book book = bookRepository.findBook(1L);
+    Assert.assertNotNull(book);
+    Assert.assertEquals(book.getBookName(), &quot;Spring实战（第4版）&quot;);
+}</code></code></pre>
+<p>执行该测试方法，数据查询成功：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库5.png" /></p>
+<h2 id="使用jdbc模板">4. 使用JDBC模板</h2>
+<p>使用了原始的JDBC操作数据库后，好多有代码洁癖的同学都忍不住开始重构了，因为大部分代码都是样板代码，只有少部分才和业务逻辑相关，好消息是Spring已经帮我们重构过了，Spring将数据访问的样板代码抽象到模板类之中，我们可以直接使用模板类，从而简化了JDBC代码。</p>
+<h3 id="新增数据-1">4.1 新增数据</h3>
+<p>首先，在配置类DataSourceConfig中添加如下配置：</p>
+<pre><code><code>@Bean
+public JdbcTemplate jdbcTemplate(DataSource dataSource) {
+    return new JdbcTemplate(dataSource);
+}</code></code></pre>
+<p>然后将之前新建的类JdbcBookRepository上的@Repository注解移除掉。</p>
+<p>接着，新建数据访问实现类JdbcTemplateBookRepository如下所示：</p>
+<pre><code><code>package chapter10.db.jdbc;
+
+import chapter10.db.BookRepository;
+import chapter10.domain.Book;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.stereotype.Repository;
+
+import java.sql.Date;
+
+@Repository
+public class JdbcTemplateBookRepository implements BookRepository {
+    private static final String SQL_INSERT_BOOK =
+            &quot;INSERT INTO book(book_name, author, create_by, create_time, modify_by, modify_time) VALUES (?,?,?,?,?,?);&quot;;
+
+    @Autowired
+    private JdbcOperations jdbcOperations;
+
+    @Override
+    public void addBook(Book book) {
+        jdbcOperations.update(SQL_INSERT_BOOK, book.getBookName(),
+                book.getAuthor(),
+                book.getCreateBy(),
+                new Date(System.currentTimeMillis()),
+                book.getModifyBy(),
+                new Date(System.currentTimeMillis()));
+    }
+}</code></code></pre>
+<blockquote>
+<p>注意事项：该类添加了@Repository注解，以便Spring能够扫描到将其注册为bean。</p>
+</blockquote>
+<p>很简洁有没有，从之前的代码优化到现在的代码，有代码洁癖的同学估计开心死了。</p>
+<p>因为之前测试类BookRepositoryTest中，我们注入的是接口，所以我们不需要修改测试类的代码，即可直接访问到新建的JdbcTemplateBookRepository类的实现方法：</p>
+<pre><code><code>@Autowired
+private BookRepository bookRepository;</code></code></pre>
+<p>运行之前的测试方法testAddBook()，数据成功新增到数据库：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库6.png" /></p>
+<h3 id="更新数据-1">4.2 更新数据</h3>
+<p>在数据访问实现类JdbcTemplateBookRepository中添加如下代码：</p>
+<pre><code><code>private static final String SQL_UPDATE_BOOK =
+            &quot;UPDATE Book SET book_name = ?,author = ?,modify_by = ?,modify_time=? WHERE book_id = ?;&quot;;
+
+@Override
+public void updateBook(Book book) {
+    jdbcOperations.update(SQL_UPDATE_BOOK, book.getBookName(),
+            book.getAuthor(),
+            book.getModifyBy(),
+            new Timestamp(System.currentTimeMillis()),
+            book.getBookId());
+}</code></code></pre>
+<p>然后简单修改下之前的测试方法testUpdateBook()：</p>
+<pre><code><code>@Test
+public void testUpdateBook() {
+    Book book = new Book(4L, &quot;Spring实战（第4版）&quot;, &quot;Craig Walls&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+
+    book = new Book(5L, &quot;Java EE开发的颠覆者：Spring Boot实战&quot;, &quot;汪云飞&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+
+    book = new Book(6L, &quot;RabbitMQ实战指南&quot;, &quot;朱忠华&quot;, &quot;zwwhnly&quot;);
+
+    bookRepository.updateBook(book);
+}</code></code></pre>
+<p>运行之前的测试方法testUpdateBook()，数据更新成功：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库7.png" /></p>
+<h3 id="查找数据-1">4.3 查找数据</h3>
+<p>在数据访问实现类JdbcTemplateBookRepository中添加如下代码：</p>
+<pre><code><code>private static final String SQL_SELECT_BOOK =
+            &quot;SELECT book_id,book_name,author,create_by,create_time,modify_by,modify_time FROM book WHERE book_id = ?;&quot;;
+
+@Override
+public Book findBook(long bookId) {
+    return jdbcOperations.queryForObject(SQL_SELECT_BOOK, new BookRowMapper(), bookId);
+}
+
+private static final class BookRowMapper implements RowMapper&lt;Book&gt; {
+
+    @Override
+    public Book mapRow(ResultSet resultSet, int i) throws SQLException {
+        Book book = new Book();
+        book.setBookId(resultSet.getLong(&quot;book_id&quot;));
+        book.setBookName(resultSet.getString(&quot;book_name&quot;));
+        book.setAuthor(resultSet.getString(&quot;author&quot;));
+        book.setCreateBy(resultSet.getString(&quot;create_by&quot;));
+        book.setCreateTime(resultSet.getTimestamp(&quot;create_time&quot;));
+        book.setModifyBy(resultSet.getString(&quot;modify_by&quot;));
+        book.setModifyTime(resultSet.getTimestamp(&quot;modify_time&quot;));
+
+
+        return book;
+    }
+}</code></code></pre>
+<p>运行之前的测试方法testFindBook()，数据查询成功：</p>
+<p><img src="./images/Spring入门(十五)：使用Spring JDBC操作数据库5.png" /></p>
+<h2 id="源码及参考">5. 源码及参考</h2>
+<p>源码地址：<a href="https://github.com/zwwhnly/spring-action.git" class="uri">https://github.com/zwwhnly/spring-action.git</a>，欢迎下载。</p>
+<p>Craig Walls 《Spring实战（第4版）》</p>
+<p>最后，欢迎关注我的微信公众号：「申城异乡人」，所有博客会同步更新。</p>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

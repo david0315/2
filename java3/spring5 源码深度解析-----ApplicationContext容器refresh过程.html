@@ -1,0 +1,984 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修spring5 源码深度解析-----ApplicationContext容器refresh过程' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>spring5 源码深度解析-----ApplicationContext容器refresh过程</center></div><div class='banquan'>原文出处:本文由博客园博主chen_hao提供。<br/>
+原文连接:https://www.cnblogs.com/java-chen-hao/p/11579591.html</div><br>
+    <p>在之前的博文中我们一直以BeanFactory接口以及它的默认实现类XmlBeanFactory为例进行分析，但是Spring中还提供了另一个接口ApplicationContext，用于扩展BeanFactory中现有的功能。 <br />ApplicationContext和BeanFactory两者都是用于加载Bean的，但是相比之下，ApplicationContext提供了更多的扩展功能，简而言之：ApplicationContext包含BeanFactory的所有功能。通常建议比优先使用ApplicationContext，除非在一些限制的场合，比如字节长度对内存有很大的影响时（Applet），绝大多数&ldquo;典型的&rdquo;企业应用系统，ApplicationContext就是需要使用的。 <br />那么究竟ApplicationContext比BeanFactory多了哪些功能？首先我们来看看使用两个不同的类去加载配置文件在写法上的不同如下代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">//</span><span style="color: #008000;">使用BeanFactory方式加载XML.</span>
+BeanFactory bf = <span style="color: #0000ff;">new</span> XmlBeanFactory(<span style="color: #0000ff;">new</span> ClassPathResource("beanFactoryTest.xml"<span style="color: #000000;">));
+
+</span><span style="color: #008000;">//</span><span style="color: #008000;">使用ApplicationContext方式加载XML.</span>
+ApplicationContext bf = <span style="color: #0000ff;">new</span> ClassPathXmlApplicationContext("beanFactoryTest.xml");</code></pre>
+
+<p>接下来我们就以ClassPathXmlApplicationContext作为切入点，开始对整体功能进行分析。首先看下其构造函数：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span><span style="color: #000000;"> ClassPathXmlApplicationContext() {
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ClassPathXmlApplicationContext(ApplicationContext parent) {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(parent);
+}
+
+</span><span style="color: #0000ff;">public</span> ClassPathXmlApplicationContext(String configLocation) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">this</span>(<span style="color: #0000ff;">new</span> String[] {configLocation}, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">public</span> ClassPathXmlApplicationContext(String... configLocations) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">this</span>(configLocations, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">public</span><span style="color: #000000;"> ClassPathXmlApplicationContext(String[] configLocations, @Nullable ApplicationContext parent)
+        </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+
+    </span><span style="color: #0000ff;">this</span>(configLocations, <span style="color: #0000ff;">true</span><span style="color: #000000;">, parent);
+}
+
+</span><span style="color: #0000ff;">public</span> ClassPathXmlApplicationContext(String[] configLocations, <span style="color: #0000ff;">boolean</span> refresh) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">this</span>(configLocations, refresh, <span style="color: #0000ff;">null</span><span style="color: #000000;">);
+}
+
+</span><span style="color: #0000ff;">public</span> ClassPathXmlApplicationContext(String[] configLocations, <span style="color: #0000ff;">boolean</span><span style="color: #000000;"> refresh, @Nullable ApplicationContext parent)
+        </span><span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(parent);
+<strong>    setConfigLocations(configLocations);
+    </strong></span><strong><span style="color: #0000ff;">if</span></strong><span style="color: #000000;"><strong> (refresh) {
+        refresh();
+    }</strong>
+}</span></code></pre>
+
+<p>设置路径是必不可少的步骤，ClassPathXmlApplicationContext中可以将配置文件路径以数组的方式传入，ClassPathXmlApplicationContext可以对数组进行解析并进行加载。而对于解析及功能实现都在refresh()中实现。</p>
+<h2 id="1-设置配置路径">设置配置路径</h2>
+<p>在ClassPathXmlApplicationContext中支持多个配置文件以数组方式同时传入，以下是设置配置路径方法代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> setConfigLocations(@Nullable String... locations) {
+    </span><span style="color: #0000ff;">if</span> (locations != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        Assert.noNullElements(locations, </span>"Config locations must not be null"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">this</span>.configLocations = <span style="color: #0000ff;">new</span><span style="color: #000000;"> String[locations.length];
+        </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">int</span> i = 0; i &lt; locations.length; i++<span style="color: #000000;">) {
+            </span><span style="color: #0000ff;">this</span>.configLocations[i] =<span style="color: #000000;"> resolvePath(locations[i]).trim();
+        }
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.configLocations = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>其中如果给定的路径中包含特殊符号，如${var}，那么会在方法resolvePath中解析系统变量并替换</p>
+<h2 id="2-扩展功能">扩展功能</h2>
+<p>设置了路径之后，便可以根据路径做配置文件的解析以及各种功能的实现了。可以说refresh函数中包含了几乎ApplicationContext中提供的全部功能，而且此函数中逻辑非常清晰明了，使我们很容易分析对应的层次及逻辑，我们看下方法代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> refresh() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException, IllegalStateException {
+    </span><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.startupShutdownMonitor) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">准备刷新的上下文 环境  </span>
+<span style="color: #000000;">        prepareRefresh();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">初始化BeanFactory，并进行XML文件读取  </span>
+        <span style="color: #008000;">/*</span><span style="color: #008000;"> 
+         * ClassPathXMLApplicationContext包含着BeanFactory所提供的一切特征，在这一步骤中将会复用 
+         * BeanFactory中的配置文件读取解析及其他功能，这一步之后，ClassPathXmlApplicationContext 
+         * 实际上就已经包含了BeanFactory所提供的功能，也就是可以进行Bean的提取等基础操作了。 
+         </span><span style="color: #008000;">*/</span><span style="color: #000000;">  
+        ConfigurableListableBeanFactory beanFactory </span>=<span style="color: #000000;"><strong> obtainFreshBeanFactory()</strong>;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">对beanFactory进行各种功能填充  </span>
+<span style="color: #000000;">        prepareBeanFactory(beanFactory);
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">子类覆盖方法做额外处理  </span>
+            <span style="color: #008000;">/*</span><span style="color: #008000;"> 
+             * Spring之所以强大，为世人所推崇，除了它功能上为大家提供了便利外，还有一方面是它的 
+             * 完美架构，开放式的架构让使用它的程序员很容易根据业务需要扩展已经存在的功能。这种开放式 
+             * 的设计在Spring中随处可见，例如在本例中就提供了一个空的函数实现postProcessBeanFactory来 
+             * 方便程序猿在业务上做进一步扩展 
+             </span><span style="color: #008000;">*/</span><strong><span style="color: #000000;"> 
+            postProcessBeanFactory(beanFactory);
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">激活各种beanFactory处理器  </span>
+<strong><span style="color: #000000;">            invokeBeanFactoryPostProcessors(beanFactory);
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">注册拦截Bean创建的Bean处理器，这里只是注册，真正的调用实在getBean时候 </span>
+<strong><span style="color: #000000;">            registerBeanPostProcessors(beanFactory);
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">为上下文初始化Message源，即不同语言的消息体，国际化处理  </span>
+<span style="color: #000000;">            initMessageSource();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">初始化应用消息广播器，并放入&ldquo;applicationEventMulticaster&rdquo;bean中  </span>
+<strong><span style="color: #000000;">            initApplicationEventMulticaster();
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">留给子类来初始化其它的Bean  </span>
+<span style="color: #000000;">            onRefresh();
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">在所有注册的bean中查找Listener bean，注册到消息广播器中  </span>
+<strong><span style="color: #000000;">            registerListeners();
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">初始化剩下的单实例（非惰性的）  </span>
+<strong><span style="color: #000000;">            finishBeanFactoryInitialization(beanFactory);
+            </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">完成刷新过程，通知生命周期处理器lifecycleProcessor刷新过程，同时发出ContextRefreshEvent通知别人  </span>
+<span style="color: #000000;"><strong>            finishRefresh();</strong>
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (BeansException ex) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isWarnEnabled()) {
+                logger.warn(</span>"Exception encountered during context initialization - " +
+                        "cancelling refresh attempt: " +<span style="color: #000000;"> ex);
+            }
+            destroyBeans();
+            cancelRefresh(ex);
+            </span><span style="color: #0000ff;">throw</span><span style="color: #000000;"> ex;
+        }
+        </span><span style="color: #0000ff;">finally</span><span style="color: #000000;"> {
+            resetCommonCaches();
+        }
+    }
+}</span></code></pre>
+
+<p>我们简单的分析下代码的步骤： <br />（1）初始化前的准备工作，例如对系统属性或者环境变量进行准备及验证。 <br />在某种情况下项目的使用需要读取某些系统变量，而这个变量的设置很可能会影响着系统的正确性，那么ClassPathXmlApplicationContext为我们提供的这个准备函数就显得非常必要，他可以在spring启动的时候提前对必须的环境变量进行存在性验证。 <br />（2）初始化BeanFactory，并进行XML文件读取。 <br />之前提到ClassPathXmlApplicationContext包含着对BeanFactory所提供的一切特征，那么这一步中将会复用BeanFactory中的配置文件读取解析其他功能，这一步之后ClassPathXmlApplicationContext实际上就已经包含了BeanFactory所提供的功能，也就是可以进行Bean的提取等基本操作了。 <br />（3）对BeanFactory进行各种功能填充 <br />@Qualifier和@Autowired应该是大家非常熟悉的注解了，那么这两个注解正是在这一步骤中增加支持的。 <br />（4）子类覆盖方法做额外处理。 <br />spring之所以强大，为世人所推崇，除了它功能上为大家提供了遍历外，还有一方面是它完美的架构，开放式的架构让使用它的程序员很容易根据业务需要扩展已经存在的功能。这种开放式的设计在spring中随处可见，例如本利中就提供了一个空的函数实现postProcessBeanFactory来方便程序员在业务上做进一步的扩展。 <br />（5）激活各种BeanFactory处理器 <br />（6）注册拦截bean创建的bean处理器，这里只是注册，真正的调用是在getBean时候 <br />（7）为上下文初始化Message源，及对不同语言的小西天进行国际化处理 <br />（8）初始化应用消息广播器，并放入&ldquo;applicationEventMulticaster&rdquo;bean中 <br />（9）留给子类来初始化其他的bean <br />（10）在所有注册的bean中查找listener bean，注册到消息广播器中 <br />（11）初始化剩下的单实例（非惰性的） <br />（12）完成刷新过程，通知生命周期处理器lifecycleProcessor刷新过程，同时发出ContextRefreshEvent通知别人。 <br />接下来我们就详细的讲解每一个过程</p>
+<h2>prepareRefresh刷新上下文的准备工作</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #008000;">/**</span><span style="color: #008000;">
+ * 准备刷新上下文环境，设置它的启动日期和活动标志，以及执行任何属性源的初始化。
+ * Prepare this context for refreshing, setting its startup date and
+ * active flag as well as performing any initialization of property sources.
+ </span><span style="color: #008000;">*/</span>
+<span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> prepareRefresh() {
+    </span><span style="color: #0000ff;">this</span>.startupDate =<span style="color: #000000;"> System.currentTimeMillis();
+    </span><span style="color: #0000ff;">this</span>.closed.set(<span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">this</span>.active.set(<span style="color: #0000ff;">true</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 在上下文环境中初始化任何占位符属性源。(空的方法,留给子类覆盖)</span>
+<span style="color: #000000;">    initPropertySources();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 验证需要的属性文件是否都已放入环境中</span>
+<span style="color: #000000;">    getEnvironment().validateRequiredProperties();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 允许收集早期的应用程序事件，一旦有了多播器，就可以发布&hellip;&hellip;</span>
+    <span style="color: #0000ff;">this</span>.earlyApplicationEvents = <span style="color: #0000ff;">new</span> LinkedHashSet&lt;&gt;<span style="color: #000000;">();
+}</span></code></pre>
+
+<h2>obtainFreshBeanFactory-&gt;读取xml并初始化BeanFactory</h2>
+<p>obtainFreshBeanFactory方法从字面理解是获取beanFactory.ApplicationContext是对BeanFactory的扩展，在其基础上添加了大量的基础应用，obtainFreshBeanFactory正式实现beanFactory的地方，经过这个函数后ApplicationContext就有了BeanFactory的全部功能。我们看下此方法的代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> ConfigurableListableBeanFactory obtainFreshBeanFactory() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">初始化BeanFactory,并进行XML文件读取，并将得到的BeanFactory记录在当前实体的属性中  </span>
+<strong><span style="color: #000000;">    refreshBeanFactory();
+    </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">返回当前实体的beanFactory属性 </span>
+    ConfigurableListableBeanFactory beanFactory =<span style="color: #000000;"> getBeanFactory();
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isDebugEnabled()) {
+        logger.debug(</span>"Bean factory for " + getDisplayName() + ": " +<span style="color: #000000;"> beanFactory);
+    }
+    </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> beanFactory;
+}</span></code></pre>
+
+<p>继续深入到refreshBeanFactory方法中，方法的实现是在AbstractRefreshableApplicationContext中：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">final</span> <span style="color: #0000ff;">void</span> refreshBeanFactory() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (hasBeanFactory()) {
+        destroyBeans();
+        closeBeanFactory();
+    }
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">创建DefaultListableBeanFactory  </span>
+        <span style="color: #008000;">/*</span><span style="color: #008000;"> 
+         * 以前我们分析BeanFactory的时候，不知道是否还有印象，声明方式为：BeanFactory bf =  
+         * new XmlBeanFactory("beanFactoryTest.xml")，其中的XmlBeanFactory继承自DefaulltListableBeanFactory; 
+         * 并提供了XmlBeanDefinitionReader类型的reader属性，也就是说DefaultListableBeanFactory是容器的基础。必须 
+         * 首先要实例化。 
+         </span><span style="color: #008000;">*/</span><strong><span style="color: #000000;">  
+        DefaultListableBeanFactory beanFactory </span>=<span style="color: #000000;"> createBeanFactory();
+        </span></strong><span style="color: #008000;">//</span><span style="color: #008000;">为了序列化指定id,如果需要的话，让这个BeanFactory从id反序列化到BeanFactory对象  </span>
+<span style="color: #000000;">        beanFactory.setSerializationId(getId());
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">定制beanFactory，设置相关属性，包括是否允许覆盖同名称的不同定义的对象以及循环依赖以及设置  
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">@Autowired和Qualifier注解解析器QualifierAnnotationAutowireCandidateResolver  </span>
+<span style="color: #000000;">        customizeBeanFactory(beanFactory);
+        </span><strong><span style="color: #008000;">//</span><span style="color: #008000;">加载BeanDefiniton  </span>
+<span style="color: #000000;">        loadBeanDefinitions(beanFactory);
+        </span></strong><span style="color: #0000ff;">synchronized</span> (<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanFactoryMonitor) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">使用全局变量记录BeanFactory实例。  
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">因为DefaultListableBeanFactory类型的变量beanFactory是函数内部的局部变量，  
+            </span><span style="color: #008000;">//</span><span style="color: #008000;">所以要使用全局变量记录解析结果  </span>
+            <span style="color: #0000ff;">this</span>.beanFactory =<span style="color: #000000;"> beanFactory;
+        }
+    }
+    </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException ex) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> ApplicationContextException("I/O error parsing bean definition source for " +<span style="color: #000000;"> getDisplayName(), ex);
+    }
+}</span></code></pre>
+
+<h3 id="42-加载beandefinition">加载BeanDefinition</h3>
+<p>在第一步中提到了将ClassPathXmlApplicationContext与XMLBeanFactory创建的对比，除了初始化DefaultListableBeanFactory外，还需要XmlBeanDefinitionReader来读取XML，那么在loadBeanDefinitions方法中首先要做的就是初始化XmlBeanDefinitonReader，我们跟着到loadBeanDefinitions(beanFactory)方法体中，我们看到的是在AbstractXmlApplicationContext中实现的，具体代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> loadBeanDefinitions(DefaultListableBeanFactory beanFactory) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException, IOException {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Create a new XmlBeanDefinitionReader for the given BeanFactory.</span>
+    XmlBeanDefinitionReader beanDefinitionReader = <span style="color: #0000ff;">new</span><span style="color: #000000;"> XmlBeanDefinitionReader(beanFactory);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Configure the bean definition reader with this context's
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> resource loading environment.</span>
+    beanDefinitionReader.setEnvironment(<span style="color: #0000ff;">this</span><span style="color: #000000;">.getEnvironment());
+    beanDefinitionReader.setResourceLoader(</span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    beanDefinitionReader.setEntityResolver(</span><span style="color: #0000ff;">new</span> ResourceEntityResolver(<span style="color: #0000ff;">this</span><span style="color: #000000;">));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Allow a subclass to provide custom initialization of the reader,
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> then proceed with actually loading the bean definitions.</span>
+<span style="color: #000000;">    initBeanDefinitionReader(beanDefinitionReader);
+    loadBeanDefinitions(beanDefinitionReader);
+}</span></code></pre>
+
+<p>在初始化了DefaultListableBeanFactory和XmlBeanDefinitionReader后，就可以进行配置文件的读取了。继续进入到loadBeanDefinitions(beanDefinitionReader)方法体中，代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span> loadBeanDefinitions(XmlBeanDefinitionReader reader) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException, IOException {
+    Resource[] configResources </span>=<span style="color: #000000;"> getConfigResources();
+    </span><span style="color: #0000ff;">if</span> (configResources != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        reader.loadBeanDefinitions(configResources);
+    }
+    String[] configLocations </span>=<span style="color: #000000;"> getConfigLocations();
+    </span><span style="color: #0000ff;">if</span> (configLocations != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        reader.loadBeanDefinitions(configLocations);
+    }
+}</span></code></pre>
+
+<p>因为在XmlBeanDefinitionReader中已经将之前初始化的DefaultListableBeanFactory注册进去了，所以XmlBeanDefinitionReader所读取的BeanDefinitionHolder都会注册到DefinitionListableBeanFactory中，也就是经过这个步骤，DefaultListableBeanFactory的变量beanFactory已经包含了所有解析好的配置。</p>
+<h2 id="5-功能扩展">功能扩展</h2>
+<p>如上图所示prepareBeanFactory(beanFactory)就是在功能上扩展的方法，而在进入这个方法前spring已经完成了对配置的解析，接下来我们详细分析下次函数，进入方法体：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Tell the internal bean factory to use the context's class loader etc.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">设置beanFactory的classLoader为当前context的classloader  </span>
+<span style="color: #000000;">    beanFactory.setBeanClassLoader(getClassLoader());
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">设置beanFactory的表达式语言处理器，Spring3增加了表达式语言的支持，  
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">默认可以使用#{bean.xxx}的形式来调用相关属性值  </span>
+    beanFactory.setBeanExpressionResolver(<span style="color: #0000ff;">new</span><span style="color: #000000;"> StandardBeanExpressionResolver(beanFactory.getBeanClassLoader()));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">为beanFactory增加了一个的propertyEditor，这个主要是对bean的属性等设置管理的一个工具</span>
+    beanFactory.addPropertyEditorRegistrar(<span style="color: #0000ff;">new</span> ResourceEditorRegistrar(<span style="color: #0000ff;">this</span><span style="color: #000000;">, getEnvironment()));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Configure the bean factory with context callbacks.</span>
+    beanFactory.addBeanPostProcessor(<span style="color: #0000ff;">new</span> ApplicationContextAwareProcessor(<span style="color: #0000ff;">this</span><span style="color: #000000;">));
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">设置了几个忽略自动装配的接口</span>
+    beanFactory.ignoreDependencyInterface(EnvironmentAware.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    beanFactory.ignoreDependencyInterface(ResourceLoaderAware.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    beanFactory.ignoreDependencyInterface(ApplicationEventPublisherAware.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    beanFactory.ignoreDependencyInterface(MessageSourceAware.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    beanFactory.ignoreDependencyInterface(ApplicationContextAware.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> BeanFactory interface not registered as resolvable type in a plain factory.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> MessageSource registered (and found for autowiring) as a bean.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">设置了几个自动装配的特殊规则</span>
+    beanFactory.registerResolvableDependency(BeanFactory.<span style="color: #0000ff;">class</span><span style="color: #000000;">, beanFactory);
+    beanFactory.registerResolvableDependency(ResourceLoader.</span><span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    beanFactory.registerResolvableDependency(ApplicationEventPublisher.</span><span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    beanFactory.registerResolvableDependency(ApplicationContext.</span><span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Register early post-processor for detecting inner beans as ApplicationListeners.</span>
+    beanFactory.addBeanPostProcessor(<span style="color: #0000ff;">new</span> ApplicationListenerDetector(<span style="color: #0000ff;">this</span><span style="color: #000000;">));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Detect a LoadTimeWeaver and prepare for weaving, if found.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">增加对AspectJ的支持 </span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (beanFactory.containsBean(LOAD_TIME_WEAVER_BEAN_NAME)) {
+        beanFactory.addBeanPostProcessor(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> LoadTimeWeaverAwareProcessor(beanFactory));
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Set a temporary ClassLoader for type matching.</span>
+        beanFactory.setTempClassLoader(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ContextTypeMatchClassLoader(beanFactory.getBeanClassLoader()));
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Register default environment beans.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">添加默认的系统环境bean  </span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">beanFactory.containsLocalBean(ENVIRONMENT_BEAN_NAME)) {
+        beanFactory.registerSingleton(ENVIRONMENT_BEAN_NAME, getEnvironment());
+    }
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">beanFactory.containsLocalBean(SYSTEM_PROPERTIES_BEAN_NAME)) {
+        beanFactory.registerSingleton(SYSTEM_PROPERTIES_BEAN_NAME, getEnvironment().getSystemProperties());
+    }
+    </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">beanFactory.containsLocalBean(SYSTEM_ENVIRONMENT_BEAN_NAME)) {
+        beanFactory.registerSingleton(SYSTEM_ENVIRONMENT_BEAN_NAME, getEnvironment().getSystemEnvironment());
+    }
+}</span></code></pre>
+
+<p>详细分析下代码发现上面函数主要是在以下方法进行了扩展： <br />（1）对SPEL语言的支持 <br />（2）增加对属性编辑器的支持 <br />（3）增加对一些内置类的支持，如EnvironmentAware、MessageSourceAware的注入 <br />（4）设置了依赖功能可忽略的接口 <br />（5）注册一些固定依赖的属性 <br />（6）增加了AspectJ的支持 <br />（7）将相关环境变量及属性以单例模式注册&nbsp;</p>
+<h3 id="51-增加对spel语言的支持">增加对SPEL语言的支持</h3>
+<p>Spring表达式语言全称为&ldquo;Spring Expression Language&rdquo;，缩写为&ldquo;SpEL&rdquo;，类似于Struts 2x中使用的OGNL语言，SpEL是单独模块，只依赖于core模块，不依赖于其他模块，可以单独使用。 <br />SpEL使用#{&hellip;}作为定界符，所有在大框号中的字符都将被认为是SpEL，使用格式如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;util:properties id="database" location="classpath:db.properties"&gt;  
+&lt;/util:properties&gt;  
+&lt;bean id="dbcp" <span style="color: #0000ff;">class</span>="org.apache.commons.dbcp.BasicDataSource"&gt;  
+  &lt;property name="username" value="#{database.user}"&gt;&lt;/property&gt;  
+  &lt;property name="password" value="#{database.pwd}"&gt;&lt;/property&gt;  
+  &lt;property name="driverClassName" value="#{database.driver}"&gt;&lt;/property&gt;  
+  &lt;property name="url" value="#{database.url}"&gt;&lt;/property&gt;  
+&lt;/bean&gt;</code></pre>
+
+<p>上面只是列举了其中最简单的使用方式，SpEL功能非常强大，使用好可以大大提高开发效率。在源码中通过代码beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver())，注册语言解析器，就可以对SpEL进行解析了，那么之后是在什么地方调用这个解析器的呢？ <br />之前说beanFactory中说过Spring在bean进行初始化的时候会有属性填充的一步，而在这一步中Spring会调用AbstractAutowireCapabelBeanFactory类的applyPropertyValues来进行属性值得解析。同时这个步骤中一般通过AbstractBeanFactory中的evaluateBeanDefinitionString方法进行SpEL解析，方法代码如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span><span style="color: #000000;"> Object evaluateBeanDefinitionString(String value, BeanDefinition beanDefinition) {  
+    </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.beanExpressionResolver == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {  
+        </span><span style="color: #0000ff;">return</span><span style="color: #000000;"> value;  
+    }  
+    Scope scope </span>= (beanDefinition != <span style="color: #0000ff;">null</span> ? getRegisteredScope(beanDefinition.getScope()) : <span style="color: #0000ff;">null</span><span style="color: #000000;">);  
+    </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">this</span>.beanExpressionResolver.evaluate(value, <span style="color: #0000ff;">new</span> BeanExpressionContext(<span style="color: #0000ff;">this</span><span style="color: #000000;">, scope));  
+} </span></code></pre>
+
+<h2 id="6-beanfactory的后处理">BeanFactory的后处理</h2>
+<p>BeanFactory作为spring中容器功能的基础，用于存放所有已经加载的bean，为例保证程序上的高可扩展性，spring针对BeanFactory做了大量的扩展，比如我们熟悉的PostProcessor就是在这里实现的。接下来我们就深入分析下BeanFactory后处理</p>
+<h3 id="61-激活注册的beanfactorypostprocessor">激活注册的BeanFactoryPostProcessor</h3>
+<p>在正是介绍BeanFactoryPostProcessor的后处理前我们先简单的了解下其用法，BeanFactoryPostProcessor接口跟BeanPostProcessor类似，都可以对bean的定义（配置元数据）进行处理，也就是说spring IoC容器允许BeanFactoryPostProcessor在容器实际实例化任何其他的bean之前读取配置元数据，并可能修改他。也可以配置多个BeanFactoryPostProcessor，可以通过order属性来控制BeanFactoryPostProcessor的执行顺序（此属性必须当BeanFactoryPostProcessor实现了Ordered的接口时才可以赊账，因此在实现BeanFactoryPostProcessor时应该考虑实现Ordered接口）。 <br />如果想改变世界的bean实例（例如从配置元数据创建的对象），那最好使用BeanPostProcessor。同样的BeanFactoryPostProcessor的作用域范围是容器级别的，它只是和你锁使用的容器有关。如果你在容器中定义了一个BeanFactoryPostProcessor，它仅仅对此容器中的bean进行后置处理。BeanFactoryPostProcessor不会对定义在另一个容器中的bean进行后置处理，即使这两个容器都在同一层次上。在spring中存在对于BeanFactoryPostProcessor的典型应用，如PropertyPlaceholderConfigurer。</p>
+<h4 id="611-beanfactorypostprocessor的典型应用propertyplaceholderconfigurer">BeanFactoryPostProcessor的典型应用：PropertyPlaceholderConfigurer</h4>
+<p>有时候我们在阅读spring的配置文件中的Bean的描述时，会遇到类似如下情况：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;bean id="user" <span style="color: #0000ff;">class</span>="com.yhl.myspring.demo.applicationcontext.User"&gt;
+    &lt;property name="name" value="${user.name}"/&gt;
+    &lt;property name="birthday" value="${user.birthday"/&gt;
+&lt;/bean&gt;</code></pre>
+
+<p>这其中出现了变量：<span id="MathJax-Element-2-Frame" class="MathJax" data-mathml="&lt;math xmlns=&quot;http://www.w3.org/1998/Math/MathML&quot;&gt;&lt;mrow class=&quot;MJX-TeXAtom-ORD&quot;&gt;&lt;mi&gt;u&lt;/mi&gt;&lt;mi&gt;s&lt;/mi&gt;&lt;mi&gt;e&lt;/mi&gt;&lt;mi&gt;r&lt;/mi&gt;&lt;mo&gt;.&lt;/mo&gt;&lt;mi&gt;n&lt;/mi&gt;&lt;mi&gt;a&lt;/mi&gt;&lt;mi&gt;m&lt;/mi&gt;&lt;mi&gt;e&lt;/mi&gt;&lt;/mrow&gt;&lt;mrow class=&quot;MJX-TeXAtom-ORD&quot;&gt;&lt;mo&gt;&amp;#x3001;&lt;/mo&gt;&lt;/mrow&gt;&lt;/math&gt;"><span id="MathJax-Span-1" class="math"><span id="MathJax-Span-2" class="mrow"><span id="MathJax-Span-3" class="texatom"><span id="MathJax-Span-4" class="mrow"><span id="MathJax-Span-5" class="mi">u<span id="MathJax-Span-6" class="mi">s<span id="MathJax-Span-7" class="mi">e<span id="MathJax-Span-8" class="mi">r<span id="MathJax-Span-9" class="mo">.<span id="MathJax-Span-10" class="mi">n<span id="MathJax-Span-11" class="mi">a<span id="MathJax-Span-12" class="mi">m<span id="MathJax-Span-13" class="mi">e<span id="MathJax-Span-14" class="texatom"><span id="MathJax-Span-15" class="mrow"><span id="MathJax-Span-16" class="mo">、</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="MJX_Assistive_MathML">user.name、{user.birthday}，这是spring的分散配置，可以在另外的配置文件中为user.name、user.birthday指定值，例如在bean.properties文件中定义：</span></span></p>
+<src class="cnblogs_code">
+<pre><code>user.name =<span style="color: #000000;"> xiaoming
+user.birthday </span>= 2019-04-19</code></pre>
+
+<p>当访问名为user的bean时，其name属性就会被字符串xiaoming替换，那spring框架是怎么知道存在这样的配置文件呢，这个就是PropertyPlaceholderConfigurer，需要在配置文件中添加一下代码：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;bean id="userHandler" <span style="color: #0000ff;">class</span>="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer"&gt;
+    &lt;property name="locations"&gt;
+        &lt;list&gt;
+            &lt;value&gt;classpath:bean.properties&lt;/value&gt;
+        &lt;/list&gt;
+    &lt;/property&gt;
+&lt;/bean&gt;</code></pre>
+
+<p>在这个bean中指定了配置文件的位置。其实还是有个问题，这个userHandler只不过是spring框架管理的一个bean，并没有被别的bean或者对象引用，spring的beanFactory是怎么知道这个需要从这个bean中获取配置信息呢？我们看下PropertyPlaceholderConfigurer这个类的层次结构，如下图：&nbsp;</p>
+<p><img src="./images/spring5 源码深度解析-----ApplicationContext容器refresh过程0.png" alt="" /></p>
+<p>从上图中我们可以看到PropertyPlaceholderConfigurer间接的继承了BeanFactoryPostProcessor接口，这是一个很特别的接口，当spring加载任何实现了这个接口的bean的配置时，都会在bean工厂载入所有bean的配置之后执行postProcessBeanFactory方法。在PropertyResourceConfigurer类中实现了postProcessBeanFactory方法，在方法中先后调用了mergeProperties、convertProperties、processProperties这三个方法，分别得到配置，将得到的配置转换为合适的类型，最后将配置内容告知BeanFactory。 <br />正是通过实现BeanFactoryPostProcessor接口，BeanFactory会在实例化任何bean之前获得配置信息，从而能够正确的解析bean描述文件中的变量引用。</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+        Properties mergedProps </span>= <span style="color: #0000ff;">this</span><span style="color: #000000;">.mergeProperties();
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.convertProperties(mergedProps);
+        </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.processProperties(beanFactory, mergedProps);
+    } </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (IOException var3) {
+        </span><span style="color: #0000ff;">throw</span> <span style="color: #0000ff;">new</span> BeanInitializationException("Could not load properties"<span style="color: #000000;">, var3);
+    }
+}</span></code></pre>
+
+<h3 id="612-自定义beanfactorypostprocessor">自定义BeanFactoryPostProcessor</h3>
+<p>编写实现了BeanFactoryPostProcessor接口的MyBeanFactoryPostProcessor的容器后处理器，如下代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MyBeanFactoryPostProcessor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> BeanFactoryPostProcessor {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+        System.out.println(</span>"对容器进行后处理。。。。"<span style="color: #000000;">);
+    }
+}</span></code></pre>
+
+<p>然后在配置文件中注册这个bean，如下：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;bean id="myPost" <span style="color: #0000ff;">class</span>="com.yhl.myspring.demo.applicationcontext.MyBeanFactoryPostProcessor"&gt;&lt;/bean&gt;</code></pre>
+
+<p>最后编写测试代码：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> Test {
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> main(String[] args) {
+        ApplicationContext context </span>= <span style="color: #0000ff;">new</span> ClassPathXmlApplicationContext("applicationContext.xml"<span style="color: #000000;">);
+
+        User user </span>= (User)context.getBean("user"<span style="color: #000000;">);
+        System.out.println(user.getName());
+
+    }
+}</span></code></pre>
+
+<h3 id="613-激活beanfactorypostprocessor">激活BeanFactoryPostProcessor</h3>
+<p>在了解BeanFactoryPostProcessor的用法后我们便可以深入的研究BeanFactoryPostProcessor的调用过程了，其是在方法invokeBeanFactoryPostProcessors(beanFactory)中实现的，进入到方法内部：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span> invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory, List&lt;BeanFactoryPostProcessor&gt;<span style="color: #000000;"> beanFactoryPostProcessors) {
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Invoke BeanDefinitionRegistryPostProcessors first, if any.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1、首先调用BeanDefinitionRegistryPostProcessors</span>
+    Set&lt;String&gt; processedBeans = <span style="color: #0000ff;">new</span> HashSet&lt;&gt;<span style="color: #000000;">();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> beanFactory是BeanDefinitionRegistry类型</span>
+    <span style="color: #0000ff;">if</span> (beanFactory <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> BeanDefinitionRegistry) {
+        BeanDefinitionRegistry registry </span>=<span style="color: #000000;"> (BeanDefinitionRegistry) beanFactory;
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义BeanFactoryPostProcessor</span>
+        List&lt;BeanFactoryPostProcessor&gt; regularPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 定义BeanDefinitionRegistryPostProcessor集合</span>
+        List&lt;BeanDefinitionRegistryPostProcessor&gt; registryProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 循环手动注册的beanFactoryPostProcessors</span>
+        <span style="color: #0000ff;">for</span><span style="color: #000000;"> (BeanFactoryPostProcessor postProcessor : beanFactoryPostProcessors) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果是BeanDefinitionRegistryPostProcessor的实例话,则调用其postProcessBeanDefinitionRegistry方法,对bean进行注册操作</span>
+            <span style="color: #0000ff;">if</span> (postProcessor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> BeanDefinitionRegistryPostProcessor) {
+                </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果是BeanDefinitionRegistryPostProcessor类型,则直接调用其postProcessBeanDefinitionRegistry</span>
+                BeanDefinitionRegistryPostProcessor registryProcessor =<span style="color: #000000;"> (BeanDefinitionRegistryPostProcessor) postProcessor;
+                registryProcessor.postProcessBeanDefinitionRegistry(registry);
+                registryProcessors.add(registryProcessor);
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 否则则将其当做普通的BeanFactoryPostProcessor处理,直接加入regularPostProcessors集合,以备后续处理</span>
+            <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                regularPostProcessors.add(postProcessor);
+            }
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Do not initialize FactoryBeans here: We need to leave all regular beans
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> uninitialized to let the bean factory post-processors apply to them!
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Separate between BeanDefinitionRegistryPostProcessors that implement
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> PriorityOrdered, Ordered, and the rest.</span>
+        List&lt;BeanDefinitionRegistryPostProcessor&gt; currentRegistryProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> First, invoke the BeanDefinitionRegistryPostProcessors that implement PriorityOrdered.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先调用实现了PriorityOrdered(有限排序接口)的BeanDefinitionRegistryPostProcessors</span>
+        String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : postProcessorNames) {
+            </span><span style="color: #0000ff;">if</span> (beanFactory.isTypeMatch(ppName, PriorityOrdered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+                currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+                processedBeans.add(ppName);
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 排序</span>
+<span style="color: #000000;">        sortPostProcessors(currentRegistryProcessors, beanFactory);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入registryProcessors集合</span>
+<span style="color: #000000;">        registryProcessors.addAll(currentRegistryProcessors);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用所有实现了PriorityOrdered的的BeanDefinitionRegistryPostProcessors的postProcessBeanDefinitionRegistry方法,注册bean</span>
+<span style="color: #000000;">        invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空currentRegistryProcessors,以备下次使用</span>
+<span style="color: #000000;">        currentRegistryProcessors.clear();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Next, invoke the BeanDefinitionRegistryPostProcessors that implement Ordered.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 其次,调用实现了Ordered(普通排序接口)的BeanDefinitionRegistryPostProcessors</span>
+        postProcessorNames = beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : postProcessorNames) {
+            </span><span style="color: #0000ff;">if</span> (!processedBeans.contains(ppName) &amp;&amp; beanFactory.isTypeMatch(ppName, Ordered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+                currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+                processedBeans.add(ppName);
+            }
+        }
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 排序</span>
+<span style="color: #000000;">        sortPostProcessors(currentRegistryProcessors, beanFactory);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入registryProcessors集合</span>
+<span style="color: #000000;">        registryProcessors.addAll(currentRegistryProcessors);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用所有实现了PriorityOrdered的的BeanDefinitionRegistryPostProcessors的postProcessBeanDefinitionRegistry方法,注册bean</span>
+<span style="color: #000000;">        invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry);
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空currentRegistryProcessors,以备下次使用</span>
+<span style="color: #000000;">        currentRegistryProcessors.clear();
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Finally, invoke all other BeanDefinitionRegistryPostProcessors until no further ones appear.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 最后,调用其他的BeanDefinitionRegistryPostProcessors</span>
+        <span style="color: #0000ff;">boolean</span> reiterate = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+        </span><span style="color: #0000ff;">while</span><span style="color: #000000;"> (reiterate) {
+            reiterate </span>= <span style="color: #0000ff;">false</span><span style="color: #000000;">;
+            postProcessorNames </span>= beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+            </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : postProcessorNames) {
+                </span><span style="color: #0000ff;">if</span> (!<span style="color: #000000;">processedBeans.contains(ppName)) {
+                    currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+                    processedBeans.add(ppName);
+                    reiterate </span>= <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+                }
+            }
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 排序</span>
+<span style="color: #000000;">            sortPostProcessors(currentRegistryProcessors, beanFactory);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入registryProcessors集合</span>
+<span style="color: #000000;">            registryProcessors.addAll(currentRegistryProcessors);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用其他的BeanDefinitionRegistryPostProcessors的postProcessBeanDefinitionRegistry方法,注册bean</span>
+<span style="color: #000000;">            invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry);
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空currentRegistryProcessors,以备下次使用</span>
+<span style="color: #000000;">            currentRegistryProcessors.clear();
+        }
+
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Now, invoke the postProcessBeanFactory callback of all processors handled so far.
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用所有BeanDefinitionRegistryPostProcessor(包括手动注册和通过配置文件注册)
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 和BeanFactoryPostProcessor(只有手动注册)的回调函数--&gt;postProcessBeanFactory</span>
+<span style="color: #000000;">        invokeBeanFactoryPostProcessors(registryProcessors, beanFactory);
+        invokeBeanFactoryPostProcessors(regularPostProcessors, beanFactory);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2、如果不是BeanDefinitionRegistry的实例,那么直接调用其回调函数即可--&gt;postProcessBeanFactory</span>
+    <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> Invoke factory processors registered with the context instance.</span>
+<span style="color: #000000;"><strong>        invokeBeanFactoryPostProcessors(beanFactoryPostProcessors, beanFactory);</strong>
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Do not initialize FactoryBeans here: We need to leave all regular beans
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> uninitialized to let the bean factory post-processors apply to them!
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 3、上面的代码已经处理完了所有的BeanDefinitionRegistryPostProcessors和手动注册的BeanFactoryPostProcessor
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 接下来要处理通过配置文件注册的BeanFactoryPostProcessor
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先获取所有的BeanFactoryPostProcessor(注意:这里获取的集合会包含BeanDefinitionRegistryPostProcessors)</span>
+    String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanFactoryPostProcessor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Separate between BeanFactoryPostProcessors that implement PriorityOrdered, Ordered, and the rest.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 这里,将实现了PriorityOrdered,Ordered的处理器和其他的处理器区分开来,分别进行处理
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> PriorityOrdered有序处理器</span>
+    List&lt;BeanFactoryPostProcessor&gt; priorityOrderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Ordered有序处理器</span>
+    List&lt;String&gt; orderedPostProcessorNames = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 无序处理器</span>
+    List&lt;String&gt; nonOrderedPostProcessorNames = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : postProcessorNames) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;"> 判断processedBeans是否包含当前处理器(processedBeans中的处理器已经被处理过);如果包含,则不做任何处理</span>
+        <span style="color: #0000ff;">if</span><span style="color: #000000;"> (processedBeans.contains(ppName)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> skip - already processed in first phase above</span>
+<span style="color: #000000;">        }
+        </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (beanFactory.isTypeMatch(ppName, PriorityOrdered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入到PriorityOrdered有序处理器集合</span>
+            priorityOrderedPostProcessors.add(beanFactory.getBean(ppName, BeanFactoryPostProcessor.<span style="color: #0000ff;">class</span><span style="color: #000000;">));
+        }
+        </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (beanFactory.isTypeMatch(ppName, Ordered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入到Ordered有序处理器集合</span>
+<span style="color: #000000;">            orderedPostProcessorNames.add(ppName);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> 加入到无序处理器集合</span>
+<span style="color: #000000;">            nonOrderedPostProcessorNames.add(ppName);
+        }
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> First, invoke the BeanFactoryPostProcessors that implement PriorityOrdered.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先调用实现了PriorityOrdered接口的处理器</span>
+<span style="color: #000000;">    sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
+    invokeBeanFactoryPostProcessors(priorityOrderedPostProcessors, beanFactory);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Next, invoke the BeanFactoryPostProcessors that implement Ordered.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 其次,调用实现了Ordered接口的处理器</span>
+    List&lt;BeanFactoryPostProcessor&gt; orderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String postProcessorName : orderedPostProcessorNames) {
+        orderedPostProcessors.add(beanFactory.getBean(postProcessorName, BeanFactoryPostProcessor.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+    }
+    sortPostProcessors(orderedPostProcessors, beanFactory);
+    invokeBeanFactoryPostProcessors(orderedPostProcessors, beanFactory);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Finally, invoke all other BeanFactoryPostProcessors.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 最后,调用无序处理器</span>
+    List&lt;BeanFactoryPostProcessor&gt; nonOrderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String postProcessorName : nonOrderedPostProcessorNames) {
+        nonOrderedPostProcessors.add(beanFactory.getBean(postProcessorName, BeanFactoryPostProcessor.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+    }
+    invokeBeanFactoryPostProcessors(nonOrderedPostProcessors, beanFactory);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Clear cached merged bean definitions since the post-processors might have
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> modified the original metadata, e.g. replacing placeholders in values...
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清理元数据</span>
+<span style="color: #000000;">    beanFactory.clearMetadataCache();
+}</span></code></pre>
+
+<p>循环遍历&nbsp;&nbsp;BeanFactoryPostProcessor 中的&nbsp;postProcessBeanFactory 方法</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeBeanFactoryPostProcessors(
+        Collection</span>&lt;? <span style="color: #0000ff;">extends</span> BeanFactoryPostProcessor&gt;<span style="color: #000000;"> postProcessors, ConfigurableListableBeanFactory beanFactory) {
+
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (BeanFactoryPostProcessor postProcessor : postProcessors) {
+        <strong>postProcessor.postProcessBeanFactory(beanFactory);</strong>
+    }
+}</span></code></pre>
+
+<h2 id="62-注册beanpostprocessor">注册BeanPostProcessor</h2>
+<p>在上文中提到了BeanFactoryPostProcessor的调用，接下来我们就探索下BeanPostProcessor。但这里并不是调用，而是注册，真正的调用其实是在bean的实例化阶段进行的，这是一个很重要的步骤，也是很多功能BeanFactory不知道的重要原因。spring中大部分功能都是通过后处理器的方式进行扩展的，这是spring框架的一个特写，但是在BeanFactory中其实并没有实现后处理器的自动注册，所以在调用的时候如果没有进行手动注册其实是不能使用的。但是ApplicationContext中却添加了自动注册功能，如自定义一个后处理器：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> MyInstantiationAwareBeanPostProcessor <span style="color: #0000ff;">implements</span><span style="color: #000000;"> InstantiationAwareBeanPostProcessor {
+    </span><span style="color: #0000ff;">public</span> Object postProcessBeforeInstantiation(Class&lt;?&gt; beanClass, String beanName) <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+        System.out.println(</span>"befor"<span style="color: #000000;">);
+        </span><span style="color: #0000ff;">return</span> <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    }
+}</span></code></pre>
+
+<p>然后在配置文件中添加bean的配置：</p>
+<src class="cnblogs_code">
+<pre><code>&lt;bean <span style="color: #0000ff;">class</span>="com.yhl.myspring.demo.applicationcontext.MyInstantiationAwareBeanPostProcessor"/&gt;</code></pre>
+
+<p>这样的话再使用BeanFactory的方式进行加载的bean在加载时不会有任何改变的，而在使用ApplicationContext方式获取的bean时就会打印出&ldquo;before&rdquo;，而这个特性就是咋registryBeanPostProcessor方法中完成的。 <br />我们继续深入分析registryBeanPostProcessors的方法实现：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerBeanPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+    PostProcessorRegistrationDelegate.registerBeanPostProcessors(beanFactory, </span><span style="color: #0000ff;">this</span><span style="color: #000000;">);
+}
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerBeanPostProcessors(
+        ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext) {
+
+   <strong> String[] postProcessorNames </strong></span><strong>= beanFactory.getBeanNamesForType(BeanPostProcessor.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+
+    </span></strong><span style="color: #008000;">/*</span><span style="color: #008000;"> 
+     * BeanPostProcessorChecker是一个普通的信息打印，可能会有些情况当spring的配置中的后
+     * 处理器还没有被注册就已经开了bean的初始化，这时就会打印出BeanPostProcessorChecker中
+     * 设定的信息
+     </span><span style="color: #008000;">*/</span>
+    <span style="color: #0000ff;">int</span> beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 +<span style="color: #000000;"> postProcessorNames.length;
+    beanFactory.addBeanPostProcessor(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> BeanPostProcessorChecker(beanFactory, beanProcessorTargetCount));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">使用PriorityOrdered来保证顺序</span>
+    List&lt;BeanPostProcessor&gt; priorityOrderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    List</span>&lt;BeanPostProcessor&gt; internalPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">使用Ordered来保证顺序</span>
+    List&lt;String&gt; orderedPostProcessorNames = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">无序BeanPostProcessor</span>
+    List&lt;String&gt; nonOrderedPostProcessorNames = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : postProcessorNames) {
+        </span><span style="color: #0000ff;">if</span> (beanFactory.isTypeMatch(ppName, PriorityOrdered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+            <strong>BeanPostProcessor pp </strong></span><strong>= beanFactory.getBean(ppName, BeanPostProcessor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>);</strong>
+            priorityOrderedPostProcessors.add(pp);
+            </span><span style="color: #0000ff;">if</span> (pp <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> MergedBeanDefinitionPostProcessor) {
+                internalPostProcessors.add(pp);
+            }
+        }
+        </span><span style="color: #0000ff;">else</span> <span style="color: #0000ff;">if</span> (beanFactory.isTypeMatch(ppName, Ordered.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+            orderedPostProcessorNames.add(ppName);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            nonOrderedPostProcessorNames.add(ppName);
+        }
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">第一步，注册所有实现了PriorityOrdered的BeanPostProcessor</span>
+<span style="color: #000000;">    sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
+   <strong> registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
+
+    </strong></span><span style="color: #008000;">//</span><span style="color: #008000;">注册实现了Ordered的BeanPostProcessor</span>
+    List&lt;BeanPostProcessor&gt; orderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : orderedPostProcessorNames) {
+  <strong>      BeanPostProcessor pp </strong></span><strong>= beanFactory.getBean(ppName, BeanPostProcessor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>);</strong>
+        orderedPostProcessors.add(pp);
+        </span><span style="color: #0000ff;">if</span> (pp <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> MergedBeanDefinitionPostProcessor) {
+            internalPostProcessors.add(pp);
+        }
+    }
+    sortPostProcessors(orderedPostProcessors, beanFactory);
+    <strong>registerBeanPostProcessors(beanFactory, orderedPostProcessors);
+
+    </strong></span><span style="color: #008000;">//</span><span style="color: #008000;">注册所有的无序的BeanPostProcessor</span>
+    List&lt;BeanPostProcessor&gt; nonOrderedPostProcessors = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;<span style="color: #000000;">();
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String ppName : nonOrderedPostProcessorNames) {
+       <strong> BeanPostProcessor pp </strong></span><strong>= beanFactory.getBean(ppName, BeanPostProcessor.<span style="color: #0000ff;">class</span></strong><span style="color: #000000;"><strong>);</strong>
+        nonOrderedPostProcessors.add(pp);
+        </span><span style="color: #0000ff;">if</span> (pp <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> MergedBeanDefinitionPostProcessor) {
+            internalPostProcessors.add(pp);
+        }
+    }
+   <strong> registerBeanPostProcessors(beanFactory, nonOrderedPostProcessors);
+
+    </strong></span><span style="color: #008000;">//</span><span style="color: #008000;">注册所有的内部BeanFactoryProcessor</span>
+<span style="color: #000000;">    sortPostProcessors(internalPostProcessors, beanFactory);
+    registerBeanPostProcessors(beanFactory, internalPostProcessors);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Re-register post-processor for detecting inner beans as ApplicationListeners,
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">添加ApplicationListener探测器</span>
+    beanFactory.addBeanPostProcessor(<span style="color: #0000ff;">new</span><span style="color: #000000;"> ApplicationListenerDetector(applicationContext));
+}</span></code></pre>
+
+<p>我们可以看到先从容器中获取所有类型为&nbsp;<strong>BeanPostProcessor.class</strong> 的Bean的name数组，然后通过&nbsp;<strong>BeanPostProcessor pp </strong><strong>= beanFactory.getBean(ppName, BeanPostProcessor.class</strong><strong>); </strong>获取Bean的实例，最后通过&nbsp;<strong>registerBeanPostProcessors(beanFactory, orderedPostProcessors);</strong>将获取到的<strong>BeanPostProcessor</strong>实例添加到容器的属性中，如下</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">private</span> <span style="color: #0000ff;">static</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerBeanPostProcessors(
+        ConfigurableListableBeanFactory beanFactory, List</span>&lt;BeanPostProcessor&gt;<span style="color: #000000;"> postProcessors) {
+
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (BeanPostProcessor postProcessor : postProcessors) {
+     <strong>   beanFactory.addBeanPostProcessor(postProcessor);</strong>
+    }
+}
+
+@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> addBeanPostProcessor(BeanPostProcessor beanPostProcessor) {
+    Assert.notNull(beanPostProcessor, </span>"BeanPostProcessor must not be null"<span style="color: #000000;">);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Remove from old position, if any</span>
+    <span style="color: #0000ff;">this</span><span style="color: #000000;">.beanPostProcessors.remove(beanPostProcessor);
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Track whether it is instantiation/destruction aware</span>
+    <span style="color: #0000ff;">if</span> (beanPostProcessor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> InstantiationAwareBeanPostProcessor) {
+        </span><span style="color: #0000ff;">this</span>.hasInstantiationAwareBeanPostProcessors = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #0000ff;">if</span> (beanPostProcessor <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> DestructionAwareBeanPostProcessor) {
+        </span><span style="color: #0000ff;">this</span>.hasDestructionAwareBeanPostProcessors = <span style="color: #0000ff;">true</span><span style="color: #000000;">;
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Add to end of list</span>
+   <strong> <span style="color: #0000ff;">this</span></strong><span style="color: #000000;"><strong>.beanPostProcessors.add(beanPostProcessor);</strong>
+}</span></code></pre>
+
+<p>可以看到将&nbsp;<strong>beanPostProcessor 实例添加到容器的&nbsp;</strong><strong>beanPostProcessors 属性中</strong></p>
+<h2>初始化Message资源</h2>
+<p>该方法不是很重要，留在以后分析吧。。。</p>
+<h2>初始事件广播器</h2>
+<p>初始化ApplicationEventMulticaster是在方法initApplicationEventMulticaster()中实现的，进入到方法体，如下：</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> initApplicationEventMulticaster() {
+    ConfigurableListableBeanFactory beanFactory </span>=<span style="color: #000000;"> getBeanFactory();
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 1、默认使用内置的事件广播器,如果有的话.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 我们可以在配置文件中配置Spring事件广播器或者自定义事件广播器
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 例如: &lt;bean id="applicationEventMulticaster" class="org.springframework.context.event.SimpleApplicationEventMulticaster"&gt;&lt;/bean&gt;</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (beanFactory.containsLocalBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME)) {
+        </span><span style="color: #0000ff;">this</span>.applicationEventMulticaster = beanFactory.getBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, ApplicationEventMulticaster.<span style="color: #0000ff;">class</span><span style="color: #000000;">);
+    }
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 2、否则,新建一个事件广播器,SimpleApplicationEventMulticaster是spring的默认事件广播器</span>
+    <span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">this</span>.applicationEventMulticaster = <span style="color: #0000ff;">new</span><span style="color: #000000;"> SimpleApplicationEventMulticaster(beanFactory);
+        beanFactory.registerSingleton(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.applicationEventMulticaster);
+    }
+}</span></code></pre>
+
+<p>通过源码可以看到其实现逻辑与initMessageSource基本相同，其步骤如下： <br />（1）查找是否有name为applicationEventMulticaster的bean，如果有放到容器里，如果没有，初始化一个系统默认的SimpleApplicationEventMulticaster放入容器 <br />（2）查找手动设置的applicationListeners，添加到applicationEventMulticaster里 <br />（3）查找定义的类型为ApplicationListener的bean，设置到applicationEventMulticaster <br />（4）初始化完成、对earlyApplicationEvents里的事件进行通知（此容器仅仅是广播器未建立的时候保存通知信息，一旦容器建立完成，以后均直接通知） <br />（5）在系统操作时候，遇到的各种bean的通知事件进行通知 <br />可以看到的是applicationEventMulticaster是一个标准的观察者模式，对于他内部的监听者applicationListeners，每次事件到来都会一一获取通知。</p>
+<h2 id="65-注册监听器">注册监听器</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> registerListeners() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Register statically specified listeners first.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 首先,注册指定的静态事件监听器,在spring boot中有应用</span>
+    <span style="color: #0000ff;">for</span> (ApplicationListener&lt;?&gt;<span style="color: #000000;"> listener : getApplicationListeners()) {
+        getApplicationEventMulticaster().addApplicationListener(listener);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Do not initialize FactoryBeans here: We need to leave all regular beans
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> uninitialized to let post-processors apply to them!
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 其次,注册普通的事件监听器</span>
+    String[] listenerBeanNames = getBeanNamesForType(ApplicationListener.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">true</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String listenerBeanName : listenerBeanNames) {
+        getApplicationEventMulticaster().addApplicationListenerBean(listenerBeanName);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Publish early application events now that we finally have a multicaster...
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果有早期事件的话,在这里进行事件广播
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 因为前期SimpleApplicationEventMulticaster尚未注册，无法发布事件，
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 因此早期的事件会先存放在earlyApplicationEvents集合中，这里把它们取出来进行发布
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 所以早期事件的发布时间节点是早于其他事件的</span>
+    Set&lt;ApplicationEvent&gt; earlyEventsToProcess = <span style="color: #0000ff;">this</span><span style="color: #000000;">.earlyApplicationEvents;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 早期事件广播器是一个Set&lt;ApplicationEvent&gt;集合,保存了无法发布的早期事件,当SimpleApplicationEventMulticaster
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 创建完之后随即进行发布,同事也要将其保存的事件释放</span>
+    <span style="color: #0000ff;">this</span>.earlyApplicationEvents = <span style="color: #0000ff;">null</span><span style="color: #000000;">;
+    </span><span style="color: #0000ff;">if</span> (earlyEventsToProcess != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (ApplicationEvent earlyEvent : earlyEventsToProcess) {
+            getApplicationEventMulticaster().multicastEvent(earlyEvent);
+        }
+    }
+}</span></code></pre>
+
+<p>我们来看一下Spring的事件监昕的简单用法</p>
+<h3>定义监听事件</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span> TestEvent <span style="color: #0000ff;">extends</span><span style="color: #000000;"> ApplicationonEvent { 
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> String msg;
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> TestEvent (Object source ) {
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;"> (source );
+    }
+    </span><span style="color: #0000ff;">public</span><span style="color: #000000;"> TestEvent (Object source , String msg ) { 
+        </span><span style="color: #0000ff;">super</span><span style="color: #000000;">(source);
+        </span><span style="color: #0000ff;">this</span>.msg =<span style="color: #000000;"> msg ; 
+    }
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> print () { 
+        System.out.println(msg) ;
+    }
+}</span></code></pre>
+
+<h3>定义监昕器</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">class</span><span style="color: #000000;"> TestListener implement ApplicationListener { 
+    </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> onApplicationEvent (ApplicationEvent event ) { 
+        </span><span style="color: #0000ff;">if</span> (event <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> TestEvent ) { 
+            TestEvent testEvent </span>=<span style="color: #000000;"> (TestEvent) event ;
+            testEvent print () ;
+        }
+    }
+}</span></code></pre>
+
+<h3>添加配置文件</h3>
+<src class="cnblogs_code">
+<pre><code>&lt;bean id=&rdquo; testListener&rdquo; <span style="color: #0000ff;">class</span>=&rdquo; com.test.event.TestListener &rdquo; /&gt;</code></pre>
+
+<h3>测试</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Test
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> MyAopTest() {
+    ApplicationContext ac </span>= <span style="color: #0000ff;">new</span> ClassPathXmlApplicationContext("spring-aop.xml"<span style="color: #000000;">);
+    TestEvent event </span>= <span style="color: #0000ff;">new</span><span style="color: #000000;"> TestEvent (&ldquo;hello&rdquo; ,&rdquo;msg&rdquo;) ;
+    context.publishEvent(event);
+}</span></code></pre>
+
+<h3>源码分析</h3>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> publishEvent(Object event, ResolvableType eventType) {
+    Assert.notNull(event, </span>"Event must not be null"<span style="color: #000000;">);
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isTraceEnabled()) {
+        logger.trace(</span>"Publishing event in " + getDisplayName() + ": " +<span style="color: #000000;"> event);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Decorate event as an ApplicationEvent if necessary</span>
+<span style="color: #000000;">    ApplicationEvent applicationEvent;
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">支持两种事件1、直接继承ApplicationEvent，2、其他时间，会被包装为PayloadApplicationEvent，可以使用getPayload获取真实的通知内容</span>
+    <span style="color: #0000ff;">if</span> (event <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> ApplicationEvent) {
+        applicationEvent </span>=<span style="color: #000000;"> (ApplicationEvent) event;
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        applicationEvent </span>= <span style="color: #0000ff;">new</span> PayloadApplicationEvent&lt;Object&gt;(<span style="color: #0000ff;">this</span><span style="color: #000000;">, event);
+        </span><span style="color: #0000ff;">if</span> (eventType == <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            eventType </span>=<span style="color: #000000;"> ((PayloadApplicationEvent)applicationEvent).getResolvableType();
+        }
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Multicast right now if possible - or lazily once the multicaster is initialized</span>
+    <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.earlyApplicationEvents != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">如果有预制行添加到预制行，预制行在执行一次后被置为null，以后都是直接执行</span>
+        <span style="color: #0000ff;">this</span><span style="color: #000000;">.earlyApplicationEvents.add(applicationEvent);
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #008000;">//</span><span style="color: #008000;">广播event事件</span>
+<span style="color: #000000;"><strong>        getApplicationEventMulticaster().multicastEvent(applicationEvent, eventType);</strong>
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Publish event via parent context as well...
+    </span><span style="color: #008000;">//</span><span style="color: #008000;">父bean同样广播</span>
+    <span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.parent != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">if</span> (<span style="color: #0000ff;">this</span>.parent <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> AbstractApplicationContext) {
+            ((AbstractApplicationContext) </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.parent).publishEvent(event, eventType);
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            </span><span style="color: #0000ff;">this</span><span style="color: #000000;">.parent.publishEvent(event);
+        }
+    }
+}</span></code></pre>
+
+<p>查找所有的监听者，依次遍历，如果有线程池，利用线程池进行发送，如果没有则直接发送，如果针对比较大的并发量，我们应该采用线程池模式，将发送通知和真正的业务逻辑进行分离</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> multicastEvent(<span style="color: #0000ff;">final</span><span style="color: #000000;"> ApplicationEvent event, ResolvableType eventType) {
+    ResolvableType type </span>= (eventType != <span style="color: #0000ff;">null</span> ?<span style="color: #000000;"> eventType : resolveDefaultEventType(event));
+    </span><span style="color: #0000ff;">for</span> (<span style="color: #0000ff;">final</span> ApplicationListener&lt;?&gt;<span style="color: #000000;"> listener : getApplicationListeners(event, type)) {
+        Executor executor </span>=<span style="color: #000000;"> getTaskExecutor();
+        </span><span style="color: #0000ff;">if</span> (executor != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+            executor.execute(</span><span style="color: #0000ff;">new</span><span style="color: #000000;"> Runnable() {
+                @Override
+                </span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> run() {
+                   <strong> invokeListener(listener, event);</strong>
+                }
+            });
+        }
+        </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+            invokeListener(listener, event);
+        }
+    }
+}</span></code></pre>
+
+<p>调用invokeListener</p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> invokeListener(ApplicationListener listener, ApplicationEvent event) {
+    ErrorHandler errorHandler </span>=<span style="color: #000000;"> getErrorHandler();
+    </span><span style="color: #0000ff;">if</span> (errorHandler != <span style="color: #0000ff;">null</span><span style="color: #000000;">) {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            <strong>listener.onApplicationEvent(event);</strong>
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (Throwable err) {
+            errorHandler.handleError(err);
+        }
+    }
+    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+        </span><span style="color: #0000ff;">try</span><span style="color: #000000;"> {
+            listener.onApplicationEvent(event);
+        }
+        </span><span style="color: #0000ff;">catch</span><span style="color: #000000;"> (ClassCastException ex) {
+            </span><span style="color: #008000;">//</span><span style="color: #008000;"> Possibly a lambda-defined listener which we could not resolve the generic event type for</span>
+            LogFactory.getLog(getClass()).debug("Non-matching event type for listener: " +<span style="color: #000000;"> listener, ex);
+        }
+    }
+}</span></code></pre>
+
+<h2>初始化其他的单例Bean(非延迟加载的)</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Initialize conversion service for this context.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 判断有无ConversionService(bean属性类型转换服务接口),并初始化</span>
+    <span style="color: #0000ff;">if</span><span style="color: #000000;"> (beanFactory.containsBean(CONVERSION_SERVICE_BEAN_NAME)
+            </span>&amp;&amp; beanFactory.isTypeMatch(CONVERSION_SERVICE_BEAN_NAME, ConversionService.<span style="color: #0000ff;">class</span><span style="color: #000000;">)) {
+        beanFactory.setConversionService(beanFactory.getBean(CONVERSION_SERVICE_BEAN_NAME, ConversionService.</span><span style="color: #0000ff;">class</span><span style="color: #000000;">));
+    }
+
+    </span><span style="color: #008000;">//</span>
+    <span style="color: #008000;">//</span><span style="color: #008000;"> Register a default embedded value resolver if no bean post-processor
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> (such as a PropertyPlaceholderConfigurer bean) registered any before:
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> at this point, primarily for resolution in annotation attribute values.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 如果beanFactory中不包含EmbeddedValueResolver,则向其中添加一个EmbeddedValueResolver
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> EmbeddedValueResolver--&gt;解析bean中的占位符和表达式</span>
+    <span style="color: #0000ff;">if</span> (!<span style="color: #000000;">beanFactory.hasEmbeddedValueResolver()) {
+        beanFactory.addEmbeddedValueResolver(strVal </span>-&gt;<span style="color: #000000;"> getEnvironment().resolvePlaceholders(strVal));
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Initialize LoadTimeWeaverAware beans early to allow for registering their transformers early.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 初始化LoadTimeWeaverAware类型的bean
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> LoadTimeWeaverAware--&gt;加载Spring Bean时织入第三方模块,如AspectJ</span>
+    String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.<span style="color: #0000ff;">class</span>, <span style="color: #0000ff;">false</span>, <span style="color: #0000ff;">false</span><span style="color: #000000;">);
+    </span><span style="color: #0000ff;">for</span><span style="color: #000000;"> (String weaverAwareName : weaverAwareNames) {
+        getBean(weaverAwareName);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Stop using the temporary ClassLoader for type matching.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 释放临时类加载器</span>
+    beanFactory.setTempClassLoader(<span style="color: #0000ff;">null</span><span style="color: #000000;">);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Allow for caching all bean definition metadata, not expecting further changes.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 冻结缓存的BeanDefinition元数据</span>
+<span style="color: #000000;">    beanFactory.freezeConfiguration();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Instantiate all remaining (non-lazy-init) singletons.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 初始化其他的非延迟加载的单例bean</span>
+<span style="color: #000000;"><strong>    beanFactory.preInstantiateSingletons();</strong>
+}</span></code></pre>
+
+<p>我们重点看<strong>&nbsp; beanFactory.preInstantiateSingletons();</strong></p>
+<src class="cnblogs_code">
+<pre><code><span style="color: #000000;">@Override
+</span><span style="color: #0000ff;">public</span> <span style="color: #0000ff;">void</span> preInstantiateSingletons() <span style="color: #0000ff;">throws</span><span style="color: #000000;"> BeansException {
+    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (logger.isTraceEnabled()) {
+        logger.trace(</span>"Pre-instantiating singletons in " + <span style="color: #0000ff;">this</span><span style="color: #000000;">);
+    }
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Iterate over a copy to allow for init methods which in turn register new bean definitions.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> While this may not be part of the regular factory bootstrap, it does otherwise work fine.</span>
+    List&lt;String&gt; beanNames = <span style="color: #0000ff;">new</span> ArrayList&lt;&gt;(<span style="color: #0000ff;">this</span><span style="color: #000000;">.beanDefinitionNames);
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Trigger initialization of all non-lazy singleton beans...</span>
+    <span style="color: #0000ff;">for</span><span style="color: #000000;"> (String beanName : beanNames) {
+        RootBeanDefinition bd </span>=<span style="color: #000000;"> getMergedLocalBeanDefinition(beanName);
+        </span><span style="color: #0000ff;">if</span> (!bd.isAbstract() &amp;&amp; bd.isSingleton() &amp;&amp; !<span style="color: #000000;">bd.isLazyInit()) {
+            </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isFactoryBean(beanName)) {
+                Object bean </span>= getBean(FACTORY_BEAN_PREFIX +<span style="color: #000000;"> beanName);
+                </span><span style="color: #0000ff;">if</span> (bean <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> FactoryBean) {
+                    </span><span style="color: #0000ff;">final</span> FactoryBean&lt;?&gt; factory = (FactoryBean&lt;?&gt;<span style="color: #000000;">) bean;
+                    </span><span style="color: #0000ff;">boolean</span><span style="color: #000000;"> isEagerInit;
+                    </span><span style="color: #0000ff;">if</span> (System.getSecurityManager() != <span style="color: #0000ff;">null</span> &amp;&amp; factory <span style="color: #0000ff;">instanceof</span><span style="color: #000000;"> SmartFactoryBean) {
+                        isEagerInit </span>= AccessController.doPrivileged((PrivilegedAction&lt;Boolean&gt;<span style="color: #000000;">)
+                                        ((SmartFactoryBean</span>&lt;?&gt;<span style="color: #000000;">) factory)::isEagerInit,
+                                getAccessControlContext());
+                    }
+                    </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+                        isEagerInit </span>= (factory <span style="color: #0000ff;">instanceof</span> SmartFactoryBean &amp;&amp;<span style="color: #000000;">
+                                ((SmartFactoryBean</span>&lt;?&gt;<span style="color: #000000;">) factory).isEagerInit());
+                    }
+                    </span><span style="color: #0000ff;">if</span><span style="color: #000000;"> (isEagerInit) {
+                      <strong>  getBean(beanName);</strong>
+                    }
+                }
+            }
+            </span><span style="color: #0000ff;">else</span><span style="color: #000000;"> {
+              <strong>  getBean(beanName);</strong>
+            }
+        }
+    }
+
+}</span></code></pre>
+
+<h2>完成刷新过程,通知生命周期处理器lifecycleProcessor刷新过程,同时发出ContextRefreshEvent通知</h2>
+<src class="cnblogs_code">
+<pre><code><span style="color: #0000ff;">protected</span> <span style="color: #0000ff;">void</span><span style="color: #000000;"> finishRefresh() {
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Clear context-level resource caches (such as ASM metadata from scanning).
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 清空资源缓存</span>
+<span style="color: #000000;">    clearResourceCaches();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Initialize lifecycle processor for this context.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 初始化生命周期处理器</span>
+<span style="color: #000000;">    initLifecycleProcessor();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Propagate refresh to lifecycle processor first.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 调用生命周期处理器的onRefresh方法</span>
+<span style="color: #000000;">    getLifecycleProcessor().onRefresh();
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Publish the final event.
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> 推送容器刷新事件</span>
+    publishEvent(<span style="color: #0000ff;">new</span> ContextRefreshedEvent(<span style="color: #0000ff;">this</span><span style="color: #000000;">));
+
+    </span><span style="color: #008000;">//</span><span style="color: #008000;"> Participate in LiveBeansView MBean, if active.</span>
+    LiveBeansView.registerApplicationContext(<span style="color: #0000ff;">this</span><span style="color: #000000;">);
+}</span></code></pre>
+
+<p>&nbsp;</p>
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

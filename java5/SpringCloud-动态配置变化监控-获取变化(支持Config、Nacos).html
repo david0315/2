@@ -1,0 +1,137 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringCloud-动态配置变化监控-获取变化(支持Config、Nacos)' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringCloud-动态配置变化监控-获取变化(支持Config、Nacos)</center></div><div class='banquan'>原文出处:本文由博客园博主Purgeyao提供。<br/>
+原文连接:https://www.cnblogs.com/Purgeyao/p/11693873.html</div><br>
+    <h1 id="springcloud-动态配置变化监控-获取变化支持confignacos">SpringCloud-动态配置变化监控-获取变化(支持Config、Nacos)</h1>
+<blockquote>
+<p>qq交流群: <code>812321371</code><br />
+微信交流群: <code>MercyYao</code></p>
+</blockquote>
+<h2 id="简介">简介</h2>
+<p>配置中心有原生的 <code>SpringCloud Config</code> 、国内开源的 阿里 <code>Nacos</code>、携程 <code>Apollo</code> 等。<br />
+都是配置热加载的基础上增加了其他的功能。</p>
+<p>配置中心具有配置热加载，修改配置 -&gt; 推送到程序 -&gt; 执行配置更新。</p>
+<p>而获取配置更新的具体内容，这些组件都没有做到(<code>SpringCloud Config</code>、<code>Nacos</code>, <code>Apollo待验证</code> )。如:获取变化的配置 <code>test</code> 更新前为 <code>123</code> ,更新后为 <code>111</code>。</p>
+<p><code>SpringCloud Config</code> 、<code>Nacos</code> 、 <code>Apollo待验证</code> 配置更新都是将整个配置文件推送给服务进行配置对比结果进行更新。这个阶段用户无法从程序中获取更新的内容。</p>
+<p>为了实现这个扩展功能点,更新结果可以让程序感知。<br />
+在这个阶段用户通过code可以实现配置监听, 监听到某个配置变化做其他操作等。</p>
+<p>示例: 获取到推送配置变化, 感知到 <code>test</code> 发生变化, 做更新同步数据操作等等。</p>
+<p><strong>感知结果集如:</strong></p>
+<pre><code><code>{
+    `被更新的配置key`:{
+        before: `原来的值`，
+        after: `更新后的值`
+    },
+    `被更新的配置key`:{
+        before: `原来的值`，
+        after: `更新后的值`
+    }
+}</code></code></pre>
+<h2 id="功能使用">功能使用</h2>
+<h3 id="添加依赖">添加依赖</h3>
+<p><strong>ps:</strong> 实际version版本请使用最新版<br />
+<strong>最新版本:</strong> <a href="https://search.maven.org/search?q=g:com.purgeteam%20AND%20a:dynamic-config-spring-boot-starter"><embed src="https://img2018.cnblogs.com/blog/1766679/201910/1766679-20191017183044887-145435018.svg+xml;charset=utf-8" /></a></p>
+<pre><code><code>&lt;dependency&gt;
+  &lt;groupId&gt;com.purgeteam&lt;/groupId&gt;
+  &lt;artifactId&gt;dynamic-config-spring-boot-starter&lt;/artifactId&gt;
+  &lt;version&gt;0.1.0.RELEASE&lt;/version&gt;
+&lt;/dependency&gt;</code></code></pre>
+<p>当然实际情况要结合添加动态配置依赖包 <code>SpringCloud Config</code> 、 <code>Nacos</code> 、 <code>Apollo</code> 。</p>
+<p><code>dynamic-config-spring-boot-starter</code> 模块不包含以上依赖, 需要自行添加。</p>
+<h3 id="enabledynamicconfigevent">@EnableDynamicConfigEvent</h3>
+<p><strong>简介:</strong> 开启这个特性注解，具备配置推送更新监听能力。</p>
+<p>启动类添加 <code>@EnableDynamicConfigEvent</code> 注解开启配置变化监听功能。</p>
+<pre><code><code>@EnableDynamicConfigEvent
+@SpringBootApplication
+public class DynamicConfigSpringBootApplication {
+
+  public static void main(String[] args) {
+    SpringApplication.run(DynamicConfigSpringBootApplication.class, args);
+  }
+
+}</code></code></pre>
+<h3 id="编写事件接收器">编写事件接收器</h3>
+<p>创建 <code>NacosListener</code>(名称随意) 实现 <code>ApplicationListener&lt;ActionConfigEvent&gt;#onApplicationEvent</code> 方法</p>
+<pre><code><code>@Slf4j
+@Component
+public class NacosListener implements ApplicationListener&lt;ActionConfigEvent&gt; {
+
+  @Override
+  public void onApplicationEvent(ActionConfigEvent event) {
+    log.info(&quot;接收事件&quot;);
+    log.info(event.getPropertyMap().toString());
+  }
+}</code></code></pre>
+<p>在 <code>NacosListener#onApplicationEvent</code> 方法里获取目标值, 作相应的逻辑处理。</p>
+<p><strong>ActionConfigEvent event:</strong></p>
+<pre><code><code>public class ActionConfigEvent extends ApplicationEvent {
+
+    // 事件说明
+    private String eventDesc;
+    
+    // 更新变化结果集
+    private Map&lt;String, HashMap&gt; propertyMap;
+    ...
+}</code></code></pre>
+<p><code>ActionConfigEvent</code> 主要包含 <code>Map&lt;String, HashMap&gt; propertyMap;</code>, 从这里可以获取更新变化结果, propertyMap结构如下:</p>
+<pre><code><code>{
+    `被更新的配置key`:{
+        before: `原来的值`，
+        after: `更新后的值`
+    },
+    `被更新的配置key`:{
+        before: `原来的值`，
+        after: `更新后的值`
+    }
+}</code></code></pre>
+<h3 id="更新配置演示">更新配置演示</h3>
+<p><strong>ps:</strong> 示例为 <code>Nacos</code> 其它配置中心无差别。</p>
+<p>原始配置:</p>
+<pre><code><code>test.age=18
+user.name=purgeyao</code></code></pre>
+<p>修改配置:</p>
+<pre><code><code># test.age 将18更新为19
+test.age=19
+user.name=purgeyao</code></code></pre>
+<p>在 <code>NacosListener#onApplicationEvent</code> 方法加入端点调试观察 <code>ActionConfigEvent</code> 对象参数。</p>
+<p><img src="./images/SpringCloud-动态配置变化监控-获取变化(支持Config、Nacos)0.png" alt="img" /></p>
+<p>更新的 <code>test.age</code> 已经被记录在了 <code>ActionConfigEvent.propertyMap</code> 里了, 从 18 更新为 19。</p>
+<p>控制台打印:</p>
+<pre><code><code>2019-10-17 10:44:09.221  INFO 54054 --- [-10.1.1.97_8848] c.p.dynamic.config.demo.NacosListener    : 接收事件
+2019-10-17 10:45:19.752  INFO 54054 --- [-10.1.1.97_8848] c.p.dynamic.config.demo.NacosListener    : {test.age={before=18, after=19}}</code></code></pre>
+<h2 id="总结">总结</h2>
+<p>上述功能基于 <code>Nacos</code> 、 <code>SpringCloud Config</code> 或基于 <code>SpringCloud Config</code> 之上构建的配置中心都可以使用, 其他配置中心待验证。</p>
+<blockquote>
+<p>qq交流群: <code>812321371</code><br />
+微信交流群: <code>MercyYao</code></p>
+</blockquote>
+<blockquote>
+<p>示例代码地址:<a href="https://github.com/purgeteam/dynamic-config-spring-boot">dynamic-config-spring-boot</a></p>
+</blockquote>
+<blockquote>
+<p>作者GitHub:<br />
+<a href="https://github.com/purgeyao">Purgeyao</a> 欢迎关注<br />
+本文由博客一文多发平台 <a href="https://openwrite.cn?from=article_bottom">OpenWrite</a> 发布！</p>
+</blockquote>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>

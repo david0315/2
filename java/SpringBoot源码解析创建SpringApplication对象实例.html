@@ -1,0 +1,88 @@
+<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta name='applicable-device' content='pc'><meta name='keywords' content='电脑,电脑讲解,电脑技术,编程,电脑故障维修SpringBoot源码解析创建SpringApplication对象实例' />
+<script src='../../highlight/highlight.pack.js'></script>
+<link rel='stylesheet' type='text/css' href='../../highlight/styles/monokai.css'/>
+
+<link rel='stylesheet' href='../../fenxiang/dist/css/share.min.css'>
+<script src='../../fenxiang/src/js/social-share.js'></script>
+<script src='../../fenxiang/src/js/qrcode.js'></script>
+
+</head><body><script>hljs.initHighlightingOnLoad();</script><script>
+var system ={};  
+var p = navigator.platform;       
+system.win = p.indexOf('Win') == 0;  
+system.mac = p.indexOf('Mac') == 0;  
+system.x11 = (p == 'X11') || (p.indexOf('Linux') == 0);     
+if(system.win||system.mac||system.xll){
+document.write("<link href='../css/3.css' rel='stylesheet' type='text/css'>");}else{ document.write("<link href='../css/3wap.css' rel='stylesheet' type='text/css'>");}</script><script src='../../js/3.js'></script><div class='div2'><div class='heading_nav'><ul><div><li><a href='../../index.html'>首页</a></li>
+</div><div onclick='hidden1()' >分享</div>
+</ul></div></div>
+<div id='heading_nav2'> 
+<li class='row' >
+<div class='social-share' data-mode='prepend'><a href='javascript:' class='social-share-icon icon-heart'></a></div></li></div><script charset='utf-8' src='../../3/js/hengfu.js'></script><script charset='utf-8' src='../../3/js/hengfu2.js'></script><hr><div class='div1'><div class='biaoti'><center>SpringBoot源码解析创建SpringApplication对象实例</center></div><div class='banquan'>原文出处:本文由博客园博主石玉军提供。<br/>
+原文连接:https://www.cnblogs.com/zhixiang-org-cn/p/11569994.html</div><br>
+    <blockquote>
+<p>上篇文章<a href="https://mp.weixin.qq.com/s/I3-sM55JSb4BFJ-zPosZgQ">SpringBoot自动装配原理解析</a>中，我们分析了SpringBoot的自动装配原理以及<code>@SpringBootApplication</code>注解的原理，本篇文章则继续基于上篇文章中的main方法来分析<code>SpringApplication</code>这个类</p>
+</blockquote>
+<pre><code><code>@SpringBootApplication
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}</code></code></pre>
+<p>点击<code>run</code>方法一路跟踪下来，发现首先做的是实例化<code>SpringApplication</code>对象实例</p>
+<pre><code><code>public static ConfigurableApplicationContext run(Class&lt;?&gt; primarySource,
+            String... args) {
+        return run(new Class&lt;?&gt;[] { primarySource }, args);
+    }
+    public static ConfigurableApplicationContext run(Class&lt;?&gt;[] primarySources,
+            String[] args) {
+        return new SpringApplication(primarySources).run(args);
+    }
+    public SpringApplication(Class&lt;?&gt;... primarySources) {
+        this(null, primarySources);
+    }
+public SpringApplication(ResourceLoader resourceLoader, Class&lt;?&gt;... primarySources) {
+        this.resourceLoader = resourceLoader;
+        Assert.notNull(primarySources, &quot;PrimarySources must not be null&quot;);
+        this.primarySources = new LinkedHashSet&lt;&gt;(Arrays.asList(primarySources));
+        this.webApplicationType = deduceWebApplicationType();
+        setInitializers((Collection) getSpringFactoriesInstances(
+                ApplicationContextInitializer.class));
+        setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+        this.mainApplicationClass = deduceMainApplicationClass();
+    }</code></code></pre>
+<ol>
+<li>首先看一下<code>deduceWebApplicationType</code>方法</li>
+</ol>
+<pre><code><code>private WebApplicationType deduceWebApplicationType() {
+        if (ClassUtils.isPresent(&quot;org.springframework.web.reactive.DispatcherHandler&quot;, (ClassLoader)null) &amp;&amp; !ClassUtils.isPresent(&quot;org.springframework.web.servlet.DispatcherServlet&quot;, (ClassLoader)null)) {
+            return WebApplicationType.REACTIVE;
+        } 
+        for (String className : &quot;javax.servlet.Servlet&quot;, org.springframework.web.context.ConfigurableWebApplicationContext&quot;) {
+            if (!ClassUtils.isPresent(className, null)) {
+                return WebApplicationType.NONE;
+            }
+    }
+          return WebApplicationType.SERVLET;
+        }
+    }</code></code></pre>
+<p>大抵意思就是根据当前项目中是否存在上方的几个类来推断出当前的web环境，这里因为SpringBoot默认使用的web框架是SpringMVC，所以最后返回结果为<code>WebApplicationType.SERVLET</code></p>
+<ol>
+<li>加载所有的<code>ApplicationContextInitializer</code>和<code>ApplicationListener</code>的实现类</li>
+</ol>
+<pre><code><code> private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type, Class&lt;?&gt;[] parameterTypes, Object... args) {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        Set&lt;String&gt; names = new LinkedHashSet(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+        List&lt;T&gt; instances = this.createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+        AnnotationAwareOrderComparator.sort(instances);
+        return instances;
+    }</code></code></pre>
+<p>可以看到主要还是用的<code>SpringFactoriesLoader</code>这个类去加载这两个接口的实现类，加载到类以后使用反射的方式构造出这些类的实例，然后根据这些实现类上的<code>Order</code>注解的值进行排序</p>
+<p>关于这些实现类的具体作用请关注后续的文章</p>
+<ol>
+<li>最后一行的意义是找到入口方法main所在的类，赋值给全局变量<code>mainApplicationClass</code></li>
+</ol>
+
+
+</div><hr><script charset='utf-8' src='../../js/sming.js'></script></body></html>
